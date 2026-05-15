@@ -1,0 +1,122 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: docuintel
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d docuintel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  worker:
+    build:
+      context: ./backend
+    env_file: .env
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,ocr_heavy,embeddings,maintenance,celery
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+
+  watcher:
+    build:
+      context: ./backend
+    env_file: .env
+    command: python -m app.ingestion.watcher
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os; assert os.path.isdir('/app/data/input')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  scheduler:
+    build:
+      context: ./backend
+    env_file: .env
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    profiles:
+      - scheduler
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+      - "5174:80"
+    depends_on:
+      - backend
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:

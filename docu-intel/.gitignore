@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+dist/
+build/
+.vite/
+data/files/*
+!data/files/.gitkeep
+data/input/**/*
+!data/input/**/.gitkeep
+postgres_data/
+

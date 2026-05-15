@@ -1,0 +1,79 @@
+import json
+
+import httpx
+
+from app.core.config import settings
+from app.services import embeddings
+from app.services.embeddings import EMBEDDING_DIMENSIONS, OpenAICompatibleEmbeddingClient, embed_many, embed_text
+
+
+def test_openai_compatible_embedding_client_posts_to_local_embeddings_endpoint():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        body = json.loads(request.content.decode("utf-8"))
+        assert str(request.url) == "http://embedding.local:1234/v1/embeddings"
+        assert body == {"model": "bge-m3", "input": ["pedido ABC123", "plano salon"]}
+        assert request.headers["authorization"] == "Bearer local-key"
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"index": 0, "embedding": [1, 2]},
+                    {"index": 1, "embedding": [3, 4, 5, 6, 7]},
+                ]
+            },
+        )
+
+    client = OpenAICompatibleEmbeddingClient(
+        base_url="http://embedding.local:1234/v1",
+        model="bge-m3",
+        api_key="local-key",
+        dimensions=4,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert client.embed_many(["pedido ABC123", "plano salon"]) == [
+        [1.0, 2.0, 0.0, 0.0],
+        [3.0, 4.0, 5.0, 6.0],
+    ]
+    assert len(requests) == 1
+
+
+def test_embed_many_uses_configured_local_openai_provider(monkeypatch):
+    calls: list[tuple[str, str, str | None, int, list[str]]] = []
+
+    class FakeClient:
+        def __init__(self, *, base_url: str, model: str, api_key: str | None, dimensions: int, timeout_seconds: float):
+            self.base_url = base_url
+            self.model = model
+            self.api_key = api_key
+            self.dimensions = dimensions
+
+        def embed_many(self, texts: list[str]) -> list[list[float]]:
+            calls.append((self.base_url, self.model, self.api_key, self.dimensions, texts))
+            return [[0.25, 0.5, 0.75, 1.0] for _ in texts]
+
+    monkeypatch.setattr(embeddings, "OpenAICompatibleEmbeddingClient", FakeClient)
+    monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
+    monkeypatch.setattr(settings, "embedding_base_url", "http://embedding.local:1234/v1")
+    monkeypatch.setattr(settings, "embedding_model", "bge-m3")
+    monkeypatch.setattr(settings, "embedding_api_key", "local-key")
+    monkeypatch.setattr(settings, "embedding_dimensions", 4)
+
+    assert embed_many(["uno", "dos"]) == [[0.25, 0.5, 0.75, 1.0], [0.25, 0.5, 0.75, 1.0]]
+    assert calls == [("http://embedding.local:1234/v1", "bge-m3", "local-key", 4, ["uno", "dos"])]
+
+
+def test_embed_text_keeps_hash_fallback_when_local_provider_is_not_configured(monkeypatch):
+    monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
+    monkeypatch.setattr(settings, "embedding_base_url", "")
+    monkeypatch.setattr(settings, "ai_base_url", "")
+    monkeypatch.setattr(settings, "embedding_dimensions", EMBEDDING_DIMENSIONS)
+
+    query_vector = embed_text("pedido referencia ABC123")
+    related_vector = embed_text("lineas del pedido con referencia ABC123")
+
+    assert len(query_vector) == EMBEDDING_DIMENSIONS
+    assert embeddings.cosine_similarity(query_vector, related_vector) > 0.2

@@ -1,0 +1,10 @@
+{
+  "test": "ingestion",
+  "timestamp": "2026-05-14T10:04:53.391095",
+  "num_documents": 10,
+  "upload_times": {
+    "avg": 0.044,
+    "p50": 0.019,
+    "p95": 0.375
+  }
+}

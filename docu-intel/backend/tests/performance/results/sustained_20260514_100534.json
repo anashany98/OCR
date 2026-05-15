@@ -1,0 +1,35 @@
+{
+  "test": "sustained_load",
+  "timestamp": "2026-05-14T10:05:34.667782",
+  "rps_target": 5,
+  "duration_seconds": 30,
+  "endpoints": {
+    "/documents/1": {
+      "total_requests": 141,
+      "errors": 0,
+      "error_rate": 0.0,
+      "actual_rps": 4.7,
+      "avg_latency": 0.013,
+      "p50_latency": 0.011,
+      "p95_latency": 0.015
+    },
+    "/documents": {
+      "total_requests": 141,
+      "errors": 0,
+      "error_rate": 0.0,
+      "actual_rps": 4.7,
+      "avg_latency": 0.013,
+      "p50_latency": 0.011,
+      "p95_latency": 0.016
+    },
+    "/search/text": {
+      "total_requests": 141,
+      "errors": 0,
+      "error_rate": 0.0,
+      "actual_rps": 4.7,
+      "avg_latency": 0.013,
+      "p50_latency": 0.012,
+      "p95_latency": 0.015
+    }
+  }
+}

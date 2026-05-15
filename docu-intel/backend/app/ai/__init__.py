@@ -1,0 +1,2 @@
+"""Local AI integration package."""
+
