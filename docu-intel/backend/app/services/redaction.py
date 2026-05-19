@@ -9,8 +9,12 @@ MONEY_WITH_CURRENCY_RE = re.compile(
     flags=re.IGNORECASE,
 )
 LABELED_AMOUNT_RE = re.compile(
-    r"\b(?P<label>total|importe|precio(?:\s+unitario)?|base\s+imponible|iva)\s*[:#-]?\s*"
+    r"\b(?P<label>total|importe|precio(?:\s+unitario)?|base\s+imponible|iva|subtotal|descuento|margen|beneficio|coste|costo|condiciones\s+comerciales)\s*[:#-]?\s*"
     r"(?P<amount>\d{1,3}(?:[.\s]\d{3})*(?:[,.]\d{2})?)\s*(?:€|eur|euros)?",
+    flags=re.IGNORECASE,
+)
+PERCENT_MARGIN_RE = re.compile(
+    r"\b(?P<label>margen|beneficio|descuento)\s*[:#-]?\s*(?P<amount>\d{1,3}(?:[,.]\d{1,2})?)\s*%",
     flags=re.IGNORECASE,
 )
 
@@ -23,5 +27,6 @@ def redact_sensitive_text(text: str | None) -> str:
         return f"{match.group('label')} {MONEY_REDACTION}"
 
     redacted = LABELED_AMOUNT_RE.sub(replace_labeled, text)
+    redacted = PERCENT_MARGIN_RE.sub(replace_labeled, redacted)
     redacted = MONEY_WITH_CURRENCY_RE.sub(MONEY_REDACTION, redacted)
     return redacted

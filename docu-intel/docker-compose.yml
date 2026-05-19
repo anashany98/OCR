@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: docuintel
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,6 +30,8 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,7 +50,7 @@ services:
     build:
       context: ./backend
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,ocr_heavy,embeddings,maintenance,celery
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,ocr_heavy,embeddings,maintenance,celery --concurrency=${WORKER_CONCURRENCY:-2}
     restart: unless-stopped
     depends_on:
       postgres:

@@ -228,10 +228,19 @@ def _apply_document_filters(stmt, filters: dict | None):
         return stmt
     document_type = filters.get("document_type")
     status = filters.get("status")
+    quality_status = filters.get("quality_status")
+    extension = filters.get("extension")
     if document_type:
         stmt = stmt.where(Document.document_type == document_type)
     if status:
         stmt = stmt.where(Document.status == status)
+    if quality_status:
+        stmt = stmt.where(Document.quality_status == quality_status)
+    if extension:
+        clean_extension = str(extension).lower()
+        if clean_extension and not clean_extension.startswith("."):
+            clean_extension = "." + clean_extension
+        stmt = stmt.where(Document.extension == clean_extension)
     return stmt
 
 

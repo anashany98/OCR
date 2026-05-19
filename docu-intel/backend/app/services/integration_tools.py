@@ -23,6 +23,7 @@ from app.services.tenant_access import (
     filter_document_ids_for_scope,
     filter_records_by_document_scope,
     filter_search_results_for_scope,
+    get_document_access_metadata,
     scope_payload,
 )
 from app.tools import internal
@@ -102,7 +103,7 @@ TOOL_ARGUMENTS = {
 
 def build_manifest() -> IntegrationManifest:
     return IntegrationManifest(
-        version="1.1",
+        version="1.3",
         rules=[
             "No pedir SQL ni intentar acceder a tablas directamente.",
             "No mostrar precios si la respuesta incluye redactions.",
@@ -113,6 +114,7 @@ def build_manifest() -> IntegrationManifest:
             "Citar siempre las fuentes devueltas por Docu-Intel.",
             "No asumir que un presupuesto no existe globalmente; solo existe o no existe dentro del scope autorizado.",
             "Si el usuario menciona otro presupuesto distinto al de la sesion, no cambies de scope: pide una nueva sesion autorizada.",
+            "Puedes usar sandbox=true en tools/execute para validar argumentos, fuentes y redacciones antes de construir una respuesta final.",
         ],
         tools=[
             IntegrationToolDefinition(
@@ -535,7 +537,16 @@ def _filter_document_ids_for_context(db: Session, document_ids, context: Integra
         .where(Document.deleted_at.is_(None))
         .where(Document.budget_scope_id == context.budget_session.budget_scope_id)
     ).all()
-    return {int(row[0]) for row in rows}
+    allowed = {int(row[0]) for row in rows}
+    if not context.access_scope.denied_tags:
+        return allowed
+    filtered: set[int] = set()
+    for document_id in allowed:
+        metadata = get_document_access_metadata(db, document_id)
+        tags = {str(tag).strip().lower() for tag in (metadata.tags_json if metadata else []) if str(tag).strip()}
+        if not (tags & context.access_scope.denied_tags):
+            filtered.add(document_id)
+    return filtered
 
 
 def _document_id_allowed_for_context(db: Session, document_id: int | None, context: IntegrationContext) -> bool:
@@ -549,7 +560,7 @@ def _can_access_document_for_context(db: Session, document: Document | None, con
         return can_access_document(db, document, context.access_scope)
     if not document or document.deleted_at is not None:
         return False
-    return document.budget_scope_id == context.budget_session.budget_scope_id
+    return document.id in _filter_document_ids_for_context(db, [document.id], context)
 
 
 def _average(values: list[float | None]) -> float | None:

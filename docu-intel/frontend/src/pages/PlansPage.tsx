@@ -15,6 +15,9 @@ export function PlansPage() {
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [scaleText, setScaleText] = useState("")
+  const [measurementLabel, setMeasurementLabel] = useState("")
+  const [measurementValue, setMeasurementValue] = useState("")
+  const [measurementOcrValue, setMeasurementOcrValue] = useState("")
   const plans = useQuery({ queryKey: ["plans"], queryFn: api.plans })
   const selectedPlan = useMemo(
     () => plans.data?.find((plan) => plan.id === selectedId) ?? plans.data?.[0] ?? null,
@@ -28,6 +31,11 @@ export function PlansPage() {
   const dimensions = useQuery({
     queryKey: ["plans", selectedPlan?.id, "dimensions"],
     queryFn: () => api.planDimensions(selectedPlan!.id),
+    enabled: Boolean(selectedPlan),
+  })
+  const measurements = useQuery({
+    queryKey: ["plans", selectedPlan?.id, "measurements"],
+    queryFn: () => api.planMeasurements(selectedPlan!.id),
     enabled: Boolean(selectedPlan),
   })
   const scaleMutation = useMutation({
@@ -47,6 +55,22 @@ export function PlansPage() {
     mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => api.updatePlanRoom(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans", selectedPlan?.id, "rooms"] })
+    },
+  })
+  const measurementMutation = useMutation({
+    mutationFn: () =>
+      api.createPlanMeasurement(selectedPlan!.id, {
+        label: measurementLabel.trim(),
+        measurement_type: "distance",
+        value_m: numberOrNull(measurementValue),
+        ocr_value_m: numberOrNull(measurementOcrValue),
+        points_json: [],
+      }),
+    onSuccess: () => {
+      setMeasurementLabel("")
+      setMeasurementValue("")
+      setMeasurementOcrValue("")
+      queryClient.invalidateQueries({ queryKey: ["plans", selectedPlan?.id, "measurements"] })
     },
   })
 
@@ -213,6 +237,50 @@ export function PlansPage() {
                     </TableBody>
                   </Table>
                   {!dimensions.data?.length ? <p className="rounded-md border p-3 text-sm text-muted-foreground">Sin cotas textuales fiables.</p> : null}
+                </section>
+
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold">Mediciones manuales</h3>
+                  <form
+                    className="grid gap-2 rounded-md border bg-slate-50 p-3 md:grid-cols-[1fr_120px_120px_auto]"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      if (measurementLabel.trim()) measurementMutation.mutate()
+                    }}
+                  >
+                    <Input value={measurementLabel} onChange={(event) => setMeasurementLabel(event.target.value)} placeholder="Etiqueta, habitación o cota" />
+                    <Input type="number" step="0.001" value={measurementValue} onChange={(event) => setMeasurementValue(event.target.value)} placeholder="Manual m" />
+                    <Input type="number" step="0.001" value={measurementOcrValue} onChange={(event) => setMeasurementOcrValue(event.target.value)} placeholder="OCR m" />
+                    <Button disabled={measurementMutation.isPending || !measurementLabel.trim()}>
+                      <Save data-icon="inline-start" />
+                      Guardar
+                    </Button>
+                  </form>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Etiqueta</TableHead>
+                        <TableHead>Manual</TableHead>
+                        <TableHead>OCR</TableHead>
+                        <TableHead>Estado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(measurements.data ?? []).map((measurement) => (
+                        <TableRow key={measurement.id}>
+                          <TableCell>{measurement.label}</TableCell>
+                          <TableCell>{measurement.value_m?.toFixed(3) ?? "-"}</TableCell>
+                          <TableCell>{measurement.ocr_value_m?.toFixed(3) ?? "-"}</TableCell>
+                          <TableCell>
+                            <Badge variant={measurement.has_discrepancy ? "warning" : "success"}>
+                              {measurement.has_discrepancy ? "discrepancia" : "cuadra"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {!measurements.data?.length ? <p className="rounded-md border p-3 text-sm text-muted-foreground">Sin mediciones manuales guardadas.</p> : null}
                 </section>
               </>
             ) : (

@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.models import User
 from app.services.integration_init import create_initial_integration_data
 
@@ -10,6 +10,9 @@ from app.services.integration_init import create_initial_integration_data
 def create_initial_admin(db: Session) -> User:
     existing = db.scalar(select(User).where(User.email == settings.admin_email))
     if existing:
+        if verify_password("admin123", existing.password_hash) and settings.admin_password != "admin123":
+            existing.password_hash = hash_password(settings.admin_password)
+            db.commit()
         create_initial_integration_data(db)
         return existing
 

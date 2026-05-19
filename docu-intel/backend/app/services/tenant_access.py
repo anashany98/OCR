@@ -37,9 +37,12 @@ class AccessScope:
     chain_ids: set[int] = field(default_factory=set)
     hotel_ids: set[int] = field(default_factory=set)
     denied_tags: set[str] = field(default_factory=set)
+    allowed_document_types: set[str] = field(default_factory=set)
     can_view_prices: bool = False
     can_search_budgets: bool = False
     is_admin: bool = False
+    allow_unassigned_documents: bool = False
+    group_count: int = 0
 
     @property
     def has_location_scope(self) -> bool:
@@ -55,8 +58,42 @@ def resolve_user_access_scope(db: Session, user: User) -> AccessScope:
             can_view_prices=True,
             can_search_budgets=True,
             is_admin=True,
+            allow_unassigned_documents=True,
         )
-    return _resolve_group_scope(db, principal_type="user", principal_id=str(user.id))
+    scope = _resolve_group_scope(db, principal_type="user", principal_id=str(user.id))
+    if scope.group_count:
+        return scope
+    if user.role == "gestor":
+        return AccessScope(
+            principal_type="user",
+            principal_id=str(user.id),
+            allow_all_hotels=True,
+            denied_tags={"contabilidad", "administracion", "rrhh", "direccion", "legal"},
+            can_view_prices=True,
+            can_search_budgets=True,
+            allow_unassigned_documents=True,
+        )
+    if user.role == "operario":
+        return AccessScope(
+            principal_type="user",
+            principal_id=str(user.id),
+            allow_all_hotels=True,
+            denied_tags={"contabilidad", "administracion", "rrhh", "direccion", "legal", "precios", "margenes"},
+            can_view_prices=False,
+            can_search_budgets=False,
+            allow_unassigned_documents=True,
+        )
+    if user.role == "auditor":
+        return AccessScope(
+            principal_type="user",
+            principal_id=str(user.id),
+            allow_all_hotels=True,
+            denied_tags={"rrhh"},
+            can_view_prices=False,
+            can_search_budgets=True,
+            allow_unassigned_documents=True,
+        )
+    return scope
 
 
 def resolve_technician_access_scope(db: Session, technician_id: str) -> AccessScope:
@@ -74,12 +111,15 @@ def _resolve_group_scope(db: Session, *, principal_type: str, principal_id: str)
             .where(AccessGroupMember.principal_id == principal_id)
         ).all()
     )
+    scope.group_count = len(groups)
     for group in groups:
         permissions = group.permissions_json or {}
         scope.allow_all_hotels = scope.allow_all_hotels or bool(permissions.get("allow_all_hotels"))
+        scope.allow_unassigned_documents = scope.allow_unassigned_documents or bool(permissions.get("allow_unassigned_documents"))
         scope.chain_ids.update(_int_set(permissions.get("chain_ids")))
         scope.hotel_ids.update(_int_set(permissions.get("hotel_ids")))
         scope.denied_tags.update(_tag_set(permissions.get("denied_tags")))
+        scope.allowed_document_types.update(_tag_set(permissions.get("allowed_document_types")))
         scope.can_view_prices = scope.can_view_prices or bool(permissions.get("can_view_prices"))
         scope.can_search_budgets = scope.can_search_budgets or bool(permissions.get("can_search_budgets"))
     return scope
@@ -90,6 +130,8 @@ def can_access_document(db: Session, document: Document | None, scope: AccessSco
         return False
     if scope.is_admin:
         return True
+    if not _document_type_allows(document, scope):
+        return False
     metadata = get_document_access_metadata(db, document.id)
     return metadata_allows_scope(metadata, scope)
 
@@ -97,9 +139,13 @@ def can_access_document(db: Session, document: Document | None, scope: AccessSco
 def metadata_allows_scope(metadata: DocumentAccessMetadata | None, scope: AccessScope) -> bool:
     if scope.is_admin:
         return True
-    if not metadata or metadata.assignment_status != "assigned":
-        return False
+    if not metadata:
+        return scope.allow_unassigned_documents
     tags = _tag_set(metadata.tags_json)
+    if scope.denied_tags & tags:
+        return False
+    if metadata.assignment_status != "assigned":
+        return scope.allow_unassigned_documents
     if scope.denied_tags & tags:
         return False
     if scope.allow_all_hotels:
@@ -118,7 +164,9 @@ def filter_documents_for_scope(db: Session, documents: Iterable[Document], scope
     return [
         document
         for document in documents
-        if document.deleted_at is None and metadata_allows_scope(metadata_by_document.get(document.id), scope)
+        if document.deleted_at is None
+        and _document_type_allows(document, scope)
+        and metadata_allows_scope(metadata_by_document.get(document.id), scope)
     ]
 
 
@@ -127,10 +175,15 @@ def filter_document_ids_for_scope(db: Session, document_ids: Iterable[int], scop
     if scope.is_admin:
         return ids
     metadata_by_document = _metadata_by_document(db, ids)
+    documents_by_id = {
+        document.id: document
+        for document in db.scalars(select(Document).where(Document.id.in_(ids))).all()
+    }
     return {
         document_id
         for document_id in ids
-        if metadata_allows_scope(metadata_by_document.get(document_id), scope)
+        if _document_type_allows(documents_by_id.get(document_id), scope)
+        and metadata_allows_scope(metadata_by_document.get(document_id), scope)
     }
 
 
@@ -224,7 +277,17 @@ def scope_payload(scope: AccessScope) -> dict:
         "chain_ids": sorted(scope.chain_ids),
         "hotel_ids": sorted(scope.hotel_ids),
         "denied_tags": sorted(scope.denied_tags),
+        "allowed_document_types": sorted(scope.allowed_document_types),
+        "allow_unassigned_documents": scope.allow_unassigned_documents,
     }
+
+
+def _document_type_allows(document: Document | None, scope: AccessScope) -> bool:
+    if not scope.allowed_document_types:
+        return True
+    if not document:
+        return False
+    return (document.document_type or "").strip().lower() in scope.allowed_document_types
 
 
 def _metadata_by_document(db: Session, document_ids: Iterable[int]) -> dict[int, DocumentAccessMetadata]:

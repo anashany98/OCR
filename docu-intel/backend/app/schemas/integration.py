@@ -34,6 +34,7 @@ class IntegrationSessionCreateResponse(BaseModel):
 class IntegrationToolExecuteRequest(BaseModel):
     tool: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+    sandbox: bool = False
 
 
 class IntegrationSource(BaseModel):

@@ -212,7 +212,7 @@ def get_document_entities(
 @router.post("/{document_id}/reprocess", response_model=ExtractionJobRead)
 def reprocess(
     document_id: int,
-    mode: Literal["full", "ocr", "classification", "embeddings"] = Query(default="full"),
+    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = Query(default="full"),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor")),
 ):

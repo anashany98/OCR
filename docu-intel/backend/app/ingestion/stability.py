@@ -3,11 +3,18 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from app.core.config import settings
+
 IGNORED_SUFFIXES = {".tmp", ".part", ".crdownload", ".download", ".swp"}
 
 
 def is_ignored_path(path: Path) -> bool:
     return path.name.startswith(".") or path.suffix.lower() in IGNORED_SUFFIXES
+
+
+def is_allowed_file_path(path: Path) -> bool:
+    allowed = {suffix.lower() for suffix in settings.allowed_file_extensions}
+    return not allowed or path.suffix.lower() in allowed
 
 
 def is_file_stable(path: Path, stable_seconds: float, *, now: float | None = None) -> bool:

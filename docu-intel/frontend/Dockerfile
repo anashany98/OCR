@@ -1,7 +1,11 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+ARG VITE_API_BASE_URL=/api
+ARG VITE_ENABLE_TENANT_ADMIN=false
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_ENABLE_TENANT_ADMIN=$VITE_ENABLE_TENANT_ADMIN
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 

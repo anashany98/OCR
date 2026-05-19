@@ -16,6 +16,9 @@ class DocumentRead(BaseModel):
     file_size: int
     document_type: str
     status: str
+    quality_status: str
+    quality_score: float | None
+    quality_flags_json: list[str]
     confidence: float | None
     page_count: int | None
     error_message: str | None
@@ -83,7 +86,7 @@ class BulkReprocessRequest(BaseModel):
     source_path_contains: str | None = None
     ids: list[int] | None = None
     limit: int = Field(default=100, ge=1, le=1000)
-    mode: Literal["full", "ocr", "classification", "embeddings"] = "full"
+    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = "full"
 
 
 class BulkReprocessResponse(BaseModel):

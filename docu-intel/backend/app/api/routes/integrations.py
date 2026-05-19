@@ -26,7 +26,8 @@ from app.services.budget_scope import (
 from app.services.document_service import register_upload
 from app.services.integration_security import IntegrationContext, get_integration_context, require_scope
 from app.services.integration_tools import build_manifest, execute_integration_tool
-from app.services.tenant_access import can_access_document
+from app.services.tenant_access import can_access_document, get_document_access_metadata
+from app.services.webhooks import build_webhook_test_payload, emit_integration_webhook
 
 router = APIRouter()
 
@@ -92,10 +93,12 @@ def execute_tool(
 ) -> IntegrationToolExecuteResponse:
     require_scope(context, "read")
     response = execute_integration_tool(db, context=context, tool=payload.tool, arguments=payload.arguments)
+    if payload.sandbox:
+        response.warnings.append("Sandbox activo: resultado de prueba para validar fuentes, scope y redacciones.")
     write_audit(
         db,
         user=None,
-        action="integration_tool_execute",
+        action="integration_tool_sandbox" if payload.sandbox else "integration_tool_execute",
         entity_type="integration_client",
         entity_id=context.client.id,
         details={
@@ -106,6 +109,7 @@ def execute_tool(
             "policy": context.policy.name,
             "tool": payload.tool,
             "arguments": _safe_arguments(payload.arguments),
+            "sandbox": payload.sandbox,
             "sources_count": len(response.sources),
             "redactions": response.redactions,
             "scope": response.scope,
@@ -184,6 +188,16 @@ def job_status(
     return job
 
 
+@router.post("/webhooks/test")
+def test_webhook(
+    context: IntegrationContext = Depends(get_integration_context),
+) -> dict:
+    require_scope(context, "admin")
+    payload = build_webhook_test_payload()
+    result = emit_integration_webhook(payload["event"], payload["payload"])
+    return {"webhook": result, "payload": payload}
+
+
 def _safe_arguments(arguments: dict) -> dict:
     safe = {}
     for key, value in arguments.items():
@@ -196,9 +210,9 @@ def _safe_arguments(arguments: dict) -> dict:
 
 def _can_access_integration_document(db: Session, document: Document | None, context: IntegrationContext) -> bool:
     if context.budget_session:
-        return bool(
-            document
-            and document.deleted_at is None
-            and document.budget_scope_id == context.budget_session.budget_scope_id
-        )
+        if not document or document.deleted_at is not None or document.budget_scope_id != context.budget_session.budget_scope_id:
+            return False
+        metadata = get_document_access_metadata(db, document.id)
+        tags = {str(tag).strip().lower() for tag in (metadata.tags_json if metadata else []) if str(tag).strip()}
+        return not bool(tags & context.access_scope.denied_tags)
     return can_access_document(db, document, context.access_scope)

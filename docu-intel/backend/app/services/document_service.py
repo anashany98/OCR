@@ -21,9 +21,12 @@ from app.services.chunking import build_chunks
 from app.services.classification import classify_document
 from app.services.embeddings import embed_many, should_create_embeddings
 from app.services.file_storage import calculate_sha256, copy_to_storage
+from app.services.file_security import inspect_file_for_ingestion
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
 from app.services.plan_extraction import persist_plan_extraction
+from app.services.quality import evaluate_document_quality, update_document_quality
 from app.services.tenant_access import apply_folder_rules_to_document
+from app.services.webhooks import emit_integration_webhook
 
 
 def register_upload(
@@ -66,6 +69,7 @@ def register_existing_file(
     file_hash = calculate_sha256(source)
     extension = source.suffix.lower()
     mime_type, _ = mimetypes.guess_type(str(source))
+    security_result = inspect_file_for_ingestion(source)
     existing = db.scalar(
         select(Document)
         .where(Document.file_hash == file_hash)
@@ -91,6 +95,8 @@ def register_existing_file(
                 strategy=settings.file_storage_strategy,
             )
         )
+        if not security_result.allowed:
+            status = "needs_review"
 
     document = Document(
         original_filename=original_filename or source.name,
@@ -102,6 +108,10 @@ def register_existing_file(
         file_size=source.stat().st_size,
         document_type=_type_from_extension(extension),
         status=status,
+        quality_status="needs_human_review" if status == "needs_review" else ("duplicate" if status == "duplicate" else "pending"),
+        quality_score=0.0 if status == "needs_review" else None,
+        quality_flags_json=[f"security:{security_result.reason}"] if not security_result.allowed else [],
+        error_message=f"File quarantined: {security_result.reason}" if not security_result.allowed else None,
         duplicate_of_document_id=duplicate_of_document_id,
     )
     db.add(document)
@@ -110,18 +120,25 @@ def register_existing_file(
     apply_folder_rules_to_document(db, document)
 
     job: ExtractionJob | None = None
-    if status != "duplicate":
+    if status not in {"duplicate", "needs_review"}:
         job = ExtractionJob(document_id=document.id, job_type="extract", status="pending")
         db.add(job)
         db.flush()
 
-    write_audit(db, user=user, action="document_registered", entity_type="document", entity_id=document.id)
+    write_audit(
+        db,
+        user=user,
+        action="document_quarantined" if status == "needs_review" else "document_registered",
+        entity_type="document",
+        entity_id=document.id,
+        details={"reason": security_result.reason} if not security_result.allowed else None,
+    )
     if source_path:
         size_bytes, mtime_epoch = path_metadata(source)
         watched = upsert_watched_file(
             db,
             path=source_path,
-            status="duplicate" if status == "duplicate" else "registered",
+            status="duplicate" if status == "duplicate" else ("quarantined" if status == "needs_review" else "registered"),
             size_bytes=size_bytes,
             mtime_epoch=mtime_epoch,
             document_id=document.id,
@@ -129,7 +146,7 @@ def register_existing_file(
         )
         record_ingestion_event(
             db,
-            event_type="duplicate" if status == "duplicate" else "registered",
+            event_type="duplicate" if status == "duplicate" else ("quarantined" if status == "needs_review" else "registered"),
             source_path=source_path,
             document_id=document.id,
             job_id=job.id if job else None,
@@ -178,6 +195,8 @@ def reprocess_document(
     mode = processing_mode_from_job_type(job_type)
     if mode != "embeddings":
         document.status = "pending"
+        document.quality_status = "pending"
+        document.quality_flags_json = []
         document.processed_at = None
     document.error_message = None
     job = ExtractionJob(document_id=document.id, job_type=job_type, status="pending")
@@ -264,6 +283,7 @@ def process_document(db: Session, *, document_id: int, job_id: int) -> None:
                 watched_file=watched,
             )
         db.commit()
+        _emit_document_webhooks(document, job)
     except Exception as exc:
         db.rollback()
         job = db.get(ExtractionJob, job_id)
@@ -274,6 +294,9 @@ def process_document(db: Session, *, document_id: int, job_id: int) -> None:
             job.error_message = str(exc)
         if document:
             document.status = "failed"
+            document.quality_status = "failed"
+            document.quality_score = 0.0
+            document.quality_flags_json = ["processing_failed"]
             document.error_message = str(exc)
             if document.source_path:
                 watched = upsert_watched_file(
@@ -294,6 +317,17 @@ def process_document(db: Session, *, document_id: int, job_id: int) -> None:
                     error_message=str(exc),
                 )
         db.commit()
+        if document and job:
+            emit_integration_webhook(
+                "document.failed",
+                {
+                    "document_id": document.id,
+                    "job_id": job.id,
+                    "filename": document.original_filename,
+                    "status": document.status,
+                    "error_message": document.error_message,
+                },
+            )
         raise
 
 
@@ -302,6 +336,12 @@ def processing_mode_from_job_type(job_type: str | None) -> str:
     if not raw or raw in {"extract", "reprocess"}:
         return "full"
     candidate = raw.split(":", 1)[1] if ":" in raw else raw
+    aliases = {
+        "text": "ocr",
+        "entities": "classification",
+        "chunks": "embeddings",
+    }
+    candidate = aliases.get(candidate, candidate)
     if candidate in {"full", "ocr", "classification", "embeddings"}:
         return candidate
     return "full"
@@ -438,7 +478,17 @@ def _apply_classification_and_extraction(
     db.flush()
     plan_result = persist_plan_extraction(db, document, text)
 
-    return bool(low_ocr_confidences or business_result.needs_review or plan_result.needs_review)
+    quality = evaluate_document_quality(
+        db,
+        document,
+        text=text,
+        page_count=page_count,
+        low_ocr_confidences=low_ocr_confidences,
+        business_needs_review=business_result.needs_review,
+        plan_needs_review=plan_result.needs_review,
+    )
+    update_document_quality(db, document, quality)
+    return quality.needs_review
 
 
 def _replace_document_chunks(db: Session, document_id: int, page_texts: list[tuple[int, str | None]]) -> None:
@@ -493,3 +543,20 @@ def _type_from_extension(extension: str) -> str:
     if extension in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}:
         return "imagen"
     return "desconocido"
+
+
+def _emit_document_webhooks(document: Document, job: ExtractionJob) -> None:
+    payload = {
+        "document_id": document.id,
+        "job_id": job.id,
+        "filename": document.original_filename,
+        "document_type": document.document_type,
+        "status": document.status,
+        "confidence": document.confidence,
+        "processed_at": document.processed_at.isoformat() if document.processed_at else None,
+    }
+    if document.status == "needs_review":
+        emit_integration_webhook("document.needs_review", payload)
+    elif document.status == "processed":
+        emit_integration_webhook("document.processed", payload)
+    emit_integration_webhook("job.finished", payload)
