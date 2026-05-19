@@ -19,11 +19,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -69,6 +71,11 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     mem_limit: ${WORKER_MEM_LIMIT:-3g}
     cpus: ${WORKER_CPUS:-2}
     networks:
@@ -89,6 +96,11 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     mem_limit: ${OCR_WORKER_MEM_LIMIT:-6g}
     cpus: ${OCR_WORKER_CPUS:-4}
     networks:

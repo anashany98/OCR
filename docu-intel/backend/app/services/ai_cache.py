@@ -19,13 +19,14 @@ AI_CACHE_PREFIX = "ai:answer:"
 
 def _cache_key(question: str, user_id: int, mode: str | None = None) -> str:
     """Generate a cache key for an AI question.
-    
+
     Uses SHA256 hash to handle long questions and ensure consistent key length.
+    The user_id is placed before the hash so invalidate_user_cache can scan by prefix.
     """
     normalized_question = question.strip().lower()
     content = f"{normalized_question}:{user_id}:{mode or 'default'}"
     hash_digest = hashlib.sha256(content.encode()).hexdigest()
-    return f"{AI_CACHE_PREFIX}{hash_digest}"
+    return f"{AI_CACHE_PREFIX}{user_id}:{hash_digest}"
 
 
 def get_cached_answer(question: str, user_id: int, mode: str | None = None) -> dict[str, Any] | None:
@@ -75,7 +76,7 @@ def invalidate_user_cache(user_id: int) -> int:
     Returns:
         Number of cache entries deleted
     """
-    pattern = f"{AI_CACHE_PREFIX}*:{user_id}:*"
+    pattern = f"{AI_CACHE_PREFIX}{user_id}:*"
     return cache_service.delete_pattern(pattern)
 
 
@@ -85,7 +86,7 @@ def invalidate_all_ai_cache() -> int:
     Returns:
         Number of cache entries deleted
     """
-    return cache_service.delete_pattern(f"{AI_CACHE_PREFIX}*")
+    return cache_service.delete_pattern(f"{AI_CACHE_PREFIX}*")  # scan all user prefixes
 
 
 def get_cache_stats() -> dict[str, Any]:

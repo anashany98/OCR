@@ -15,6 +15,7 @@ from app.database.session import SessionLocal
 from app.ingestion.scanner import DEFAULT_SUBFOLDERS, scan_input_folders
 from app.ingestion.stability import is_allowed_file_path, is_file_stable, is_ignored_path
 from app.models import Document
+from app.services.file_storage import calculate_sha256
 from app.services.document_service import register_existing_file
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
 from app.services.queue_control import is_ingestion_paused, should_accept_more_jobs
@@ -25,14 +26,22 @@ logger = logging.getLogger("app.ingestion.watcher")
 @dataclass
 class PendingFileRegistry:
     _paths: dict[Path, float] = field(default_factory=dict)
+    _retry_counts: dict[Path, int] = field(default_factory=dict)
+    MAX_RETRIES: int = 3
 
     def add(self, path: Path, *, now: float | None = None) -> None:
         if is_ignored_path(path):
             return
         self._paths[path] = time.monotonic() if now is None else now
+        self._retry_counts[path] = 0
 
     def discard(self, path: Path) -> None:
         self._paths.pop(path, None)
+        self._retry_counts.pop(path, None)
+
+    def increment_retry(self, path: Path) -> bool:
+        self._retry_counts[path] = self._retry_counts.get(path, 0) + 1
+        return self._retry_counts[path] >= self.MAX_RETRIES
 
     def ready_paths(self, *, now: float | None = None, settle_seconds: float = 5.0, limit: int = 10) -> list[Path]:
         current_time = time.monotonic() if now is None else now
@@ -74,17 +83,27 @@ def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> di
         return {"status": "unstable", "path": str(path)}
 
     source_path = str(path)
-    existing_document_id = db.scalar(select(Document.id).where(Document.source_path == source_path).limit(1))
-    if existing_document_id:
+    existing_document = db.scalar(select(Document).where(Document.source_path == source_path).order_by(Document.id.desc()).limit(1))
+    if existing_document:
+        current_hash = calculate_sha256(path)
+        if existing_document.file_hash == current_hash:
+            _record_path_status(
+                db,
+                path,
+                "skipped",
+                document_id=existing_document.id,
+                details={"reason": "source_path_already_registered"},
+            )
+            db.commit()
+            return {"status": "skipped", "path": source_path, "document_id": existing_document.id}
         _record_path_status(
             db,
             path,
-            "skipped",
-            document_id=existing_document_id,
-            details={"reason": "source_path_already_registered"},
+            "modified",
+            document_id=existing_document.id,
+            details={"previous_hash": existing_document.file_hash, "new_hash": current_hash},
         )
         db.commit()
-        return {"status": "skipped", "path": source_path, "document_id": existing_document_id}
 
     document, job = register_existing_file(
         db,
@@ -161,9 +180,16 @@ def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue:
                 db.commit()
             except Exception:
                 db.rollback()
+                logger.exception("failed_to_record_error path=%s", path)
+                raise  # abort — do not re-queue without error record
+            exhausted = pending.increment_retry(path)
             counts["failed"] += 1
-            pending.discard(path)
-            logger.exception("failed_to_ingest path=%s", path)
+            if exhausted:
+                pending.discard(path)
+                logger.exception("failed_to_ingest path=%s max_retries_exceeded", path)
+            else:
+                pending.add(path)
+                logger.warning("failed_to_ingest path=%s retry=%d, will re-queue after settle period", path, pending._retry_counts.get(path, 0))
             continue
 
         status = result["status"]

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,7 +22,10 @@ from app.services.tenant_access import (
     filter_search_results_for_scope,
     resolve_user_access_scope,
 )
+from app.services.redaction import redact_sensitive_text
 from app.tools import internal
+
+logger = logging.getLogger("app.ai.agent")
 
 
 @dataclass(frozen=True)
@@ -115,8 +120,10 @@ async def answer_question(db: Session, *, user: User, question: str, mode: str |
     db.add(question_row)
     db.flush()
 
+    access_scope = resolve_user_access_scope(db, user)
     tools = select_tools_for_question(question) if mode != "hybrid" else [ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8}})]
-    context_items, warnings = collect_context(db, tools, question, access_scope=resolve_user_access_scope(db, user))
+    context_items, warnings = collect_context(db, tools, question, access_scope=access_scope)
+    context_items = redact_context_items_for_scope(context_items, access_scope)
     grounded = build_grounded_response(question=question, context_items=context_items, warnings=warnings)
 
     answer_text = grounded.answer
@@ -172,6 +179,19 @@ async def answer_question(db: Session, *, user: User, question: str, mode: str |
     )
     
     return answer_row
+
+
+def redact_context_items_for_scope(items: list[ContextItem], access_scope: AccessScope) -> list[ContextItem]:
+    if access_scope.can_view_prices:
+        return items
+    return [
+        replace(
+            item,
+            summary=redact_sensitive_text(item.summary),
+            excerpt=redact_sensitive_text(item.excerpt) if item.excerpt is not None else None,
+        )
+        for item in items
+    ]
 
 
 def collect_context(
@@ -383,7 +403,14 @@ async def _try_local_ai_answer(
     try:
         client = LocalOpenAICompatibleClient()
         answer = await asyncio.wait_for(client.chat(messages, temperature=0.0), timeout=12)
-    except Exception:
+    except asyncio.TimeoutError:
+        logger.warning("AI answer timed out for question: %s", question[:100])
+        return None
+    except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        logger.warning("AI client request failed: %s - question: %s", exc, question[:100])
+        return None
+    except Exception as exc:
+        logger.error("Unexpected error in AI answer generation: %s - question: %s", exc, question[:100])
         return None
     if not _has_required_sections(answer):
         return fallback

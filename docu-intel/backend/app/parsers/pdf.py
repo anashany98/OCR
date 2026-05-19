@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.core.config import settings
 from app.ocr.paddle import PaddleOCREngine
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 
@@ -11,6 +12,8 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
 
     pages: list[ExtractedPage] = []
     with fitz.open(path) as pdf:
+        if len(pdf) > settings.max_pdf_pages:
+            raise ValueError(f"max_pdf_pages exceeded: {len(pdf)} > {settings.max_pdf_pages}")
         for index, page in enumerate(pdf, start=1):
             text = page.get_text("text").strip()
             rect = page.rect
@@ -36,7 +39,8 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
             if len(text) < 30:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 image_file = output_dir / f"page_{index}.png"
-                page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False).save(image_file)
+                zoom = max(0.5, float(settings.pdf_ocr_dpi) / 72.0)
+                page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).save(image_file)
                 image_path = str(image_file)
                 ocr = ocr_engine.extract(image_file)
                 text = ocr.text or text

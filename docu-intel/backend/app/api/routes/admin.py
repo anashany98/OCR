@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select, text
@@ -192,6 +193,8 @@ def system_health(
         "disk_input": _disk_health(settings.input_dir),
         "watcher": _watcher_health(db),
         "queues": _queue_health(db),
+        "ai_llm": _ai_llm_health(),
+        "embeddings": _embedding_health(),
     }
     status = "ok" if all(item["status"] == "ok" for item in checks.values()) else "degraded"
     return {"status": status, "checks": checks}
@@ -1790,3 +1793,57 @@ def _queue_health(db: Session) -> dict:
         "pending_jobs": status.pending_jobs,
         "processing_jobs": status.processing_jobs,
     }
+
+
+def _ai_llm_health() -> dict:
+    if not settings.ai_base_url or not settings.ai_model:
+        return {"status": "ok", "enabled": False, "detail": "AI LLM not configured"}
+    endpoint = f"{settings.ai_base_url.rstrip('/')}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if settings.ai_api_key:
+        headers["Authorization"] = f"Bearer {settings.ai_api_key}"
+    try:
+        response = httpx.post(
+            endpoint,
+            headers=headers,
+            json={
+                "model": settings.ai_model,
+                "messages": [{"role": "user", "content": "healthcheck"}],
+                "max_tokens": 1,
+                "temperature": 0,
+            },
+            timeout=2.0,
+        )
+        response.raise_for_status()
+        return {"status": "ok", "enabled": True, "endpoint": endpoint, "model": settings.ai_model}
+    except Exception as exc:
+        return {"status": "warning", "enabled": True, "endpoint": endpoint, "detail": str(exc)}
+
+
+def _embedding_health() -> dict:
+    provider = settings.embedding_provider.lower().strip()
+    if provider in {"local", "local_hash"}:
+        return {"status": "ok", "enabled": True, "provider": provider, "mode": "deterministic_hash"}
+    base_url = settings.embedding_base_url.strip() or settings.ai_base_url.strip()
+    if not base_url:
+        return {"status": "warning", "enabled": False, "provider": provider, "detail": "Embedding base URL not configured"}
+    endpoint = f"{base_url.rstrip('/')}/embeddings"
+    headers = {"Content-Type": "application/json"}
+    api_key = settings.embedding_api_key or settings.ai_api_key
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        response = httpx.post(
+            endpoint,
+            headers=headers,
+            json={"model": settings.embedding_model, "input": ["healthcheck"]},
+            timeout=settings.embedding_timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data")
+        if not isinstance(data, list) or not data:
+            return {"status": "warning", "enabled": True, "endpoint": endpoint, "detail": "No embedding data returned"}
+        return {"status": "ok", "enabled": True, "endpoint": endpoint, "model": settings.embedding_model}
+    except Exception as exc:
+        return {"status": "warning", "enabled": True, "endpoint": endpoint, "detail": str(exc)}

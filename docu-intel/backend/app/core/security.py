@@ -10,7 +10,7 @@ from typing import Any
 
 try:
     import bcrypt
-except Exception:  # pragma: no cover - only used in very small local environments
+except ImportError:
     bcrypt = None
 
 from app.core.config import settings
@@ -47,11 +47,19 @@ def create_access_token(subject: str, expires_in_seconds: int | None = None) -> 
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    header_b64, payload_b64, signature_b64 = token.split(".")
+    try:
+        header_b64, payload_b64, signature_b64 = token.split(".")
+    except ValueError:
+        raise ValueError("Invalid token format")
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
     expected = _sign(signing_input)
     if not hmac.compare_digest(expected, signature_b64):
         raise ValueError("Invalid token signature")
+
+    header = json.loads(_unb64(header_b64))
+    alg = header.get("alg", "")
+    if alg not in {"HS256", "HS384", "HS512"}:
+        raise ValueError(f"Unsupported algorithm: {alg}")
 
     payload = json.loads(_unb64(payload_b64))
     if int(payload["exp"]) < int(time.time()):

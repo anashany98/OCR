@@ -37,7 +37,11 @@ class DocumentPageRead(BaseModel):
     height: float | None
     text: str | None
     image_path: str | None
+    page_status: str
     ocr_confidence: float | None
+    attempts: int
+    error_message: str | None
+    processing_time_ms: int | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
