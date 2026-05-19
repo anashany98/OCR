@@ -180,6 +180,8 @@ def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue:
                 db.commit()
             except Exception:
                 db.rollback()
+                logger.exception("failed_to_record_error path=%s", path)
+                raise  # abort — do not re-queue without error record
             exhausted = pending.increment_retry(path)
             counts["failed"] += 1
             if exhausted:
