@@ -1,5 +1,5 @@
 ﻿from pathlib import Path
-
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -29,6 +29,8 @@ from app.services.tenant_access import can_access_document, filter_documents_for
 
 router = APIRouter()
 
+logger = logging.getLogger(__name__)
+
 
 class BatchUploadItem(BaseModel):
     document_id: int
@@ -50,7 +52,12 @@ def upload_document(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor")),
 ) -> UploadResponse:
-    document, job = register_upload(db, filename=file.filename, stream=file.file, user=user)
+    try:
+        document, job = register_upload(db, filename=file.filename, stream=file.file, user=user)
+    except ValueError as exc:
+        if "max_upload_size" in str(exc):
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        raise
     return UploadResponse(document=DocumentRead.model_validate(document), job_id=job.id if job else None)
 
 
@@ -80,7 +87,8 @@ def upload_batch(
                     job_id=job.id if job else None,
                 )
             )
-        except Exception:
+        except Exception as exc:
+            logger.exception("batch_upload_failed filename=%s", file.filename)
             failed += 1
 
     db.commit()
@@ -103,7 +111,8 @@ def list_documents(
     if document_type:
         stmt = stmt.where(Document.document_type == document_type)
     if q:
-        stmt = stmt.where(Document.original_filename.ilike(f"%{q}%"))
+        escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(Document.original_filename.ilike(f"%{escaped_q}%"))
     scope = resolve_user_access_scope(db, user)
     if scope.is_admin:
         return list(db.scalars(stmt.offset(offset).limit(limit)).all())
@@ -257,4 +266,6 @@ def _resolve_files_dir_path(stored_path: str) -> Path:
         path.relative_to(root)
     except ValueError:
         raise HTTPException(status_code=404, detail="Stored file not found") from None
+    if path.is_symlink():
+        raise HTTPException(status_code=404, detail="Stored file not found")
     return path

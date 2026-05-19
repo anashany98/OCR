@@ -39,12 +39,24 @@ def register_upload(
     enqueue: bool = True,
 ) -> tuple[Document, ExtractionJob | None]:
     suffix = Path(filename).suffix.lower()
+    max_bytes = max(0, int(settings.max_upload_size_mb) * 1024 * 1024)
+    bytes_written = 0
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         temp_path = Path(tmp.name)
-        while chunk := stream.read(1024 * 1024):
-            tmp.write(chunk)
-
     try:
+        stream.seek(0, 2)
+        total_size = stream.tell()
+        stream.seek(0)
+        if total_size > max_bytes:
+            raise ValueError(f"max_upload_size exceeded: {settings.max_upload_size_mb} MB")
+        with temp_path.open("wb") as tmp:
+            while chunk := stream.read(1024 * 1024):
+                bytes_written += len(chunk)
+                if bytes_written > max_bytes:
+                    raise ValueError(f"max_upload_size exceeded: {settings.max_upload_size_mb} MB")
+                tmp.write(chunk)
+        if temp_path.stat().st_size == 0 and total_size > 0:
+            raise IOError("File write produced empty file")
         return register_existing_file(
             db,
             source=temp_path,
@@ -358,12 +370,12 @@ def prepare_document_chunks(document_id: int, page_texts: list[tuple[int, str | 
         for chunk_text, token_count in build_chunks(clean_text):
             chunk_payloads.append((page_number, chunk_text, token_count))
 
-    embeddings = (
-        embed_many([chunk_text for _, chunk_text, _ in chunk_payloads])
+    embedding_payloads = (
+        embed_many_with_metadata([chunk_text for _, chunk_text, _ in chunk_payloads])
         if chunk_payloads and should_create_embeddings()
-        else [None] * len(chunk_payloads)
+        else [(None, None, False)] * len(chunk_payloads)
     )
-    if len(embeddings) != len(chunk_payloads):
+    if len(embedding_payloads) != len(chunk_payloads):
         raise ValueError("Embedding count does not match chunk count")
 
     return [
@@ -372,10 +384,20 @@ def prepare_document_chunks(document_id: int, page_texts: list[tuple[int, str | 
             page_number=page_number,
             chunk_text=chunk_text,
             embedding=embedding,
+            embedding_provider_used=provider,
+            embedding_fallback=fallback,
+            needs_reembedding=fallback,
             token_count=token_count,
         )
-        for (page_number, chunk_text, token_count), embedding in zip(chunk_payloads, embeddings, strict=True)
+        for (page_number, chunk_text, token_count), (embedding, provider, fallback) in zip(chunk_payloads, embedding_payloads, strict=True)
     ]
+
+
+def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, bool]]:
+    embeddings = embed_many(texts)
+    provider = settings.embedding_provider.lower().strip() or "local_hash"
+    fallback = provider in {"local", "local_hash"}
+    return [(embedding, provider, fallback) for embedding in embeddings]
 
 
 def _process_full_parse(db: Session, document: Document) -> bool:
@@ -404,7 +426,9 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             height=extracted_page.height,
             text=extracted_page.text,
             image_path=_relative_to_files(extracted_page.image_path),
+            page_status=_page_status_from_confidence(extracted_page.ocr_confidence),
             ocr_confidence=extracted_page.ocr_confidence,
+            attempts=1 if extracted_page.ocr_confidence is not None else 0,
         )
         db.add(page)
         db.flush()
@@ -498,6 +522,14 @@ def _replace_document_chunks(db: Session, document_id: int, page_texts: list[tup
     db.flush()
 
 
+def _page_status_from_confidence(ocr_confidence: float | None) -> str:
+    if ocr_confidence is None:
+        return "processed"
+    if ocr_confidence < 0.70:
+        return "processed_low_confidence"
+    return "processed"
+
+
 def _load_existing_page_texts(db: Session, document_id: int) -> list[tuple[int, str | None]]:
     rows = db.execute(
         select(DocumentPage.page_number, DocumentPage.text)
@@ -511,7 +543,9 @@ def _load_low_ocr_confidences(db: Session, document_id: int) -> list[float]:
     return list(
         db.scalars(
             select(DocumentPage.ocr_confidence)
+            .join(Document, Document.id == DocumentPage.document_id)
             .where(DocumentPage.document_id == document_id)
+            .where(Document.deleted_at.is_(None))
             .where(DocumentPage.ocr_confidence.is_not(None))
             .where(DocumentPage.ocr_confidence < 0.70)
         ).all()

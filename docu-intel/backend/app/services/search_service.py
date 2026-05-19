@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_text
+from app.services.vector_store import PgvectorStore
 
 
 SEARCH_CACHE_TTL = 300
@@ -54,11 +55,15 @@ def _dict_to_search_result(data: dict) -> SearchResult:
     return SearchResult(**data)
 
 
+def _escape_ilike_wildcards(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def search_text(db: Session, query: str, limit: int = 20, filters: dict | None = None) -> list[SearchResult]:
     normalized = query.strip()
     if not normalized:
         return []
-    pattern = f"%{normalized}%"
+    pattern = f"%{_escape_ilike_wildcards(normalized)}%"
 
     page_stmt = (
         select(Document, DocumentPage)
@@ -132,6 +137,26 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
         return [_dict_to_search_result(r) for r in cached]
 
     query_embedding = embed_text(normalized)
+    if filters and filters.get("budget_scope_id"):
+        matches = PgvectorStore().search(db, query_embedding=query_embedding, limit=limit, filters=filters)
+        results_sorted = [
+            SearchResult(
+                document_id=match.document_id,
+                original_filename=match.original_filename,
+                document_type=match.document_type,
+                status=match.status,
+                page_number=match.page_number,
+                block_id=match.chunk_id,
+                score=match.score,
+                excerpt=_excerpt(match.excerpt, normalized),
+                ocr_confidence=None,
+                source_type="semantic_chunk",
+            )
+            for match in matches
+        ]
+        cache_service.set(cache_key, [_search_result_to_dict(r) for r in results_sorted], SEARCH_CACHE_TTL)
+        return results_sorted
+
     stmt = (
         select(Document, DocumentChunk)
         .join(DocumentChunk, DocumentChunk.document_id == Document.id)

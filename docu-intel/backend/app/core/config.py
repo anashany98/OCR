@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://app:app@postgres:5432/docuintel"
     redis_url: str = "redis://redis:6379/0"
+    rate_limit_storage_uri: str = ""
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
     files_dir: Path = Path("/app/data/files")
@@ -40,8 +41,6 @@ class Settings(BaseSettings):
             ".txt",
             ".log",
             ".eml",
-            ".doc",
-            ".docx",
         ]
     )
     file_storage_strategy: Literal["copy", "hardlink", "auto"] = "auto"
@@ -85,13 +84,24 @@ class Settings(BaseSettings):
         ]
     )
 
-    jwt_secret: str = "dev_only_change_this_jwt_secret_before_deployment_64_chars"
+    jwt_secret: str = "CHANGE_IN_PRODUCTION_USE_64_CHARS_MIN_SECURE"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 12
     auth_cookie_name: str = "docuintel_token"
+    auth_cookie_secure: bool | None = None
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    auth_login_rate_limit: str = "10/minute"
+
+    max_upload_size_mb: int = 200
+    max_pdf_pages: int = 500
+    max_image_megapixels: float = 40.0
+    max_excel_rows: int = 100_000
+    max_excel_sheets: int = 50
+    pdf_ocr_dpi: int = 144
+    vector_store: Literal["pgvector", "qdrant"] = "pgvector"
 
     admin_email: str = "admin@local"
-    admin_password: str = "dev_only_change_this_admin_password"
+    admin_password: str = "CHANGE_IN_PRODUCTION_MIN_16_CHARS"
     admin_name: str = "Administrador"
 
     @field_validator("cors_origins", mode="before")
@@ -119,7 +129,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_jwt_secret(cls, value: str, info: ValidationInfo) -> str:
         environment = info.data.get("environment", "local")
-        if value in {"change_me", "CHANGE_ME_GENERATE_SECURE_TOKEN_MIN_64_CHARS"}:
+        if value in {"change_me", "CHANGE_ME_GENERATE_SECURE_TOKEN_MIN_64_CHARS", "CHANGE_IN_PRODUCTION_USE_64_CHARS_MIN_SECURE"}:
             raise ValueError("JWT_SECRET must be changed from default value for security")
         if environment == "production" and value.startswith("dev_only_"):
             raise ValueError("JWT_SECRET must be set explicitly in production")
@@ -131,7 +141,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_admin_password(cls, value: str, info: ValidationInfo) -> str:
         environment = info.data.get("environment", "local")
-        if value in {"admin123", "CHANGE_ME_MIN_16_CHARS_SECURE_PASSWORD"}:
+        if value in {"admin123", "CHANGE_ME_MIN_16_CHARS_SECURE_PASSWORD", "CHANGE_IN_PRODUCTION_MIN_16_CHARS"}:
             raise ValueError("ADMIN_PASSWORD must be changed from default value for security")
         if environment == "production" and value.startswith("dev_only_"):
             raise ValueError("ADMIN_PASSWORD must be set explicitly in production")
