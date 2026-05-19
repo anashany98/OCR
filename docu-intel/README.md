@@ -20,12 +20,24 @@ Servicios principales:
 
 El proyecto incluye un `.env` local para facilitar el primer arranque y un `.env.example` como plantilla. Cambia secretos, URLs y credenciales antes de usarlo en una red de empresa.
 
+## Arranque Producción
+
+Para una instalación productiva inicial usa el compose endurecido:
+
+```bash
+cp .env.production.example .env.production
+# editar secretos, CORS, IA local y rutas
+DOCUINTEL_ENV_FILE=.env.production docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+`docker-compose.prod.yml` no expone PostgreSQL ni Redis, separa worker OCR pesado, aplica límites de recursos y permite ejecutar backend, worker y watcher con usuario no root. El manual completo de despliegue está en `docs/deployment-manual.md`; el runbook corto de operación, backups y restore está en `docs/production-runbook.md`.
+
 ## Usuario Admin
 
 En el arranque del backend se crea un admin si no existe:
 
-- Email: `admin@local`
-- Contraseña: `admin123`
+- Email: valor de `ADMIN_EMAIL`
+- Contraseña: valor de `ADMIN_PASSWORD`
 
 Cambia `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` y `JWT_SECRET` antes de usarlo en una red de empresa.
 
@@ -49,7 +61,7 @@ La integración servidor-servidor vive en `/integrations/v1`. Está pensada para
 Autenticación:
 
 ```http
-X-DocuIntel-API-Key: dev-secret
+X-DocuIntel-API-Key: <api-key-del-cliente>
 X-Technician-Id: tecnico-17
 X-Technician-Name: Nombre opcional
 ```
@@ -57,11 +69,15 @@ X-Technician-Name: Nombre opcional
 Configuración:
 
 ```env
-INTEGRATION_CLIENTS=external-tool:dev-secret:read,upload
+INTEGRATION_CLIENTS=
 INTEGRATION_ENQUEUE_UPLOADS=true
 INTEGRATION_RATE_LIMIT_PER_MINUTE=120
 INTEGRATION_SESSION_EXPIRE_SECONDS=3600
+INTEGRATION_WEBHOOK_URL=
+INTEGRATION_WEBHOOK_SECRET=
 ```
+
+Los clientes API se pueden crear desde Administración -> Integraciones. La API key solo se muestra una vez al crearla o rotarla.
 
 Endpoints principales:
 
@@ -76,7 +92,7 @@ Flujo recomendado para la otra herramienta:
 
 ```http
 POST /integrations/v1/sessions
-X-DocuIntel-API-Key: dev-secret
+X-DocuIntel-API-Key: <api-key-del-cliente>
 X-Technician-Id: tecnico-17
 Content-Type: application/json
 
@@ -87,7 +103,7 @@ La respuesta devuelve `session_token`, `budget_scope_id`, `budget_code`, caducid
 
 ```http
 Authorization: Bearer <session_token>
-X-DocuIntel-API-Key: dev-secret
+X-DocuIntel-API-Key: <api-key-del-cliente>
 X-Technician-Id: tecnico-17
 ```
 
@@ -98,7 +114,9 @@ Políticas iniciales:
 - `operario_minimo`: política por defecto. Permite consultar presupuestos por número exacto sin precios. Redacta importes estructurados y OCR como `[IMPORTE OCULTO]`.
 - `precios_autorizados`: permite importes para técnicos asignados explícitamente.
 
-Regla crítica: la redacción se aplica antes de entregar contexto a la IA externa. La IA no recibe precios si el técnico no tiene permiso.
+`POST /integrations/v1/tools/execute` acepta `sandbox=true` para probar argumentos, scope, fuentes y redacciones sin que la IA externa lo trate como una respuesta final.
+
+Regla crítica: la redacción se aplica antes de entregar contexto a la IA externa. La IA no recibe precios, márgenes ni condiciones comerciales si el técnico no tiene permiso.
 
 ## Aislamiento por Presupuesto
 
@@ -130,23 +148,13 @@ Endpoints admin mínimos para operar scopes:
 
 ## Aislamiento por Cadena/Hotel
 
-Docu-Intel aplica un scope documental centralizado antes de devolver documentos a usuarios internos, técnicos externos o la IA intermedia:
+El código de cadena/hotel queda mantenido por compatibilidad, pero está aparcado para un proyecto posterior. En el frontend se oculta por defecto con:
 
-- Modelo jerárquico: `cadena -> hotel`.
-- Los documentos se asignan mediante reglas de carpeta o asignación manual.
-- Si un documento no tiene cadena/hotel válido queda en cuarentena y no aparece en búsquedas ni tools de integración.
-- Los `denied_tags` del perfil bloquean siempre el documento, aunque el usuario tenga acceso al hotel.
-- `admin` conserva acceso total para operar y recuperar documentos.
+```env
+VITE_ENABLE_TENANT_ADMIN=false
+```
 
-Gestión desde `Administración`:
-
-- `Cadenas/Hoteles`: crear cadenas y hoteles.
-- `Reglas de carpetas`: crear patrones como `/presupuestos/cadena/hotel/`, asociar cadena/hotel/tags y reaplicar reglas.
-- `Perfiles/Grupos`: definir hoteles/cadenas permitidas, bloqueo de tags y permisos de precios/búsqueda.
-- `Cuarentena`: asignar manualmente documentos sin scope.
-- `Tags sensibles`: catálogo inicial de tags como `contabilidad`, `administracion` o `rrhh`.
-
-La API admin disponible incluye `/admin/hotel-chains`, `/admin/hotels`, `/admin/folder-rules`, `/admin/folder-rules/apply`, `/admin/document-access/{document_id}`, `/admin/access-groups`, `/admin/quarantine-documents` y `/admin/sensitive-tags`.
+El aislamiento recomendado para la integración actual es `budget_scope_id` mediante sesiones firmadas de `/integrations/v1/sessions`.
 
 ## Configurar Embeddings Locales
 
@@ -268,31 +276,55 @@ curl -X POST http://localhost:8000/documents/<ID>/reprocess \
 
 ## Fase 5 Operativa Implementada
 
-- Alertas avanzadas en `/admin/alerts`: presupuestos aceptados sin pedido, pedidos sin presupuesto, OCR/revisión, planos sin escala, duplicados y jobs fallidos.
+- Alertas avanzadas en `/admin/alerts`: presupuestos aceptados sin pedido, pedidos sin presupuesto, OCR/revisión, baja calidad documental, disco bajo, backpressure, planos sin escala, duplicados y jobs fallidos.
 - Métricas de volumen en `/admin/processing-metrics`: documentos por estado/tipo, jobs por estado y total de eventos auditados.
+- Centro de operaciones en `/admin/operations/overview`: GB procesados, OCR bajo, ETA de cola, calidad documental, fuentes recientes, disco y colas.
 - Auditoría consultable en `/admin/audit-logs`, con filtros por acción, entidad y usuario.
+- Revisión OCR en `/admin/quality/ocr-review`: preview, texto, bloques OCR, aprobación, denegación con motivo y reprocesado OCR por página.
 - Reprocesado avanzado en `/documents/reprocess-bulk`, filtrando por estado, tipo documental, carpeta origen o IDs concretos.
-- Modos de reprocesado reales: `full` rehace parser/OCR y datos dependientes; `ocr` rehace parser/OCR y reconstruye dependientes; `classification` reutiliza páginas ya extraídas y recalcula clasificación, entidades, presupuestos/pedidos y planos; `embeddings` reconstruye solo `document_chunks`.
+- Modos de reprocesado reales: `full` rehace parser/OCR y datos dependientes; `ocr`/`text` rehacen parser/OCR; `classification`/`entities` recalculan clasificación y extracción; `chunks`/`embeddings` reconstruyen `document_chunks`.
 - API de integración `/integrations/v1` para IA intermedia con API key, sesiones firmadas por presupuesto, políticas por técnico, redacción de precios y tools controladas.
 - Aislamiento por `budget_scope_id` aplicado a la integración externa. El aislamiento por cadena/hotel queda disponible en la base pero se aparca para un proyecto posterior.
-- Panel admin para cadenas/hoteles, reglas de carpeta, grupos de acceso, cuarentena y tags sensibles.
+- Panel admin para operación, integraciones, colas, auditoría y métricas. La parte de cadenas/hoteles queda oculta por defecto.
 - Índices Alembic adicionales para listados grandes, auditoría, jobs, alertas y filtros frecuentes.
 - Panel de Administración actualizado con alertas, métricas, auditoría, controles de reprocesado y gobierno documental.
 - Ingesta masiva por carpetas con servicio `watcher`, detección de archivos estables, scan inicial y rescan periódico.
 - Storage `auto` con hardlink/fallback a copia para reducir duplicación de datos en cargas de cientos de GB.
-- Trazabilidad operativa en `/admin/operations-status`, `/admin/watched-files` y `/admin/ingestion-events`.
+- Trazabilidad operativa en `/admin/system/health`, `/admin/queues`, `/admin/operations-status`, `/admin/watched-files` y `/admin/ingestion-events`.
+- Estado de calidad por documento: `processed_ok`, `processed_low_quality`, `processed_missing_fields`, `needs_human_review` y `failed`.
+- Seguridad de archivos: extensiones permitidas, bloqueo de ejecutables renombrados y cuarentena lógica antes de OCR.
+- Tags sensibles activos desde admin aunque cadena/hotel esté oculto: `contabilidad`, `administracion`, `rrhh`, `direccion`, `legal`, `precios`, `margenes`, `proveedores` y `clientes`.
 - Informe de mantenimiento en `/admin/maintenance-report`, con estado de jobs, watchdog y disco.
 - Simulador admin de permisos en `/admin/access-explain` para comprobar por qué un usuario/técnico puede o no ver un documento.
+- Revisión efectiva de permisos en `/admin/access/effective`: rol, grupos, tags bloqueados, tipos permitidos, redacciones y permisos de precios/búsqueda.
+- Aplicación masiva de tags sensibles en `/admin/documents/bulk-tags` para marcar documentos de contabilidad, RRHH, legal, precios, márgenes u otros sin tocar los originales.
+- Resumen y recálculo de calidad en `/admin/quality/summary`, `/admin/quality/rules` y `/admin/quality/recalculate`.
+- Readiness productivo estricto en `/admin/production/readiness`: DB, Redis, workers, watcher, directorios, backups y manifest de integración.
+- Integridad de almacenamiento en `/admin/storage/integrity`: documentos sin fichero físico, ficheros huérfanos y muestras accionables.
+- Listado operativo paginado en `/admin/operations/documents` para trabajar con muchos documentos sin cargar tablas completas en memoria.
 - Grafo documental básico en `/admin/documents/{document_id}/graph`, enlazando presupuesto-pedido y referencias compartidas.
+- Búsqueda exacta profesional en `/search/exact` por presupuesto, pedido, referencia, cliente o proveedor.
 - Enrutado Celery por carga: OCR/PDF/planos a `ocr_heavy`, Excel/texto a `text_fast`, embeddings a `embeddings` y escaneos a `maintenance`.
+
+## Backups y Restore
+
+Además de los comandos documentados en `docs/production-runbook.md`, hay scripts PowerShell:
+
+```powershell
+.\scripts\backup.ps1 -EnvFile .env.production
+.\scripts\restore.ps1 -BackupDir backups\YYYYMMDD_HHMMSS -EnvFile .env.production
+```
+
+El backup incluye PostgreSQL y `/data/files`. Un entorno no debe considerarse listo hasta probar un restore completo.
 
 ## Limitaciones Conocidas
 
 - Los embeddings reales dependen de que el servidor local exponga `/v1/embeddings`; con el fallback activado, la ingesta sigue funcionando aunque ese servidor no esté disponible.
 - Si el servidor local compatible OpenAI no está levantado, `/ai/ask` devuelve una respuesta grounded generada por backend con las fuentes recuperadas.
 - La API de integración no descarga originales en v1; devuelve metadatos, fuentes y excerpts saneados.
-- Los documentos existentes quedan fuera del scope hasta crear reglas y ejecutar `Reaplicar reglas`, o asignarlos manualmente desde `Administración -> Cuarentena`.
+- Los módulos de cadena/hotel están ocultos por defecto y quedan para un proyecto posterior.
 - La extracción estructurada avanzada de presupuestos/pedidos y la relación presupuesto-pedido por similitud se completan en Fase 5.
+- La denegación OCR exige motivo, pero la edición avanzada versionada del texto OCR sigue aplazada.
 - La extracción geométrica avanzada de planos desde líneas/polígonos queda como mejora posterior; la Fase 4 actual solo guarda medidas textuales OCR o correcciones humanas.
 - PaddleOCR CPU hace la imagen Docker más pesada y puede tardar en el primer arranque.
 - El borrado de documentos es lógico; los archivos originales no se eliminan por defecto.

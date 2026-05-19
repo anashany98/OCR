@@ -6,10 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.ingestion.stability import is_file_stable, is_ignored_path
+from app.ingestion.stability import is_allowed_file_path, is_file_stable, is_ignored_path
 from app.models import Document, User
 from app.services.document_service import register_existing_file
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
+from app.services.queue_control import is_ingestion_paused, should_accept_more_jobs
 
 DEFAULT_SUBFOLDERS = ["presupuestos", "pedidos", "facturas", "planos", "imagenes", "otros"]
 
@@ -25,12 +26,56 @@ def scan_input_folders(db: Session, *, user: User | None = None, enqueue: bool =
     skipped = 0
     unstable = 0
     failed = 0
+    ignored = 0
+    paused = 0
+    backpressure = 0
 
     for path in _iter_files(settings.input_dir):
         if limit is not None and registered >= limit:
             break
         scanned += 1
         source_path = str(path)
+        if is_ingestion_paused():
+            paused += 1
+            break
+        if not should_accept_more_jobs(db):
+            size_bytes, mtime_epoch = path_metadata(path)
+            watched = upsert_watched_file(
+                db,
+                path=source_path,
+                status="backpressure",
+                size_bytes=size_bytes,
+                mtime_epoch=mtime_epoch,
+            )
+            record_ingestion_event(
+                db,
+                event_type="backpressure",
+                source_path=source_path,
+                watched_file=watched,
+                details={"max_pending_jobs": settings.ingestion_max_pending_jobs},
+            )
+            db.commit()
+            backpressure += 1
+            break
+        if not is_allowed_file_path(path):
+            size_bytes, mtime_epoch = path_metadata(path)
+            watched = upsert_watched_file(
+                db,
+                path=source_path,
+                status="ignored",
+                size_bytes=size_bytes,
+                mtime_epoch=mtime_epoch,
+            )
+            record_ingestion_event(
+                db,
+                event_type="ignored",
+                source_path=source_path,
+                watched_file=watched,
+                details={"reason": "extension_not_allowed"},
+            )
+            db.commit()
+            ignored += 1
+            continue
         already_registered = db.scalar(select(Document.id).where(Document.source_path == source_path).limit(1))
         if already_registered:
             size_bytes, mtime_epoch = path_metadata(path)
@@ -113,6 +158,9 @@ def scan_input_folders(db: Session, *, user: User | None = None, enqueue: bool =
         "skipped": skipped,
         "unstable": unstable,
         "failed": failed,
+        "ignored": ignored,
+        "paused": paused,
+        "backpressure": backpressure,
     }
 
 

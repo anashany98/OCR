@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, ExternalLink, RefreshCcw, RotateCw, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { api, pageImageUrl } from "@/api/client"
 import { PageHeader } from "@/components/layout/PageHeader"
@@ -17,20 +17,26 @@ import type { OcrReviewPage } from "@/types/api"
 export function OcrReviewPage() {
   const queryClient = useQueryClient()
   const [thresholdPercent, setThresholdPercent] = useState("70")
+  const [documentType, setDocumentType] = useState("")
+  const [statusFilter, setStatusFilter] = useState("")
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [reviewNotes, setReviewNotes] = useState("")
   const threshold = useMemo(() => {
     const numeric = Number(thresholdPercent)
     if (!Number.isFinite(numeric)) return 0.7
     return Math.min(Math.max(numeric, 0), 100) / 100
   }, [thresholdPercent])
   const reviewQuery = useQuery({
-    queryKey: ["ocr-review", threshold],
-    queryFn: () => api.ocrReview({ max_confidence: threshold, limit: 200 }),
+    queryKey: ["ocr-review", threshold, documentType, statusFilter],
+    queryFn: () => api.ocrReview({ max_confidence: threshold, document_type: documentType || undefined, status: statusFilter || undefined, limit: 200 }),
   })
   const reviewItems = reviewQuery.data ?? []
   const selected = reviewItems.find((item) => reviewKey(item) === selectedKey) ?? reviewItems[0] ?? null
+  useEffect(() => {
+    setReviewNotes(selected?.review_notes ?? "")
+  }, [selected?.page_id])
   const reprocess = useMutation({
-    mutationFn: (documentId: number) => api.reprocessOCR(documentId),
+    mutationFn: (pageId: number) => api.reprocessOcrPage(pageId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ocr-review"] })
       queryClient.invalidateQueries({ queryKey: ["jobs"] })
@@ -38,9 +44,10 @@ export function OcrReviewPage() {
     },
   })
   const reviewMutation = useMutation({
-    mutationFn: ({ pageId, reviewStatus }: { pageId: number; reviewStatus: "approved" | "rejected" }) =>
-      api.updateOcrReview(pageId, { review_status: reviewStatus }),
+    mutationFn: ({ pageId, reviewStatus, notes }: { pageId: number; reviewStatus: "approved" | "rejected"; notes?: string }) =>
+      api.updateOcrReview(pageId, { review_status: reviewStatus, review_notes: notes || null }),
     onSuccess: () => {
+      setReviewNotes("")
       queryClient.invalidateQueries({ queryKey: ["ocr-review"] })
       queryClient.invalidateQueries({ queryKey: ["audit-logs"] })
       queryClient.invalidateQueries({ queryKey: ["stats"] })
@@ -65,6 +72,21 @@ export function OcrReviewPage() {
             type="number"
             value={thresholdPercent}
           />
+          <select className="h-9 rounded-md border bg-background px-3 text-sm" value={documentType} onChange={(event) => setDocumentType(event.target.value)}>
+            <option value="">Tipo</option>
+            <option value="presupuesto">Presupuesto</option>
+            <option value="pedido">Pedido</option>
+            <option value="factura">Factura</option>
+            <option value="plano">Plano</option>
+            <option value="imagen">Imagen</option>
+            <option value="excel">Excel</option>
+          </select>
+          <select className="h-9 rounded-md border bg-background px-3 text-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">Estado</option>
+            <option value="needs_review">Revisión</option>
+            <option value="processed">Procesado</option>
+            <option value="failed">Fallido</option>
+          </select>
           <Button variant="outline" onClick={() => reviewQuery.refetch()} disabled={reviewQuery.isFetching}>
             <RotateCw data-icon="inline-start" />
             Actualizar
@@ -144,25 +166,20 @@ export function OcrReviewPage() {
                       Abrir documento
                     </Link>
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={reviewMutation.isPending || selected.review_status === "approved"}
-                    onClick={() => reviewMutation.mutate({ pageId: selected.page_id, reviewStatus: "approved" })}
-                  >
+                  <Button variant="outline" size="sm" disabled={reviewMutation.isPending || selected.review_status === "approved"} onClick={() => reviewMutation.mutate({ pageId: selected.page_id, reviewStatus: "approved", notes: reviewNotes })}>
                     <Check data-icon="inline-start" />
                     Aprobar
                   </Button>
                   <Button
                     variant="destructive"
                     size="sm"
-                    disabled={reviewMutation.isPending || selected.review_status === "rejected"}
-                    onClick={() => reviewMutation.mutate({ pageId: selected.page_id, reviewStatus: "rejected" })}
+                    disabled={reviewMutation.isPending || selected.review_status === "rejected" || !reviewNotes.trim()}
+                    onClick={() => reviewMutation.mutate({ pageId: selected.page_id, reviewStatus: "rejected", notes: reviewNotes })}
                   >
                     <X data-icon="inline-start" />
                     Denegar
                   </Button>
-                  <Button variant="outline" size="sm" disabled={reprocess.isPending} onClick={() => reprocess.mutate(selected.document_id)}>
+                  <Button variant="outline" size="sm" disabled={reprocess.isPending} onClick={() => reprocess.mutate(selected.page_id)}>
                     <RefreshCcw data-icon="inline-start" />
                     Reprocesar OCR
                   </Button>
@@ -170,6 +187,25 @@ export function OcrReviewPage() {
               ) : null}
             </CardHeader>
             <CardContent>
+              {selected ? (
+                <div className="mb-3 grid gap-2">
+                  <textarea
+                    className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm"
+                    onChange={(event) => setReviewNotes(event.target.value)}
+                    placeholder="Motivo o nota de revisión. Obligatorio al denegar."
+                    value={reviewNotes}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">Calidad: {selected.quality_status}</Badge>
+                    {selected.quality_score != null ? <Badge variant="outline">Score {Math.round(selected.quality_score * 100)}%</Badge> : null}
+                    {selected.quality_flags_json.map((flag) => (
+                      <Badge key={flag} variant="warning">
+                        {flag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {selected?.preview_url ? (
                 <div className="flex min-h-[380px] items-center justify-center overflow-auto rounded-md border bg-muted">
                   <img
@@ -195,6 +231,42 @@ export function OcrReviewPage() {
               <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md border bg-muted p-3 text-sm leading-6">
                 {selected?.text || "Sin texto OCR disponible."}
               </pre>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Bloques OCR</CardTitle>
+              <CardDescription>Bloques y confianza detectados por el motor OCR.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-[360px] overflow-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Confianza</TableHead>
+                      <TableHead>Texto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(selected?.blocks ?? []).map((block) => (
+                      <TableRow key={block.id}>
+                        <TableCell>{block.block_type}</TableCell>
+                        <TableCell>{formatPercent(block.confidence)}</TableCell>
+                        <TableCell className="max-w-[520px] whitespace-pre-wrap">{block.text ?? "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                    {!(selected?.blocks ?? []).length ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="h-20 text-center text-muted-foreground">
+                          No hay bloques OCR para esta página.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </div>

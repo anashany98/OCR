@@ -18,6 +18,9 @@ export type Document = {
   file_size: number
   document_type: string
   status: string
+  quality_status: string
+  quality_score: number | null
+  quality_flags_json: string[]
   confidence: number | null
   page_count: number | null
   error_message: string | null
@@ -51,8 +54,22 @@ export type OcrReviewPage = {
   review_notes: string | null
   reviewed_at: string | null
   reviewed_by_id: number | null
+  quality_status: string
+  quality_score: number | null
+  quality_flags_json: string[]
   text: string
   text_excerpt: string
+  blocks: {
+    id: number
+    block_type: string
+    text: string | null
+    bbox_x1: number | null
+    bbox_y1: number | null
+    bbox_x2: number | null
+    bbox_y2: number | null
+    confidence: number | null
+    source_engine: string | null
+  }[]
   preview_url: string | null
   created_at: string
 }
@@ -124,6 +141,243 @@ export type ProcessingMetrics = {
   audit_events_total: number
 }
 
+export type QueueStatus = {
+  ingestion_paused: boolean
+  pending_jobs: number
+  processing_jobs: number
+  max_pending_jobs: number
+  backpressure_active: boolean
+  queues: Record<string, Record<string, number>>
+}
+
+export type WorkInboxItem = {
+  kind: string
+  severity: "info" | "warning" | "error" | string
+  title: string
+  description: string
+  document_id: number | null
+  page_id: number | null
+  job_id: number | null
+  action_url: string | null
+  status: string | null
+  created_at: string | null
+}
+
+export type WorkInboxActionResponse = {
+  action: string
+  matched: number
+  updated: number
+  enqueued: number
+  job_ids: number[]
+}
+
+export type WorkItemPriority = "low" | "normal" | "high" | "critical"
+export type WorkItemStatus = "open" | "in_progress" | "resolved" | "ignored"
+
+export type WorkItemComment = {
+  id: number
+  work_item_id: number
+  user_id: number | null
+  body: string
+  created_at: string
+}
+
+export type WorkItem = {
+  id: number
+  kind: string
+  title: string
+  description: string
+  priority: WorkItemPriority | string
+  status: WorkItemStatus | string
+  document_id: number | null
+  page_id: number | null
+  job_id: number | null
+  assignee_user_id: number | null
+  due_at: string | null
+  resolution_notes: string | null
+  resolved_at: string | null
+  created_by_id: number | null
+  created_at: string
+  updated_at: string
+  comments: WorkItemComment[]
+}
+
+export type DocumentTimelineEvent = {
+  id: number
+  document_id: number
+  event_type: string
+  title: string
+  description: string | null
+  actor_user_id: number | null
+  details_json: Record<string, unknown> | null
+  created_at: string
+}
+
+export type OcrRevision = {
+  id: number
+  page_id: number
+  document_id: number
+  original_text: string
+  corrected_text: string
+  reason: string | null
+  created_by_id: number | null
+  created_at: string
+}
+
+export type SavedView = {
+  id: number
+  user_id: number | null
+  name: string
+  scope: string
+  filters_json: Record<string, unknown>
+  is_shared: boolean
+  created_at: string
+}
+
+export type SavedSearch = {
+  id: number
+  user_id: number | null
+  name: string
+  query: string
+  mode: string
+  filters_json: Record<string, unknown>
+  created_at: string
+}
+
+export type NotificationRule = {
+  id: number
+  name: string
+  event_type: string
+  channel: "email" | "webhook" | "teams" | string
+  target: string
+  is_active: boolean
+  filters_json: Record<string, unknown>
+  created_at: string
+}
+
+export type ProductionChecklist = {
+  items: {
+    key: string
+    title: string
+    status: "ok" | "warning" | "error"
+    description: string
+    action_url: string | null
+  }[]
+}
+
+export type RulePreview = {
+  matches: boolean
+  normalized_path: string
+  normalized_pattern: string
+  match_type: string
+  specificity: number
+  tags_json: string[]
+}
+
+export type RedactionPreview = {
+  principal_type: "user" | "technician"
+  principal_id: string
+  can_view_prices: boolean
+  redacted_text: string
+  redactions: string[]
+}
+
+export type EffectiveAccess = {
+  principal_type: "user" | "technician"
+  principal_id: string
+  role: string
+  allow_all_hotels: boolean
+  chain_ids: number[]
+  hotel_ids: number[]
+  denied_tags: string[]
+  allowed_document_types: string[]
+  allow_unassigned_documents: boolean
+  can_view_prices: boolean
+  can_search_budgets: boolean
+  redacted_fields: string[]
+  group_count: number
+}
+
+export type QualityRules = {
+  low_ocr_threshold: number
+  sensitive_tags: string[]
+  business_rules: string[]
+  descriptions: Record<string, string>
+}
+
+export type QualitySummary = {
+  rules: Record<string, { count: number; description: string }>
+  by_quality_status: Record<string, number>
+}
+
+export type QualityRecalculateResponse = {
+  matched: number
+  updated: number
+  needs_review: number
+}
+
+export type ProductionReadiness = {
+  status: "ready" | "degraded"
+  checks: { key: string; status: "ok" | "warning" | "error"; description: string }[]
+}
+
+export type StorageIntegrity = {
+  checked_documents: number
+  missing_files: number
+  orphan_files: number
+  hash_mismatches: number
+  missing_file_samples: Record<string, unknown>[]
+  orphan_file_samples: string[]
+}
+
+export type BulkTagsResponse = {
+  matched: number
+  updated: number
+  document_ids: number[]
+  tags_by_document: Record<string, string[]>
+}
+
+export type PaginatedDocuments = {
+  items: Document[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type IntegrationToolResponse = {
+  request_id: string
+  tool: string
+  technician_id: string
+  data: Record<string, unknown> | Record<string, unknown>[]
+  sources: {
+    document_id: number | null
+    filename: string | null
+    page_number: number | null
+    block_id: number | null
+    excerpt: string | null
+    confidence: number | null
+  }[]
+  confidence: number | null
+  warnings: string[]
+  redactions: string[]
+  scope: Record<string, unknown>
+}
+
+export type SystemHealth = {
+  status: string
+  checks: Record<string, { status: string; [key: string]: unknown }>
+}
+
+export type IntegrationClient = {
+  id: number
+  name: string
+  scopes_json: string[]
+  is_active: boolean
+  created_at: string
+  last_used_at: string | null
+  api_key?: string | null
+}
+
 export type DiskUsage = {
   path: string
   total: number
@@ -135,6 +389,31 @@ export type OperationsStatus = {
   jobs_by_status: Record<string, number>
   watched_files_by_status: Record<string, number>
   ingestion_events_by_type: Record<string, number>
+  disk: {
+    input_dir: DiskUsage
+    files_dir: DiskUsage
+  }
+}
+
+export type OperationsOverview = {
+  documents: {
+    by_status: Record<string, number>
+    by_quality_status: Record<string, number>
+    total_size_bytes: number
+    low_ocr_pages: number
+  }
+  jobs: {
+    by_status: Record<string, number>
+    pending_or_processing: number
+    processed_total: number
+    avg_processing_seconds: number
+    estimated_remaining_seconds: number | null
+  }
+  watcher: {
+    by_status: Record<string, number>
+    last_sources: { source_path: string | null; updated_at: string | null; status: string }[]
+  }
+  queues: QueueStatus
   disk: {
     input_dir: DiskUsage
     files_dir: DiskUsage
@@ -237,6 +516,13 @@ export type AIAnswer = {
   sources: AIAnswerSource[]
 }
 
+export type AIQuestion = {
+  id: number
+  user_id: number | null
+  question: string
+  created_at: string
+}
+
 export type Budget = {
   id: number
   document_id: number
@@ -289,6 +575,38 @@ export type OrderLine = {
   confidence: number | null
 }
 
+export type Invoice = {
+  id: number
+  document_id: number
+  invoice_number: string | null
+  supplier_name: string | null
+  client_name: string | null
+  date: string | null
+  total_amount: number | null
+  currency: string | null
+  related_order_id: number | null
+  confidence: number | null
+  created_at: string
+}
+
+export type ReconciliationIssue = {
+  id: number
+  kind: string
+  severity: string
+  status: "pending" | "reviewed" | "ignored" | string
+  title: string
+  description: string
+  budget_id: number | null
+  order_id: number | null
+  invoice_id: number | null
+  document_id: number | null
+  expected_amount: number | null
+  actual_amount: number | null
+  resolution_notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type Plan = {
   id: number
   document_id: number
@@ -327,6 +645,30 @@ export type PlanDimension = {
   bbox_x2: number | null
   bbox_y2: number | null
   confidence: number | null
+}
+
+export type PlanMeasurement = {
+  id: number
+  plan_id: number
+  label: string
+  page_number: number | null
+  measurement_type: string
+  value_m: number | null
+  ocr_value_m: number | null
+  points_json: Record<string, unknown>[]
+  calibration_json: Record<string, unknown> | null
+  has_discrepancy: boolean
+  created_by_id: number | null
+  created_at: string
+}
+
+export type AdminUser = {
+  id: number
+  email: string
+  name: string
+  role: "admin" | "gestor" | "operario" | "auditor" | string
+  is_active: boolean
+  created_at: string
 }
 
 export type HotelChain = {

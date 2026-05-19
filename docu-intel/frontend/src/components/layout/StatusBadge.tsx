@@ -1,15 +1,14 @@
 import { Badge, type BadgeProps } from "@/components/ui/badge"
+import { statusTone } from "@/lib/status"
 
-const variants: Record<string, BadgeProps["variant"]> = {
-  processed: "success",
-  processing: "secondary",
-  pending: "outline",
-  failed: "destructive",
-  needs_review: "warning",
-  duplicate: "outline",
+const variants: Record<ReturnType<typeof statusTone>, BadgeProps["variant"]> = {
+  success: "success",
+  info: "info",
+  warning: "warning",
+  danger: "danger",
+  neutral: "neutral",
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={variants[status] || "secondary"}>{status}</Badge>
+  return <Badge variant={variants[statusTone(status)]}>{status}</Badge>
 }
-

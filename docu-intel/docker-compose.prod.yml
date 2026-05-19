@@ -1,0 +1,144 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: docuintel
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d docuintel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
+    cpus: ${BACKEND_CPUS:-2}
+    networks:
+      - internal
+
+  worker:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,maintenance,celery --concurrency=${WORKER_CONCURRENCY:-2}
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    mem_limit: ${WORKER_MEM_LIMIT:-3g}
+    cpus: ${WORKER_CPUS:-2}
+    networks:
+      - internal
+
+  ocr-worker:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1}
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    mem_limit: ${OCR_WORKER_MEM_LIMIT:-6g}
+    cpus: ${OCR_WORKER_CPUS:-4}
+    networks:
+      - internal
+
+  watcher:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    command: python -m app.ingestion.watcher
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os; assert os.path.isdir('/app/data/input')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    mem_limit: ${WATCHER_MEM_LIMIT:-1g}
+    cpus: ${WATCHER_CPUS:-1}
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_ENABLE_TENANT_ADMIN: ${VITE_ENABLE_TENANT_ADMIN:-false}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+      - public
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  internal:
+  public:

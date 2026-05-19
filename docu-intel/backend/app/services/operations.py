@@ -6,6 +6,9 @@ from typing import Literal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+import shutil
+
+from app.core.config import settings
 from app.models import AuditLog, Budget, Document, ExtractionJob, Order, Plan, User
 from app.services.audit import write_audit
 from app.services.document_service import reprocess_document
@@ -18,7 +21,7 @@ class BulkReprocessFilters:
     source_path_contains: str | None = None
     ids: list[int] | None = None
     limit: int = 100
-    mode: Literal["full", "ocr", "classification", "embeddings"] = "full"
+    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = "full"
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,27 @@ ALERT_DEFINITIONS: tuple[AlertDefinition, ...] = (
         description="Trabajos de extracción o reprocesado terminados en error.",
         severity="critical",
         action_url="/jobs",
+    ),
+    AlertDefinition(
+        key="low_quality_documents",
+        title="Documentos procesados con baja calidad",
+        description="Documentos procesados pero con OCR bajo, texto insuficiente o campos críticos pendientes.",
+        severity="warning",
+        action_url="/ocr-review",
+    ),
+    AlertDefinition(
+        key="disk_low",
+        title="Disco bajo",
+        description="El volumen de documentos u origen está por debajo del 10% libre.",
+        severity="critical",
+        action_url="/admin",
+    ),
+    AlertDefinition(
+        key="queue_backpressure",
+        title="Cola cerca del límite",
+        description="Los jobs pendientes/procesando han alcanzado el límite configurado de backpressure.",
+        severity="warning",
+        action_url="/admin",
     ),
 )
 
@@ -204,6 +228,17 @@ def build_admin_alerts(db: Session) -> list[AdminAlert]:
         "failed_jobs": int(
             db.scalar(select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "failed")) or 0
         ),
+        "low_quality_documents": int(
+            db.scalar(
+                select(func.count())
+                .select_from(Document)
+                .where(Document.deleted_at.is_(None))
+                .where(Document.quality_status.in_(["processed_low_quality", "processed_missing_fields", "needs_human_review"]))
+            )
+            or 0
+        ),
+        "disk_low": _disk_low_count(),
+        "queue_backpressure": _queue_backpressure_count(db),
     }
     alerts: list[AdminAlert] = []
     for definition in ALERT_DEFINITIONS:
@@ -251,6 +286,33 @@ def _group_count(db: Session, column, model, *criteria) -> dict[str, int]:
         stmt = stmt.where(*criteria)
     stmt = stmt.group_by(column)
     return {str(key or "unknown"): int(count) for key, count in db.execute(stmt).all()}
+
+
+def _queue_backpressure_count(db: Session) -> int:
+    active = int(
+        db.scalar(
+            select(func.count())
+            .select_from(ExtractionJob)
+            .where(ExtractionJob.status.in_(["pending", "processing"]))
+        )
+        or 0
+    )
+    return 1 if active >= settings.ingestion_max_pending_jobs else 0
+
+
+def _disk_low_count() -> int:
+    low = 0
+    for path in (settings.files_dir, settings.input_dir):
+        probe = path
+        while not probe.exists() and probe.parent != probe:
+            probe = probe.parent
+        try:
+            usage = shutil.disk_usage(probe)
+        except OSError:
+            continue
+        if usage.total and usage.free / usage.total < 0.10:
+            low += 1
+    return low
 
 
 def _clean(value: str | None) -> str | None:

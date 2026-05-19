@@ -16,6 +16,7 @@ celery_app.conf.update(
     timezone="Europe/Madrid",
     enable_utc=True,
     worker_prefetch_multiplier=1,
+    broker_connection_retry_on_startup=True,
     task_acks_late=True,
     task_default_queue="text_fast",
     task_routes={

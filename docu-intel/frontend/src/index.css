@@ -3,22 +3,22 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 99%;
-  --foreground: 240 10% 8%;
+  --background: 210 20% 98%;
+  --foreground: 222 31% 9%;
   --card: 0 0% 100%;
-  --card-foreground: 240 10% 8%;
-  --primary: 214 72% 34%;
+  --card-foreground: 222 31% 9%;
+  --primary: 198 72% 28%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 20% 94%;
-  --secondary-foreground: 240 6% 12%;
-  --muted: 210 20% 96%;
-  --muted-foreground: 240 4% 42%;
-  --destructive: 0 72% 45%;
+  --secondary: 214 28% 93%;
+  --secondary-foreground: 222 31% 12%;
+  --muted: 210 24% 95%;
+  --muted-foreground: 215 13% 42%;
+  --destructive: 351 73% 45%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 13% 88%;
-  --input: 220 13% 88%;
-  --ring: 214 72% 34%;
-  --radius: 0.5rem;
+  --border: 214 21% 87%;
+  --input: 214 21% 87%;
+  --ring: 198 72% 28%;
+  --radius: 0.375rem;
 }
 
 * {
@@ -31,7 +31,20 @@ body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Aptos, "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     sans-serif;
+  font-size: 14px;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
+[data-icon="inline-start"] {
+  width: 1rem;
+  height: 1rem;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.16);
+}

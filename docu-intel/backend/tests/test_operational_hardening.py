@@ -146,6 +146,40 @@ def test_admin_operations_status_reports_ingestion_and_queue_counts():
     assert "input_dir" in payload["disk"]
 
 
+def test_admin_operations_overview_reports_quality_and_eta():
+    from app.models import WatchedFile
+
+    client, sessions = _test_client()
+    with sessions() as db:
+        token = _admin_token(db)
+        document = _document(db, status="needs_review")
+        document.quality_status = "processed_low_quality"
+        db.add(ExtractionJob(document_id=document.id, job_type="extract", status="pending"))
+        db.add(WatchedFile(path="/data/input/presupuestos/doc.pdf", status="queued", document_id=document.id))
+        db.commit()
+
+    response = client.get("/admin/operations/overview", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["documents"]["by_quality_status"]["processed_low_quality"] == 1
+    assert payload["jobs"]["pending_or_processing"] == 1
+    assert payload["watcher"]["last_sources"][0]["source_path"].endswith("doc.pdf")
+
+
+def test_file_security_blocks_renamed_executable(tmp_path):
+    from app.services.file_security import inspect_file_for_ingestion
+
+    candidate = tmp_path / "factura.pdf"
+    candidate.write_bytes(b"MZfake executable")
+
+    result = inspect_file_for_ingestion(candidate)
+
+    assert result.allowed is False
+    assert result.quarantined is True
+    assert result.reason == "windows_executable"
+
+
 def test_queue_selection_splits_heavy_text_and_embedding_work():
     from app.workers.routing import queue_for_document
 

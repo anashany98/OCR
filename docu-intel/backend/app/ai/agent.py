@@ -76,6 +76,41 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
 
 
 async def answer_question(db: Session, *, user: User, question: str, mode: str | None = None) -> AIAnswer:
+    # Check cache first
+    from app.services.ai_cache import get_cached_answer, cache_answer
+    
+    cached = get_cached_answer(question, user.id, mode)
+    if cached:
+        # Return cached answer as AIAnswer object
+        question_row = AIQuestion(user_id=user.id, question=question)
+        db.add(question_row)
+        db.flush()
+        
+        answer_row = AIAnswer(
+            question_id=question_row.id,
+            answer=cached["answer"],
+            confidence=cached["confidence"],
+            model_name=cached.get("model_name", "cached"),
+        )
+        db.add(answer_row)
+        db.flush()
+        
+        for source in cached.get("sources", []):
+            answer_row.sources.append(
+                AIAnswerSource(
+                    document_id=source.get("document_id"),
+                    page_number=source.get("page_number"),
+                    block_id=source.get("block_id"),
+                    relevance_score=source.get("relevance_score"),
+                    excerpt=source.get("excerpt"),
+                )
+            )
+        
+        db.commit()
+        db.refresh(answer_row)
+        return answer_row
+    
+    # Generate new answer
     question_row = AIQuestion(user_id=user.id, question=question)
     db.add(question_row)
     db.flush()
@@ -101,6 +136,7 @@ async def answer_question(db: Session, *, user: User, question: str, mode: str |
     db.add(answer_row)
     db.flush()
 
+    sources_data = []
     for source in _dedupe_sources(context_items):
         answer_row.sources.append(
             AIAnswerSource(
@@ -111,9 +147,30 @@ async def answer_question(db: Session, *, user: User, question: str, mode: str |
                 excerpt=source.excerpt or source.summary,
             )
         )
+        sources_data.append({
+            "document_id": source.document_id,
+            "page_number": source.page_number,
+            "block_id": source.block_id,
+            "relevance_score": source.relevance_score,
+            "excerpt": source.excerpt or source.summary,
+        })
 
     db.commit()
     db.refresh(answer_row)
+    
+    # Cache the answer for future queries
+    cache_answer(
+        question=question,
+        user_id=user.id,
+        answer={
+            "answer": answer_text,
+            "confidence": grounded.confidence,
+            "model_name": model_name,
+            "sources": sources_data,
+        },
+        mode=mode,
+    )
+    
     return answer_row
 
 

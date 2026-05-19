@@ -13,7 +13,9 @@ import { LoginPage } from "@/pages/LoginPage"
 import { OrdersPage } from "@/pages/OrdersPage"
 import { OcrReviewPage } from "@/pages/OcrReviewPage"
 import { PlansPage } from "@/pages/PlansPage"
+import { ReconciliationPage } from "@/pages/ReconciliationPage"
 import { SearchPage } from "@/pages/SearchPage"
+import { WorkInboxPage } from "@/pages/WorkInboxPage"
 
 function RequireAuth() {
   const { user, loading } = useAuth()
@@ -31,11 +33,13 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "documents", element: <DocumentsPage /> },
       { path: "documents/:id", element: <DocumentDetailPage /> },
+      { path: "work-inbox", element: <WorkInboxPage /> },
       { path: "ocr-review", element: <OcrReviewPage /> },
       { path: "search", element: <SearchPage /> },
       { path: "jobs", element: <JobsPage /> },
       { path: "budgets", element: <BudgetsPage /> },
       { path: "orders", element: <OrdersPage /> },
+      { path: "reconciliation", element: <ReconciliationPage /> },
       { path: "plans", element: <PlansPage /> },
       { path: "chat", element: <ChatPage /> },
       { path: "admin", element: <AdminPage /> },

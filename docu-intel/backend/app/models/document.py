@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 try:
@@ -29,6 +29,9 @@ class Document(Base):
     file_size: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     document_type: Mapped[str] = mapped_column(String(50), default="desconocido", nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
+    quality_status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
+    quality_score: Mapped[float | None] = mapped_column(Float)
+    quality_flags_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
     page_count: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(Text)

@@ -20,6 +20,18 @@ from app.models.document import (
 )
 from app.models.integration import AccessPolicy, IntegrationClient, TechnicianAccessProfile
 from app.models.operations import IngestionEvent, WatchedFile
+from app.models.professional import (
+    DocumentTimelineEvent,
+    Invoice,
+    NotificationRule,
+    OcrRevision,
+    PlanMeasurement,
+    ReconciliationIssue,
+    SavedSearch,
+    SavedView,
+    WorkItem,
+    WorkItemComment,
+)
 from app.models.tenant import (
     AccessGroup,
     AccessGroupMember,
@@ -49,19 +61,29 @@ __all__ = [
     "DocumentChunk",
     "DocumentEntity",
     "DocumentPage",
+    "DocumentTimelineEvent",
     "ExtractionJob",
     "FolderAssignmentRule",
     "Hotel",
     "HotelChain",
     "IntegrationClient",
     "IngestionEvent",
+    "Invoice",
+    "NotificationRule",
+    "OcrRevision",
     "Order",
     "OrderLine",
     "Plan",
     "PlanDimension",
+    "PlanMeasurement",
     "PlanRoom",
+    "ReconciliationIssue",
+    "SavedSearch",
+    "SavedView",
     "SensitiveTag",
     "TechnicianAccessProfile",
     "User",
     "WatchedFile",
+    "WorkItem",
+    "WorkItemComment",
 ]

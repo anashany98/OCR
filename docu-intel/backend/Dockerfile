@@ -14,6 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --system --gid 10001 appuser \
+    && useradd --system --uid 10001 --gid appuser --home /app appuser \
+    && mkdir -p /app/data/files /app/data/input \
+    && chown -R appuser:appuser /app
+
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 
@@ -22,4 +27,3 @@ COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
-

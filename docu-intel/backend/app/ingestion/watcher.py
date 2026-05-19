@@ -10,12 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.logging import setup_logging
 from app.database.session import SessionLocal
 from app.ingestion.scanner import DEFAULT_SUBFOLDERS, scan_input_folders
-from app.ingestion.stability import is_file_stable, is_ignored_path
+from app.ingestion.stability import is_allowed_file_path, is_file_stable, is_ignored_path
 from app.models import Document
 from app.services.document_service import register_existing_file
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
+from app.services.queue_control import is_ingestion_paused, should_accept_more_jobs
 
 logger = logging.getLogger("app.ingestion.watcher")
 
@@ -50,6 +52,18 @@ def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> di
         _record_path_status(db, path, "ignored", details={"reason": "ignored_path"})
         db.commit()
         return {"status": "ignored", "path": str(path)}
+    if not is_allowed_file_path(path):
+        _record_path_status(db, path, "ignored", details={"reason": "extension_not_allowed"})
+        db.commit()
+        return {"status": "ignored", "path": str(path)}
+    if is_ingestion_paused():
+        _record_path_status(db, path, "paused")
+        db.commit()
+        return {"status": "paused", "path": str(path)}
+    if not should_accept_more_jobs(db):
+        _record_path_status(db, path, "backpressure", details={"max_pending_jobs": settings.ingestion_max_pending_jobs})
+        db.commit()
+        return {"status": "backpressure", "path": str(path)}
     if not path.exists() or not path.is_file():
         _record_path_status(db, path, "missing")
         db.commit()
@@ -122,7 +136,17 @@ def _record_path_status(
 
 
 def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue: bool = True) -> dict:
-    counts = {"processed": 0, "duplicates": 0, "skipped": 0, "unstable": 0, "failed": 0, "missing": 0, "ignored": 0}
+    counts = {
+        "processed": 0,
+        "duplicates": 0,
+        "skipped": 0,
+        "unstable": 0,
+        "failed": 0,
+        "missing": 0,
+        "ignored": 0,
+        "paused": 0,
+        "backpressure": 0,
+    }
     ready = pending.ready_paths(
         settle_seconds=settings.watcher_settle_seconds,
         limit=settings.watcher_max_files_per_tick,
@@ -146,6 +170,9 @@ def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue:
         if status == "unstable":
             counts["unstable"] += 1
             continue
+        if status in {"paused", "backpressure"}:
+            counts[status] += 1
+            continue
         pending.discard(path)
         if status == "duplicate":
             counts["duplicates"] += 1
@@ -161,7 +188,7 @@ def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue:
 def enqueue_existing_files(pending: PendingFileRegistry, root: Path) -> int:
     added = 0
     for path in root.rglob("*"):
-        if path.is_file() and not is_ignored_path(path):
+        if path.is_file() and not is_ignored_path(path) and is_allowed_file_path(path):
             pending.add(path)
             added += 1
     return added
@@ -240,7 +267,7 @@ def run_watch_loop() -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    setup_logging()
     if not settings.watcher_enabled:
         logger.info("watcher_disabled")
         return

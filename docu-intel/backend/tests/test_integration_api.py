@@ -265,6 +265,22 @@ def test_integration_audit_records_policy_tool_and_redactions(tmp_path):
         assert "budget.total_amount" in audit.details_json["redactions"]
 
 
+def test_integration_tool_sandbox_adds_warning_and_audit_action(tmp_path):
+    client, sessions = _test_client(tmp_path)
+    _seed_integration_data(sessions)
+
+    response = client.post(
+        "/integrations/v1/tools/execute",
+        headers=_headers(),
+        json={"tool": "get_budget_by_number", "arguments": {"budget_number": "2026/143"}, "sandbox": True},
+    )
+
+    assert response.status_code == 200
+    assert any("Sandbox activo" in warning for warning in response.json()["warnings"])
+    with sessions() as db:
+        assert db.scalar(select(AuditLog).where(AuditLog.action == "integration_tool_sandbox")) is not None
+
+
 def test_search_budgets_is_forbidden_for_default_minimum_policy(tmp_path):
     client, sessions = _test_client(tmp_path)
     _seed_integration_data(sessions)
@@ -324,12 +340,13 @@ def test_upload_with_scope_registers_document_and_job(tmp_path, monkeypatch):
 
 
 def test_redacts_money_amounts_in_ocr_excerpts():
-    text = "Total 1.245,60 €; precio unitario 22,50 €; cantidad 2 ud"
+    text = "Total 1.245,60 €; precio unitario 22,50 €; margen 18%; cantidad 2 ud"
 
     redacted = redact_sensitive_text(text)
 
     assert "1.245,60" not in redacted
     assert "22,50" not in redacted
+    assert "18%" not in redacted
     assert "€" not in redacted
     assert "[IMPORTE OCULTO]" in redacted
     assert "cantidad 2 ud" in redacted
