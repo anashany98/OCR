@@ -16,13 +16,13 @@ Servicios principales:
 - PostgreSQL + pgvector: servicio interno `postgres:5432`
 - Redis: servicio interno `redis:6379`
 - Watcher de ingesta 24h: servicio `watcher`, sin puerto público
-- Worker Celery: escucha colas `text_fast`, `ocr_heavy`, `embeddings` y `maintenance`
+- Workers Celery separados: `worker-fast` escucha `text_fast`, `embeddings` y `celery`; `worker-heavy` escucha `ocr_heavy` con concurrencia baja; `worker-maintenance` escucha `maintenance`
 
 El proyecto incluye un `.env` local para facilitar el primer arranque y un `.env.example` como plantilla. Cambia secretos, URLs y credenciales antes de usarlo en una red de empresa.
 
 ## Arranque Producción
 
-Para una instalación productiva inicial usa el compose endurecido:
+Para una instalación en un PC Windows con Docker Desktop/WSL usa el compose endurecido:
 
 ```bash
 cp .env.production.example .env.production
@@ -30,7 +30,13 @@ cp .env.production.example .env.production
 DOCUINTEL_ENV_FILE=.env.production docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
-`docker-compose.prod.yml` no expone PostgreSQL ni Redis, separa worker OCR pesado, aplica límites de recursos y permite ejecutar backend, worker y watcher con usuario no root. El manual completo de despliegue está en `docs/deployment-manual.md`; el runbook corto de operación, backups y restore está en `docs/production-runbook.md`.
+En PowerShell puedes usar:
+
+```powershell
+.\scripts\start-docuintel.ps1 -EnvFile .env.production
+```
+
+`docker-compose.prod.yml` no expone PostgreSQL ni Redis, separa worker OCR pesado, aplica límites de recursos y permite ejecutar backend, worker y watcher con usuario no root. El runbook corto de operación, backups, restore e importación masiva para Windows/WSL está en `docs/production-runbook.md`.
 
 ## Usuario Admin
 
@@ -313,6 +319,9 @@ Además de los comandos documentados en `docs/production-runbook.md`, hay script
 ```powershell
 .\scripts\backup.ps1 -EnvFile .env.production
 .\scripts\restore.ps1 -BackupDir backups\YYYYMMDD_HHMMSS -EnvFile .env.production
+.\scripts\import_initial.ps1 -SourceDir D:\historico -DestinationDir data\input
+.\scripts\sync_incremental.ps1 -SourceDir D:\historico -DestinationDir data\input
+.\scripts\check_import_integrity.ps1 -SourceDir D:\historico -DestinationDir data\input
 ```
 
 El backup incluye PostgreSQL y `/data/files`. Un entorno no debe considerarse listo hasta probar un restore completo.

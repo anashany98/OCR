@@ -15,5 +15,6 @@ def rate_limit_key(request: Request) -> str:
 limiter = Limiter(
     key_func=rate_limit_key,
     default_limits=["200/minute"],
-    storage_uri=settings.redis_url,
+    storage_uri=settings.rate_limit_storage_uri
+    or ("memory://" if settings.environment in {"local", "development"} else settings.redis_url),
 )

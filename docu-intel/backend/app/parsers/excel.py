@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.core.config import settings
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 
 
@@ -10,6 +11,11 @@ def parse_excel(path: Path) -> ExtractedDocument:
 
     pages: list[ExtractedPage] = []
     sheets = pd.read_excel(path, sheet_name=None, header=None, dtype=str)
+    if len(sheets) > settings.max_excel_sheets:
+        raise ValueError(f"max_excel_sheets exceeded: {len(sheets)} > {settings.max_excel_sheets}")
+    total_rows = sum(len(frame.index) for frame in sheets.values())
+    if total_rows > settings.max_excel_rows:
+        raise ValueError(f"max_excel_rows exceeded: {total_rows} > {settings.max_excel_rows}")
     for index, (sheet_name, frame) in enumerate(sheets.items(), start=1):
         frame = frame.fillna("")
         lines = [f"Hoja: {sheet_name}"]
@@ -34,4 +40,3 @@ def parse_excel(path: Path) -> ExtractedDocument:
             )
         )
     return ExtractedDocument(pages=pages)
-

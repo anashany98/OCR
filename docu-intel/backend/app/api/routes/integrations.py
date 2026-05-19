@@ -127,14 +127,28 @@ def upload_document(
     context: IntegrationContext = Depends(get_integration_context),
 ) -> IntegrationUploadResponse:
     require_scope(context, "upload")
-    document, job = register_upload(
-        db,
-        filename=file.filename or "uploaded_document",
-        stream=file.file,
-        user=None,
-        source_path=f"integration:{context.client.name}:{context.technician_id}",
-        enqueue=settings.integration_enqueue_uploads,
-    )
+    if budget_code:
+        scope = get_budget_scope_by_code(db, budget_code)
+        if not scope:
+            raise HTTPException(status_code=404, detail="Budget scope not found")
+        if context.budget_session and context.budget_session.budget_scope_id != scope.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Integration session cannot upload to this budget scope")
+        permission = get_client_budget_permission(db, client_id=context.client.id, budget_scope_id=scope.id)
+        if not permission or not permission.can_query:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Integration client cannot upload to this budget scope")
+    try:
+        document, job = register_upload(
+            db,
+            filename=file.filename or "uploaded_document",
+            stream=file.file,
+            user=None,
+            source_path=f"integration:{context.client.name}:{context.technician_id}",
+            enqueue=settings.integration_enqueue_uploads,
+        )
+    except ValueError as exc:
+        if "max_upload_size" in str(exc):
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        raise
     if budget_code:
         assign_document_budget_scope(db, document, budget_code=budget_code)
     write_audit(

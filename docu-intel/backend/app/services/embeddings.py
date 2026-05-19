@@ -208,18 +208,20 @@ def _generate_embeddings_batch(
                     dimensions=dimensions,
                     timeout_seconds=settings.embedding_timeout_seconds,
                 )
-                
+
                 # Process in batches
                 all_embeddings = []
                 for i in range(0, len(texts), BATCH_SIZE):
                     batch = texts[i:i + BATCH_SIZE]
                     batch_embeddings = client.embed_many(batch)
                     all_embeddings.extend(batch_embeddings)
-                
+
                 return all_embeddings
-            except Exception:
+            except Exception as exc:
                 if not settings.embedding_fallback_to_hash:
-                    raise
+                    raise EmbeddingProviderError(
+                        f"Embedding provider failed at {base_url}: {exc}"
+                    ) from exc
                 return [embed_text_hash(t, dimensions) for t in texts]
         else:
             return [embed_text_hash(t, dimensions) for t in texts]
@@ -272,9 +274,11 @@ async def _generate_embeddings_batch_async(
                         all_embeddings.extend(result)
                 
                 return all_embeddings
-            except Exception:
+            except Exception as exc:
                 if not settings.embedding_fallback_to_hash:
-                    raise
+                    raise EmbeddingProviderError(
+                        f"Embedding async provider failed at {base_url}: {exc}"
+                    ) from exc
                 return [embed_text_hash(t, dimensions) for t in texts]
         else:
             return [embed_text_hash(t, dimensions) for t in texts]
@@ -312,9 +316,10 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     numerator = sum(left[index] * right[index] for index in range(size))
     left_norm = math.sqrt(sum(value * value for value in left[:size]))
     right_norm = math.sqrt(sum(value * value for value in right[:size]))
-    if left_norm == 0 or right_norm == 0:
+    norm_product = left_norm * right_norm
+    if norm_product < 1e-10:
         return 0.0
-    return numerator / (left_norm * right_norm)
+    return numerator / norm_product
 
 
 def _tokenize(text: str) -> list[str]:

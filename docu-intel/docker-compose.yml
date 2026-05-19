@@ -46,11 +46,41 @@ services:
       timeout: 10s
       retries: 5
 
-  worker:
+  worker-fast:
     build:
       context: ./backend
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,ocr_heavy,embeddings,maintenance,celery --concurrency=${WORKER_CONCURRENCY:-2}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+
+  worker-heavy:
+    build:
+      context: ./backend
+    env_file: .env
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+
+  worker-maintenance:
+    build:
+      context: ./backend
+    env_file: .env
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1}
     restart: unless-stopped
     depends_on:
       postgres:

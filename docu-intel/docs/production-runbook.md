@@ -1,6 +1,6 @@
 # Docu-Intel Production Runbook
 
-Este runbook resume la operación diaria de producción con Docker Compose. Para requisitos, dimensionamiento, despliegue en distintos entornos, reverse proxy, seguridad, upgrades y troubleshooting completo, consulta `docs/deployment-manual.md`.
+Este runbook resume la operación diaria con Docker Compose en un PC Windows con Docker Desktop/WSL. No asume Coolify ni despliegue Linux dedicado.
 
 ## Arranque
 
@@ -22,6 +22,12 @@ $env:DOCUINTEL_ENV_FILE=".env.production"
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
+O usa el script de arranque:
+
+```powershell
+.\scripts\start-docuintel.ps1 -EnvFile .env.production
+```
+
 El frontend queda expuesto por `FRONTEND_PORT`, por defecto `8080`. PostgreSQL y Redis no publican puertos.
 
 ## Ingesta Masiva
@@ -30,6 +36,19 @@ El frontend queda expuesto por `FRONTEND_PORT`, por defecto `8080`. PostgreSQL y
 - El watcher espera a que los archivos estén estables antes de registrarlos.
 - `INGESTION_MAX_PENDING_JOBS` limita la presión sobre OCR y CPU.
 - Desde Administración se puede pausar o reanudar la ingesta.
+
+Para importar un histórico grande sin navegador:
+
+```powershell
+.\scripts\import_initial.ps1 -SourceDir D:\historico_docuintel -DestinationDir data\input
+.\scripts\check_import_integrity.ps1 -SourceDir D:\historico_docuintel -DestinationDir data\input
+```
+
+Para sincronizaciones posteriores sin borrar origen:
+
+```powershell
+.\scripts\sync_incremental.ps1 -SourceDir D:\historico_docuintel -DestinationDir data\input
+```
 
 ## Backups
 
@@ -40,7 +59,7 @@ Opcion recomendada en Windows/PowerShell:
 .\scripts\restore.ps1 -BackupDir backups\YYYYMMDD_HHMMSS -EnvFile .env.production
 ```
 
-Los scripts guardan PostgreSQL y `data\files`. Prueba el restore antes de cargar documentacion real.
+El backup guarda PostgreSQL y `data\files`, genera `manifest.json`, rota backups antiguos y falla si el dump pesa menos de lo esperado. Prueba el restore antes de cargar documentacion real.
 
 Backup PostgreSQL:
 
