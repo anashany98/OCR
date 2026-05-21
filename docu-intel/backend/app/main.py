@@ -12,6 +12,7 @@ from app.core.rate_limit import limiter
 from app.database.init_db import create_initial_admin
 from app.database.session import SessionLocal
 from app.middleware.performance_monitor import PerformanceMonitorMiddleware
+from app.services.metrics import register_metrics_endpoint
 
 
 setup_logging()
@@ -52,6 +53,9 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+# Register Prometheus metrics endpoint
+register_metrics_endpoint(app)
 
 
 @app.get("/health")

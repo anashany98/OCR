@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from contextlib import contextmanager, nullcontext
 import tempfile
 import sys
+import threading
+
+from app.services.metrics import track_ocr_duration
 
 
 @dataclass
@@ -22,16 +27,45 @@ class OCRResult:
     blocks: list[OCRBlock]
 
 
+# =============================================================================
+# MULTI-GPU SUPPORT para PaddleOCR con RTX 4070 (x2)
+# =============================================================================
+# Configurar CUDA_VISIBLE_DEVICES por worker:
+# - worker-gpu-0: CUDA_VISIBLE_DEVICES=0 (GPU 0)
+# - worker-gpu-1: CUDA_VISIBLE_DEVICES=1 (GPU 1)
+# PaddleOCR usará automáticamente el GPU asignado
+# =============================================================================
+
+def _get_gpu_device() -> str | None:
+    """Obtiene el GPU device del environment variable."""
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    if cuda_visible is None:
+        return None
+    # Tomar el primer GPU disponible
+    devices = cuda_visible.split(",")
+    if devices and devices[0].strip():
+        return devices[0].strip()
+    return None
+
+
 class PaddleOCREngine:
     @cached_property
     def _engine(self):
         with paddleocr_init_lock():
             from paddleocr import PaddleOCR
 
-            return PaddleOCR(use_angle_cls=True, lang="es")
+            # PaddleOCR 3.x - minimal config, auto-detects GPU via CUDA_VISIBLE_DEVICES
+            # NOTE: enable_mkldnn=False is REQUIRED to avoid PaddlePaddle 3.3.0 PIR/MKLDNN bug
+            # See: https://github.com/PaddlePaddle/Paddle/issues/77340
+            return PaddleOCR(
+                use_angle_cls=True,
+                lang="es",
+                enable_mkldnn=False,
+            )
 
     def extract(self, image_path: Path) -> OCRResult:
-        raw = self._engine.ocr(str(image_path), cls=True)
+        start = time.perf_counter()
+        raw = self._engine.ocr(str(image_path))
         blocks: list[OCRBlock] = []
         confidences: list[float] = []
 
@@ -44,6 +78,30 @@ class PaddleOCREngine:
         for page in raw:
             if page is None:
                 continue
+
+            # PaddleOCR 3.x format: dict with rec_texts, rec_scores, dt_polys
+            if isinstance(page, dict):
+                rec_texts = page.get("rec_texts", [])
+                rec_scores = page.get("rec_scores", [])
+                dt_polys = page.get("dt_polys", [])
+
+                for i, text in enumerate(rec_texts):
+                    score = rec_scores[i] if i < len(rec_scores) else None
+                    bbox = None
+                    if i < len(dt_polys):
+                        poly = dt_polys[i]
+                        bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, 'tolist') else poly)
+
+                    blocks.append(OCRBlock(
+                        text=text or "",
+                        confidence=float(score) if score is not None else None,
+                        bbox=bbox,
+                    ))
+                    if score is not None:
+                        confidences.append(float(score))
+                continue
+
+            # Legacy/2.x format or other list format
             if not isinstance(page, (list, tuple)):
                 continue
 
@@ -56,6 +114,7 @@ class PaddleOCREngine:
 
         text = "\n".join(block.text for block in blocks if block.text)
         average = sum(confidences) / len(confidences) if confidences else None
+        track_ocr_duration(time.perf_counter() - start)
         return OCRResult(text=text, confidence=average, blocks=blocks)
 
     def _parse_ocr_line(self, line: object) -> tuple[str, float, tuple[float, float, float, float] | None] | None:

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass, replace
 
 from sqlalchemy import select
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_text
+from app.services.metrics import track_search_latency
 from app.services.vector_store import PgvectorStore
 
 
@@ -60,6 +62,7 @@ def _escape_ilike_wildcards(text: str) -> str:
 
 
 def search_text(db: Session, query: str, limit: int = 20, filters: dict | None = None) -> list[SearchResult]:
+    start = time.perf_counter()
     normalized = query.strip()
     if not normalized:
         return []
@@ -124,9 +127,11 @@ def search_text(db: Session, query: str, limit: int = 20, filters: dict | None =
             )
         )
     return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+    track_search_latency(time.perf_counter() - start)
 
 
 def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | None = None) -> list[SearchResult]:
+    start = time.perf_counter()
     normalized = query.strip()
     if not normalized:
         return []
@@ -193,11 +198,13 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
     results_sorted = sorted(results, key=lambda item: item.score, reverse=True)[:limit]
 
     cache_service.set(cache_key, [_search_result_to_dict(r) for r in results_sorted], SEARCH_CACHE_TTL)
+    track_search_latency(time.perf_counter() - start)
 
     return results_sorted
 
 
 def search_hybrid(db: Session, query: str, limit: int = 10, filters: dict | None = None) -> list[SearchResult]:
+    start = time.perf_counter()
     cache_key = _make_search_cache_key(query.strip(), limit, filters, "hybrid")
     cached = cache_service.get(cache_key)
     if cached is not None:
@@ -208,6 +215,7 @@ def search_hybrid(db: Session, query: str, limit: int = 10, filters: dict | None
     merged = merge_hybrid_results(text_results, semantic_results, limit=limit)
 
     cache_service.set(cache_key, [_search_result_to_dict(r) for r in merged], SEARCH_CACHE_TTL)
+    track_search_latency(time.perf_counter() - start)
 
     return merged
 

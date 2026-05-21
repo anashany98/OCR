@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import math
 import re
+import time
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -13,11 +14,12 @@ import httpx
 
 from app.core.config import settings
 from app.services.cache import cache_service
+from app.services.metrics import track_embedding_latency, track_cache_hit, track_cache_miss
 
 if TYPE_CHECKING:
     pass
 
-EMBEDDING_DIMENSIONS = 1024
+EMBEDDING_DIMENSIONS = int(settings.embedding_dimensions) if hasattr(settings, 'embedding_dimensions') and settings.embedding_dimensions else 768
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 EMBEDDING_CACHE_TTL = 3600
 BATCH_SIZE = 32
@@ -136,20 +138,23 @@ def embed_many(texts: Iterable[str], dimensions: int | None = None) -> list[list
         cached_val = cache_service.get(cache_key)
         if cached_val is not None:
             cached.append(cached_val)
+            track_cache_hit()
         else:
             cached.append(None)
             uncached_indices.append(i)
             uncached_texts.append(text)
+            track_cache_miss()
 
     if uncached_texts:
         embeddings = _generate_embeddings_batch(
             uncached_texts, provider, vector_dimensions
         )
-
+        start = time.perf_counter()
         for idx, emb in zip(uncached_indices, embeddings):
             cached[idx] = emb
             cache_key = _embedding_cache_key(text_list[idx], vector_dimensions)
             cache_service.set(cache_key, emb, EMBEDDING_CACHE_TTL)
+        track_embedding_latency(time.perf_counter() - start)
 
     return cached
 
@@ -173,15 +178,19 @@ async def embed_many_async(texts: Iterable[str], dimensions: int | None = None) 
         cached_val = cache_service.get(cache_key)
         if cached_val is not None:
             cached.append(cached_val)
+            track_cache_hit()
         else:
             cached.append(None)
             uncached_indices.append(i)
             uncached_texts.append(text)
+            track_cache_miss()
 
     if uncached_texts:
+        start = time.perf_counter()
         embeddings = await _generate_embeddings_batch_async(
             uncached_texts, provider, vector_dimensions
         )
+        track_embedding_latency(time.perf_counter() - start)
 
         for idx, emb in zip(uncached_indices, embeddings):
             cached[idx] = emb
