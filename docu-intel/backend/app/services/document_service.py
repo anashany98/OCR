@@ -39,7 +39,9 @@ def register_upload(
     enqueue: bool = True,
 ) -> tuple[Document, ExtractionJob | None]:
     suffix = Path(filename).suffix.lower()
-    max_bytes = max(0, int(settings.max_upload_size_mb) * 1024 * 1024)
+    from app.services.runtime_settings import get_max_upload_size_mb
+    max_upload_size_mb = get_max_upload_size_mb()
+    max_bytes = max(0, int(max_upload_size_mb) * 1024 * 1024)
     bytes_written = 0
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         temp_path = Path(tmp.name)
@@ -48,12 +50,12 @@ def register_upload(
         total_size = stream.tell()
         stream.seek(0)
         if total_size > max_bytes:
-            raise ValueError(f"max_upload_size exceeded: {settings.max_upload_size_mb} MB")
+            raise ValueError(f"max_upload_size exceeded: {max_upload_size_mb} MB")
         with temp_path.open("wb") as tmp:
             while chunk := stream.read(1024 * 1024):
                 bytes_written += len(chunk)
                 if bytes_written > max_bytes:
-                    raise ValueError(f"max_upload_size exceeded: {settings.max_upload_size_mb} MB")
+                    raise ValueError(f"max_upload_size exceeded: {max_upload_size_mb} MB")
                 tmp.write(chunk)
         if temp_path.stat().st_size == 0 and total_size > 0:
             raise IOError("File write produced empty file")
@@ -94,6 +96,10 @@ def register_existing_file(
     status = "pending"
     duplicate_of_document_id: int | None = None
     if existing:
+        # If existing document is fully processed, return it directly (skip OCR)
+        if existing.status in {"processed", "needs_review"}:
+            return existing, None
+        # Otherwise mark as duplicate
         status = "duplicate"
         duplicate_of_document_id = existing.id
         stored_filename = existing.stored_filename
