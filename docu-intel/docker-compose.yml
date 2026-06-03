@@ -1,4 +1,4 @@
-services:
+﻿services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
@@ -32,6 +32,9 @@ services:
       - "8000:8000"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-local}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +55,7 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2}
     restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,6 +71,7 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1}
     restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,6 +87,7 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1}
     restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,6 +103,7 @@ services:
     env_file: .env
     command: python -m app.ingestion.watcher
     restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,21 +124,26 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
     restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       redis:
         condition: service_started
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-    profiles:
-      - scheduler
 
   frontend:
     build:
       context: ./frontend
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.0}
+        VITE_SENTRY_PROFILES_SAMPLE_RATE: ${VITE_SENTRY_PROFILES_SAMPLE_RATE:-0.0}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-}
     restart: unless-stopped
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     ports:
       - "5173:80"
       - "5174:80"
@@ -150,5 +162,45 @@ services:
     profiles:
       - tools
 
+  # GlitchTip: Sentry-compatible error tracking. Opt-in via `--profile monitoring`.
+  # After first start, log in (http://localhost:8001), create a project,
+  # copy the DSN and set SENTRY_DSN in the backend .env (and VITE_SENTRY_DSN
+  # in the frontend build args).
+  glitchtip:
+    image: glitchtip/glitchtip:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://glitchtip:glitchtip@glitchtip-db/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-change_me_generate_with_secrets_token_urlsafe_64}
+      EMAIL_URL: ""
+      GLITCHTIP_ENVIRONMENT: ${ENVIRONMENT:-local}
+      ALLOWED_HOSTS: "*"
+      ENABLE_SIGNUP: "true"
+    ports:
+      - "8001:8000"
+    depends_on:
+      glitchtip-db:
+        condition: service_healthy
+    profiles:
+      - monitoring
+
+  glitchtip-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: glitchtip
+    volumes:
+      - glitchtip_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - monitoring
+
 volumes:
   postgres_data:
+  glitchtip_data:

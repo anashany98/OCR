@@ -7,8 +7,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import ExtractionJob
+from app.models import Document, ExtractionJob
 from app.services.cache import cache_service
+from app.workers.routing import queue_for_document
 
 INGESTION_PAUSED_KEY = "operations:ingestion_paused"
 
@@ -65,9 +66,16 @@ def build_queue_control_status(db: Session) -> QueueControlStatus:
 def cancel_pending_job(db: Session, job: ExtractionJob) -> ExtractionJob:
     if job.status not in {"pending", "failed"}:
         raise ValueError("Only pending or failed jobs can be cancelled safely")
+    document = job.document or db.get(Document, job.document_id)
     job.status = "cancelled"
     job.finished_at = datetime.utcnow()
     job.error_message = "Cancelled by admin"
+    if document and _should_restore_document_after_cancel(db, document, job):
+        if document.quality_status == "needs_human_review":
+            document.status = "needs_review"
+        else:
+            document.status = "processed"
+        document.error_message = None
     db.flush()
     return job
 
@@ -84,16 +92,27 @@ def _active_job_count(db: Session) -> int:
 
 
 def _count_jobs(db: Session, status: str, *, queue_prefix: str | None = None) -> int:
-    stmt = select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == status)
-    if queue_prefix == "embeddings":
-        stmt = stmt.where(ExtractionJob.job_type.ilike("%embeddings%"))
-    elif queue_prefix == "ocr_heavy":
-        stmt = stmt.where(ExtractionJob.job_type.not_ilike("%embeddings%"))
-    elif queue_prefix == "text_fast":
-        stmt = stmt.where(ExtractionJob.job_type.not_ilike("%embeddings%"))
-    elif queue_prefix == "maintenance":
-        stmt = stmt.where(ExtractionJob.job_type.ilike("%maintenance%"))
-    return int(db.scalar(stmt) or 0)
+    stmt = select(ExtractionJob, Document).join(Document, Document.id == ExtractionJob.document_id).where(ExtractionJob.status == status)
+    rows = db.execute(stmt).all()
+    if queue_prefix is None:
+        return len(rows)
+    return sum(1 for job, document in rows if queue_for_document(document, job.job_type) == queue_prefix)
+
+
+def _should_restore_document_after_cancel(db: Session, document: Document, job: ExtractionJob) -> bool:
+    active_jobs = int(
+        db.scalar(
+            select(func.count())
+            .select_from(ExtractionJob)
+            .where(ExtractionJob.document_id == document.id)
+            .where(ExtractionJob.status.in_(["pending", "processing"]))
+            .where(ExtractionJob.id != job.id)
+        )
+        or 0
+    )
+    if active_jobs > 0 or document.status != "pending":
+        return False
+    return document.processed_at is not None or document.quality_status == "needs_human_review"
 
 
 def _set_flag(value: bool) -> None:

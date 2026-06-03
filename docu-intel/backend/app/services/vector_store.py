@@ -31,12 +31,10 @@ class PgvectorStore:
         limit: int,
         filters: dict[str, Any] | None,
     ) -> list[VectorSearchMatch]:
-        budget_scope_id = (filters or {}).get("budget_scope_id")
-        if not budget_scope_id:
-            raise ValueError("Vector search requires budget_scope_id")
+        effective_filters = filters or {}
         if _is_postgres(db):
-            return self._search_postgres(db, query_embedding=query_embedding, limit=limit, filters=filters or {})
-        return self._search_python_fallback(db, query_embedding=query_embedding, limit=limit, filters=filters or {})
+            return self._search_postgres(db, query_embedding=query_embedding, limit=limit, filters=effective_filters)
+        return self._search_python_fallback(db, query_embedding=query_embedding, limit=limit, filters=effective_filters)
 
     def _search_postgres(
         self,
@@ -46,12 +44,14 @@ class PgvectorStore:
         limit: int,
         filters: dict[str, Any],
     ) -> list[VectorSearchMatch]:
-        clauses = ["d.deleted_at IS NULL", "d.budget_scope_id = :budget_scope_id", "c.embedding IS NOT NULL"]
+        clauses = ["d.deleted_at IS NULL", "c.embedding IS NOT NULL"]
         params: dict[str, Any] = {
-            "budget_scope_id": int(filters["budget_scope_id"]),
             "query_embedding": _vector_literal(query_embedding),
             "limit": int(limit),
         }
+        if filters.get("budget_scope_id"):
+            clauses.append("d.budget_scope_id = :budget_scope_id")
+            params["budget_scope_id"] = int(filters["budget_scope_id"])
         if filters.get("document_type"):
             clauses.append("d.document_type = :document_type")
             params["document_type"] = filters["document_type"]
@@ -103,9 +103,10 @@ class PgvectorStore:
             select(Document, DocumentChunk)
             .join(DocumentChunk, DocumentChunk.document_id == Document.id)
             .where(Document.deleted_at.is_(None))
-            .where(Document.budget_scope_id == int(filters["budget_scope_id"]))
             .where(DocumentChunk.chunk_text.is_not(None))
         )
+        if filters.get("budget_scope_id"):
+            stmt = stmt.where(Document.budget_scope_id == int(filters["budget_scope_id"]))
         if filters.get("document_type"):
             stmt = stmt.where(Document.document_type == filters["document_type"])
         if filters.get("status"):

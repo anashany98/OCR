@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,8 @@ from app.core.config import settings
 from app.core.security import decode_access_token
 from app.database.session import get_db
 from app.models import User
+
+logger = logging.getLogger(__name__)
 
 
 def get_current_user(
@@ -23,11 +27,13 @@ def get_current_user(
     try:
         payload = decode_access_token(token)
         user_id = int(payload["sub"])
-    except Exception:
+    except Exception as exc:
+        logger.warning("auth_token_invalid error=%s", str(exc))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
 
     user = db.get(User, user_id)
     if not user or not user.is_active:
+        logger.warning("auth_user_not_found user_id=%s active=%s", user_id, user.is_active if user else False)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
     return user
 

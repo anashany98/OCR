@@ -1,4 +1,4 @@
-﻿from app.database.session import SessionLocal
+from app.database.session import SessionLocal
 from app.ingestion.scanner import scan_input_folders
 from app.models import Document, ExtractionJob
 from app.services.document_service import process_document
@@ -14,11 +14,13 @@ def process_document_task(self, document_id: int, job_id: int) -> None:
         if job and hasattr(job, "retries"):
             job.retries = int(getattr(self.request, "retries", 0) or 0)
             db.commit()
-        process_document(db, document_id=document_id, job_id=job_id)
+        final_failure = int(getattr(self.request, "retries", 0) or 0) >= int(getattr(self, "max_retries", 0) or 0)
+        process_document(db, document_id=document_id, job_id=job_id, final_failure=final_failure)
     except Exception as exc:
-        document = db.get(Document, document_id)
-        if document:
-            notification_service.notify_job_failed(job_id, document_id, str(exc))
+        if int(getattr(self.request, "retries", 0) or 0) >= int(getattr(self, "max_retries", 0) or 0):
+            document = db.get(Document, document_id)
+            if document:
+                notification_service.notify_job_failed(job_id, document_id, str(exc))
         raise
     finally:
         db.close()

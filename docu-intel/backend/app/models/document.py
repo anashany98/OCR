@@ -48,6 +48,7 @@ class Document(Base):
     jobs = relationship("ExtractionJob", back_populates="document", cascade="all, delete-orphan")
     duplicate_of = relationship("Document", remote_side=[id])
     budget_scope = relationship("BudgetScope", back_populates="documents")
+    classification_suggestions = relationship("ClassificationSuggestion", foreign_keys="ClassificationSuggestion.document_id", back_populates="document", cascade="all, delete-orphan")
     access_metadata = relationship(
         "DocumentAccessMetadata",
         back_populates="document",
@@ -68,13 +69,16 @@ class DocumentPage(Base):
     image_path: Mapped[str | None] = mapped_column(String(1024))
     page_status: Mapped[str] = mapped_column(String(40), default="processed", nullable=False, index=True)
     ocr_confidence: Mapped[float | None] = mapped_column(Float)
+    # Which engine produced this page's text. NULL for pages that haven't been
+    # processed yet. Values: pymupdf | paddleocr | empty
+    ocr_engine: Mapped[str | None] = mapped_column(String(40), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text)
     processing_time_ms: Mapped[int | None] = mapped_column(Integer)
     review_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False, index=True)
     review_notes: Mapped[str | None] = mapped_column(Text)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     document = relationship("Document", back_populates="pages")
@@ -109,7 +113,7 @@ class DocumentEntity(Base):
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False)
     entity_type: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
     entity_value: Mapped[str] = mapped_column(Text, nullable=False)
-    normalized_value: Mapped[str | None] = mapped_column(Text)
+    normalized_value: Mapped[str | None] = mapped_column(Text, index=True)
     confidence: Mapped[float | None] = mapped_column(Float)
     page_number: Mapped[int | None] = mapped_column(Integer)
     source_block_id: Mapped[int | None] = mapped_column(ForeignKey("document_blocks.id", ondelete="SET NULL"))

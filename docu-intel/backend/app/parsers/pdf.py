@@ -30,6 +30,9 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
                         text=text,
                         image_path=None,
                         ocr_confidence=1.0,
+                        # Per-page engine tag. We use a single helper so the
+                        # OCR/no-OCR decision and the engine label stay in sync.
+                        ocr_engine="pymupdf",
                         blocks=[
                             ExtractedBlock(
                                 block_type="text",
@@ -55,6 +58,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
             blocks: list[ExtractedBlock] = []
             image_path: str | None = None
             ocr_confidence: float | None = None
+            page_engine: str = "empty"
 
             if text:
                 table_text = _extract_table_text(path, index - 1)
@@ -70,6 +74,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
                         source_engine="pymupdf",
                     )
                 )
+                page_engine = "pymupdf"
 
             if len(text) < 30:
                 output_dir.mkdir(parents=True, exist_ok=True)
@@ -91,6 +96,10 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
                     )
                     for block in ocr.blocks
                 ]
+                # If PaddleOCR returned nothing, keep the engine label as
+                # ``empty`` so the admin can spot pages that came in blank
+                # despite being routed to OCR.
+                page_engine = "paddleocr" if text else "empty"
 
             pages.append(
                 ExtractedPage(
@@ -100,6 +109,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
                     text=text,
                     image_path=image_path,
                     ocr_confidence=ocr_confidence,
+                    ocr_engine=page_engine,
                     blocks=blocks,
                 )
             )

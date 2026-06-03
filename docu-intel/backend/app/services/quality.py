@@ -44,6 +44,15 @@ def evaluate_document_quality(
     if page_count == 0:
         flags.add("page_without_text")
 
+    failed_page_id = db.scalar(
+        select(DocumentPage.id)
+        .where(DocumentPage.document_id == document.id)
+        .where(DocumentPage.page_status == "failed")
+        .limit(1)
+    )
+    if failed_page_id is not None:
+        flags.add("page_failed")
+
     if low_ocr_confidences:
         flags.add("low_ocr_confidence")
 
@@ -75,6 +84,8 @@ def evaluate_document_quality(
     score = _quality_score(db, document, flags)
     if document.status == "failed":
         status = "failed"
+    elif "page_failed" in flags:
+        status = "needs_human_review"
     elif "low_ocr_confidence" in flags or "page_without_text" in flags or score < 0.70:
         status = "processed_low_quality"
     elif any(flag.endswith("_missing") or flag in {"budget_number_missing", "order_number_missing", "supplier_missing", "invoice_date_missing"} for flag in flags):

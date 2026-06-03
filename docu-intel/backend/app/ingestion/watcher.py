@@ -18,6 +18,7 @@ from app.models import Document
 from app.services.file_storage import calculate_sha256
 from app.services.document_service import register_existing_file
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
+from app.services.metrics import track_watcher_error
 from app.services.queue_control import is_ingestion_paused, should_accept_more_jobs
 
 logger = logging.getLogger("app.ingestion.watcher")
@@ -33,7 +34,7 @@ class PendingFileRegistry:
         if is_ignored_path(path):
             return
         self._paths[path] = time.monotonic() if now is None else now
-        self._retry_counts[path] = 0
+        self._retry_counts.setdefault(path, 0)
 
     def discard(self, path: Path) -> None:
         self._paths.pop(path, None)
@@ -142,6 +143,8 @@ def _record_path_status(
         job_id=job_id,
         error_message=error_message,
     )
+    if status == 'failed':
+        track_watcher_error()
     record_ingestion_event(
         db,
         event_type=status,
@@ -184,6 +187,7 @@ def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue:
                 raise  # abort — do not re-queue without error record
             exhausted = pending.increment_retry(path)
             counts["failed"] += 1
+            track_watcher_error()
             if exhausted:
                 pending.discard(path)
                 logger.exception("failed_to_ingest path=%s max_retries_exceeded", path)

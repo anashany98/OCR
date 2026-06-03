@@ -173,6 +173,9 @@ def persist_business_extraction(db: Session, document: Document, text: str) -> P
         extraction = extract_order(document.id, text, document.confidence)
         if not extraction:
             return PersistedBusinessExtraction(needs_review=True)
+        if extraction.date is None:
+            _add_entities_for_order(db, document.id, extraction)
+            return PersistedBusinessExtraction(needs_review=True)
         related_budget_id = _find_related_budget_id(db, extraction)
         order = Order(
             document_id=document.id,

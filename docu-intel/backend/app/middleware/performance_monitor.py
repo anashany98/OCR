@@ -15,10 +15,13 @@ class PerformanceMonitorMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         elapsed = time.perf_counter() - started_at
 
+        request_id = getattr(request.state, "request_id", "-")
+
         response.headers["X-Response-Time"] = f"{elapsed:.3f}"
         if elapsed >= 1.0:
             logger.warning(
-                "slow_request method=%s path=%s status=%s elapsed=%.3fs",
+                "slow_request rid=%s method=%s path=%s status=%s elapsed=%.3fs",
+                request_id,
                 request.method,
                 request.url.path,
                 response.status_code,
@@ -26,7 +29,8 @@ class PerformanceMonitorMiddleware(BaseHTTPMiddleware):
             )
         else:
             logger.debug(
-                "request method=%s path=%s status=%s elapsed=%.3fs",
+                "request rid=%s method=%s path=%s status=%s elapsed=%.3fs",
+                request_id,
                 request.method,
                 request.url.path,
                 response.status_code,

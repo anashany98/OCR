@@ -1,4 +1,4 @@
-﻿import csv
+import csv
 import io
 import json
 from datetime import datetime
@@ -14,7 +14,7 @@ from app.database.session import get_db
 from app.models import Budget, Document, DocumentEntity, DocumentPage, Order, User
 from app.schemas.search import HybridSearchRequest, SearchResultRead, SemanticSearchRequest
 from app.services.search_service import SearchResult, search_hybrid, search_semantic, search_text
-from app.services.tenant_access import filter_search_results_for_scope, resolve_user_access_scope
+from app.services.tenant_access import access_scope_cache_key, filter_search_results_for_scope, resolve_user_access_scope
 
 router = APIRouter()
 
@@ -129,13 +129,14 @@ def semantic_search(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list:
+    scope = resolve_user_access_scope(db, user)
     results = search_semantic(
         db,
         payload.query,
         limit=payload.limit if user.role == "admin" else payload.limit * 5,
-        filters=payload.filters,
+        filters=_filters_with_scope_cache(payload.filters, scope),
     )
-    return filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))[: payload.limit]
+    return filter_search_results_for_scope(db, results, scope)[: payload.limit]
 
 
 @router.post("/hybrid", response_model=list[SearchResultRead])
@@ -146,13 +147,14 @@ def hybrid_search_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list:
+    scope = resolve_user_access_scope(db, user)
     results = search_hybrid(
         db,
         payload.query,
         limit=payload.limit if user.role == "admin" else payload.limit * 5,
-        filters=payload.filters,
+        filters=_filters_with_scope_cache(payload.filters, scope),
     )
-    return filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))[: payload.limit]
+    return filter_search_results_for_scope(db, results, scope)[: payload.limit]
 
 
 @router.get("/export/csv")
@@ -220,6 +222,13 @@ def _business_result(db: Session, document_id: int, excerpt: str | None, score: 
         ocr_confidence=page.ocr_confidence if page else None,
         source_type=source_type,
     )
+
+
+def _filters_with_scope_cache(filters: dict | None, scope) -> dict:
+    scoped_filters = dict(filters or {})
+    if not scope.is_admin:
+        scoped_filters["_cache_scope"] = access_scope_cache_key(scope)
+    return scoped_filters
 
 
 @router.get("/export/json")

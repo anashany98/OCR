@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import hashlib
@@ -14,7 +14,7 @@ import httpx
 
 from app.core.config import settings
 from app.services.cache import cache_service
-from app.services.metrics import track_embedding_latency, track_cache_hit, track_cache_miss
+from app.services.metrics import track_embedding_fallback, track_embedding_latency, track_cache_hit, track_cache_miss
 
 if TYPE_CHECKING:
     pass
@@ -231,6 +231,7 @@ def _generate_embeddings_batch(
                     raise EmbeddingProviderError(
                         f"Embedding provider failed at {base_url}: {exc}"
                     ) from exc
+                track_embedding_fallback()
                 return [embed_text_hash(t, dimensions) for t in texts]
         else:
             return [embed_text_hash(t, dimensions) for t in texts]
@@ -288,6 +289,7 @@ async def _generate_embeddings_batch_async(
                     raise EmbeddingProviderError(
                         f"Embedding async provider failed at {base_url}: {exc}"
                     ) from exc
+                track_embedding_fallback()
                 return [embed_text_hash(t, dimensions) for t in texts]
         else:
             return [embed_text_hash(t, dimensions) for t in texts]

@@ -17,19 +17,24 @@ AI_CACHE_TTL = 3600  # 1 hour
 AI_CACHE_PREFIX = "ai:answer:"
 
 
-def _cache_key(question: str, user_id: int, mode: str | None = None) -> str:
+def _cache_key(question: str, user_id: int, mode: str | None = None, scope_key: str | None = None) -> str:
     """Generate a cache key for an AI question.
 
     Uses SHA256 hash to handle long questions and ensure consistent key length.
     The user_id is placed before the hash so invalidate_user_cache can scan by prefix.
     """
     normalized_question = question.strip().lower()
-    content = f"{normalized_question}:{user_id}:{mode or 'default'}"
+    content = f"{normalized_question}:{user_id}:{mode or 'default'}:{scope_key or 'default-scope'}"
     hash_digest = hashlib.sha256(content.encode()).hexdigest()
     return f"{AI_CACHE_PREFIX}{user_id}:{hash_digest}"
 
 
-def get_cached_answer(question: str, user_id: int, mode: str | None = None) -> dict[str, Any] | None:
+def get_cached_answer(
+    question: str,
+    user_id: int,
+    mode: str | None = None,
+    scope_key: str | None = None,
+) -> dict[str, Any] | None:
     """Retrieve a cached AI answer if available.
     
     Args:
@@ -40,7 +45,7 @@ def get_cached_answer(question: str, user_id: int, mode: str | None = None) -> d
     Returns:
         Cached answer dict or None if not found
     """
-    key = _cache_key(question, user_id, mode)
+    key = _cache_key(question, user_id, mode, scope_key)
     return cache_service.get(key)
 
 
@@ -49,6 +54,7 @@ def cache_answer(
     user_id: int,
     answer: dict[str, Any],
     mode: str | None = None,
+    scope_key: str | None = None,
     ttl: int = AI_CACHE_TTL,
 ) -> bool:
     """Cache an AI answer for future queries.
@@ -63,7 +69,7 @@ def cache_answer(
     Returns:
         True if cached successfully, False otherwise
     """
-    key = _cache_key(question, user_id, mode)
+    key = _cache_key(question, user_id, mode, scope_key)
     return cache_service.set(key, answer, ttl)
 
 

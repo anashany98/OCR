@@ -17,11 +17,10 @@ EXECUTABLE_SIGNATURES = {
 
 BLOCKED_OFFICE_EXTENSIONS = {
     ".doc",
-    ".docx",
     ".docm",
+    ".docx",
     ".xlsb",
     ".pptm",
-    ".xlsm",
     ".accdb",
     ".mdb",
     ".odt",
@@ -41,6 +40,8 @@ MAGIC_SIGNATURES = {
     ".xlsx": [(b"PK\x03\x04", "invalid_xlsx_signature"), (b"PK\x05\x06", "invalid_xlsx_signature")],
     ".xlsm": [(b"PK\x03\x04", "invalid_xlsm_signature"), (b"PK\x05\x06", "invalid_xlsm_signature")],
     ".xls": [(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "invalid_xls_signature")],
+    ".doc": [(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "invalid_doc_signature")],
+    ".docx": [(b"PK\x03\x04", "invalid_docx_signature"), (b"PK\x05\x06", "invalid_docx_signature")],
 }
 
 

@@ -1,6 +1,8 @@
 ﻿.sisyphus/
+.claude/settings.local.json
 .env
 .env.local
+.env.production
 __pycache__/
 *.py[cod]
 .pytest_cache/

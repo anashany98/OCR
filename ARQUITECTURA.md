@@ -510,3 +510,90 @@ SEMANA 11-12:  Backend API
 SEMANA 13-14:  Watchdog
 SEMANA 15-16:  Integración otra app
 ```
+
+---
+
+## 14. Bucle de Mejora (Learning Loop)
+
+Cierra el ciclo de retroalimentación: el agente externo propone, el admin aprueba, el sistema aplica y aprende.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  AGENTE EXTERNO (otra IA / operador técnico)                             │
+└──────────────────────────────────────────────────────────────────────────┘
+                │
+                │  POST /integrations/v1/tools/execute
+                │  tool: propose_classification_correction | entity_link
+                │        classification_rule | quality_feedback
+                │        get_improvement_candidates
+                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  DOCU-INTEL BACKEND                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐     │
+│  │  integration_tools/learning.py                                  │     │
+│  │   → INSERT classification_suggestions (status='pending')        │     │
+│  │   → write_audit()                                                │     │
+│  └────────────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────────────┘
+                │
+                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  POSTGRESQL: classification_suggestions (pending)                       │
+└──────────────────────────────────────────────────────────────────────────┘
+                │
+                │  Admin revisa en /admin → tab "Aprendizaje"
+                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  POST /admin/classification-suggestions/{id}/approve                    │
+│   → status = 'approved', reviewed_by, reviewed_at                       │
+└──────────────────────────────────────────────────────────────────────────┘
+                │
+                │  Cada 5 min (Celery beat → cola maintenance)
+                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  app.workers.learning_tasks.process_approved_suggestions_task           │
+│  ┌────────────────────────────────────────────────────────────────┐     │
+│  │ 1. Para classification_rule: crear/activar LearnedPattern      │     │
+│  │ 2. Para classification_correction: aplicar document_type        │     │
+│  │ 3. Reclasificar docs afectados con nuevas learned rules         │     │
+│  │ 4. Invalidate ai_cache (selectivo)                              │     │
+│  │ 5. Emitir webhooks:                                              │     │
+│  │    - entity.new_pattern_detected (por cada nuevo patrón)        │     │
+│  │    - classification.low_confidence (docs reclasificados < 0.6) │     │
+│  │    - document.needs_review (si calidad baja)                    │     │
+│  └────────────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────────────┘
+                │
+                │  Webhook POST (con HMAC-SHA256 signature)
+                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  AGENTE EXTERNO                                                          │
+│   → Confirma que su sugerencia fue aplicada                              │
+│   → Ajusta futuras propuestas                                            │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Componentes clave
+
+| Componente | Path | Responsabilidad |
+|---|---|---|
+| Migración 0013 | `backend/alembic/versions/0013_learning_loop.py` | Tablas `classification_suggestions` y `learned_patterns` |
+| Modelos | `backend/app/models/learning.py` | `ClassificationSuggestion`, `LearnedPattern` |
+| Schemas | `backend/app/schemas/learning.py` | Pydantic v2 con `model_validator` para `evidence_json` |
+| Tools | `backend/app/services/integration_tools/learning.py` | 5 tools controladas para agente externo |
+| Args + manifest | `backend/app/services/integration_tools/common.py` | Validación de argumentos, manifest v1.4 |
+| Webhooks | `backend/app/services/webhooks.py` | 3 nuevos eventos con helpers |
+| Celery task | `backend/app/workers/learning_tasks.py` | Procesa aprobadas, reclasifica, emite webhooks |
+| Admin API | `backend/app/api/routes/admin_learning.py` | 7 endpoints CRUD |
+| Classification mejorada | `backend/app/services/classification.py` | Soporte para `LearnedRule` con boost 0.6 |
+| Frontend tab | `frontend/src/pages/admin/AdminLearningTab.tsx` | UI de revisión y gestión |
+| API client | `frontend/src/api/learning.ts` | Cliente TypeScript tipado |
+| Tests | `backend/tests/test_learning_loop.py` | 19 tests (clasificación, args, schemas) |
+
+### Garantías de seguridad
+
+- El agente externo **solo puede proponer** (status='pending'); nunca puede aprobar.
+- Las tools de propuesta pasan por `_can_access_document_for_context()` → respeta `budget_scope_id` firmado.
+- Solo roles `admin` o `gestor` pueden aprobar/rechazar/desactivar.
+- Toda transición de estado queda registrada en `audit_logs`.
+- Los webhooks van firmados con HMAC-SHA256 (`X-DocuIntel-Signature`).
