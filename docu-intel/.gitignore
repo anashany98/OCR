@@ -13,4 +13,6 @@ data/files/*
 data/input/**/*
 !data/input/**/.gitkeep
 postgres_data/
+.kilo/
+.kiro/
 

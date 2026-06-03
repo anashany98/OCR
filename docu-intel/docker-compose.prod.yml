@@ -18,19 +18,21 @@ services:
 
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
+    restart: always
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"${REDIS_PASSWORD}\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - internal
+    mem_limit: ${REDIS_MEM_LIMIT:-512m}
+    cpus: ${REDIS_CPUS:-1}
 
   backend:
     build:
@@ -131,12 +133,36 @@ services:
     networks:
       - internal
 
+  scheduler:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    mem_limit: ${SCHEDULER_MEM_LIMIT:-512m}
+    cpus: ${SCHEDULER_CPUS:-1}
+    networks:
+      - internal
+
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
         VITE_ENABLE_TENANT_ADMIN: ${VITE_ENABLE_TENANT_ADMIN:-false}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.0}
+        VITE_SENTRY_PROFILES_SAMPLE_RATE: ${VITE_SENTRY_PROFILES_SAMPLE_RATE:-0.0}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-production}
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-8080}:80"
