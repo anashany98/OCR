@@ -1,20 +1,74 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, Download, FileText, RefreshCcw, Save, Search } from "lucide-react"
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Download,
+  FileText,
+  FileWarning,
+  Network,
+  RefreshCcw,
+  RotateCcw,
+  Save,
+  Search,
+  ShieldAlert,
+} from "lucide-react"
 
 import { api, downloadUrl, pageImageUrl } from "@/api/client"
+import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { EmptyState } from "@/components/layout/EmptyState"
-import { PageHeader } from "@/components/layout/PageHeader"
-import { StatusBadge } from "@/components/layout/StatusBadge"
+import { PermissionGate } from "@/components/layout/PermissionGate"
+import { DocumentProgressBar, StatusBadge } from "@/components/layout/StatusBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { formatBytes, formatDate } from "@/lib/utils"
-import type { DocumentPage, DocumentTimelineEvent } from "@/types/api"
+import { formatBytes, formatDate, cn } from "@/lib/utils"
+import type { DocumentPage, DocumentEntity, DocumentTimelineEvent, DocumentGraph } from "@/types/api"
 
+// ---------------------------------------------------------------------------
+// Entity display configuration
+// ---------------------------------------------------------------------------
+const keyEntities = new Set([
+  "invoice_number", "budget_number", "order_number",
+  "supplier", "supplier_name", "client", "client_name",
+  "total_amount", "amount", "amount_total",
+  "date", "invoice_date", "budget_date", "order_date",
+  "currency", "reference",
+])
+
+function isKeyEntity(entityType: string): boolean {
+  return keyEntities.has(entityType) || keyEntities.has(entityType.toLowerCase())
+}
+
+function entityLabel(entityType: string): string {
+  const labels: Record<string, string> = {
+    invoice_number: "Nº Factura",
+    budget_number: "Nº Presupuesto",
+    order_number: "Nº Pedido",
+    supplier: "Proveedor",
+    supplier_name: "Proveedor",
+    client: "Cliente",
+    client_name: "Cliente",
+    total_amount: "Importe total",
+    amount: "Importe",
+    amount_total: "Importe total",
+    date: "Fecha",
+    invoice_date: "Fecha factura",
+    budget_date: "Fecha presupuesto",
+    order_date: "Fecha pedido",
+    currency: "Moneda",
+    reference: "Referencia",
+  }
+  return labels[entityType] ?? entityType.replace(/_/g, " ")
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 export function DocumentDetailPage() {
   const id = Number(useParams().id)
   const queryClient = useQueryClient()
@@ -22,44 +76,43 @@ export function DocumentDetailPage() {
   const [textQuery, setTextQuery] = useState("")
   const [editedText, setEditedText] = useState("")
   const [revisionReason, setRevisionReason] = useState("")
-  const documentQuery = useQuery({ queryKey: ["document", id], queryFn: () => api.document(id), enabled: Number.isFinite(id) })
-  const pagesQuery = useQuery({ queryKey: ["document-pages", id], queryFn: () => api.pages(id), enabled: Number.isFinite(id) })
-  const blocksQuery = useQuery({ queryKey: ["document-blocks", id], queryFn: () => api.blocks(id), enabled: Number.isFinite(id) })
-  const entitiesQuery = useQuery({ queryKey: ["document-entities", id], queryFn: () => api.entities(id), enabled: Number.isFinite(id) })
-  const timelineQuery = useQuery({ queryKey: ["document-timeline", id], queryFn: () => api.documentTimeline(id), enabled: Number.isFinite(id) })
-  const reprocess = useMutation({
-    mutationFn: api.reprocess,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["document", id] })
-      queryClient.invalidateQueries({ queryKey: ["document-pages", id] })
-      queryClient.invalidateQueries({ queryKey: ["document-blocks", id] })
-      queryClient.invalidateQueries({ queryKey: ["document-entities", id] })
-    },
-  })
-  const document = documentQuery.data
-  const pages = pagesQuery.data ?? []
-  const selectedPage = useMemo(() => pages.find((page) => page.page_number === selectedPageNumber) ?? pages[0], [pages, selectedPageNumber])
-  const revisionsQuery = useQuery({
+  const [showGraph, setShowGraph] = useState(false)
+  const [showBlocks, setShowBlocks] = useState(false)
+
+  const doc = useQuery({ queryKey: ["document", id], queryFn: () => api.document(id), enabled: Number.isFinite(id) })
+  const pagesQ = useQuery({ queryKey: ["document-pages", id], queryFn: () => api.pages(id), enabled: Number.isFinite(id) })
+  const blocksQ = useQuery({ queryKey: ["document-blocks", id], queryFn: () => api.blocks(id), enabled: Number.isFinite(id) })
+  const entitiesQ = useQuery({ queryKey: ["document-entities", id], queryFn: () => api.entities(id), enabled: Number.isFinite(id) })
+  const timelineQ = useQuery({ queryKey: ["document-timeline", id], queryFn: () => api.documentTimeline(id), enabled: Number.isFinite(id) })
+  const graphQ = useQuery({ queryKey: ["document-graph", id], queryFn: () => api.documentGraph(id), enabled: showGraph && Number.isFinite(id) })
+
+  const document = doc.data
+  const pages = pagesQ.data ?? []
+  const selectedPage = useMemo(
+    () => pages.find((p) => p.page_number === selectedPageNumber) ?? pages[0],
+    [pages, selectedPageNumber],
+  )
+  const revisionsQ = useQuery({
     queryKey: ["ocr-revisions", selectedPage?.id],
     queryFn: () => api.ocrRevisions(selectedPage!.id),
     enabled: Boolean(selectedPage),
   })
   const visiblePages = useMemo(() => filterPages(pages, textQuery), [pages, textQuery])
-  const timeline = useMemo(
-    () => mergeTimeline(timelineQuery.data ?? [], buildTimeline(document, pages.length, entitiesQuery.data?.length ?? 0, blocksQuery.data?.length ?? 0)),
-    [blocksQuery.data?.length, document, entitiesQuery.data?.length, pages.length, timelineQuery.data],
-  )
+  const entities = entitiesQ.data ?? []
+  const keyEnts = entities.filter((e) => isKeyEntity(e.entity_type))
+  const otherEnts = entities.filter((e) => !isKeyEntity(e.entity_type))
+  const timelineEvents = timelineQ.data ?? []
+
+  const reprocess = useMutation({
+    mutationFn: () => api.reprocess(id),
+    onSuccess: () => invalidateAll(),
+  })
   const saveRevision = useMutation({
     mutationFn: () =>
-      api.createOcrRevision(selectedPage!.id, {
-        corrected_text: editedText,
-        reason: revisionReason.trim() || null,
-      }),
+      api.createOcrRevision(selectedPage!.id, { corrected_text: editedText, reason: revisionReason.trim() || null }),
     onSuccess: () => {
       setRevisionReason("")
-      queryClient.invalidateQueries({ queryKey: ["document-pages", id] })
-      queryClient.invalidateQueries({ queryKey: ["document-timeline", id] })
-      queryClient.invalidateQueries({ queryKey: ["ocr-revisions", selectedPage?.id] })
+      invalidateAll()
     },
   })
 
@@ -67,207 +120,450 @@ export function DocumentDetailPage() {
     setEditedText(selectedPage?.text ?? "")
   }, [selectedPage?.id, selectedPage?.text])
 
+  function invalidateAll() {
+    ["document", "document-pages", "document-blocks", "document-entities", "document-timeline"].forEach((key) =>
+      queryClient.invalidateQueries({ queryKey: [key, id] }),
+    )
+  }
+
+  const hashShort = document?.file_hash ? `${document.file_hash.slice(0, 10)}...${document.file_hash.slice(-6)}` : "—"
+
   return (
-    <>
-      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-        <div className="flex items-start gap-3">
-          <Button asChild variant="outline" size="icon">
-            <Link to="/documents">
-              <ArrowLeft />
-            </Link>
-          </Button>
-          <PageHeader title={document?.original_filename ?? "Documento"} description="Workspace documental con preview, OCR, entidades y trazabilidad básica." />
-        </div>
-        {document ? (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => reprocess.mutate(document.id)} disabled={reprocess.isPending}>
-              <RefreshCcw data-icon="inline-start" />
-              Reprocesar
-            </Button>
-            <Button asChild>
-              <a href={downloadUrl(document.id)}>
-                <Download data-icon="inline-start" />
-                Descargar original
-              </a>
-            </Button>
+    <div className="space-y-4">
+      {/* ================================================================ */}
+      {/* HEADER                                                           */}
+      {/* ================================================================ */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3 min-w-0">
+              <Button asChild variant="outline" size="icon" className="h-8 w-8 flex-shrink-0">
+                <Link to="/documents"><ArrowLeft className="h-4 w-4" /></Link>
+              </Button>
+              <div className="min-w-0">
+                <h1 className="truncate text-[16px] font-semibold text-[var(--text-primary)]">
+                  {document?.original_filename ?? "Cargando..."}
+                </h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {document?.document_type && (
+                    <Badge variant="neutral" className="text-[11px] capitalize">{document.document_type}</Badge>
+                  )}
+                  {document?.status && <StatusBadge status={document.status} />}
+                  {document?.status && (document.status === "uploaded" || document.status === "queued" || document.status === "processing" || document.status === "processed") && (
+                    <DocumentProgressBar status={document.status} />
+                  )}
+                  {document?.quality_status && document.quality_status !== "processed_ok" && (
+                    <StatusBadge status={document.quality_status} />
+                  )}
+                  <ConfidenceBadge value={document?.confidence} />
+                  {document?.error_message && (
+                    <span className="inline-flex items-center gap-1 rounded bg-[var(--rose-light)] px-2 py-0.5 text-[11px] text-[#9F1239]" title={document.error_message}>
+                      <ShieldAlert className="h-3 w-3" />
+                      Error
+                    </span>
+                  )}
+                  {document?.duplicate_of_document_id && (
+                    <Badge variant="info" className="text-[11px]">Duplicado de #{document.duplicate_of_document_id}</Badge>
+                  )}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+                  {document?.created_at && <span>{formatDate(document.created_at)}</span>}
+                  {document?.file_size != null && <span>{formatBytes(document.file_size)}</span>}
+                  {document?.mime_type && <span>{document.mime_type}</span>}
+                  <span className="font-mono text-[10px] select-all" title={document?.file_hash}>SHA256: {hashShort}</span>
+                  {(document?.page_count ?? pages.length) > 0 && <span>{document?.page_count ?? pages.length} páginas</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* Action toolbar */}
+            <div className="flex flex-wrap gap-1.5">
+              <PermissionGate roles={["admin"]}>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => reprocess.mutate()} disabled={reprocess.isPending}>
+                  <RefreshCcw className="mr-1 h-3.5 w-3.5" />
+                  Reprocesar
+                </Button>
+              </PermissionGate>
+              <PermissionGate roles={["admin", "gestor"]}>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => window.alert("Funcionalidad pendiente de implementar")}>
+                  <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                  Corregir tipo
+                </Button>
+              </PermissionGate>
+              <PermissionGate roles={["admin", "gestor"]}>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => window.alert("Funcionalidad pendiente de implementar")}>
+                  <FileWarning className="mr-1 h-3.5 w-3.5" />
+                  Enviar a revisión
+                </Button>
+              </PermissionGate>
+              <Button asChild size="sm" className="h-8 text-xs">
+                <a href={downloadUrl(id)}>
+                  <Download className="mr-1 h-3.5 w-3.5" />
+                  Descargar
+                </a>
+              </Button>
+            </div>
           </div>
-        ) : null}
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Preview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {document && selectedPage?.image_path ? (
-                <div className="overflow-hidden rounded-md border bg-slate-100">
-                  <img className="max-h-[520px] w-full object-contain" src={pageImageUrl(document.id, selectedPage.page_number)} alt={`Página ${selectedPage.page_number}`} />
-                </div>
-              ) : (
-                <EmptyState title="Sin preview visual" description="Este documento no tiene imagen de página disponible." icon={<FileText className="h-5 w-5" />} />
-              )}
-              {pages.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {pages.map((page) => (
-                    <Button key={page.id} type="button" size="sm" variant={page.page_number === selectedPage?.page_number ? "default" : "outline"} onClick={() => setSelectedPageNumber(page.page_number)}>
-                      P{page.page_number}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Metadatos</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm">
-              {document ? (
-                <>
-                  <Info label="Estado" value={<StatusBadge status={document.status} />} />
-                  <Info label="Calidad" value={<StatusBadge status={document.quality_status ?? "-"} />} />
-                  <Info label="Tipo" value={document.document_type} />
-                  <Info label="Tamaño" value={formatBytes(document.file_size)} />
-                  <Info label="Páginas" value={String((document.page_count ?? pages.length) || "-")} />
-                  <Info label="Confianza" value={document.confidence ? `${Math.round(document.confidence * 100)}%` : "-"} />
-                  <Info label="Creado" value={formatDate(document.created_at)} />
-                  <Info label="Procesado" value={formatDate(document.processed_at)} />
-                  {document.error_message ? <p className="rounded-md border border-destructive/40 p-2 text-destructive">{document.error_message}</p> : null}
-                </>
-              ) : (
-                <span className="text-muted-foreground">Cargando...</span>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="min-w-0">
-          <CardHeader className="flex-row items-center justify-between gap-3 border-b bg-slate-50/80">
-            <CardTitle>Texto OCR</CardTitle>
-            <div className="relative w-full max-w-xs">
-              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="h-9 pl-8" value={textQuery} onChange={(event) => setTextQuery(event.target.value)} placeholder="Buscar dentro del documento" />
-            </div>
+      {/* ================================================================ */}
+      {/* TWO-COLUMN LAYOUT                                                */}
+      {/* ================================================================ */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* LEFT: Viewer */}
+        <Card className="overflow-hidden">
+          <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/80 py-3">
+            <CardTitle className="text-[14px] font-semibold">Visor</CardTitle>
+            {selectedPage && (
+              <span className="text-xs text-[var(--text-muted)]">
+                Página {selectedPage.page_number} · OCR {selectedPage.ocr_confidence != null ? `${Math.round(selectedPage.ocr_confidence * 100)}%` : "—"}
+              </span>
+            )}
           </CardHeader>
-          <CardContent className="max-h-[760px] overflow-auto p-4">
-            <div className="space-y-3">
-              {visiblePages.map((page) => (
-                <section key={page.id} className="rounded-md border bg-white p-3">
-                  <div className="mb-2 flex justify-between text-xs text-muted-foreground">
-                    <button className="font-medium text-primary" type="button" onClick={() => setSelectedPageNumber(page.page_number)}>
-                      Página {page.page_number}
-                    </button>
-                    <span>OCR {page.ocr_confidence ? `${Math.round(page.ocr_confidence * 100)}%` : "-"}</span>
-                  </div>
-                  <pre className="whitespace-pre-wrap text-sm leading-6"><HighlightedText text={page.text || "Sin texto extraído."} query={textQuery} /></pre>
-                </section>
-              ))}
-              {!visiblePages.length ? <EmptyState title="Sin coincidencias" description="No hay páginas que coincidan con la búsqueda actual." /> : null}
-            </div>
-            {selectedPage ? (
-              <section className="mt-4 rounded-md border bg-slate-50 p-3">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">Revisión OCR versionada</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Página {selectedPage.page_number} · {revisionsQuery.data?.length ?? 0} revisiones guardadas
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => saveRevision.mutate()}
-                    disabled={saveRevision.isPending || !editedText.trim() || editedText === (selectedPage.text ?? "")}
-                  >
-                    <Save data-icon="inline-start" />
-                    Guardar versión
-                  </Button>
-                </div>
-                <textarea
-                  className="min-h-40 w-full rounded-md border bg-white p-3 font-mono text-sm leading-6 outline-none focus:ring-2 focus:ring-ring"
-                  value={editedText}
-                  onChange={(event) => setEditedText(event.target.value)}
+          <CardContent className="p-0">
+            {document && selectedPage?.image_path ? (
+              <div className="overflow-hidden bg-slate-100">
+                <img
+                  className="max-h-[540px] w-full object-contain"
+                  src={pageImageUrl(document.id, selectedPage.page_number)}
+                  alt={`Página ${selectedPage.page_number}`}
                 />
-                <Input className="mt-2 h-9" value={revisionReason} onChange={(event) => setRevisionReason(event.target.value)} placeholder="Motivo de corrección" />
-                {saveRevision.isError ? <p className="mt-2 text-sm text-destructive">{saveRevision.error.message}</p> : null}
-              </section>
-            ) : null}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-16">
+                <EmptyState title="Sin preview visual" description="Este documento no tiene imagen de página disponible." icon={<FileText className="h-5 w-5" />} />
+              </div>
+            )}
+            {pages.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 border-t bg-slate-50 px-3 py-2">
+                {pages.map((page) => (
+                  <Button
+                    key={page.id}
+                    type="button"
+                    size="sm"
+                    variant={page.page_number === selectedPage?.page_number ? "default" : "outline"}
+                    className="h-7 text-xs"
+                    onClick={() => setSelectedPageNumber(page.page_number)}
+                  >
+                    P{page.page_number}
+                  </Button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
+        {/* RIGHT: OCR + Entities */}
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Entidades</CardTitle>
+          {/* OCR Text */}
+          <Card className="overflow-hidden">
+            <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/80 py-3">
+              <CardTitle className="text-[14px] font-semibold">Texto OCR</CardTitle>
+              <div className="relative w-full max-w-[200px]">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-muted)]" />
+                <Input
+                  className="h-8 pl-7 text-xs"
+                  value={textQuery}
+                  onChange={(e) => setTextQuery(e.target.value)}
+                  placeholder="Buscar en documento..."
+                />
+              </div>
             </CardHeader>
-            <CardContent className="max-h-[300px] overflow-auto p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Valor</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(entitiesQuery.data ?? []).slice(0, 20).map((entity) => (
-                    <TableRow key={entity.id}>
-                      <TableCell><Badge variant="neutral">{entity.entity_type}</Badge></TableCell>
-                      <TableCell className="max-w-[180px] truncate">{entity.entity_value}</TableCell>
-                    </TableRow>
-                  ))}
-                  {!entitiesQuery.data?.length ? (
-                    <TableRow>
-                      <TableCell colSpan={2} className="h-16 text-center text-muted-foreground">
-                        Sin entidades.
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
+            <CardContent className="max-h-[460px] overflow-auto p-3">
+              <div className="space-y-3">
+                {visiblePages.map((page) => (
+                  <section key={page.id} className="rounded-md border bg-white p-3">
+                    <div className="mb-2 flex justify-between text-[11px] text-[var(--text-muted)]">
+                      <button className="font-medium text-[var(--primary)] hover:underline" type="button" onClick={() => setSelectedPageNumber(page.page_number)}>
+                        Página {page.page_number}
+                      </button>
+                      <span>OCR {page.ocr_confidence != null ? `${Math.round(page.ocr_confidence * 100)}%` : "—"}</span>
+                    </div>
+                    <pre className="whitespace-pre-wrap text-[13px] leading-6 font-sans"><HighlightedText text={page.text || "Sin texto extraído."} query={textQuery} /></pre>
+                  </section>
+                ))}
+                {!visiblePages.length && <EmptyState title="Sin coincidencias" description="No hay páginas que coincidan con la búsqueda actual." />}
+              </div>
+
+              {/* OCR Revision editor */}
+              {selectedPage && (
+                <section className="mt-4 rounded-md border bg-slate-50 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-[13px] font-semibold">Corrección OCR</h4>
+                      <p className="text-[11px] text-[var(--text-muted)]">Página {selectedPage.page_number} · {revisionsQ.data?.length ?? 0} revisiones</p>
+                    </div>
+                    <Button size="sm" className="h-7 text-xs" onClick={() => saveRevision.mutate()} disabled={saveRevision.isPending || !editedText.trim() || editedText === (selectedPage.text ?? "")}>
+                      <Save className="mr-1 h-3 w-3" />Guardar
+                    </Button>
+                  </div>
+                  <textarea
+                    className="min-h-[100px] w-full rounded-md border bg-white p-2.5 font-mono text-[12px] leading-6 outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                    value={editedText}
+                    onChange={(e) => setEditedText(e.target.value)}
+                  />
+                  <Input className="mt-2 h-8 text-xs" value={revisionReason} onChange={(e) => setRevisionReason(e.target.value)} placeholder="Motivo de corrección (opcional)" />
+                  {saveRevision.isError && <p className="mt-2 text-xs text-destructive">{saveRevision.error.message}</p>}
+                </section>
+              )}
             </CardContent>
           </Card>
 
+          {/* Key Entities */}
+          {keyEnts.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-[14px] font-semibold">Entidades clave</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2 sm:grid-cols-2">
+                {keyEnts.map((entity) => (
+                  <EntityCard key={entity.id} entity={entity} />
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* ================================================================ */}
+      {/* BELOW: Timeline, Graph, All Entities, Blocks                     */}
+      {/* ================================================================ */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* Timeline */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[14px] font-semibold">Timeline de eventos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {timelineEvents.length > 0 ? (
+              <div className="space-y-1">
+                {timelineEvents.map((event, index) => (
+                  <TimelineEventRow key={event.id} event={event} isLast={index === timelineEvents.length - 1} />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <TimelineEventRow
+                  event={{ id: 0, document_id: id, event_type: "registered", title: "Documento registrado", description: null, actor_user_id: null, details_json: null, created_at: document?.created_at ?? "" }}
+                  isLast={false}
+                />
+                {document?.processed_at && (
+                  <TimelineEventRow
+                    event={{ id: 1, document_id: id, event_type: "processed", title: "Procesamiento completado", description: null, actor_user_id: null, details_json: null, created_at: document.processed_at }}
+                    isLast
+                  />
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* All entities + blocks summary */}
+        <div className="space-y-4">
+          {otherEnts.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-[14px] font-semibold">Otras entidades ({otherEnts.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-[200px] overflow-auto p-0">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-left text-[11px] uppercase text-[var(--text-muted)]">
+                      <th className="px-3 py-2 font-medium">Tipo</th>
+                      <th className="px-3 py-2 font-medium">Valor</th>
+                      <th className="px-3 py-2 font-medium text-right">Conf.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {otherEnts.slice(0, 30).map((e) => (
+                      <tr key={e.id} className="border-b last:border-0 hover:bg-slate-50">
+                        <td className="px-3 py-1.5 text-xs capitalize">{e.entity_type.replace(/_/g, " ")}</td>
+                        <td className="max-w-[300px] truncate px-3 py-1.5 text-xs">{e.entity_value}</td>
+                        <td className="px-3 py-1.5 text-right text-xs text-[var(--text-muted)]">
+                          {e.confidence != null ? `${Math.round(e.confidence * 100)}%` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Collapsible: Blocks */}
           <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {timeline.map((event, index) => (
-                <div key={`${event.label}-${index}`} className="border-l-2 border-slate-200 pl-3">
-                  <p className="text-sm font-medium">{event.label}</p>
-                  <p className="text-xs text-muted-foreground">{event.value}</p>
-                </div>
-              ))}
-            </CardContent>
+            <button
+              type="button"
+              onClick={() => setShowBlocks(!showBlocks)}
+              className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-slate-50/80"
+            >
+              <CardTitle className="text-[14px] font-semibold">Bloques OCR ({blocksQ.data?.length ?? 0})</CardTitle>
+              {showBlocks ? <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" /> : <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />}
+            </button>
+            {showBlocks && (
+              <CardContent className="max-h-[200px] overflow-auto border-t p-0">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-slate-50 text-left text-[11px] uppercase text-[var(--text-muted)]">
+                      <th className="px-3 py-2 font-medium">Pág.</th>
+                      <th className="px-3 py-2 font-medium">Tipo</th>
+                      <th className="px-3 py-2 font-medium">Texto</th>
+                      <th className="px-3 py-2 font-medium text-right">Conf.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(blocksQ.data ?? []).slice(0, 30).map((b) => (
+                      <tr key={b.id} className="border-b last:border-0 hover:bg-slate-50">
+                        <td className="px-3 py-1.5 text-xs">{b.page_number ?? "—"}</td>
+                        <td className="px-3 py-1.5 text-xs capitalize">{b.block_type}</td>
+                        <td className="max-w-[240px] truncate px-3 py-1.5 text-xs">{b.text ?? "—"}</td>
+                        <td className="px-3 py-1.5 text-right text-xs text-[var(--text-muted)]">
+                          {b.confidence != null ? `${Math.round(b.confidence * 100)}%` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            )}
           </Card>
 
+          {/* Collapsible: Document Graph */}
           <Card>
-            <CardHeader>
-              <CardTitle>Bloques OCR</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <Info label="Total bloques" value={String(blocksQuery.data?.length ?? 0)} />
-              <Info label="Página activa" value={selectedPage ? String(selectedPage.page_number) : "-"} />
-              <Info label="Coincidencias" value={String(visiblePages.length)} />
-            </CardContent>
+            <button
+              type="button"
+              onClick={() => setShowGraph(!showGraph)}
+              className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-slate-50/80"
+            >
+              <CardTitle className="text-[14px] font-semibold flex items-center gap-2">
+                <Network className="h-4 w-4 text-[var(--text-muted)]" />
+                Grafo de relaciones
+              </CardTitle>
+              {showGraph ? <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" /> : <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />}
+            </button>
+            {showGraph && (
+              <CardContent className="border-t p-3">
+                {graphQ.isLoading && <p className="text-sm text-[var(--text-muted)]">Cargando grafo...</p>}
+                {graphQ.data && <DocumentGraphView graph={graphQ.data} />}
+                {graphQ.isError && <p className="text-sm text-destructive">{graphQ.error?.message}</p>}
+                {!graphQ.data && !graphQ.isLoading && !graphQ.isError && (
+                  <EmptyState title="Sin relaciones" description="No se han detectado relaciones documentales para este documento." />
+                )}
+              </CardContent>
+            )}
           </Card>
         </div>
       </div>
-    </>
-  )
-}
-
-function Info({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium">{value}</span>
     </div>
   )
 }
 
+// ---------------------------------------------------------------------------
+// Entity card
+// ---------------------------------------------------------------------------
+function EntityCard({ entity }: { entity: DocumentEntity }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border bg-white px-3 py-2.5">
+      <span className="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wide">{entityLabel(entity.entity_type)}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-[13px] font-semibold text-[var(--text-primary)]">{entity.entity_value}</span>
+        {entity.confidence != null && (
+          <ConfidenceBadge value={entity.confidence} showLabel={false} className="scale-75" />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Timeline event row
+// ---------------------------------------------------------------------------
+function TimelineEventRow({ event, isLast }: { event: DocumentTimelineEvent; isLast: boolean }) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <span className="mt-1.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--primary)] bg-white flex-shrink-0" />
+        {!isLast && <span className="w-0.5 flex-1 bg-[var(--border)]" />}
+      </div>
+      <div className={cn("pb-3", isLast && "pb-0")}>
+        <p className="text-[13px] font-medium text-[var(--text-primary)]">{event.title}</p>
+        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+          <span>{formatDate(event.created_at)}</span>
+          {event.actor_user_id && <span>· Usuario #{event.actor_user_id}</span>}
+        </div>
+        {event.description && (
+          <p className="mt-0.5 text-[12px] text-[var(--text-secondary)]">{event.description}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Document graph view
+// ---------------------------------------------------------------------------
+function DocumentGraphView({ graph }: { graph: DocumentGraph }) {
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex gap-2">
+        <Badge variant="neutral">{graph.nodes.length} documentos</Badge>
+        <Badge variant="info">{graph.edges.length} relaciones</Badge>
+      </div>
+      {graph.edges.length > 0 && (
+        <div className="max-h-[200px] overflow-auto rounded-md border">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-slate-50 text-left">
+                <th className="px-2 py-1.5 font-medium">Relación</th>
+                <th className="px-2 py-1.5 font-medium">Desde</th>
+                <th className="px-2 py-1.5 font-medium">Hasta</th>
+                <th className="px-2 py-1.5 font-medium">Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {graph.edges.map((edge, i) => (
+                <tr key={i} className="border-b last:border-0 hover:bg-slate-50">
+                  <td className="px-2 py-1.5 font-medium capitalize">{edge.relation}</td>
+                  <td className="px-2 py-1.5">
+                    <Link to={`/documents/${edge.from_document_id}`} className="text-[var(--sky)] hover:underline">
+                      #{edge.from_document_id}
+                    </Link>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <Link to={`/documents/${edge.to_document_id}`} className="text-[var(--sky)] hover:underline">
+                      #{edge.to_document_id}
+                    </Link>
+                  </td>
+                  <td className="px-2 py-1.5 text-[var(--text-muted)]">{edge.label ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-1.5">
+        {graph.nodes.map((node) => (
+          <Link
+            key={node.document_id}
+            to={`/documents/${node.document_id}`}
+            className={cn(
+              "rounded-md border px-2 py-1 text-xs transition-colors hover:bg-slate-50",
+              node.document_id === graph.nodes[0].document_id && "border-[var(--primary)] bg-[var(--primary-light)]",
+            )}
+          >
+            <span className="font-medium">{node.filename}</span>
+            <span className="ml-1.5 text-[var(--text-muted)]">{node.document_type}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 function HighlightedText({ text, query }: { text: string; query: string }) {
   const trimmed = query.trim()
   if (!trimmed) return <>{text}</>
@@ -276,11 +572,9 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
     <>
       {parts.map((part, index) =>
         part.toLowerCase() === trimmed.toLowerCase() ? (
-          <mark key={`${part}-${index}`} className="rounded bg-amber-200 px-0.5">
-            {part}
-          </mark>
+          <mark key={index} className="rounded bg-amber-200 px-0.5">{part}</mark>
         ) : (
-          <span key={`${part}-${index}`}>{part}</span>
+          <span key={index}>{part}</span>
         ),
       )}
     </>
@@ -291,24 +585,6 @@ function filterPages(pages: DocumentPage[], query: string) {
   const trimmed = query.trim().toLowerCase()
   if (!trimmed) return pages
   return pages.filter((page) => page.text?.toLowerCase().includes(trimmed))
-}
-
-function buildTimeline(document: { created_at: string; processed_at: string | null; status: string } | undefined, pages: number, entities: number, blocks: number) {
-  return [
-    { label: "Registrado", value: formatDate(document?.created_at) },
-    { label: "Procesamiento", value: document?.processed_at ? formatDate(document.processed_at) : document?.status ?? "-" },
-    { label: "Páginas OCR", value: String(pages) },
-    { label: "Entidades extraídas", value: String(entities) },
-    { label: "Bloques detectados", value: String(blocks) },
-  ]
-}
-
-function mergeTimeline(events: DocumentTimelineEvent[], fallback: { label: string; value: string }[]) {
-  const operational = events.map((event) => ({
-    label: event.title,
-    value: `${formatDate(event.created_at)}${event.description ? ` · ${event.description}` : ""}`,
-  }))
-  return operational.length ? [...operational, ...fallback] : fallback
 }
 
 function escapeRegExp(value: string) {

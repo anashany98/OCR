@@ -180,6 +180,95 @@ def test_file_security_blocks_renamed_executable(tmp_path):
     assert result.reason == "windows_executable"
 
 
+def test_storage_integrity_reports_missing_and_orphan_files(tmp_path, monkeypatch):
+    from app.services.production_readiness import storage_integrity
+
+    files_dir = tmp_path / "files"
+    present_relative = Path("aa") / "present.pdf"
+    orphan_relative = Path("cc") / "orphan.txt"
+    present_path = files_dir / present_relative
+    orphan_path = files_dir / orphan_relative
+    present_path.parent.mkdir(parents=True)
+    orphan_path.parent.mkdir(parents=True)
+    present_path.write_bytes(b"stored")
+    orphan_path.write_bytes(b"orphan")
+    monkeypatch.setattr(settings, "files_dir", files_dir)
+
+    sessions = _session_factory()
+    with sessions() as db:
+        db.add(
+            Document(
+                original_filename="present.pdf",
+                stored_filename=str(present_relative),
+                source_path="/data/input/present.pdf",
+                file_hash="1" * 64,
+                mime_type="application/pdf",
+                extension=".pdf",
+                file_size=7,
+                document_type="presupuesto",
+                status="processed",
+            )
+        )
+        db.add(
+            Document(
+                original_filename="missing.pdf",
+                stored_filename=str(Path("bb") / "missing.pdf"),
+                source_path="/data/input/missing.pdf",
+                file_hash="2" * 64,
+                mime_type="application/pdf",
+                extension=".pdf",
+                file_size=7,
+                document_type="presupuesto",
+                status="processed",
+            )
+        )
+        db.commit()
+
+        result = storage_integrity(db, limit=10)
+
+    assert result["checked_documents"] == 2
+    assert result["missing_files"] == 1
+    assert result["orphan_files"] == 1
+    assert result["missing_file_samples"] == [{"document_id": 2, "stored_filename": str(Path("bb") / "missing.pdf")}]
+    assert result["orphan_file_samples"] == [str(orphan_relative)]
+
+
+def test_storage_integrity_accepts_valid_hash_layout_without_false_positives(tmp_path, monkeypatch):
+    from app.services.production_readiness import storage_integrity
+
+    files_dir = tmp_path / "files"
+    stored_relative = Path("ab") / "cd" / f"{'1' * 64}.pdf"
+    stored_path = files_dir / stored_relative
+    stored_path.parent.mkdir(parents=True)
+    stored_path.write_bytes(b"stored")
+    monkeypatch.setattr(settings, "files_dir", files_dir)
+
+    sessions = _session_factory()
+    with sessions() as db:
+        db.add(
+            Document(
+                original_filename="valid-hash-layout.pdf",
+                stored_filename=str(stored_relative),
+                source_path="/data/input/valid-hash-layout.pdf",
+                file_hash="1" * 64,
+                mime_type="application/pdf",
+                extension=".pdf",
+                file_size=6,
+                document_type="presupuesto",
+                status="processed",
+            )
+        )
+        db.commit()
+
+        result = storage_integrity(db, limit=10)
+
+    assert result["checked_documents"] == 1
+    assert result["missing_files"] == 0
+    assert result["orphan_files"] == 0
+    assert result["missing_file_samples"] == []
+    assert result["orphan_file_samples"] == []
+
+
 def test_queue_selection_splits_heavy_text_and_embedding_work():
     from app.workers.routing import queue_for_document
 

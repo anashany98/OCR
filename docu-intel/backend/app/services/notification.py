@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart

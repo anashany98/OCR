@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, Navigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ExternalLink, Ruler, Save } from "lucide-react"
+import { AlertTriangle, ExternalLink, FlaskConical, Ruler, Save } from "lucide-react"
 
 import { api } from "@/api/client"
 import { PageHeader } from "@/components/layout/PageHeader"
+import { useAuth } from "@/hooks/useAuth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +13,12 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export function PlansPage() {
+  const { user } = useAuth()
+
+  // Solo admin y gestor pueden acceder
+  if (!user || (user.role !== "admin" && user.role !== "gestor")) {
+    return <Navigate to="/" replace />
+  }
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [scaleText, setScaleText] = useState("")
@@ -80,6 +87,18 @@ export function PlansPage() {
 
   return (
     <>
+      {/* Beta banner */}
+      <div className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--amber-light)] bg-[var(--amber-light)]/40 p-3">
+        <FlaskConical className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--amber)]" />
+        <div>
+          <p className="text-[13px] font-semibold text-[#92400E]">Funcionalidad en fase Beta</p>
+          <p className="mt-0.5 text-[12px] text-[#92400E]/80">
+            La extracción de planos está en desarrollo. Los datos de escala, habitaciones y cotas pueden no ser precisos.
+            Verifica siempre las mediciones manualmente antes de usarlas en producción.
+          </p>
+        </div>
+      </div>
+
       <PageHeader title="Planos" description="Escalas, habitaciones y cotas extraídas con revisión manual." />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
         <Card>

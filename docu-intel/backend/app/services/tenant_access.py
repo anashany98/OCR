@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import fnmatch
 import re
 from dataclasses import dataclass, field
@@ -280,6 +282,20 @@ def scope_payload(scope: AccessScope) -> dict:
         "allowed_document_types": sorted(scope.allowed_document_types),
         "allow_unassigned_documents": scope.allow_unassigned_documents,
     }
+
+
+def access_scope_cache_key(scope: AccessScope) -> str:
+    payload = scope_payload(scope)
+    payload.update(
+        {
+            "can_view_prices": scope.can_view_prices,
+            "can_search_budgets": scope.can_search_budgets,
+            "is_admin": scope.is_admin,
+            "group_count": scope.group_count,
+        }
+    )
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def _document_type_allows(document: Document | None, scope: AccessScope) -> bool:

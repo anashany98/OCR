@@ -21,6 +21,10 @@ class ExtractedPage:
     height: float | None = None
     image_path: str | None = None
     ocr_confidence: float | None = None
+    # Which engine produced this page's text. One of: pymupdf, paddleocr, empty.
+    # The ``empty`` label marks pages routed to OCR that still produced no
+    # usable text — useful for spotting low-quality scans.
+    ocr_engine: str | None = None
     blocks: list[ExtractedBlock] = field(default_factory=list)
 
 

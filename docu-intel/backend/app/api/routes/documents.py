@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import logging
 from typing import Literal
 
@@ -152,13 +152,13 @@ def get_document(document_id: int, db: Session = Depends(get_db), user: User = D
 
 
 @router.get("/{document_id}/pages", response_model=list[DocumentPageRead])
-def get_document_pages(document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[DocumentPage]:
+def get_document_pages(document_id: int, limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[DocumentPage]:
     document = db.get(Document, document_id)
     if not can_access_document(db, document, resolve_user_access_scope(db, user)):
         raise HTTPException(status_code=404, detail="Document not found")
     return list(
         db.scalars(
-            select(DocumentPage).where(DocumentPage.document_id == document_id).order_by(DocumentPage.page_number.asc())
+            select(DocumentPage).where(DocumentPage.document_id == document_id).order_by(DocumentPage.page_number.asc()).offset(offset).limit(limit)
         ).all()
     )
 
@@ -190,6 +190,8 @@ def get_document_page_image(
 def get_document_blocks(
     document_id: int,
     page_number: int | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[DocumentBlock]:
@@ -199,12 +201,14 @@ def get_document_blocks(
     stmt = select(DocumentBlock).where(DocumentBlock.document_id == document_id).order_by(DocumentBlock.page_number.asc())
     if page_number:
         stmt = stmt.where(DocumentBlock.page_number == page_number)
-    return list(db.scalars(stmt).all())
+    return list(db.scalars(stmt.offset(offset).limit(limit)).all())
 
 
 @router.get("/{document_id}/entities", response_model=list[DocumentEntityRead])
 def get_document_entities(
     document_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[DocumentEntity]:
@@ -213,7 +217,7 @@ def get_document_entities(
         raise HTTPException(status_code=404, detail="Document not found")
     return list(
         db.scalars(
-            select(DocumentEntity).where(DocumentEntity.document_id == document_id).order_by(DocumentEntity.entity_type.asc())
+            select(DocumentEntity).where(DocumentEntity.document_id == document_id).order_by(DocumentEntity.entity_type.asc()).offset(offset).limit(limit)
         ).all()
     )
 

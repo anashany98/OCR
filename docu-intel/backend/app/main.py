@@ -9,13 +9,16 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.rate_limit import limiter
+from app.core.sentry import init_sentry
 from app.database.init_db import create_initial_admin
 from app.database.session import SessionLocal
 from app.middleware.performance_monitor import PerformanceMonitorMiddleware
+from app.middleware.request_id import RequestIDMiddleware
 from app.services.metrics import register_metrics_endpoint
 
 
 setup_logging()
+init_sentry()
 
 
 @asynccontextmanager
@@ -33,6 +36,9 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 # Rate limiting must be added before other middleware
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Request ID tracing — must be first so downstream middleware/loggers have access
+app.add_middleware(RequestIDMiddleware)
 
 # Performance monitoring
 app.add_middleware(PerformanceMonitorMiddleware)

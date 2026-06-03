@@ -11,7 +11,10 @@ class Settings(BaseSettings):
 
     app_name: str = "Docu-Intel"
     environment: Literal["local", "development", "staging", "production"] = "local"
-    api_v1_prefix: str = ""
+    # Versioned API mount point. All user-facing routers live under this prefix.
+    # Integrations API has its own /integrations/v1 prefix (external contract).
+    # Set to "" to disable versioning (legacy mode, not recommended).
+    api_v1_prefix: str = "/api/v1"
 
     database_url: str = "postgresql+psycopg://app:app@postgres:5432/docuintel"
     redis_url: str = "redis://redis:6379/0"
@@ -41,6 +44,8 @@ class Settings(BaseSettings):
             ".txt",
             ".log",
             ".eml",
+            ".doc",
+            ".docx",
         ]
     )
     file_storage_strategy: Literal["copy", "hardlink", "auto"] = "auto"
@@ -74,17 +79,35 @@ class Settings(BaseSettings):
     integration_session_expire_seconds: int = 3600
     integration_webhook_url: str = ""
     integration_webhook_secret: str = ""
+    integration_webhook_timeout_seconds: float = 5.0
+    # Webhook outbox / delivery worker
+    webhook_outbox_max_attempts: int = 8
+    webhook_outbox_initial_backoff_seconds: int = 30
+    webhook_outbox_max_backoff_seconds: int = 3600  # 1 hour
+    webhook_outbox_batch_size: int = 25
+    webhook_outbox_interval_seconds: int = 30  # how often the worker drains the outbox
+
+    # GlitchTip (Sentry-compatible) error tracking.
+    # Leave SENTRY_DSN empty to disable. GlitchTip accepts a Sentry-compatible DSN
+    # of the form https://<public_key>@<glitchtip-host>/<project_id>.
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.0  # 0.0 = no performance tracing, 1.0 = everything
+    sentry_profiles_sample_rate: float = 0.0
+    sentry_environment: str = ""  # defaults to `environment` if empty
+    sentry_send_pii: bool = False  # do not send PII by default
     integration_webhook_events: list[str] = Field(
         default_factory=lambda: [
             "document.processed",
             "document.failed",
             "document.needs_review",
+            "classification.low_confidence",
+            "entity.new_pattern_detected",
             "job.finished",
             "docuintel.webhook_test",
         ]
     )
 
-    jwt_secret: str = "CHANGE_IN_PRODUCTION_USE_64_CHARS_MIN_SECURE"
+    jwt_secret: str = "dev_only_jwt_secret_change_me_for_local_development_only"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 12
     auth_cookie_name: str = "docuintel_token"
@@ -100,8 +123,20 @@ class Settings(BaseSettings):
     pdf_ocr_dpi: int = 144
     vector_store: Literal["pgvector", "qdrant"] = "pgvector"
 
+    learning_interval_seconds: int = 300
+    # Auto-reject classification_suggestions that stay 'pending' for longer than
+    # this. Set to 0 to disable. Runs as a daily Celery Beat task on the
+    # maintenance queue.
+    learning_stale_pending_days: int = 30
+    learning_stale_check_interval_seconds: int = 86_400  # 1 day
+    # Soft circuit breaker on the integration proposal tools: warn (and
+    # optionally block) clients that submit more than N suggestions per
+    # window. Set max to 0 to disable the limit.
+    learning_per_client_max_pending: int = 100
+    learning_per_client_window_seconds: int = 3_600  # 1 hour
+
     admin_email: str = "admin@local"
-    admin_password: str = "CHANGE_IN_PRODUCTION_MIN_16_CHARS"
+    admin_password: str = "dev_only_admin_password_change_me"
     admin_name: str = "Administrador"
 
     @field_validator("cors_origins", mode="before")
@@ -147,6 +182,24 @@ class Settings(BaseSettings):
             raise ValueError("ADMIN_PASSWORD must be set explicitly in production")
         if len(value) < 16:
             raise ValueError("ADMIN_PASSWORD must be at least 16 characters long")
+        return value
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def validate_db_password(cls, value: str) -> str:
+        weak_passwords = {"app", "password", "postgres", "admin", "123456", "changeme", "docuintel"}
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(value)
+            if parsed.password and parsed.password.lower() in weak_passwords:
+                raise ValueError(
+                    f"PostgreSQL password is too weak. "
+                    f"Generate a secure password with: python -c \"import secrets; print(secrets.token_urlsafe(24))\""
+                )
+        except ValueError:
+            raise
+        except Exception:
+            pass
         return value
 
 

@@ -18,7 +18,7 @@ class Budget(Base):
     total_amount: Mapped[float | None] = mapped_column(Float)
     currency: Mapped[str | None] = mapped_column(String(12))
     status: Mapped[str | None] = mapped_column(String(50), index=True)
-    accepted_detected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    accepted_detected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 

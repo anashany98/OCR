@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.ingestion.stability import is_allowed_file_path, is_file_stable, is_ignored_path
 from app.models import Document, User
 from app.services.document_service import register_existing_file
+from app.services.file_storage import calculate_sha256
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
 from app.services.queue_control import is_ingestion_paused, should_accept_more_jobs
 
@@ -36,6 +37,8 @@ def scan_input_folders(db: Session, *, user: User | None = None, enqueue: bool =
         scanned += 1
         source_path = str(path)
         if is_ingestion_paused():
+            _record_path_status(db, path, "paused")
+            db.commit()
             paused += 1
             break
         if not should_accept_more_jobs(db):
@@ -76,47 +79,35 @@ def scan_input_folders(db: Session, *, user: User | None = None, enqueue: bool =
             db.commit()
             ignored += 1
             continue
-        already_registered = db.scalar(select(Document.id).where(Document.source_path == source_path).limit(1))
-        if already_registered:
-            size_bytes, mtime_epoch = path_metadata(path)
-            watched = upsert_watched_file(
-                db,
-                path=source_path,
-                status="skipped",
-                size_bytes=size_bytes,
-                mtime_epoch=mtime_epoch,
-                document_id=already_registered,
-            )
-            record_ingestion_event(
-                db,
-                event_type="skipped",
-                source_path=source_path,
-                document_id=already_registered,
-                watched_file=watched,
-                details={"reason": "source_path_already_registered"},
-            )
-            db.commit()
-            skipped += 1
-            continue
         if not is_file_stable(path, settings.ingestion_stable_seconds):
-            size_bytes, mtime_epoch = path_metadata(path)
-            watched = upsert_watched_file(
-                db,
-                path=source_path,
-                status="unstable",
-                size_bytes=size_bytes,
-                mtime_epoch=mtime_epoch,
-            )
-            record_ingestion_event(
-                db,
-                event_type="unstable",
-                source_path=source_path,
-                watched_file=watched,
-                details={"stable_seconds": settings.ingestion_stable_seconds},
-            )
+            _record_path_status(db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds})
             db.commit()
             unstable += 1
             continue
+        existing_document = db.scalar(
+            select(Document).where(Document.source_path == source_path).order_by(Document.id.desc()).limit(1)
+        )
+        if existing_document:
+            current_hash = calculate_sha256(path)
+            if existing_document.file_hash == current_hash:
+                _record_path_status(
+                    db,
+                    path,
+                    "skipped",
+                    document_id=existing_document.id,
+                    details={"reason": "source_path_already_registered"},
+                )
+                db.commit()
+                skipped += 1
+                continue
+            _record_path_status(
+                db,
+                path,
+                "modified",
+                document_id=existing_document.id,
+                details={"previous_hash": existing_document.file_hash, "new_hash": current_hash},
+            )
+            db.commit()
         try:
             document, _ = register_existing_file(
                 db,
@@ -162,6 +153,39 @@ def scan_input_folders(db: Session, *, user: User | None = None, enqueue: bool =
         "paused": paused,
         "backpressure": backpressure,
     }
+
+
+def _record_path_status(
+    db: Session,
+    path: Path,
+    status: str,
+    *,
+    document_id: int | None = None,
+    job_id: int | None = None,
+    details: dict | None = None,
+    error_message: str | None = None,
+) -> None:
+    size_bytes, mtime_epoch = path_metadata(path)
+    watched = upsert_watched_file(
+        db,
+        path=str(path),
+        status=status,
+        size_bytes=size_bytes,
+        mtime_epoch=mtime_epoch,
+        document_id=document_id,
+        job_id=job_id,
+        error_message=error_message,
+    )
+    record_ingestion_event(
+        db,
+        event_type=status,
+        source_path=str(path),
+        document_id=document_id,
+        job_id=job_id,
+        watched_file=watched,
+        details=details,
+        error_message=error_message,
+    )
 
 
 def _iter_files(root: Path):

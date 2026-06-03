@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -10,6 +11,15 @@ class ClassificationResult:
     document_type: str
     confidence: float
     matched_rules: list[str]
+
+
+@dataclass(frozen=True)
+class LearnedRule:
+    """A rule produced by the learning loop, applied BEFORE the built-in RULES."""
+    pattern_value: str
+    target_class: str
+    confidence: float = 0.0
+    source: str = "learned"
 
 
 RULES: dict[str, list[str]] = {
@@ -43,8 +53,15 @@ EXTENSION_HINTS = {
     ".bmp": "imagen",
 }
 
+LEARNED_CONFIDENCE_BOOST = 0.5
 
-def classify_document(filename: str, source_path: str | None, text: str) -> ClassificationResult:
+
+def classify_document(
+    filename: str,
+    source_path: str | None,
+    text: str,
+    learned_rules: Iterable[LearnedRule] | None = None,
+) -> ClassificationResult:
     normalized_filename = _normalize(filename)
     normalized_path = _normalize(source_path or "")
     normalized_text = _normalize(text)
@@ -52,6 +69,15 @@ def classify_document(filename: str, source_path: str | None, text: str) -> Clas
 
     scores: dict[str, float] = {}
     matches: dict[str, list[str]] = {}
+
+    # Learned rules first (higher priority)
+    for rule in learned_rules or []:
+        pattern_norm = _normalize(rule.pattern_value)
+        if not pattern_norm:
+            continue
+        if pattern_norm in normalized_filename or pattern_norm in normalized_text:
+            scores[rule.target_class] = scores.get(rule.target_class, 0) + LEARNED_CONFIDENCE_BOOST
+            matches.setdefault(rule.target_class, []).append(f"learned:{rule.pattern_value}")
 
     if extension in EXTENSION_HINTS:
         doc_type = EXTENSION_HINTS[extension]

@@ -1,0 +1,830 @@
+{
+  "_comment": "Frozen public API routes.",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/access-explain",
+      "name": "access_explain"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/access-groups",
+      "name": "list_access_groups"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/access-groups",
+      "name": "create_access_group"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/access-groups/{id}",
+      "name": "update_access_group"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/access-groups/{id}/members",
+      "name": "upsert_access_group_member"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/access-groups/{id}/members",
+      "name": "upsert_access_group_member"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/access/effective",
+      "name": "effective_access"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/alerts",
+      "name": "alerts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/audit-logs",
+      "name": "audit_logs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/audit-logs/export/csv",
+      "name": "audit_logs_export_csv"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/audit-logs/export/json",
+      "name": "audit_logs_export_json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/budget-scopes",
+      "name": "list_budget_scopes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/budget-scopes",
+      "name": "create_budget_scope"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/budget-scopes/{id}/client-permissions",
+      "name": "list_budget_scope_client_permissions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/budget-scopes/{id}/client-permissions",
+      "name": "upsert_budget_scope_client_permission"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/classification-suggestions",
+      "name": "list_classification_suggestions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/classification-suggestions/counts",
+      "name": "classification_suggestion_counts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/classification-suggestions/{id}/approve",
+      "name": "approve_classification_suggestion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/classification-suggestions/{id}/reject",
+      "name": "reject_classification_suggestion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/demo/seed",
+      "name": "seed_demo_data"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/document-access/{id}",
+      "name": "get_document_access"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/document-access/{id}",
+      "name": "update_document_access"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/documents/bulk-tags",
+      "name": "bulk_document_tags"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/documents/{id}/graph",
+      "name": "document_graph"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/duplicates",
+      "name": "duplicates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/folder-rules",
+      "name": "list_folder_rules"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/folder-rules",
+      "name": "create_folder_rule"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/folder-rules/apply",
+      "name": "apply_folder_rules"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/folder-rules/{id}",
+      "name": "update_folder_rule"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/hotel-chains",
+      "name": "list_hotel_chains"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/hotel-chains",
+      "name": "create_hotel_chain"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/hotel-chains/{id}",
+      "name": "update_hotel_chain"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/hotels",
+      "name": "list_hotels"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/hotels",
+      "name": "create_hotel"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/hotels/{id}",
+      "name": "update_hotel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ingestion-events",
+      "name": "ingestion_events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/integration-clients",
+      "name": "list_integration_clients"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/integration-clients",
+      "name": "create_integration_client"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/integration-clients/{id}",
+      "name": "update_integration_client"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/integration-clients/{id}/rotate-key",
+      "name": "rotate_integration_client_key"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/integration-sandbox/execute",
+      "name": "integration_sandbox_execute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/jobs/{id}/cancel",
+      "name": "cancel_job"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/jobs/{id}/retry",
+      "name": "retry_job"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/learned-patterns",
+      "name": "list_learned_patterns"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/learned-patterns/{id}/disable",
+      "name": "disable_learned_pattern"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/learned-patterns/{id}/enable",
+      "name": "enable_learned_pattern"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/learning/auto-reject-stale",
+      "name": "trigger_auto_reject_stale"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/learning/health",
+      "name": "learning_health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/maintenance-report",
+      "name": "maintenance_report"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/notification-rules",
+      "name": "list_notification_rules"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/notification-rules",
+      "name": "create_notification_rule"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ocr-errors",
+      "name": "ocr_errors"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ocr-review",
+      "name": "ocr_review"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/ocr-review/{id}",
+      "name": "update_ocr_review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/ocr-stats",
+      "name": "ocr_stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/operations-status",
+      "name": "operations_status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/operations/documents",
+      "name": "operations_documents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/operations/overview",
+      "name": "operations_overview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/processing-metrics",
+      "name": "processing_metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/production/checklist",
+      "name": "production_checklist"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/production/readiness",
+      "name": "production_readiness_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/quality/ocr-review",
+      "name": "ocr_review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/quality/pages/{id}/reprocess-ocr",
+      "name": "reprocess_ocr_page"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/quality/pages/{id}/review",
+      "name": "update_ocr_review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/quality/recalculate",
+      "name": "quality_recalculate"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/quality/rules",
+      "name": "quality_rules"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/quality/summary",
+      "name": "quality_summary_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/quarantine-documents",
+      "name": "quarantine_documents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/queues",
+      "name": "queues"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/queues/pause",
+      "name": "pause_queues"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/queues/resume",
+      "name": "resume_queues"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/rules/preview",
+      "name": "preview_rule"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/saved-views",
+      "name": "list_saved_views"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/saved-views",
+      "name": "create_saved_view"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/security/redaction-preview",
+      "name": "redaction_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/security/tags",
+      "name": "list_sensitive_tags"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/security/tags",
+      "name": "create_sensitive_tag"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/sensitive-tags",
+      "name": "list_sensitive_tags"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/sensitive-tags",
+      "name": "create_sensitive_tag"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/sensitive-tags/{id}",
+      "name": "update_sensitive_tag"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "name": "stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/storage/integrity",
+      "name": "storage_integrity_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/system/health",
+      "name": "system_health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/system/metrics",
+      "name": "system_metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "name": "list_users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/users",
+      "name": "create_user"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/users/{id}",
+      "name": "update_user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/watched-files",
+      "name": "watched_files"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/webhooks/dead-letter",
+      "name": "list_dead_letter"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/webhooks/dead-letter/{id}/retry",
+      "name": "retry_dead_letter"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/webhooks/outbox",
+      "name": "list_outbox"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/webhooks/outbox/stats",
+      "name": "outbox_stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/work-inbox",
+      "name": "work_inbox"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/work-inbox/actions",
+      "name": "work_inbox_action"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/work-items",
+      "name": "list_work_items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/work-items",
+      "name": "create_work_item"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/work-items/{id}",
+      "name": "update_work_item"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/work-items/{id}/comments",
+      "name": "add_work_item_comment"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/answers/{id}",
+      "name": "answer"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/ask",
+      "name": "ask"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/cache",
+      "name": "clear_cache"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/cache/stats",
+      "name": "cache_stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/history",
+      "name": "history"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "name": "login"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "name": "logout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "name": "me"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/budgets",
+      "name": "list_budgets"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/budgets/accepted-without-order",
+      "name": "accepted_without_order"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/budgets/{id}",
+      "name": "get_budget"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/budgets/{id}/lines",
+      "name": "get_budget_lines"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents",
+      "name": "list_documents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/pages/{id}/ocr-revisions",
+      "name": "list_ocr_revisions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/documents/pages/{id}/ocr-revisions",
+      "name": "create_ocr_revision"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/documents/reprocess-bulk",
+      "name": "reprocess_bulk"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/documents/upload",
+      "name": "upload_document"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/documents/upload/batch",
+      "name": "upload_batch"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/documents/{id}",
+      "name": "delete_document"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}",
+      "name": "get_document"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/blocks",
+      "name": "get_document_blocks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/download",
+      "name": "download_document"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/entities",
+      "name": "get_document_entities"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/pages",
+      "name": "get_document_pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/pages/{id}/image",
+      "name": "get_document_page_image"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/documents/{id}/reprocess",
+      "name": "reprocess"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/thumbnail",
+      "name": "get_document_thumbnail"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/timeline",
+      "name": "document_timeline"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/db",
+      "name": "health_db"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/disk",
+      "name": "health_disk"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/full",
+      "name": "health_full"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/redis",
+      "name": "health_redis"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ingestion/scan",
+      "name": "scan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/v1/documents/upload",
+      "name": "upload_document"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/v1/documents/{id}/status",
+      "name": "document_status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/v1/jobs/{id}",
+      "name": "job_status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/v1/manifest",
+      "name": "manifest"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/v1/sessions",
+      "name": "create_budget_session"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/v1/tools/execute",
+      "name": "execute_tool"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/v1/webhooks/test",
+      "name": "test_webhook"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/invoices",
+      "name": "list_invoices"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/invoices",
+      "name": "create_invoice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/jobs",
+      "name": "list_jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/jobs/{id}",
+      "name": "get_job"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orders",
+      "name": "list_orders"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orders/{id}",
+      "name": "get_order"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orders/{id}/lines",
+      "name": "get_order_lines"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/plan-rooms/{id}",
+      "name": "update_room"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans",
+      "name": "list_plans"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}",
+      "name": "get_plan"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}/dimensions",
+      "name": "get_dimensions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}/measurements",
+      "name": "list_plan_measurements"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/plans/{id}/measurements",
+      "name": "create_plan_measurement"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}/rooms",
+      "name": "get_rooms"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/plans/{id}/scale",
+      "name": "update_scale"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reconciliation/issues",
+      "name": "list_issues"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reconciliation/issues/generate",
+      "name": "generate_issues"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/reconciliation/issues/{id}",
+      "name": "update_issue"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/exact",
+      "name": "exact_search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/export/csv",
+      "name": "export_search_csv"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/export/json",
+      "name": "export_search_json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/guided",
+      "name": "guided_search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/hybrid",
+      "name": "hybrid_search_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/saved",
+      "name": "list_saved_searches"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/saved",
+      "name": "create_saved_search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/semantic",
+      "name": "semantic_search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/text",
+      "name": "text_search"
+    }
+  ]
+}

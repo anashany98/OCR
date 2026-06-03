@@ -8,6 +8,7 @@ import { ChatPage } from "@/pages/ChatPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { DocumentDetailPage } from "@/pages/DocumentDetailPage"
 import { DocumentsPage } from "@/pages/DocumentsPage"
+import { InvoicesPage } from "@/pages/InvoicesPage"
 import { JobsPage } from "@/pages/JobsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { OrdersPage } from "@/pages/OrdersPage"
@@ -19,7 +20,7 @@ import { WorkInboxPage } from "@/pages/WorkInboxPage"
 
 function RequireAuth() {
   const { user, loading } = useAuth()
-  if (loading) return <div className="p-6 text-sm text-muted-foreground">Cargando sesión...</div>
+  if (loading) return <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">Cargando sesión...</div>
   if (!user) return <Navigate to="/login" replace />
   return <AppShell />
 }
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
       { path: "jobs", element: <JobsPage /> },
       { path: "budgets", element: <BudgetsPage /> },
       { path: "orders", element: <OrdersPage /> },
+      { path: "invoices", element: <InvoicesPage /> },
       { path: "reconciliation", element: <ReconciliationPage /> },
       { path: "plans", element: <PlansPage /> },
       { path: "chat", element: <ChatPage /> },

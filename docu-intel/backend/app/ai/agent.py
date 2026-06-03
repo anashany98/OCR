@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, Budget, Document, Order, OrderLine, Plan, User
 from app.services.tenant_access import (
     AccessScope,
+    access_scope_cache_key,
     filter_document_ids_for_scope,
     filter_documents_for_scope,
     filter_records_by_document_scope,
@@ -83,8 +84,10 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
 async def answer_question(db: Session, *, user: User, question: str, mode: str | None = None) -> AIAnswer:
     # Check cache first
     from app.services.ai_cache import get_cached_answer, cache_answer
-    
-    cached = get_cached_answer(question, user.id, mode)
+
+    access_scope = resolve_user_access_scope(db, user)
+    scope_key = access_scope_cache_key(access_scope)
+    cached = get_cached_answer(question, user.id, mode, scope_key=scope_key)
     if cached:
         # Return cached answer as AIAnswer object
         question_row = AIQuestion(user_id=user.id, question=question)
@@ -120,7 +123,6 @@ async def answer_question(db: Session, *, user: User, question: str, mode: str |
     db.add(question_row)
     db.flush()
 
-    access_scope = resolve_user_access_scope(db, user)
     tools = select_tools_for_question(question) if mode != "hybrid" else [ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8}})]
     context_items, warnings = collect_context(db, tools, question, access_scope=access_scope)
     context_items = redact_context_items_for_scope(context_items, access_scope)
@@ -176,6 +178,7 @@ async def answer_question(db: Session, *, user: User, question: str, mode: str |
             "sources": sources_data,
         },
         mode=mode,
+        scope_key=scope_key,
     )
     
     return answer_row
@@ -222,6 +225,9 @@ def collect_context(
         elif tool.name == "hybrid_search":
             query = tool.arguments.get("query") or question
             filters = tool.arguments.get("filters") or {"limit": 8}
+            if access_scope:
+                filters = dict(filters)
+                filters["_cache_scope"] = access_scope_cache_key(access_scope)
             results = internal.hybrid_search(db, query, filters)
             if access_scope:
                 results = filter_search_results_for_scope(db, results, access_scope)

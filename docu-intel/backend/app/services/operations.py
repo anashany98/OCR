@@ -160,7 +160,27 @@ def bulk_reprocess_documents(
 
     documents = list(db.scalars(stmt).all())
     job_ids: list[int] = []
+    skipped = 0
+    active_jobs = int(
+        db.scalar(
+            select(func.count())
+            .select_from(ExtractionJob)
+            .where(ExtractionJob.status.in_(["pending", "processing"]))
+        )
+        or 0
+    )
     for document in documents:
+        if active_jobs >= settings.ingestion_max_pending_jobs:
+            skipped += len(documents) - len(job_ids) - skipped
+            break
+        if db.scalar(
+            select(func.count())
+            .select_from(ExtractionJob)
+            .where(ExtractionJob.document_id == document.id)
+            .where(ExtractionJob.status.in_(["pending", "processing"]))
+        ):
+            skipped += 1
+            continue
         job = reprocess_document(
             db,
             document=document,
@@ -169,6 +189,7 @@ def bulk_reprocess_documents(
             job_type=f"reprocess:{normalized.mode}",
         )
         job_ids.append(job.id)
+        active_jobs += 1
 
     write_audit(
         db,
@@ -192,7 +213,7 @@ def bulk_reprocess_documents(
     return BulkReprocessResult(
         matched=len(documents),
         enqueued=len(job_ids),
-        skipped=0,
+        skipped=skipped,
         job_ids=job_ids,
         mode=normalized.mode,
     )

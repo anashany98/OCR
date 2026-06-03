@@ -195,6 +195,193 @@ def test_pgvector_store_requires_budget_scope_filter():
         PgvectorStore().search(db=None, query_embedding=[0.1] * 1024, limit=10, filters={})  # type: ignore[arg-type]
 
 
+def test_text_search_applies_budget_scope_filter_in_sql():
+    from app.models import DocumentPage
+    from app.services.search_service import search_text
+
+    sessions = _test_client()[1]
+    with sessions() as db:
+        scope_a = BudgetScope(budget_code="A-100", display_name="Scope A")
+        scope_b = BudgetScope(budget_code="B-200", display_name="Scope B")
+        db.add_all([scope_a, scope_b])
+        db.flush()
+        document_a = Document(
+            original_filename="scope-a.pdf",
+            stored_filename="aa/a.pdf",
+            source_path="/data/input/presupuestos/A-100/scope-a.pdf",
+            file_hash="a" * 64,
+            mime_type="application/pdf",
+            extension=".pdf",
+            file_size=10,
+            document_type="presupuesto",
+            status="processed",
+            budget_scope_id=scope_a.id,
+        )
+        document_b = Document(
+            original_filename="scope-b.pdf",
+            stored_filename="bb/b.pdf",
+            source_path="/data/input/presupuestos/B-200/scope-b.pdf",
+            file_hash="b" * 64,
+            mime_type="application/pdf",
+            extension=".pdf",
+            file_size=10,
+            document_type="presupuesto",
+            status="processed",
+            budget_scope_id=scope_b.id,
+        )
+        db.add_all([document_a, document_b])
+        db.flush()
+        db.add_all(
+            [
+                DocumentPage(document_id=document_a.id, page_number=1, text="Referencia ABC123 scope A", ocr_confidence=0.9),
+                DocumentPage(document_id=document_b.id, page_number=1, text="Referencia ABC123 scope B", ocr_confidence=0.9),
+            ]
+        )
+        db.commit()
+
+        results = search_text(db, "ABC123", limit=10, filters={"budget_scope_id": scope_a.id})
+
+    assert [result.original_filename for result in results] == ["scope-a.pdf"]
+
+
+def test_integration_hybrid_search_prefilters_signed_budget_scope_before_limit():
+    from app.models import ApiClientBudgetScope, DocumentPage
+    from app.services.integration_security import hash_integration_api_key
+
+    client, sessions = _test_client()
+    with sessions() as db:
+        api_client = IntegrationClient(
+            name="external-tool",
+            api_key_hash=hash_integration_api_key("secret-key"),
+            scopes_json=["read"],
+            is_active=True,
+        )
+        scope_a = BudgetScope(budget_code="A-100", display_name="Scope A")
+        scope_b = BudgetScope(budget_code="B-200", display_name="Scope B")
+        db.add_all([api_client, scope_a, scope_b])
+        db.flush()
+        db.add(ApiClientBudgetScope(api_client_id=api_client.id, budget_scope_id=scope_a.id, can_query=True))
+        for index in range(6):
+            doc = Document(
+                original_filename=f"scope-b-{index}.pdf",
+                stored_filename=f"bb/b-{index}.pdf",
+                source_path=f"/data/input/presupuestos/B-200/scope-b-{index}.pdf",
+                file_hash=f"{index}" * 64,
+                mime_type="application/pdf",
+                extension=".pdf",
+                file_size=10,
+                document_type="presupuesto",
+                status="processed",
+                budget_scope_id=scope_b.id,
+            )
+            db.add(doc)
+            db.flush()
+            db.add(DocumentPage(document_id=doc.id, page_number=1, text="Referencia ABC123 fuera de scope", ocr_confidence=0.9))
+        doc_a = Document(
+            original_filename="scope-a-target.pdf",
+            stored_filename="aa/a-target.pdf",
+            source_path="/data/input/presupuestos/A-100/scope-a-target.pdf",
+            file_hash="a" * 64,
+            mime_type="application/pdf",
+            extension=".pdf",
+            file_size=10,
+            document_type="presupuesto",
+            status="processed",
+            budget_scope_id=scope_a.id,
+        )
+        db.add(doc_a)
+        db.flush()
+        db.add(DocumentPage(document_id=doc_a.id, page_number=1, text="Referencia ABC123 dentro de scope", ocr_confidence=0.95))
+        db.commit()
+
+    session_response = client.post(
+        "/integrations/v1/sessions",
+        headers=_integration_headers(),
+        json={"budget_code": "A-100"},
+    )
+    assert session_response.status_code == 200
+    token = session_response.json()["session_token"]
+
+    response = client.post(
+        "/integrations/v1/tools/execute",
+        headers={**_integration_headers(), "Authorization": f"Bearer {token}"},
+        json={"tool": "hybrid_search", "arguments": {"query": "ABC123", "limit": 1}},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["filename"] for item in payload["data"]] == ["scope-a-target.pdf"]
+
+
+def test_ai_cache_key_includes_access_scope_signature():
+    from app.services.ai_cache import _cache_key
+
+    base = _cache_key("estado presupuesto", 7, mode="hybrid", scope_key="budget:A")
+    other = _cache_key("estado presupuesto", 7, mode="hybrid", scope_key="budget:B")
+
+    assert base != other
+
+
+def test_backup_verification_script_accepts_manifest(tmp_path):
+    import json
+    import subprocess
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "verify-backup.ps1"
+    backup_dir = tmp_path / "backup"
+    files_dir = backup_dir / "files"
+    files_dir.mkdir(parents=True)
+    (backup_dir / "docuintel.dump").write_bytes(b"x" * 2048)
+    (files_dir / "documento.txt").write_text("ok", encoding="utf-8")
+    (backup_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "postgres_dump": "docuintel.dump",
+                "postgres_dump_bytes": 2048,
+                "files_count": 1,
+                "files_bytes": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        ["pwsh", "-NoProfile", "-File", str(script), "-BackupDir", str(backup_dir), "-MinDumpBytes", "1024"],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Backup verificado" in completed.stdout
+
+
+def test_backup_and_restore_scripts_copy_data_files_and_verify_manifest():
+    scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
+    backup = (scripts_dir / "backup.ps1").read_text(encoding="utf-8")
+    restore = (scripts_dir / "restore.ps1").read_text(encoding="utf-8")
+    verify = (scripts_dir / "verify-backup.ps1").read_text(encoding="utf-8")
+
+    assert "robocopy data\\files $filesBackup /MIR" in backup
+    assert "postgres_dump" in backup
+    assert "files_count" in backup
+    assert "files_bytes" in backup
+    assert "robocopy $filesBackup data\\files /MIR" in restore
+    assert "manifest.json" in verify
+    assert "postgres_dump_bytes" in verify
+    assert "files_count" in verify
+    assert "files_bytes" in verify
+
+
+def test_ci_workflow_runs_backend_frontend_and_migrations():
+    workflow = Path(__file__).resolve().parents[2].parent / ".github" / "workflows" / "ci.yml"
+    content = workflow.read_text(encoding="utf-8")
+
+    assert "pytest" in content
+    assert "npm test" in content
+    assert "npm run build" in content
+    assert "alembic upgrade head" in content
+
+
 def test_embedding_fallback_metadata_is_persisted(monkeypatch):
     from app.services import document_service
 

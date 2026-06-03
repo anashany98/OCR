@@ -739,3 +739,52 @@ export type SensitiveTag = {
   created_at: string
   updated_at: string
 }
+
+// ---------------------------------------------------------------------------
+// Learning loop types
+// ---------------------------------------------------------------------------
+
+export type ClassificationSuggestionType =
+  | "classification_correction"
+  | "entity_link"
+  | "classification_rule"
+  | "quality_feedback"
+
+export type ClassificationSuggestionStatus = "pending" | "approved" | "rejected" | "applied"
+
+export type ClassificationSuggestion = {
+  id: number
+  document_id: number
+  integration_client_id: number | null
+  suggestion_type: ClassificationSuggestionType
+  suggested_document_type: string | null
+  current_document_type: string | null
+  target_document_id: number | null
+  pattern_value: string | null
+  target_action: string | null
+  confidence: number
+  reason: string
+  evidence: Record<string, unknown> | null
+  status: ClassificationSuggestionStatus
+  reviewed_by_user_id: number | null
+  reviewed_at: string | null
+  applied_at: string | null
+  created_at: string
+}
+
+export type LearnedPatternStatus = "active" | "disabled" | "pending"
+
+export type LearnedPattern = {
+  id: number
+  pattern_type: string
+  pattern_value: string
+  target_class: string | null
+  target_action: string
+  confidence: number
+  source_suggestion_id: number | null
+  status: LearnedPatternStatus
+  applied_count: number
+  last_applied_at: string | null
+  created_at: string
+  updated_at: string
+}

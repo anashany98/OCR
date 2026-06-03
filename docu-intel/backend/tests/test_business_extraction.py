@@ -54,3 +54,51 @@ def test_extracts_basic_order_fields_and_related_budget_number():
     assert result.related_budget_number == "2026/143"
     assert result.lines[0].reference == "REF-001"
 
+
+
+
+def test_order_without_required_date_needs_review_instead_of_persisting_invalid_row(tmp_path):
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from app.database.base import Base
+    from app.models import Document, Order
+    from app.services.business_extraction import persist_business_extraction
+
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
+
+    with SessionLocal() as db:
+        document = Document(
+            original_filename="pedido.txt",
+            stored_filename="aa/pedido.txt",
+            source_path="/data/input/pedidos/pedido.txt",
+            file_hash="a" * 64,
+            mime_type="text/plain",
+            extension=".txt",
+            file_size=10,
+            document_type="pedido",
+            status="processing",
+            confidence=0.9,
+        )
+        db.add(document)
+        db.flush()
+
+        result = persist_business_extraction(
+            db,
+            document,
+            "Pedido P-123 para Hotel Demo. Referencia ABC123 sin fecha visible.",
+        )
+        db.commit()
+
+        orders = list(db.scalars(select(Order)).all())
+
+    assert result.needs_review is True
+    assert result.order is None
+    assert orders == []

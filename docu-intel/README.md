@@ -42,10 +42,11 @@ En PowerShell puedes usar:
 
 En el arranque del backend se crea un admin si no existe:
 
-- Email: valor de `ADMIN_EMAIL`
-- Contraseña: valor de `ADMIN_PASSWORD`
+- Email: valor de `ADMIN_EMAIL` en `.env` (`admin@local` por defecto).
+- Contraseña: valor de `ADMIN_PASSWORD` en `.env` (`admin123` solo si no hay `.env` local).
 
 Cambia `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` y `JWT_SECRET` antes de usarlo en una red de empresa.
+Si el usuario admin ya existe en la base de datos, cambiar `ADMIN_PASSWORD` no actualiza su contraseña automáticamente.
 
 ## Configurar IA Local
 
@@ -195,7 +196,7 @@ Parámetros relevantes:
 
 ```env
 INGESTION_STABLE_SECONDS=30
-FILE_STORAGE_STRATEGY=auto
+FILE_STORAGE_STRATEGY=copy
 WATCHER_ENABLED=true
 WATCHER_BACKEND=polling
 WATCHER_RECURSIVE=true
@@ -210,7 +211,7 @@ WATCHER_MAX_FILES_PER_TICK=10
 - `WATCHER_BACKEND`: usa `polling` para Docker Desktop/Windows o carpetas de red; usa `native` en servidores Linux si los eventos inotify son fiables.
 - `WATCHER_RESCAN_INTERVAL_SECONDS`: scan periódico para recuperar eventos perdidos.
 - `WATCHER_MAX_FILES_PER_TICK`: limita cuántos archivos registra por vuelta para no saturar la BD/cola.
-- `FILE_STORAGE_STRATEGY=auto`: intenta hardlink dentro de `/data/files` para no duplicar cientos de GB si el filesystem lo permite; si no puede, hace copia normal. Usa `copy` si los documentos de entrada pueden modificarse después de entrar.
+- `FILE_STORAGE_STRATEGY=copy` es la opcion recomendada en produccion para preservar integridad. `auto` intenta hardlink dentro de `/data/files` para no duplicar cientos de GB si el filesystem lo permite; si no puede, hace copia normal. Usa `copy` si los documentos de entrada pueden modificarse despues de entrar.
 
 ## Lanzar Escaneo Manual
 
@@ -287,6 +288,7 @@ curl -X POST http://localhost:8000/documents/<ID>/reprocess \
 - Centro de operaciones en `/admin/operations/overview`: GB procesados, OCR bajo, ETA de cola, calidad documental, fuentes recientes, disco y colas.
 - Auditoría consultable en `/admin/audit-logs`, con filtros por acción, entidad y usuario.
 - Revisión OCR en `/admin/quality/ocr-review`: preview, texto, bloques OCR, aprobación, denegación con motivo y reprocesado OCR por página.
+- El reprocesado OCR por página crea jobs `reprocess:ocr_page:<pagina>` y solo rehace la página seleccionada cuando existe preview de página, conservando el resto del documento.
 - Reprocesado avanzado en `/documents/reprocess-bulk`, filtrando por estado, tipo documental, carpeta origen o IDs concretos.
 - Modos de reprocesado reales: `full` rehace parser/OCR y datos dependientes; `ocr`/`text` rehacen parser/OCR; `classification`/`entities` recalculan clasificación y extracción; `chunks`/`embeddings` reconstruyen `document_chunks`.
 - API de integración `/integrations/v1` para IA intermedia con API key, sesiones firmadas por presupuesto, políticas por técnico, redacción de precios y tools controladas.
@@ -312,19 +314,93 @@ curl -X POST http://localhost:8000/documents/<ID>/reprocess \
 - Búsqueda exacta profesional en `/search/exact` por presupuesto, pedido, referencia, cliente o proveedor.
 - Enrutado Celery por carga: OCR/PDF/planos a `ocr_heavy`, Excel/texto a `text_fast`, embeddings a `embeddings` y escaneos a `maintenance`.
 
+## Bucle de Mejora (Learning Loop)
+
+Cierra el ciclo: el agente externo puede **proponer** correcciones/mejoras que un admin **aprueba**; el sistema las aplica automáticamente (reclasifica, invalida cache, emite webhooks) y aprende para la próxima vez.
+
+### Tools disponibles para el agente externo
+
+Además de las 16 tools de consulta ya existentes, hay 5 nuevas tools de propuesta (todas en `POST /integrations/v1/tools/execute`):
+
+| Tool | Función | Permiso |
+|---|---|---|
+| `propose_classification_correction` | Sugerir cambio de `document_type` | Sugerencia |
+| `propose_entity_link` | Sugerir vínculo entre dos documentos | Sugerencia |
+| `propose_classification_rule` | Proponer nueva regla keyword→clase | Sugerencia |
+| `submit_quality_feedback` | Feedback estructurado de un campo extraído | Sugerencia |
+| `get_improvement_candidates` | Listar docs con baja confianza o que necesitan revisión | Lectura |
+
+Todas las proposals quedan en `status='pending'` hasta que un admin las revise. Ningún agente externo puede aprobar.
+
+### Flujo recomendado para el agente externo
+
+```text
+1. POST /integrations/v1/sessions { budget_code: "245745" }   ← scope firmado
+2. POST /integrations/v1/tools/execute { tool: "get_improvement_candidates", arguments: { min_confidence: 0.7, limit: 20 } }
+3. Analiza los candidatos...
+4. POST /integrations/v1/tools/execute { tool: "propose_classification_correction", arguments: { document_id: 145, suggested_document_type: "albaran", reason: "...", confidence: 0.85 } }
+5. (opcional) Espera el webhook entity.new_pattern_detected para confirmar que se aplicó.
+```
+
+### Endpoints admin para revisar
+
+| Endpoint | Función |
+|---|---|
+| `GET /admin/classification-suggestions?status=pending` | Listar sugerencias |
+| `GET /admin/classification-suggestions/counts` | Conteo por estado |
+| `POST /admin/classification-suggestions/{id}/approve` | Aprobar (rol admin/gestor) |
+| `POST /admin/classification-suggestions/{id}/reject` | Rechazar |
+| `GET /admin/learned-patterns?status=active` | Patrones aprendidos |
+| `POST /admin/learned-patterns/{id}/disable` | Desactivar patrón |
+| `POST /admin/learned-patterns/{id}/enable` | Reactivar patrón |
+
+UI: tab **Aprendizaje** en `/admin` (con icono Brain).
+
+### Procesamiento automático
+
+Un job Celery (`app.workers.learning_tasks.process_approved_suggestions_task`) corre cada 5 minutos en la cola `maintenance`:
+
+1. Lee `classification_suggestions WHERE status='approved'` (lote de 50).
+2. Para cada `classification_rule` aprobada → crea/actualiza `LearnedPattern` activo.
+3. Para cada `classification_correction` aprobada → aplica el cambio al documento.
+4. Recalcula clasificación de documentos potencialmente afectados usando las learned rules.
+5. Invalida `ai_cache` selectivamente.
+6. Emite webhooks: `entity.new_pattern_detected` para cada nuevo patrón, `classification.low_confidence` para documentos reclasificados con confianza < 0.6.
+
+### Webhooks emitidos
+
+Ya configurados por defecto en `integration_webhook_events`:
+
+- `document.needs_review` — documento nuevo en estado de revisión
+- `classification.low_confidence` — clasificación con confianza < 0.6
+- `entity.new_pattern_detected` — nuevo patrón aprendido activado
+
+### Variables de entorno relevantes
+
+```env
+INTEGRATION_WEBHOOK_EVENTS=document.processed,document.failed,document.needs_review,classification.low_confidence,entity.new_pattern_detected,job.finished,docuintel.webhook_test
+```
+
 ## Backups y Restore
 
 Además de los comandos documentados en `docs/production-runbook.md`, hay scripts PowerShell:
 
 ```powershell
 .\scripts\backup.ps1 -EnvFile .env.production
+.\scripts\backup.ps1 -EnvFile .env.production -IncludeRedis          # incluye Redis RDB (cola, cache, dedup)
+.\scripts\verify-backup.ps1 -BackupDir backups\YYYYMMDD_HHMMSS
 .\scripts\restore.ps1 -BackupDir backups\YYYYMMDD_HHMMSS -EnvFile .env.production
+.\scripts\restore.ps1 -BackupDir backups\YYYYMMDD_HHMMSS -EnvFile .env.production -IncludeRedis
 .\scripts\import_initial.ps1 -SourceDir D:\historico -DestinationDir data\input
 .\scripts\sync_incremental.ps1 -SourceDir D:\historico -DestinationDir data\input
 .\scripts\check_import_integrity.ps1 -SourceDir D:\historico -DestinationDir data\input
 ```
 
-El backup incluye PostgreSQL y `/data/files`. Un entorno no debe considerarse listo hasta probar un restore completo.
+El backup incluye PostgreSQL y `/data/files` por defecto, genera `manifest.json` y puede validarse con `verify-backup.ps1` antes de intentar restaurarlo. Con `-IncludeRedis` se añade `redis-dump.rdb` (snapshot RDB de Redis: cola Celery, cache, dedup en memoria) y se verifica/restaura de forma coherente. Sin `-IncludeRedis`, el restore deja Redis reconstruido desde el estado vacío — el sistema seguirá funcionando pero las colas tardarán en rehidratarse. Un entorno no debe considerarse listo hasta probar un restore completo en una instancia separada.
+
+## CI
+
+El repositorio incluye `.github/workflows/ci.yml` con verificación de migraciones Alembic, tests backend, tests frontend y build Vite. Mantén ese workflow en verde antes de desplegar cambios en producción.
 
 ## Limitaciones Conocidas
 

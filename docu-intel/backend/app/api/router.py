@@ -1,12 +1,15 @@
-﻿from fastapi import APIRouter
+from fastapi import APIRouter
 
 from app.api.routes import (
     admin,
+    admin_ocr_stats,
+    admin_webhooks,
     ai,
     auth,
     budgets,
     document_workflow,
     documents,
+    health,
     ingestion,
     invoices,
     integrations,
@@ -22,6 +25,7 @@ from app.api.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(documents.router, prefix="/documents", tags=["documents"])
 api_router.include_router(document_workflow.router, prefix="/documents", tags=["documents"])
@@ -37,7 +41,9 @@ api_router.include_router(plans.router, prefix="/plans", tags=["plans"])
 api_router.include_router(plans_professional.router, prefix="/plans", tags=["plans"])
 api_router.include_router(plans.rooms_router, prefix="/plan-rooms", tags=["plans"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
-api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(professional_admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(admin_webhooks.router, tags=["admin"])
+api_router.include_router(admin_ocr_stats.router, tags=["admin"])
 api_router.include_router(reconciliation.router, prefix="/reconciliation", tags=["reconciliation"])
 api_router.include_router(integrations.router, prefix="/integrations/v1", tags=["integrations"])

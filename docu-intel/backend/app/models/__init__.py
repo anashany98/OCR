@@ -19,6 +19,7 @@ from app.models.document import (
     ExtractionJob,
 )
 from app.models.integration import AccessPolicy, IntegrationClient, TechnicianAccessProfile
+from app.models.learning import ClassificationSuggestion, LearnedPattern
 from app.models.operations import IngestionEvent, WatchedFile
 from app.models.professional import (
     DocumentTimelineEvent,
@@ -42,6 +43,7 @@ from app.models.tenant import (
     SensitiveTag,
 )
 from app.models.user import User
+from app.models.webhook_outbox import WebhookOutbox
 
 __all__ = [
     "AccessGroup",
@@ -55,6 +57,7 @@ __all__ = [
     "Budget",
     "BudgetLine",
     "BudgetScope",
+    "ClassificationSuggestion",
     "Document",
     "DocumentAccessMetadata",
     "DocumentBlock",
@@ -68,6 +71,7 @@ __all__ = [
     "HotelChain",
     "IntegrationClient",
     "IngestionEvent",
+    "LearnedPattern",
     "Invoice",
     "NotificationRule",
     "OcrRevision",
@@ -84,6 +88,7 @@ __all__ = [
     "TechnicianAccessProfile",
     "User",
     "WatchedFile",
+    "WebhookOutbox",
     "WorkItem",
     "WorkItemComment",
 ]
