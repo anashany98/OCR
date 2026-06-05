@@ -26,6 +26,9 @@ class AIAnswer(Base):
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
     model_name: Mapped[str | None] = mapped_column(String(255))
+    # JSON snapshot of the document the agent resolved (entities + relations).
+    # Only filled when the user mentions a specific file in the question.
+    resolved_document_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     question = relationship("AIQuestion", back_populates="answers")

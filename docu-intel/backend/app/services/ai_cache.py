@@ -1,20 +1,27 @@
 """AI Query Cache Service
 
 Provides caching for AI responses to improve performance and reduce
-load on the local LLM server for repeated questions.
+load on the local LLM server for repeated questions. The cache supports
+both exact-key lookups and semantic (embedding-similarity) lookups so
+reformulations of the same question also hit the cache.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import math
 from typing import Any
 
 from app.core.config import settings
 from app.services.cache import cache_service
 
 
+logger = logging.getLogger("app.services.ai_cache")
 AI_CACHE_TTL = 3600  # 1 hour
 AI_CACHE_PREFIX = "ai:answer:"
+AI_SEMANTIC_PREFIX = "ai:sem:"
+SEMANTIC_SIM_THRESHOLD = 0.92  # cosine similarity above this = cache hit
 
 
 def _cache_key(question: str, user_id: int, mode: str | None = None, scope_key: str | None = None) -> str:
@@ -29,6 +36,32 @@ def _cache_key(question: str, user_id: int, mode: str | None = None, scope_key: 
     return f"{AI_CACHE_PREFIX}{user_id}:{hash_digest}"
 
 
+def _semantic_key(user_id: int) -> str:
+    return f"{AI_SEMANTIC_PREFIX}{user_id}"
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def _embed_question(question: str) -> list[float] | None:
+    """Return the embedding of `question` using the configured embedding
+    model, or None if the service is unavailable."""
+    try:
+        from app.services.embeddings import embed_text
+        return embed_text(question)
+    except Exception as exc:
+        logger.debug("Embedding service unavailable, skipping semantic cache: %s", exc)
+        return None
+
+
 def get_cached_answer(
     question: str,
     user_id: int,
@@ -36,17 +69,45 @@ def get_cached_answer(
     scope_key: str | None = None,
 ) -> dict[str, Any] | None:
     """Retrieve a cached AI answer if available.
-    
-    Args:
-        question: The user's question
-        user_id: The user's ID for cache scoping
-        mode: Optional mode parameter (hybrid, etc.)
-    
-    Returns:
-        Cached answer dict or None if not found
+
+    Lookup order:
+      1. Exact key (fastest).
+      2. Semantic similarity >= `SEMANTIC_SIM_THRESHOLD` (catches
+         reformulations like "cuanto llevamos en melia?" vs "total
+         facturado a melia").
     """
     key = _cache_key(question, user_id, mode, scope_key)
-    return cache_service.get(key)
+    exact = cache_service.get(key)
+    if exact:
+        return exact
+
+    # Semantic lookup
+    query_vec = _embed_question(question)
+    if not query_vec:
+        return None
+    sem_key = _semantic_key(user_id)
+    sem_index = cache_service.get(sem_key)
+    if not sem_index:
+        return None
+    try:
+        best_match: tuple[float, dict | None] = (0.0, None)
+        for entry in sem_index:  # type: ignore[union-attr]
+            vec = entry.get("embedding")
+            ans_key = entry.get("key")
+            if not vec or not ans_key:
+                continue
+            sim = _cosine(query_vec, vec)
+            if sim > best_match[0]:
+                best_match = (sim, ans_key)
+        if best_match[0] >= SEMANTIC_SIM_THRESHOLD and best_match[1]:
+            cached = cache_service.get(best_match[1])
+            if cached:
+                cached = dict(cached)
+                cached["_semantic_match_score"] = round(best_match[0], 3)
+                return cached
+    except Exception as exc:
+        logger.warning("Semantic cache lookup failed: %s", exc)
+    return None
 
 
 def cache_answer(
@@ -58,56 +119,64 @@ def cache_answer(
     ttl: int = AI_CACHE_TTL,
 ) -> bool:
     """Cache an AI answer for future queries.
-    
-    Args:
-        question: The user's question
-        user_id: The user's ID for cache scoping
-        answer: The answer dict to cache
-        mode: Optional mode parameter
-        ttl: Time-to-live in seconds (default 1 hour)
-    
-    Returns:
-        True if cached successfully, False otherwise
+
+    Stores both the exact-key entry and a sidecar semantic index entry
+    containing the question's embedding, so subsequent reformulations
+    can be served from cache.
     """
     key = _cache_key(question, user_id, mode, scope_key)
-    return cache_service.set(key, answer, ttl)
+    ok = cache_service.set(key, answer, ttl)
+    # Sidecar: append a {embedding, key} to the per-user semantic index.
+    try:
+        vec = _embed_question(question)
+        if vec:
+            sem_key = _semantic_key(user_id)
+            index = cache_service.get(sem_key) or []
+            index.append({"embedding": vec, "key": key, "ts": hashlib.md5(question.encode()).hexdigest()[:8]})
+            # Keep the index bounded; trim oldest entries past 200.
+            if len(index) > 200:
+                index = index[-200:]
+            cache_service.set(sem_key, index, ttl)
+    except Exception as exc:
+        logger.debug("Failed to extend semantic cache index: %s", exc)
+    return ok
 
 
 def invalidate_user_cache(user_id: int) -> int:
-    """Invalidate all cached AI answers for a specific user.
-    
-    Args:
-        user_id: The user's ID
-    
-    Returns:
-        Number of cache entries deleted
-    """
+    """Invalidate all cached AI answers for a specific user."""
     pattern = f"{AI_CACHE_PREFIX}{user_id}:*"
-    return cache_service.delete_pattern(pattern)
+    deleted = cache_service.delete_pattern(pattern)
+    cache_service.delete(f"{AI_SEMANTIC_PREFIX}{user_id}")
+    return deleted
 
 
 def invalidate_all_ai_cache() -> int:
-    """Invalidate all cached AI answers.
-    
-    Returns:
-        Number of cache entries deleted
-    """
-    return cache_service.delete_pattern(f"{AI_CACHE_PREFIX}*")  # scan all user prefixes
+    """Invalidate all cached AI answers."""
+    deleted = cache_service.delete_pattern(f"{AI_CACHE_PREFIX}*")
+    cache_service.delete_pattern(f"{AI_SEMANTIC_PREFIX}*")
+    return deleted
 
 
 def get_cache_stats() -> dict[str, Any]:
-    """Get statistics about the AI cache.
-    
-    Returns:
-        Dict with cache statistics
-    """
+    """Get statistics about the AI cache."""
     try:
         client = cache_service.client
-        keys = list(client.scan_iter(match=f"{AI_CACHE_PREFIX}*", count=100))
+        answer_keys = list(client.scan_iter(match=f"{AI_CACHE_PREFIX}*", count=200))
+        sem_keys = list(client.scan_iter(match=f"{AI_SEMANTIC_PREFIX}*", count=200))
         return {
-            "ai_cache_entries": len(keys),
+            "ai_cache_entries": len(answer_keys),
+            "ai_semantic_indexes": len(sem_keys),
             "ttl_seconds": AI_CACHE_TTL,
+            "semantic_threshold": SEMANTIC_SIM_THRESHOLD,
             "enabled": True,
+        }
+    except Exception:
+        return {
+            "ai_cache_entries": 0,
+            "ai_semantic_indexes": 0,
+            "ttl_seconds": AI_CACHE_TTL,
+            "enabled": False,
+            "error": "Unable to connect to cache",
         }
     except Exception:
         return {

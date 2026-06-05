@@ -1,6 +1,7 @@
 ﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/api/client"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { StatusBadge } from "@/components/layout/StatusBadge"
 import { EmptyState } from "@/components/layout/EmptyState"
@@ -8,6 +9,7 @@ import { LoadingState } from "@/components/layout/LoadingState"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { notify } from "@/lib/toast"
 import { formatDate } from "@/lib/utils"
 
 export function JobsPage() {
@@ -15,15 +17,24 @@ export function JobsPage() {
   const { data, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: api.jobs, refetchInterval: 5000 })
   const retryJob = useMutation({
     mutationFn: api.retryJob,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+    onSuccess: (job) => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] })
+      notify.success(`Job #${job.id} reencolado`)
+    },
+    onError: (err) => notify.error(err, "No se pudo reintentar el job"),
   })
   const cancelJob = useMutation({
     mutationFn: api.cancelJob,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+    onSuccess: (job) => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] })
+      notify.warning(`Job #${job.id} cancelado`)
+    },
+    onError: (err) => notify.error(err, "No se pudo cancelar el job"),
   })
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Procesamiento" }]} />
       <PageHeader title="Jobs" description="Cola de extracción y reprocesado en Celery." />
       <Card>
         <CardHeader>
@@ -65,10 +76,10 @@ export function JobsPage() {
                     <TableCell className="max-w-md truncate">{job.error_message ?? "-"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => retryJob.mutate(job.id)} disabled={retryJob.isPending}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => retryJob.mutate(job.id)} disabled={retryJob.isPending} aria-label={`Reintentar job ${job.id}`}>
                           Reintentar
                         </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => cancelJob.mutate(job.id)} disabled={cancelJob.isPending || !["pending", "failed"].includes(job.status)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => cancelJob.mutate(job.id)} disabled={cancelJob.isPending || !["pending", "failed"].includes(job.status)} aria-label={`Cancelar job ${job.id}`}>
                           Cancelar
                         </Button>
                       </div>

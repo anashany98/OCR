@@ -2,11 +2,12 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { api } from "@/api/client"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { formatDate } from "@/lib/utils"
+import { formatDate, formatMoney } from "@/lib/utils"
 
 export function OrdersPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -20,6 +21,7 @@ export function OrdersPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Pedidos" }]} />
       <PageHeader title="Pedidos" description="Extracción básica de proveedor, cliente, relación con presupuesto y líneas." />
       <Card>
         <CardHeader>
@@ -75,7 +77,7 @@ export function OrdersPage() {
                 <TableHead>Confianza</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+              <TableBody>
               {(lines.data ?? []).map((line) => (
                 <TableRow key={line.id}>
                   <TableCell>{line.reference ?? "-"}</TableCell>
@@ -93,8 +95,4 @@ export function OrdersPage() {
       </Card>
     </>
   )
-}
-
-function formatMoney(value: number | null) {
-  return value === null ? "-" : `${value.toFixed(2)} €`
 }

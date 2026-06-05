@@ -35,6 +35,12 @@
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.0}
       - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
+      # Vision model on-demand management: the lms CLI lives on the host
+      # (Windows) and is bind-mounted into the container so the backend
+      # can call it to load / unload the vision model before / after
+      # image processing jobs.
+      - LMS_CLI_PATH=/usr/local/bin/lms
+      - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,11 +49,17 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      # Mount the host's lms CLI so the backend can manage the vision
+      # model lifecycle (load / unload) on demand.
+      - ${USERPROFILE}/.lmstudio/bin:/usr/local/bin/lms-host:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); exit(0 if r.status==200 else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 40s
 
   worker-fast:
     build:
@@ -55,7 +67,7 @@
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2}
     restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +76,8 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   worker-heavy:
     build:
@@ -71,7 +85,7 @@
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1}
     restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,6 +94,72 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # GPU-accelerated OCR workers. One per physical GPU. PaddleOCR's
+  # PaddleOCREngine auto-detects CUDA via CUDA_VISIBLE_DEVICES, so each
+  # worker only sees its assigned card. The CPU worker above stays as
+  # fallback if the GPU workers fail to start.
+  worker-heavy-gpu-0:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.gpu
+    image: docu-intel-backend-gpu:latest
+    env_file: .env
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-0@%h
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  worker-heavy-gpu-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.gpu
+    image: docu-intel-backend-gpu:latest
+    env_file: .env
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-1@%h
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - CUDA_VISIBLE_DEVICES=1
+      - NVIDIA_VISIBLE_DEVICES=1
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   worker-maintenance:
     build:
@@ -87,7 +167,7 @@
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1}
     restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,6 +176,8 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   watcher:
     build:
@@ -103,7 +185,7 @@
     env_file: .env
     command: python -m app.ingestion.watcher
     restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,6 +194,8 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import os; assert os.path.isdir('/app/data/input')\""]
       interval: 30s
@@ -124,13 +208,15 @@
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
     restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
       redis:
         condition: service_started
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
@@ -154,9 +240,9 @@
     image: dpage/pgadmin4:8
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@local
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
     depends_on:
       - postgres
     profiles:

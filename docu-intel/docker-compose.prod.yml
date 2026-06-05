@@ -49,20 +49,21 @@ services:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); exit(0 if r.status==200 else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 40s
     mem_limit: ${BACKEND_MEM_LIMIT:-2g}
     cpus: ${BACKEND_CPUS:-2}
     networks:
       - internal
 
-  worker:
+  worker-fast:
     build:
       context: ./backend
     env_file: ${DOCUINTEL_ENV_FILE:-.env}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,maintenance,celery --concurrency=${WORKER_CONCURRENCY:-2}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-4}
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
@@ -78,8 +79,33 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    mem_limit: ${WORKER_MEM_LIMIT:-3g}
-    cpus: ${WORKER_CPUS:-2}
+    mem_limit: ${WORKER_FAST_MEM_LIMIT:-2g}
+    cpus: ${WORKER_FAST_CPUS:-2}
+    networks:
+      - internal
+
+  worker-maintenance:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1}
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    mem_limit: ${WORKER_MAINTENANCE_MEM_LIMIT:-1g}
+    cpus: ${WORKER_MAINTENANCE_CPUS:-1}
     networks:
       - internal
 

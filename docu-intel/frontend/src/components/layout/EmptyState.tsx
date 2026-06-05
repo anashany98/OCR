@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
-import { FileSearch } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 export function EmptyState({
   title,
@@ -9,22 +9,33 @@ export function EmptyState({
   action,
   onAction,
   icon,
+  className,
 }: {
   title: string
   description: string
   action?: string
   onAction?: () => void
   icon?: ReactNode
+  className?: string
 }) {
   return (
-    <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-surface-2)] p-6 text-center">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] bg-white text-[var(--text-muted)]">
-        {icon ?? <FileSearch className="h-5 w-5" />}
+    <div
+      className={cn(
+        "flex min-h-[280px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-[var(--border-2)] bg-[var(--bg-surface)]/60 p-8 text-center",
+        className,
+      )}
+    >
+      {icon && (
+        <div className="flex h-24 w-32 items-center justify-center text-[var(--accent)] opacity-90">{icon}</div>
+      )}
+      <div className="space-y-1.5">
+        <h3 className="font-display text-[18px] font-medium leading-tight tracking-tight text-[var(--text-primary)]">
+          {title}
+        </h3>
+        <p className="mx-auto max-w-md text-[13px] text-[var(--text-muted)] leading-relaxed">{description}</p>
       </div>
-      <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">{title}</h3>
-      <p className="mt-1 max-w-md text-[13px] text-[var(--text-muted)]">{description}</p>
       {action ? (
-        <Button className="mt-4" type="button" variant="outline" size="sm" onClick={onAction}>
+        <Button className="mt-2" type="button" variant="outline" size="sm" onClick={onAction}>
           {action}
         </Button>
       ) : null}

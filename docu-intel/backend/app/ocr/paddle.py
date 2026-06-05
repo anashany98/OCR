@@ -51,17 +51,32 @@ def _get_gpu_device() -> str | None:
 class PaddleOCREngine:
     @cached_property
     def _engine(self):
-        with paddleocr_init_lock():
-            from paddleocr import PaddleOCR
+        import threading
 
-            # PaddleOCR 3.x - minimal config, auto-detects GPU via CUDA_VISIBLE_DEVICES
-            # NOTE: enable_mkldnn=False is REQUIRED to avoid PaddlePaddle 3.3.0 PIR/MKLDNN bug
-            # See: https://github.com/PaddlePaddle/Paddle/issues/77340
-            return PaddleOCR(
-                use_angle_cls=True,
-                lang="es",
-                enable_mkldnn=False,
-            )
+        result = [None]
+        error = [None]
+
+        def _init_engine():
+            try:
+                with paddleocr_init_lock():
+                    from paddleocr import PaddleOCR
+                    result[0] = PaddleOCR(
+                        use_angle_cls=True,
+                        lang="es",
+                        enable_mkldnn=False,
+                    )
+            except Exception as e:
+                error[0] = e
+
+        t = threading.Thread(target=_init_engine, daemon=True)
+        t.start()
+        t.join(timeout=120)
+
+        if t.is_alive():
+            raise TimeoutError("PaddleOCR initialization timed out after 120s")
+        if error[0] is not None:
+            raise error[0]
+        return result[0]
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()

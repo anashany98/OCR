@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, ExternalLink, FlaskConical, Ruler, Save } from "lucide-react"
 
 import { api } from "@/api/client"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { useAuth } from "@/hooks/useAuth"
 import { Badge } from "@/components/ui/badge"
@@ -87,6 +88,7 @@ export function PlansPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Planos" }]} />
       {/* Beta banner */}
       <div className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--amber-light)] bg-[var(--amber-light)]/40 p-3">
         <FlaskConical className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--amber)]" />

@@ -57,10 +57,55 @@ class Settings(BaseSettings):
     watcher_rescan_interval_seconds: int = 3600
     watcher_max_files_per_tick: int = 10
 
+    # Auto-approve trust shortcut for quality evaluation.
+    # A document is marked processed_ok automatically (skipping manual review) if
+    # its OCR confidence and classification confidence meet these thresholds, even
+    # if some structured fields are missing. Set to 1.0 to disable the shortcut.
+    auto_approve_min_ocr: float = 0.90
+    auto_approve_min_classification: float = 0.80
+    auto_approve_allow_missing_fields: bool = True
+    # Quality score below this value triggers processed_low_quality.
+    quality_score_threshold: float = 0.55
+    # Penalty per quality flag when computing the score.
+    quality_flag_penalty: float = 0.04
+
     ai_provider: str = "local_openai_compatible"
     ai_base_url: str = ""
     ai_model: str = ""
     ai_api_key: str = ""
+    # Vision LLM (multimodal). When configured, the agent can ask the
+    # vision model to describe image documents (jpg/png/tif/webp) so the
+    # main LLM has actual visual content, not just bad OCR. Leave empty
+    # to disable vision; the agent will fall back to whatever text /
+    # entities are available.
+    vision_provider: str = "local_openai_compatible"
+    vision_base_url: str = ""
+    vision_model: str = ""
+    vision_api_key: str = ""
+    vision_timeout_seconds: float = 60.0
+    vision_max_image_dim: int = 1024  # downscale images before sending to the LLM
+    # When enabled, the parser uses the vision model to transcribe tables
+    # inside scanned PDFs/photos that PaddleOCR could not structure. This
+    # works great with Qwen3-VL-8B-Thinking.
+    vision_table_transcription: bool = True
+    # How long (in seconds) after the last vision call the vision model
+    # stays resident in LM Studio before being unloaded to free VRAM.
+    # Set to 0 to unload immediately after each call.
+    vision_unload_delay_seconds: int = 300
+    # Path to the lms CLI binary inside the container. The Dockerfile /
+    # docker-compose mounts the host's lms.exe at this path so the
+    # backend can call ``lms load`` / ``lms unload`` to manage the
+    # vision model lifecycle on demand.
+    lms_cli_path: str = "/usr/local/bin/lms"
+    # Master switch for the on-demand vision manager. When false the
+    # backend treats vision as always-resident (legacy behaviour).
+    vision_on_demand: bool = True
+    # Vision model used for structured-output tasks (table extraction,
+    # plan room suggestions). Defaults to the same as ``vision_model``
+    # but can be overridden to use a non-thinking variant for
+    # faster, more deterministic JSON output. The reasoning variant
+    # wastes tokens on CoT and often returns empty content.
+    vision_model_structured: str = ""
 
     ocr_engine: Literal["paddleocr"] = "paddleocr"
     enable_dots_mocr: bool = False
@@ -116,6 +161,10 @@ class Settings(BaseSettings):
     auth_login_rate_limit: str = "10/minute"
 
     max_upload_size_mb: int = 200
+    # Max number of file parts in a single multipart upload (python-multipart's
+    # default is 1000). Bumped so a folder drag-and-drop or webkitdirectory
+    # pick with many files is not rejected before reaching the route.
+    max_upload_files: int = 10_000_000
     max_pdf_pages: int = 500
     max_image_megapixels: float = 40.0
     max_excel_rows: int = 100_000
@@ -166,9 +215,11 @@ class Settings(BaseSettings):
         environment = info.data.get("environment", "local")
         if value in {"change_me", "CHANGE_ME_GENERATE_SECURE_TOKEN_MIN_64_CHARS", "CHANGE_IN_PRODUCTION_USE_64_CHARS_MIN_SECURE"}:
             raise ValueError("JWT_SECRET must be changed from default value for security")
-        if environment == "production" and value.startswith("dev_only_"):
-            raise ValueError("JWT_SECRET must be set explicitly in production")
-        if len(value) < 32:
+        if environment != "local" and value.startswith("dev_only_"):
+            raise ValueError(f"JWT_SECRET must be set explicitly in '{environment}' environment")
+        if environment != "local" and len(value) < 64:
+            raise ValueError("JWT_SECRET must be at least 64 characters long in non-local environments")
+        if environment == "local" and len(value) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters long")
         return value
 
@@ -178,8 +229,8 @@ class Settings(BaseSettings):
         environment = info.data.get("environment", "local")
         if value in {"admin123", "CHANGE_ME_MIN_16_CHARS_SECURE_PASSWORD", "CHANGE_IN_PRODUCTION_MIN_16_CHARS"}:
             raise ValueError("ADMIN_PASSWORD must be changed from default value for security")
-        if environment == "production" and value.startswith("dev_only_"):
-            raise ValueError("ADMIN_PASSWORD must be set explicitly in production")
+        if environment != "local" and value.startswith("dev_only_"):
+            raise ValueError(f"ADMIN_PASSWORD must be set explicitly in '{environment}' environment")
         if len(value) < 16:
             raise ValueError("ADMIN_PASSWORD must be at least 16 characters long")
         return value

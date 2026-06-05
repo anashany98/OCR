@@ -1,7 +1,7 @@
 import { ChangeEvent, useCallback, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Download, Eye, FileSpreadsheet, RefreshCcw, Search, Upload } from "lucide-react"
+import { AlertCircle, CheckCircle2, Download, Eye, FileSpreadsheet, FolderUp, Loader2, RefreshCcw, Search, Upload, X } from "lucide-react"
 
 import { api, downloadUrl } from "@/api/client"
 import { EmptyState } from "@/components/layout/EmptyState"
@@ -14,6 +14,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { applyDocumentView, documentViews, type DocumentViewId } from "@/lib/documentViews"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
+import { EmptyDocumentsIllustration } from "@/components/illustrations/EditorialIllustrations"
+import { notify } from "@/lib/toast"
 import { formatBytes, formatDate } from "@/lib/utils"
 import type { Document } from "@/types/api"
 
@@ -47,26 +50,54 @@ export function DocumentsPage() {
 
   const upload = useMutation({
     mutationFn: api.upload,
-    onSuccess: () => invalidateDocuments(queryClient),
+    onSuccess: () => {
+      invalidateDocuments(queryClient)
+      notify.success("Documento subido", "Se ha encolado para procesamiento.")
+    },
+    onError: (err) => notify.error(err, "Error al subir el archivo"),
   })
   const uploadBatch = useMutation({
-    mutationFn: api.uploadBatch,
-    onSuccess: () => invalidateDocuments(queryClient),
+    mutationFn: (payload: { files: File[]; relativePaths?: string[] }) =>
+      api.uploadBatch(payload.files, payload.relativePaths),
+    onSuccess: (data) => {
+      invalidateDocuments(queryClient)
+      notify.success(
+        "Subida completada",
+        `${data.uploaded} nuevo(s), ${data.duplicates} duplicado(s), ${data.failed} fallido(s).`,
+      )
+    },
+    onError: (err) => notify.error(err, "Error al subir archivos"),
   })
   const scan = useMutation({
     mutationFn: api.scan,
-    onSuccess: () => invalidateDocuments(queryClient),
+    onSuccess: (data) => {
+      invalidateDocuments(queryClient)
+      notify.success(
+        "Escaneo completado",
+        `${data.registered} nuevos, ${data.duplicates} duplicados, ${data.skipped} saltados.`,
+      )
+    },
+    onError: (err) => notify.error(err, "Error al escanear"),
   })
   const reprocess = useMutation({
     mutationFn: api.reprocess,
-    onSuccess: () => invalidateDocuments(queryClient),
+    onSuccess: (job) => {
+      invalidateDocuments(queryClient)
+      notify.success(`Reprocesamiento encolado`, `Job #${job.id} creado.`)
+    },
+    onError: (err) => notify.error(err, "Error al reprocesar"),
   })
   const bulkReprocess = useMutation({
     mutationFn: api.reprocessBulk,
-    onSuccess: () => {
+    onSuccess: (data) => {
       setSelected([])
       invalidateDocuments(queryClient)
+      notify.success(
+        "Reprocesamiento en lote",
+        `${data.enqueued} jobs encolados, ${data.matched} documentos encontrados.`,
+      )
     },
+    onError: (err) => notify.error(err, "Error al reprocesar en lote"),
   })
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
@@ -84,7 +115,7 @@ export function DocumentsPage() {
       event.preventDefault()
       setIsDragging(false)
       const files = Array.from(event.dataTransfer.files)
-      if (files.length) uploadBatch.mutate(files)
+      if (files.length) uploadBatch.mutate({ files })
     },
     [uploadBatch],
   )
@@ -93,7 +124,22 @@ export function DocumentsPage() {
     const files = event.target.files
     if (files && files.length > 0) {
       if (files.length === 1) upload.mutate(files[0])
-      else uploadBatch.mutate(Array.from(files))
+      else uploadBatch.mutate({ files: Array.from(files) })
+    }
+    event.target.value = ""
+  }
+
+  function onFolderChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files
+    if (files && files.length > 0) {
+      // webkitRelativePath preserves the folder structure selected by the user,
+      // e.g. "presupuestos/245745/foo.pdf" — the backend stores it in
+      // documents.source_path so the IA can use it as a classification hint.
+      const fileArray = Array.from(files)
+      const relativePaths = fileArray.map(
+        (f) => (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name,
+      )
+      uploadBatch.mutate({ files: fileArray, relativePaths })
     }
     event.target.value = ""
   }
@@ -118,22 +164,41 @@ export function DocumentsPage() {
 
   return (
     <div className="flex flex-col gap-4" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-        <PageHeader title="Documentos" description="Tabla operativa con filtros de servidor, vistas guardadas y acciones masivas." />
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => scan.mutate()} disabled={scan.isPending}>
-            <RefreshCcw data-icon="inline-start" />
-            Escanear carpetas
-          </Button>
-          <Button asChild>
-            <label>
-              <Upload data-icon="inline-start" />
-              Subir
-              <input className="hidden" type="file" multiple onChange={onFileChange} />
-            </label>
-          </Button>
-        </div>
-      </div>
+      <Breadcrumbs items={[{ label: "Documentos" }]} />
+      <PageHeader
+        title="Documentos"
+        description="Tabla operativa con filtros de servidor, vistas guardadas y acciones masivas."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => scan.mutate()} disabled={scan.isPending}>
+              <RefreshCcw data-icon="inline-start" />
+              Escanear carpetas
+            </Button>
+            <Button asChild>
+              <label>
+                <Upload data-icon="inline-start" />
+                Subir
+                <input className="hidden" type="file" multiple onChange={onFileChange} />
+              </label>
+            </Button>
+            <Button asChild variant="outline">
+              <label>
+                <FolderUp data-icon="inline-start" />
+                Subir carpeta
+                <input
+                  className="hidden"
+                  type="file"
+                  /* @ts-expect-error - non-standard but supported in Chrome/Edge/Firefox/Safari */
+                  webkitdirectory=""
+                  directory=""
+                  multiple
+                  onChange={onFolderChange}
+                />
+              </label>
+            </Button>
+          </>
+        }
+      />
 
       {isDragging ? (
         <div className="flex items-center justify-center rounded-md border-2 border-dashed border-primary bg-primary/5 py-8">
@@ -176,12 +241,93 @@ export function DocumentsPage() {
         </select>
       </PageToolbar>
 
+      {(upload.isPending || uploadBatch.isPending) ? (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="upload-status-pending"
+          className="flex items-center gap-2 rounded-md border border-[var(--info)]/20 bg-[var(--info-faint)] px-4 py-3 text-sm text-[var(--text-on-info)]"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>
+            {upload.isPending
+              ? "Subiendo archivo..."
+              : `Subiendo ${uploadBatch.variables?.files?.length ?? "varios"} archivo(s)...`}
+          </span>
+        </div>
+      ) : null}
+
+      {(upload.isError || uploadBatch.isError) ? (
+        <div
+          role="alert"
+          data-testid="upload-status-error"
+          className="flex items-center justify-between gap-2 rounded-md border border-[var(--danger)]/20 bg-[var(--danger-faint)] px-4 py-3 text-sm text-[var(--text-on-danger)]"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="truncate">
+              Error al subir: {upload.error?.message ?? uploadBatch.error?.message ?? "fallo desconocido"}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              upload.reset()
+              uploadBatch.reset()
+            }}
+          >
+            <X data-icon="inline-start" className="h-4 w-4" />
+            Cerrar
+          </Button>
+        </div>
+      ) : null}
+
+      {upload.isSuccess ? (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="upload-status-success-single"
+          className="flex items-center justify-between gap-2 rounded-md border border-[var(--positive)]/20 bg-[var(--positive-faint)] px-4 py-3 text-sm text-[var(--text-on-success)]"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span className="truncate">Archivo subido correctamente.</span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => upload.reset()}>
+            <X data-icon="inline-start" className="h-4 w-4" />
+            Cerrar
+          </Button>
+        </div>
+      ) : null}
+
+      {uploadBatch.isSuccess && uploadBatch.data ? (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="upload-status-success-batch"
+          className="flex items-center justify-between gap-2 rounded-md border border-[var(--positive)]/20 bg-[var(--positive-faint)] px-4 py-3 text-sm text-[var(--text-on-success)]"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span className="truncate">
+              Subida completada: {uploadBatch.data.uploaded} nuevo(s), {uploadBatch.data.duplicates}{" "}
+              duplicado(s), {uploadBatch.data.failed} fallido(s).
+            </span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => uploadBatch.reset()}>
+            <X data-icon="inline-start" className="h-4 w-4" />
+            Cerrar
+          </Button>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="overflow-hidden">
-          <CardHeader className="flex-row items-center justify-between gap-3 border-b bg-slate-50/80">
+          <CardHeader className="flex-row items-center justify-between gap-3 border-b">
             <div>
               <CardTitle>Listado</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">{total} documentos encontrados</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">{total} documentos encontrados</p>
             </div>
             <div className="flex items-center gap-2">
               {selected.length ? <Badge variant="info">{selected.length} seleccionados</Badge> : null}
@@ -220,15 +366,21 @@ export function DocumentsPage() {
                   ))}
                   {!rows.length ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="p-6">
-                        <EmptyState title="Sin documentos" description="Ajusta los filtros, sube archivos o lanza el escaneo de carpetas." action="Escanear carpetas" onAction={() => scan.mutate()} />
+                      <TableCell colSpan={9} className="p-0">
+                        <EmptyState
+                          title="Sin documentos"
+                          description="Ajusta los filtros, sube archivos o lanza el escaneo de carpetas para empezar."
+                          action="Escanear carpetas"
+                          onAction={() => scan.mutate()}
+                          icon={<EmptyDocumentsIllustration />}
+                        />
                       </TableCell>
                     </TableRow>
                   ) : null}
                 </TableBody>
               </Table>
             </div>
-            <div className="flex items-center justify-between border-t bg-slate-50 px-4 py-3 text-sm">
+            <div className="flex items-center justify-between border-t bg-[var(--bg-surface-2)] px-4 py-3 text-sm">
               <span className="text-muted-foreground">
                 Mostrando {rows.length ? offset + 1 : 0}-{offset + rows.length} de {total}
               </span>
@@ -289,17 +441,23 @@ function DocumentRow({ document, selected, onToggle, onReprocess }: { document: 
       <TableCell>{formatDate(document.created_at)}</TableCell>
       <TableCell>
         <div className="flex justify-end gap-1">
-          <Button asChild variant="ghost" size="icon" title="Ver">
+          <Button asChild variant="ghost" size="icon" title="Ver documento" aria-label={`Ver ${document.original_filename}`}>
             <Link to={`/documents/${document.id}`}>
-              <Eye />
+              <Eye aria-hidden="true" />
             </Link>
           </Button>
-          <Button variant="ghost" size="icon" title="Reprocesar" onClick={onReprocess}>
-            <RefreshCcw />
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Reprocesar"
+            aria-label={`Reprocesar ${document.original_filename}`}
+            onClick={onReprocess}
+          >
+            <RefreshCcw aria-hidden="true" />
           </Button>
-          <Button asChild variant="ghost" size="icon" title="Descargar">
+          <Button asChild variant="ghost" size="icon" title="Descargar" aria-label={`Descargar ${document.original_filename}`}>
             <a href={downloadUrl(document.id)}>
-              <Download />
+              <Download aria-hidden="true" />
             </a>
           </Button>
         </div>

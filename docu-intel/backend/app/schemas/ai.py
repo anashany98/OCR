@@ -1,6 +1,8 @@
+import json
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AskRequest(BaseModel):
@@ -26,10 +28,29 @@ class AIAnswerRead(BaseModel):
     answer: str
     confidence: float | None
     model_name: str | None
+    # Optional structured snapshot of the document the agent resolved
+    # for this answer (entities + relations). Parsed from
+    # `resolved_document_json` by the model_validator below.
+    resolved_document: dict[str, Any] | None = None
+    # Suggested follow-up questions (not persisted, generated on-the-fly).
+    followups: list[str] = Field(default_factory=list)
     created_at: datetime
     sources: list[AIAnswerSourceRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True, "protected_namespaces": ()}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_resolved_document_json(cls, data: Any) -> Any:
+        # FastAPI hands us the SQLAlchemy AIAnswer object directly. Pull the
+        # JSON blob out and expose it as a structured dict for the UI.
+        raw = getattr(data, "resolved_document_json", None)
+        if raw and isinstance(raw, str):
+            try:
+                data.resolved_document = json.loads(raw)
+            except Exception:
+                data.resolved_document = None
+        return data
 
 
 class AIQuestionRead(BaseModel):

@@ -155,7 +155,7 @@ def test_parser_limits_reject_huge_images_and_excel(monkeypatch, tmp_path):
     Image.new("RGB", (20, 20), color="white").save(image_path)
     monkeypatch.setattr(settings, "max_image_megapixels", 0.0001)
     with pytest.raises(ValueError, match="max_image_megapixels"):
-        parse_image(image_path, ocr_engine=None)  # type: ignore[arg-type]
+        parse_image(image_path, output_dir=tmp_path, ocr_engine=None)  # type: ignore[arg-type]
 
     import pandas as pd
 

@@ -9,6 +9,13 @@ def rate_limit_key(request: Request) -> str:
     api_key = request.headers.get("X-DocuIntel-API-Key")
     if api_key:
         return f"api_key:{api_key}"
+    # Respect reverse-proxy headers for real client IP
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip
     return get_remote_address(request)
 
 

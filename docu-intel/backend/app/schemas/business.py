@@ -127,3 +127,63 @@ class PlanRoomUpdate(BaseModel):
     confidence: float | None = None
     source: str | None = None
     needs_review: bool | None = None
+
+
+class PlanRoomCreate(BaseModel):
+    """Payload for ``POST /plans/{id}/rooms``. The polygon is the user-drawn
+    closed shape on top of the rendered page; the rest are derived or
+    manually entered."""
+    name: str | None = None
+    area_m2: float | None = None
+    width_m: float | None = None
+    length_m: float | None = None
+    polygon_json: dict[str, Any] | None = None
+    page_number: int | None = None
+    source: str | None = "manual"
+    needs_review: bool | None = False
+    confidence: float | None = None
+
+
+class PlanDimensionCreate(BaseModel):
+    raw_text: str | None = None
+    value: float | None = None
+    unit: str | None = "m"
+    value_m: float | None = None
+    page_number: int | None = None
+    bbox_x1: float | None = None
+    bbox_y1: float | None = None
+    bbox_x2: float | None = None
+    bbox_y2: float | None = None
+    confidence: float | None = None
+
+
+class PlanBulkUpdate(BaseModel):
+    """Single save action: replace the working set of rooms and/or
+    dimensions for a plan, and optionally update its scale + project
+    metadata. Used by the annotation editor's "Save" button."""
+    rooms: list[PlanRoomCreate] | None = None
+    dimensions: list[PlanDimensionCreate] | None = None
+    scale_text: str | None = None
+    scale_ratio: float | None = None
+    unit: str | None = None
+    has_valid_scale: bool | None = None
+    project_name: str | None = None
+
+
+class PlanVisionSuggestionRequest(BaseModel):
+    page_number: int = 1
+
+
+class PlanVisionSuggestion(BaseModel):
+    """One room the vision LLM thinks it sees on the plano page."""
+    name: str
+    bbox: list[float]  # [x1, y1, x2, y2] in image pixels
+    confidence: float | None = None
+    rationale: str | None = None
+
+
+class PlanVisionSuggestionResponse(BaseModel):
+    project_name: str | None = None
+    scale_text: str | None = None
+    rooms: list[PlanVisionSuggestion]
+    model: str | None = None

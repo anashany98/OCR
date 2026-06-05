@@ -42,8 +42,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const response = await api.login(email, password)
         setUser(response.user)
       },
-      logout: () => {
-        document.cookie = "docuintel_token=; Max-Age=0; path=/"
+      logout: async () => {
+        try {
+          await api.logout()
+        } catch {
+          // Ignore network errors — clear local state regardless
+        }
         setUser(null)
       },
     }),

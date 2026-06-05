@@ -7,5 +7,6 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+  logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
   me: () => request<User>("/auth/me"),
 }

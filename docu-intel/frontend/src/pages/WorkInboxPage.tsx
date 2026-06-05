@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { api } from "@/api/client"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { EmptyState } from "@/components/layout/EmptyState"
 import { PageHeader } from "@/components/layout/PageHeader"
@@ -32,6 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { workInboxTarget } from "@/lib/operations"
+import { notify } from "@/lib/toast"
 import type { WorkInboxItem, WorkItem } from "@/types/api"
 
 // ---------------------------------------------------------------------------
@@ -154,12 +156,17 @@ export function WorkInboxPage() {
   const persisted = useQuery({ queryKey: ["work-items"], queryFn: () => api.workItems({ limit: 100 }), refetchInterval: 15000 })
   const action = useMutation({
     mutationFn: api.runWorkInboxAction,
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["work-inbox"] })
       queryClient.invalidateQueries({ queryKey: ["jobs"] })
       queryClient.invalidateQueries({ queryKey: ["ocr-review"] })
       queryClient.invalidateQueries({ queryKey: ["operations-overview"] })
+      notify.success(
+        "Acción en lote completada",
+        `${data.updated} actualizados, ${data.enqueued} encolados.`,
+      )
     },
+    onError: (err) => notify.error(err, "No se pudo ejecutar la acción en lote"),
   })
   const createTask = useMutation({
     mutationFn: () =>
@@ -172,12 +179,19 @@ export function WorkInboxPage() {
     onSuccess: () => {
       setNewTaskTitle("")
       queryClient.invalidateQueries({ queryKey: ["work-items"] })
+      notify.success("Tarea creada")
     },
+    onError: (err) => notify.error(err, "No se pudo crear la tarea"),
   })
   const updateTask = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>
       api.updateWorkItem(id, { status, resolution_notes: status === "resolved" ? "Resuelta desde centro de trabajo" : null }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["work-items"] }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["work-items"] })
+      const label = vars.status === "resolved" ? "resuelta" : vars.status === "ignored" ? "ignorada" : "actualizada"
+      notify.success(`Tarea ${label}`)
+    },
+    onError: (err) => notify.error(err, "No se pudo actualizar la tarea"),
   })
   const addComment = useMutation({
     mutationFn: ({ id, body }: { id: number; body: string }) => api.addWorkItemComment(id, { body }),
@@ -185,6 +199,7 @@ export function WorkInboxPage() {
       setCommentText((current) => ({ ...current, [variables.id]: "" }))
       queryClient.invalidateQueries({ queryKey: ["work-items"] })
     },
+    onError: (err) => notify.error(err, "No se pudo añadir el comentario"),
   })
 
   // Build unified task list
@@ -218,6 +233,7 @@ export function WorkInboxPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Tareas" }]} />
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
         <PageHeader title="Tareas" description="Centro de trabajo diario. Gestiona incidencias, revisa documentos y resuelve tareas por prioridad." />
         <div className="flex gap-2">

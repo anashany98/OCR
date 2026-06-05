@@ -6,6 +6,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Verify Docker is running
+try {
+  docker info 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Docker no esta corriendo" }
+} catch {
+  throw "Docker no esta disponible o no esta corriendo. Inicia Docker Desktop primero."
+}
+
+# Verify compose file exists
+if (-not (Test-Path -LiteralPath $ComposeFile)) {
+  throw "Compose file not found: $ComposeFile"
+}
+
+# Verify env file exists
+if (-not (Test-Path -LiteralPath $EnvFile)) {
+  throw "Env file not found: $EnvFile"
+}
+
 New-Item -ItemType Directory -Force -Path "data\files" | Out-Null
 New-Item -ItemType Directory -Force -Path "data\input" | Out-Null
 New-Item -ItemType Directory -Force -Path "backups" | Out-Null

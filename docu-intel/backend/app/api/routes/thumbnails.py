@@ -8,7 +8,13 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.database.session import get_db
 from app.models import Document, User
-from app.services.thumbnail import generate_image_thumbnail, generate_pdf_thumbnail, get_thumbnail_path
+from app.services.thumbnail import (
+    generate_excel_thumbnail,
+    generate_image_thumbnail,
+    generate_msg_thumbnail,
+    generate_pdf_thumbnail,
+    get_thumbnail_path,
+)
 from app.services.tenant_access import can_access_document, resolve_user_access_scope
 
 router = APIRouter()
@@ -39,6 +45,10 @@ def get_document_thumbnail(
         thumb_relative = generate_pdf_thumbnail(stored_path, document.file_hash)
     elif document.extension in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}:
         thumb_relative = generate_image_thumbnail(stored_path, document.file_hash)
+    elif document.extension in {".xlsx", ".xls", ".xlsm"}:
+        thumb_relative = generate_excel_thumbnail(stored_path, document.file_hash)
+    elif document.extension in {".msg"}:
+        thumb_relative = generate_msg_thumbnail(stored_path, document.file_hash)
     else:
         raise HTTPException(status_code=404, detail="No thumbnail available for this file type")
 

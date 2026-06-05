@@ -13,6 +13,7 @@ import { JobsPage } from "@/pages/JobsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { OrdersPage } from "@/pages/OrdersPage"
 import { OcrReviewPage } from "@/pages/OcrReviewPage"
+import { PlanoAnnotationPage } from "@/pages/PlanoAnnotationPage"
 import { PlansPage } from "@/pages/PlansPage"
 import { ReconciliationPage } from "@/pages/ReconciliationPage"
 import { SearchPage } from "@/pages/SearchPage"
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "documents", element: <DocumentsPage /> },
       { path: "documents/:id", element: <DocumentDetailPage /> },
+      { path: "documents/:id/annotate-plan", element: <PlanoAnnotationPage /> },
       { path: "work-inbox", element: <WorkInboxPage /> },
       { path: "ocr-review", element: <OcrReviewPage /> },
       { path: "search", element: <SearchPage /> },

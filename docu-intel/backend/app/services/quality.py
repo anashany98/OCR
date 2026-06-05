@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import Budget, Document, DocumentPage, Order, Plan
 
 
 LOW_OCR_THRESHOLD = 0.70
 MIN_TEXT_CHARS = 40
+_DATE_PATTERN = re.compile(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")
 
 
 @dataclass(frozen=True)
@@ -75,18 +78,38 @@ def evaluate_document_quality(
         if not order or not order.supplier_name:
             flags.add("supplier_missing")
     elif document.document_type == "factura":
-        flags.add("invoice_date_missing")
+        # Only flag missing date if the text has no recognisable date at all.
+        if not _DATE_PATTERN.search(clean_text):
+            flags.add("invoice_date_missing")
     elif document.document_type == "plano":
         plan = db.scalar(select(Plan).where(Plan.document_id == document.id).limit(1))
         if not plan or not plan.has_valid_scale:
             flags.add("plan_without_valid_scale")
 
     score = _quality_score(db, document, flags)
-    if document.status == "failed":
+    pages = list(db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all())
+    ocr_values = [page.ocr_confidence for page in pages if page.ocr_confidence is not None]
+    min_ocr = min(ocr_values) if ocr_values else 0.0
+    classification_conf = document.confidence if document.confidence is not None else 0.0
+    is_classified = document.document_type not in {"desconocido", "", None}
+
+    # Trust shortcut: high-confidence extraction → auto-approve, even with some
+    # missing structured fields. The audit log keeps a record for rollback.
+    if (
+        document.status != "failed"
+        and "page_failed" not in flags
+        and "page_without_text" not in flags
+        and min_ocr >= settings.auto_approve_min_ocr
+        and classification_conf >= settings.auto_approve_min_classification
+        and is_classified
+        and (settings.auto_approve_allow_missing_fields or not any(f.endswith("_missing") for f in flags))
+    ):
+        status = "processed_ok"
+    elif document.status == "failed":
         status = "failed"
     elif "page_failed" in flags:
         status = "needs_human_review"
-    elif "low_ocr_confidence" in flags or "page_without_text" in flags or score < 0.70:
+    elif "low_ocr_confidence" in flags or "page_without_text" in flags or score < settings.quality_score_threshold:
         status = "processed_low_quality"
     elif any(flag.endswith("_missing") or flag in {"budget_number_missing", "order_number_missing", "supplier_missing", "invoice_date_missing"} for flag in flags):
         status = "processed_missing_fields"
@@ -102,6 +125,14 @@ def update_document_quality(db: Session, document: Document, result: QualityResu
     document.quality_status = result.status
     document.quality_score = result.score
     document.quality_flags_json = result.flags
+    # Keep document.status consistent with the quality verdict. If the new
+    # quality says processed_ok and the document was sitting in needs_review,
+    # promote it. This keeps the document list and the quality dashboard in
+    # sync without forcing the user to re-process.
+    if result.status == "processed_ok" and document.status in {"needs_review", "pending", "processing"}:
+        document.status = "processed"
+    elif result.status == "failed" and document.status not in {"failed"}:
+        document.status = "failed"
     db.flush()
 
 
@@ -120,5 +151,5 @@ def _quality_score(db: Session, document: Document, flags: set[str]) -> float:
     base = document.confidence if document.confidence is not None else 0.80
     if ocr_values:
         base = (base + sum(ocr_values) / len(ocr_values)) / 2
-    penalty = min(0.55, len(flags) * 0.08)
+    penalty = min(0.55, len(flags) * settings.quality_flag_penalty)
     return round(max(0.0, min(1.0, base - penalty)), 4)

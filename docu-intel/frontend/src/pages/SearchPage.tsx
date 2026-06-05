@@ -24,6 +24,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { notify } from "@/lib/toast"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import type { SearchResult } from "@/types/api"
 
 // ---------------------------------------------------------------------------
@@ -91,7 +93,9 @@ export function SearchPage() {
     onSuccess: () => {
       setSavedName("")
       queryClient.invalidateQueries({ queryKey: ["saved-searches"] })
+      notify.success("Búsqueda guardada")
     },
+    onError: (err) => notify.error(err, "No se pudo guardar la búsqueda"),
   })
 
   useEffect(() => {
@@ -131,6 +135,7 @@ export function SearchPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Buscar" }]} />
       <PageHeader title="Buscar" description="Encuentra documentos por texto, significado o referencia exacta. Usa filtros para afinar resultados." />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">

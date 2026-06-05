@@ -1,11 +1,12 @@
 import { FormEvent, useState } from "react"
 import { Navigate } from "react-router-dom"
-import { Database, FileSearch, LockKeyhole, Server } from "lucide-react"
+import { ArrowRight, FileSearch, Lock, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/useAuth"
+import { cn } from "@/lib/utils"
 
 export function LoginPage() {
   const { user, login } = useAuth()
@@ -30,133 +31,128 @@ export function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen bg-[var(--bg-base)] md:grid-cols-[1fr_420px]">
-      {/* Left panel - branding */}
-      <section className="hidden min-h-screen flex-col justify-between border-r border-[var(--border)] bg-[var(--sidebar-bg)] p-10 md:flex">
-        {/* Logo */}
-        <div className="flex items-center gap-3 animate-fade-in-up">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20">
+    <div className="grid min-h-screen bg-[var(--bg-base)] md:grid-cols-2">
+      {/* Left panel — editorial feature spread */}
+      <section className="relative hidden flex-col justify-between overflow-hidden bg-[var(--ink)] p-12 text-[var(--bg-base)] md:flex">
+        {/* Subtle paper texture via SVG noise */}
+        <div className="pointer-events-none absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)", backgroundSize: "24px 24px" }} />
+
+        <div className="relative flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-lg">
             <FileSearch className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-[16px] font-semibold text-white">Docu-Intel</p>
-            <p className="text-[12px] text-[var(--sidebar-muted)]">Operación documental inteligente</p>
+            <p className="font-display text-[18px] font-medium leading-tight tracking-tight">Docu-Intel</p>
+            <p className="text-[11px] text-[var(--bg-base)]/60">Puesto de trabajo documental</p>
           </div>
         </div>
 
-        {/* Hero text */}
-        <div className="max-w-lg animate-fade-in-up delay-100">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--primary)] mb-4">
-            Control documental
+        <div className="relative max-w-lg space-y-8">
+          <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent-soft)]">
+            <Sparkles className="h-3 w-3" /> Sistema interno
           </p>
-          <h1 className="text-3xl font-semibold leading-tight text-white tracking-tight">
+          <h1 className="font-display text-[40px] font-medium leading-[1.05] tracking-tight">
             Revisión, búsqueda y control documental en un único puesto de trabajo.
           </h1>
-          <p className="mt-4 text-[14px] text-[var(--sidebar-muted)] leading-relaxed">
-            Procesa presupuestos, pedidos y planos con extracción OCR inteligente.
-            Todo bajo control, todo accesible.
+          <p className="max-w-md text-[14px] leading-relaxed text-[var(--bg-base)]/70">
+            Procesa presupuestos, pedidos, facturas y planos con extracción OCR inteligente. Todo bajo control, todo accesible.
           </p>
 
-          {/* Tech stack */}
-          <div className="mt-8 grid grid-cols-3 gap-3">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <Database className="h-4 w-4 text-[var(--primary)] mb-3" />
-              <p className="text-[11px] text-[var(--sidebar-muted)]">Base de datos</p>
-              <p className="mt-0.5 text-[13px] font-semibold text-white">PostgreSQL</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <Server className="h-4 w-4 text-[var(--primary)] mb-3" />
-              <p className="text-[11px] text-[var(--sidebar-muted)]">Backend</p>
-              <p className="mt-0.5 text-[13px] font-semibold text-white">FastAPI</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <LockKeyhole className="h-4 w-4 text-[var(--primary)] mb-3" />
-              <p className="text-[11px] text-[var(--sidebar-muted)]">Seguridad</p>
-              <p className="mt-0.5 text-[13px] font-semibold text-white">JWT + RBAC</p>
-            </div>
-          </div>
+          {/* Editorial pull-quote */}
+          <blockquote className="border-l-2 border-[var(--accent)] pl-5 text-[13px] italic text-[var(--bg-base)]/80">
+            “Lo importante no es la cantidad de papel que entra, sino cuántos documentos se quedan sin revisar.”
+            <footer className="mt-2 not-italic text-[11px] text-[var(--bg-base)]/50">— principio de operación</footer>
+          </blockquote>
         </div>
 
-        {/* Footer */}
-        <p className="text-[11px] text-[var(--sidebar-muted)] animate-fade-in-up delay-200">
-          Cambia credenciales y secretos antes de usarlo en red de empresa.
-        </p>
+        <div className="relative flex items-center justify-between text-[11px] text-[var(--bg-base)]/50">
+          <span>Sistema interno · acceso restringido</span>
+          <span>v0.1</span>
+        </div>
       </section>
 
-      {/* Right panel - form */}
-      <section className="flex min-h-[calc(100vh-2rem)] flex-col items-center justify-center p-6 md:min-h-screen md:p-10">
-        <div className="w-full max-w-sm animate-fade-in-up">
-          {/* Mobile logo */}
+      {/* Right panel — form on cream paper */}
+      <section className="flex min-h-screen flex-col items-center justify-center p-6 md:p-12">
+        <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2 md:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--primary)] text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent)] text-white">
               <FileSearch className="h-4 w-4" />
             </div>
-            <span className="text-[16px] font-semibold text-[var(--text-primary)]">Docu-Intel</span>
+            <span className="font-display text-[16px] font-medium">Docu-Intel</span>
           </div>
 
-          <Card className="border-[var(--border)] shadow-lg shadow-black/5">
-            <CardHeader className="space-y-1 px-6 pt-6">
-              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-light)] text-[var(--primary)]">
-                <FileSearch className="h-5 w-5" />
+          <Card className="border-[var(--border)] shadow-md">
+            <CardHeader className="px-7 pt-7">
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-faint)] text-[var(--accent)]">
+                <Lock className="h-5 w-5" />
               </div>
-              <CardTitle className="text-[18px] font-semibold text-[var(--text-primary)]">Iniciar sesión</CardTitle>
-              <CardDescription className="text-[13px] text-[var(--text-secondary)]">
-                Accede a tu puesto de trabajo documental.
-              </CardDescription>
+              <CardTitle className="text-[20px]">Iniciar sesión</CardTitle>
+              <CardDescription>Accede a tu puesto de trabajo documental.</CardDescription>
             </CardHeader>
-            <CardContent className="px-6 pb-6">
+            <CardContent className="px-7 pb-7">
               <form className="space-y-4" onSubmit={onSubmit}>
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium text-[var(--text-secondary)]">Email corporativo</label>
+                  <label className="text-[12px] font-medium text-[var(--text-secondary)]" htmlFor="email">
+                    Email corporativo
+                  </label>
                   <Input
+                    id="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     type="email"
                     autoComplete="email"
                     placeholder="tecnico@empresa.com"
-                    className="h-10 rounded-lg border-[var(--border)] bg-white text-[14px]"
+                    className="h-11 rounded-md"
                     required
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium text-[var(--text-secondary)]">Contraseña</label>
+                  <label className="text-[12px] font-medium text-[var(--text-secondary)]" htmlFor="password">
+                    Contraseña
+                  </label>
                   <Input
+                    id="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     type="password"
                     autoComplete="current-password"
                     placeholder="••••••••"
-                    className="h-10 rounded-lg border-[var(--border)] bg-white text-[14px]"
+                    className="h-11 rounded-md"
                     required
                   />
                 </div>
 
                 {error && (
-                  <div className="flex items-center gap-2 rounded-lg border border-[#FECDD3] bg-[var(--rose-light)] px-3 py-2.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--rose)]" />
-                    <p className="text-[12px] text-[#9F1239]">{error}</p>
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 rounded-md border border-[var(--danger)]/30 bg-[var(--danger-faint)] px-3 py-2.5 text-[12px] text-[var(--text-on-danger)]"
+                  >
+                    <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[var(--danger)]" />
+                    <span className="leading-relaxed">{error}</span>
                   </div>
                 )}
 
                 <Button
                   type="submit"
                   disabled={submitting}
-                  className="h-10 w-full rounded-lg text-[14px] font-medium"
+                  className={cn("h-11 w-full text-[14px]")}
                 >
                   {submitting ? (
                     <span className="flex items-center gap-2">
                       <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                      Entrando...
+                      Entrando…
                     </span>
                   ) : (
-                    "Entrar"
+                    <span className="flex items-center gap-2">
+                      Entrar <ArrowRight className="h-4 w-4" />
+                    </span>
                   )}
                 </Button>
               </form>
             </CardContent>
           </Card>
 
-          <p className="mt-4 text-center text-[11px] text-[var(--text-muted)]">
+          <p className="mt-6 text-center text-[11px] text-[var(--text-muted)]">
             Sistema interno — acceso restringido a personal autorizado.
           </p>
         </div>

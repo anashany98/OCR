@@ -1,74 +1,206 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* =========================================================================
+ * EDITORIAL DESIGN SYSTEM — Docu-Intel
+ *
+ * Aesthetic: refined / editorial (Notion, Pitch, Linear editorial).
+ * Palette: warm ink + cream paper, terracotta accent, sage for positive,
+ * clay for warning, rust for danger.
+ * Typography: Fraunces (display serif) + Inter (body sans) + JetBrains Mono.
+ *
+ * Token naming:
+ *   --bg-*         surfaces (base, surface, surface-2, hover)
+ *   --text-*       text scale (primary, secondary, muted, disabled)
+ *   --border-*     border scale (1, 2, 3)
+ *   --ink-*        editorial ink scale (deep, default, soft)
+ *   --accent-*     terracotta accent scale
+ *   --positive-*   sage / muted green
+ *   --warning-*    clay / amber-clay
+ *   --danger-*     rust / red-clay
+ *   --info-*       ink-blue
+ * ========================================================================= */
+
 :root {
-  /* Backgrounds */
-  --bg-base: #FAFAF9;
+  /* Surfaces — warm cream paper */
+  --bg-base: #FAF7F2;
   --bg-surface: #FFFFFF;
-  --bg-surface-2: #F5F5F4;
-  --bg-surface-hover: #F0F0EE;
+  --bg-surface-2: #F5F1E9;
+  --bg-surface-hover: #EBE5D8;
 
-  /* Text */
-  --text-primary: #1C1917;
+  /* Text — warm ink */
+  --text-primary: #1A1814;
   --text-secondary: #57534E;
-  --text-muted: #A8A29E;
-  --text-disabled: #D6D3D1;
+  --text-muted: #8A857C;
+  --text-disabled: #C7C2B6;
 
-  /* Brand */
-  --primary: #0D9488;
-  --primary-hover: #0F766E;
-  --primary-light: #CCFBF1;
+  /* Editorial ink scale (used in hero numbers, headings) */
+  --ink-deep: #0F0E0B;
+  --ink: #1A1814;
+  --ink-soft: #44403C;
+
+  /* Terracotta accent — the brand's voice */
+  --accent: #B45309;
+  --accent-hover: #9A4408;
+  --accent-soft: #C2641D;
+  --accent-light: #FDE9D7;
+  --accent-faint: #FDF4E8;
+
+  /* Positive — sage, muted */
+  --positive: #6B7F5A;
+  --positive-hover: #586A4A;
+  --positive-light: #E5EAD9;
+  --positive-faint: #F1F4EC;
+
+  /* Warning — clay */
+  --warning: #A66A2E;
+  --warning-hover: #8C581F;
+  --warning-light: #F4E4D0;
+  --warning-faint: #FAEFE2;
+
+  /* Danger — rust */
+  --danger: #A03A28;
+  --danger-hover: #852B1B;
+  --danger-light: #F2D8D2;
+  --danger-faint: #F8E8E4;
+
+  /* Info — ink blue */
+  --info: #2C5066;
+  --info-hover: #1F3D52;
+  --info-light: #DDE6EC;
+  --info-faint: #ECF0F4;
+
+  /* Legacy aliases — kept to avoid breaking the many components that
+   * reference --primary, --emerald, --amber, --rose, --sky by their old
+   * names. These forward to the new editorial palette. */
+  --primary: var(--accent);
+  --primary-hover: var(--accent-hover);
+  --primary-light: var(--accent-light);
   --primary-foreground: #FFFFFF;
 
-  /* Semantic */
-  --emerald: #059669;
-  --emerald-light: #D1FAE5;
-  --amber: #D97706;
-  --amber-light: #FEF3C7;
-  --rose: #E11D48;
-  --rose-light: #FFE4E6;
-  --sky: #0284C7;
-  --sky-light: #E0F2FE;
+  --emerald: var(--positive);
+  --emerald-light: var(--positive-light);
+  --amber: var(--warning);
+  --amber-light: var(--warning-light);
+  --rose: var(--danger);
+  --rose-light: var(--danger-light);
+  --sky: var(--info);
+  --sky-light: var(--info-light);
 
-  /* Borders */
-  --border: #E7E5E4;
-  --border-2: #D6D3D1;
-  --border-3: #A8A29E;
+  /* Borders — warm hairlines */
+  --border: #E7E0D2;
+  --border-2: #D6CCB8;
+  --border-3: #A89C82;
 
-  /* Sidebar */
-  --sidebar-bg: #1C1917;
-  --sidebar-text: #E7E5E4;
-  --sidebar-muted: #78716C;
-  --sidebar-border: rgba(255,255,255,0.06);
-  --sidebar-active-bg: rgba(255,255,255,0.08);
-  --sidebar-active-text: #FFFFFF;
+  /* Sidebar — deep editorial ink, slightly warmer than pure black */
+  --sidebar-bg: #1F1B16;
+  --sidebar-text: #E5E0D2;
+  --sidebar-muted: #8A857C;
+  --sidebar-border: rgba(255, 250, 240, 0.07);
+  --sidebar-active-bg: rgba(255, 250, 240, 0.06);
+  --sidebar-active-text: #FAF7F2;
 
-  /* Status colors */
-  --status-processed: #059669;
-  --status-pending: #D97706;
-  --status-failed: #E11D48;
-  --status-needs-review: #0284C7;
-  --status-duplicate: #78716C;
-  --status-processing: #7C3AED;
+  /* Status colors (legacy) */
+  --status-processed: var(--positive);
+  --status-pending: var(--warning);
+  --status-failed: var(--danger);
+  --status-needs-review: var(--info);
+  --status-duplicate: var(--text-muted);
+  --status-processing: #7C5BC9;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow-md: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
-  --shadow-lg: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.03);
+  /* Semantic text on light surfaces (used by StatusBadge etc.) */
+  --text-on-success: #3F4F33;
+  --text-on-warning: #6E4416;
+  --text-on-danger: #762518;
+  --text-on-info: #1F3D52;
+  --text-on-neutral: var(--text-secondary);
+
+  /* Shadows — paper-like, soft */
+  --shadow-sm: 0 1px 2px rgba(26, 24, 20, 0.04);
+  --shadow-md: 0 1px 3px rgba(26, 24, 20, 0.05), 0 4px 12px rgba(26, 24, 20, 0.04);
+  --shadow-lg: 0 4px 8px rgba(26, 24, 20, 0.06), 0 12px 32px rgba(26, 24, 20, 0.06);
+  --shadow-paper: 0 1px 0 rgba(26, 24, 20, 0.04), 0 1px 2px rgba(26, 24, 20, 0.06);
 
   /* Radius */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
 
   /* Transitions */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --duration-fast: 150ms;
   --duration-base: 250ms;
+  --duration-slow: 400ms;
+}
+
+.dark {
+  --bg-base: #0F0E0B;
+  --bg-surface: #1A1814;
+  --bg-surface-2: #25221C;
+  --bg-surface-hover: #2F2B24;
+
+  --text-primary: #FAF7F2;
+  --text-secondary: #C7C2B6;
+  --text-muted: #8A857C;
+  --text-disabled: #57534E;
+
+  --ink-deep: #FAF7F2;
+  --ink: #E5E0D2;
+  --ink-soft: #A89C82;
+
+  --accent: #D97706;
+  --accent-hover: #F59E0B;
+  --accent-soft: #C2641D;
+  --accent-light: #422517;
+  --accent-faint: #2A1B11;
+
+  --positive: #9DAD8B;
+  --positive-hover: #B4C0A4;
+  --positive-light: #2D3326;
+  --positive-faint: #1F2419;
+
+  --warning: #D4A373;
+  --warning-hover: #E0B587;
+  --warning-light: #3D2D1A;
+  --warning-faint: #2A1F12;
+
+  --danger: #D88B7C;
+  --danger-hover: #E0A095;
+  --danger-light: #3D201A;
+  --danger-faint: #2A1612;
+
+  --info: #8FAEC0;
+  --info-hover: #A8C2D0;
+  --info-light: #1F2D35;
+  --info-faint: #161E23;
+
+  --border: #2A2620;
+  --border-2: #3A352C;
+  --border-3: #57534E;
+
+  --sidebar-bg: #0A0907;
+  --sidebar-text: #C7C2B6;
+  --sidebar-muted: #6B665E;
+  --sidebar-border: rgba(255, 250, 240, 0.04);
+  --sidebar-active-bg: rgba(255, 250, 240, 0.06);
+  --sidebar-active-text: #FAF7F2;
+
+  --text-on-success: #C5D0B7;
+  --text-on-warning: #E5C9A8;
+  --text-on-danger: #E0B0A4;
+  --text-on-info: #B5CDDD;
+  --text-on-neutral: var(--text-secondary);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.2);
+  --shadow-paper: 0 1px 0 rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -85,17 +217,19 @@ body {
   min-width: 320px;
   background: var(--bg-base);
   color: var(--text-primary);
-  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
+  transition: background-color var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out);
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -103,6 +237,7 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border-2);
   border-radius: 9999px;
+  border: 2px solid var(--bg-base);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-3);
@@ -110,13 +245,13 @@ body {
 
 /* Selection */
 ::selection {
-  background: rgba(13, 148, 136, 0.15);
+  background: var(--accent-light);
   color: var(--text-primary);
 }
 
 /* Focus */
 :focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -165,12 +300,32 @@ html {
   to { transform: rotate(360deg); }
 }
 
+@keyframes chat-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .animate-fade-in-up {
   animation: fadeInUp var(--duration-base) var(--ease-out) both;
 }
 
 .animate-fade-in {
   animation: fadeIn var(--duration-base) var(--ease-out) both;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight var(--duration-base) var(--ease-out) both;
 }
 
 .animate-shimmer {
@@ -194,10 +349,28 @@ html {
 .delay-200 { animation-delay: 200ms; }
 .delay-250 { animation-delay: 250ms; }
 .delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
 
 /* Typography utilities */
+.font-display {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-feature-settings: "ss01", "salt";
+  font-optical-sizing: auto;
+}
+
+.font-sans {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 .font-mono {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Editorial numerics — slight tabular feel for large numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 /* Status dot */
@@ -206,4 +379,27 @@ html {
   height: 6px;
   border-radius: 9999px;
   flex-shrink: 0;
+}
+
+/* Editorial hairline — used for subtle dividers */
+.hairline {
+  height: 1px;
+  background: var(--border);
+}
+
+/* Editorial paper card */
+.paper {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-paper);
+}
+
+/* Hover lift used in cards/tiles */
+.hover-lift {
+  transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }

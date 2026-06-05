@@ -15,4 +15,9 @@ data/input/**/*
 postgres_data/
 .kilo/
 .kiro/
+# Local LM Studio shim logs (host-side process)
+lms_server.log
+lms_server.log.err
+# TypeScript incremental build cache
+*.tsbuildinfo
 

@@ -37,9 +37,12 @@ export const documentsApi = {
       body: form,
     })
   },
-  uploadBatch: (files: File[]) => {
+  uploadBatch: (files: File[], relativePaths?: string[]) => {
     const form = new FormData()
     files.forEach((file) => form.append("files", file))
+    if (relativePaths && relativePaths.length) {
+      form.append("relative_paths", JSON.stringify(relativePaths))
+    }
     return request<BatchUploadResult>("/documents/upload/batch", {
       method: "POST",
       body: form,

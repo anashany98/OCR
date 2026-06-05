@@ -36,6 +36,10 @@ class SearchResult:
     excerpt: str
     ocr_confidence: float | None
     source_type: str = "text"
+    # Relative path the document was uploaded from (e.g.
+    # "presupuestos/245745/foo.pdf"). Helps the IA agent disambiguate
+    # documents that share a name but live in different folders.
+    source_path: str | None = None
 
 
 def _search_result_to_dict(result: SearchResult) -> dict:
@@ -50,6 +54,7 @@ def _search_result_to_dict(result: SearchResult) -> dict:
         "excerpt": result.excerpt,
         "ocr_confidence": result.ocr_confidence,
         "source_type": result.source_type,
+        "source_path": result.source_path,
     }
 
 
@@ -106,6 +111,7 @@ def search_text(db: Session, query: str, limit: int = 20, filters: dict | None =
                     excerpt=_excerpt(page.text or "", normalized),
                     ocr_confidence=page.ocr_confidence,
                     source_type="text_page",
+                    source_path=document.source_path,
                 )
             )
         for document, block in block_rows:
@@ -125,6 +131,7 @@ def search_text(db: Session, query: str, limit: int = 20, filters: dict | None =
                     excerpt=_excerpt(block.text or "", normalized),
                     ocr_confidence=block.confidence,
                     source_type="text_block",
+                    source_path=document.source_path,
                 )
             )
         return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
@@ -150,6 +157,15 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
         if _is_postgres(db):
             pg_filters = dict(filters) if filters else {}
             matches = pg.search(db, query_embedding=query_embedding, limit=limit, filters=pg_filters)
+            # Batch-load source_path for the matched documents (one extra query
+            # instead of N+1 per match).
+            source_paths: dict[int, str | None] = {}
+            if matches:
+                doc_ids = [m.document_id for m in matches]
+                doc_rows = db.execute(
+                    select(Document.id, Document.source_path).where(Document.id.in_(doc_ids))
+                ).all()
+                source_paths = {row[0]: row[1] for row in doc_rows}
             results_sorted = [
                 SearchResult(
                     document_id=match.document_id,
@@ -157,11 +173,15 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
                     document_type=match.document_type,
                     status=match.status,
                     page_number=match.page_number,
-                    block_id=match.chunk_id,
+                    # chunk_id is NOT a document_blocks.id. Setting it here would
+                    # break the FK on ai_answer_sources.block_id. Drop it; the
+                    # chunk itself is still linked via DocumentChunk.
+                    block_id=None,
                     score=match.score,
                     excerpt=_excerpt(match.excerpt, normalized),
                     ocr_confidence=None,
                     source_type="semantic_chunk",
+                    source_path=source_paths.get(match.document_id),
                 )
                 for match in matches
             ]
@@ -199,6 +219,7 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
                     excerpt=_excerpt(chunk.chunk_text, normalized),
                     ocr_confidence=None,
                     source_type="semantic_chunk",
+                    source_path=document.source_path,
                 )
             )
 

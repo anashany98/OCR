@@ -7,8 +7,11 @@ import {
   ChevronRight,
   Copy,
   Download,
+  FileSpreadsheet,
   FileText,
   FileWarning,
+  Mail,
+  MapPin,
   Network,
   RefreshCcw,
   RotateCcw,
@@ -17,7 +20,8 @@ import {
   ShieldAlert,
 } from "lucide-react"
 
-import { api, downloadUrl, pageImageUrl } from "@/api/client"
+import { api, downloadUrl, pageImageUrl, thumbnailUrl } from "@/api/client"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { EmptyState } from "@/components/layout/EmptyState"
 import { PermissionGate } from "@/components/layout/PermissionGate"
@@ -130,6 +134,14 @@ export function DocumentDetailPage() {
 
   return (
     <div className="space-y-4">
+      {/* Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: "Documentos", to: "/documents" },
+          { label: document?.original_filename ?? "Cargando…" },
+        ]}
+      />
+
       {/* ================================================================ */}
       {/* HEADER                                                           */}
       {/* ================================================================ */}
@@ -137,8 +149,8 @@ export function DocumentDetailPage() {
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-3 min-w-0">
-              <Button asChild variant="outline" size="icon" className="h-8 w-8 flex-shrink-0">
-                <Link to="/documents"><ArrowLeft className="h-4 w-4" /></Link>
+              <Button asChild variant="outline" size="icon" className="h-8 w-8 flex-shrink-0" aria-label="Volver al listado">
+                <Link to="/documents"><ArrowLeft className="h-4 w-4" aria-hidden="true" /></Link>
               </Button>
               <div className="min-w-0">
                 <h1 className="truncate text-[16px] font-semibold text-[var(--text-primary)]">
@@ -178,6 +190,16 @@ export function DocumentDetailPage() {
 
             {/* Action toolbar */}
             <div className="flex flex-wrap gap-1.5">
+              {document?.document_type === "plano" && (
+                <PermissionGate roles={["admin", "gestor"]}>
+                  <Button asChild variant="outline" size="sm" className="h-8 text-xs">
+                    <Link to={`/documents/${id}/annotate-plan`}>
+                      <MapPin className="mr-1 h-3.5 w-3.5" />
+                      Anotar plano
+                    </Link>
+                  </Button>
+                </PermissionGate>
+              )}
               <PermissionGate roles={["admin"]}>
                 <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => reprocess.mutate()} disabled={reprocess.isPending}>
                   <RefreshCcw className="mr-1 h-3.5 w-3.5" />
@@ -230,6 +252,16 @@ export function DocumentDetailPage() {
                   alt={`Página ${selectedPage.page_number}`}
                 />
               </div>
+            ) : document && hasThumbnail(document.extension) ? (
+              <div className="flex justify-center bg-slate-100 py-4">
+                <img
+                  className="max-h-[540px] max-w-full rounded-md object-contain shadow-md"
+                  src={thumbnailUrl(document.id)}
+                  alt="Vista previa del documento"
+                />
+              </div>
+            ) : document ? (
+              <UnsupportedPreviewCard document={document} />
             ) : (
               <div className="flex items-center justify-center py-16">
                 <EmptyState title="Sin preview visual" description="Este documento no tiene imagen de página disponible." icon={<FileText className="h-5 w-5" />} />
@@ -589,4 +621,84 @@ function filterPages(pages: DocumentPage[], query: string) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnail support matrix
+// ---------------------------------------------------------------------------
+const THUMBNAIL_EXTENSIONS = new Set([
+  ".pdf",
+  ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
+  ".xlsx", ".xls", ".xlsm",
+  ".msg",
+])
+
+function hasThumbnail(extension: string | null | undefined): boolean {
+  if (!extension) return false
+  return THUMBNAIL_EXTENSIONS.has(extension.toLowerCase())
+}
+
+function previewKind(extension: string | null | undefined): "page" | "image" | "excel" | "email" | "other" {
+  const ext = (extension ?? "").toLowerCase()
+  if (ext === ".pdf") return "page"
+  if ([".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"].includes(ext)) return "image"
+  if ([".xlsx", ".xls", ".xlsm"].includes(ext)) return "excel"
+  if (ext === ".msg") return "email"
+  return "other"
+}
+
+function typeLabel(extension: string | null | undefined): string {
+  const ext = (extension ?? "").toLowerCase()
+  if (ext === ".pdf") return "Documento PDF"
+  if (ext === ".docx") return "Documento Word (.docx)"
+  if (ext === ".doc") return "Documento Word (.doc)"
+  if ([".xlsx", ".xls", ".xlsm"].includes(ext)) return "Hoja de cálculo"
+  if (ext === ".msg") return "Email Outlook"
+  if (ext === ".eml") return "Email"
+  if ([".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"].includes(ext)) return "Imagen"
+  if ([".txt", ".csv", ".tsv", ".log"].includes(ext)) return "Texto plano"
+  if (ext === ".dwg") return "Plano CAD"
+  if (ext === ".lnk") return "Acceso directo"
+  return ext ? `Archivo ${ext}` : "Archivo"
+}
+
+// ---------------------------------------------------------------------------
+// Fallback card for file types without any preview available
+// ---------------------------------------------------------------------------
+function UnsupportedPreviewCard({ document }: { document: { id: number; original_filename: string; extension: string | null; file_size: number; file_hash: string; mime_type?: string | null } }) {
+  const kind = previewKind(document.extension)
+  const Icon = kind === "excel" ? FileSpreadsheet : kind === "email" ? Mail : FileText
+  return (
+    <div className="flex flex-col items-center gap-4 px-6 py-10">
+      <div className="flex h-14 w-14 items-center justify-center rounded-md border bg-slate-50 text-slate-500">
+        <Icon className="h-7 w-7" />
+      </div>
+      <div className="text-center">
+        <p className="text-[14px] font-semibold text-[var(--text-primary)]">{typeLabel(document.extension)}</p>
+        <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+          No hay vista previa disponible para este tipo de archivo. Descárgalo para abrirlo en su aplicación nativa.
+        </p>
+      </div>
+      <dl className="grid w-full max-w-sm grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border bg-slate-50 px-4 py-3 text-[12px]">
+        <dt className="text-[var(--text-muted)]">Tipo</dt>
+        <dd className="text-right font-mono text-[11px]">{document.extension ?? "—"}</dd>
+        <dt className="text-[var(--text-muted)]">Tamaño</dt>
+        <dd className="text-right">{formatBytes(document.file_size)}</dd>
+        {document.mime_type ? (
+          <>
+            <dt className="text-[var(--text-muted)]">MIME</dt>
+            <dd className="truncate text-right font-mono text-[11px]" title={document.mime_type}>{document.mime_type}</dd>
+          </>
+        ) : null}
+        <dt className="text-[var(--text-muted)]">SHA256</dt>
+        <dd className="truncate text-right font-mono text-[11px]" title={document.file_hash}>{document.file_hash.slice(0, 16)}…</dd>
+      </dl>
+      <Button asChild size="sm" variant="default">
+        <a href={downloadUrl(document.id)}>
+          <Download className="mr-1 h-3.5 w-3.5" />
+          Descargar
+        </a>
+      </Button>
+    </div>
+  )
 }

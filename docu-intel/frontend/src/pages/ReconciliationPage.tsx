@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, ExternalLink, RefreshCw, Scale, XCircle } from "lucide-react"
 
 import { api } from "@/api/client"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { EmptyState } from "@/components/layout/EmptyState"
 import { MetricTile } from "@/components/layout/MetricTile"
 import { PageHeader } from "@/components/layout/PageHeader"
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate } from "@/lib/utils"
+import { notify } from "@/lib/toast"
 import type { ReconciliationIssue } from "@/types/api"
 
 export function ReconciliationPage() {
@@ -18,12 +20,21 @@ export function ReconciliationPage() {
   const issues = useQuery({ queryKey: ["reconciliation-issues"], queryFn: api.reconciliationIssues, refetchInterval: 30000 })
   const generate = useMutation({
     mutationFn: api.generateReconciliationIssues,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reconciliation-issues"] }),
+    onSuccess: (items) => {
+      queryClient.invalidateQueries({ queryKey: ["reconciliation-issues"] })
+      notify.success(`Incidencias generadas`, `${items.length} diferencias detectadas.`)
+    },
+    onError: (err) => notify.error(err, "No se pudieron generar las incidencias"),
   })
   const update = useMutation({
     mutationFn: ({ id, status }: { id: number; status: "reviewed" | "ignored" | "pending" }) =>
       api.updateReconciliationIssue(id, { status, resolution_notes: status === "reviewed" ? "Revisado desde conciliación" : null }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reconciliation-issues"] }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["reconciliation-issues"] })
+      const label = vars.status === "reviewed" ? "marcada como revisada" : vars.status === "ignored" ? "ignorada" : "marcada como pendiente"
+      notify.success(`Incidencia ${label}`)
+    },
+    onError: (err) => notify.error(err, "No se pudo actualizar la incidencia"),
   })
 
   const items = issues.data ?? []
@@ -33,6 +44,7 @@ export function ReconciliationPage() {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Incidencias" }]} />
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
         <PageHeader title="Conciliación" description="Cruce operativo entre presupuestos, pedidos y facturas con resolución trazable." />
         <Button onClick={() => generate.mutate()} disabled={generate.isPending}>
@@ -96,11 +108,11 @@ export function ReconciliationPage() {
                             </Link>
                           </Button>
                         ) : null}
-                        <Button variant="outline" size="icon" onClick={() => update.mutate({ id: issue.id, status: "ignored" })} title="Ignorar">
-                          <XCircle />
+                        <Button variant="outline" size="icon" onClick={() => update.mutate({ id: issue.id, status: "ignored" })} title="Ignorar" aria-label="Ignorar incidencia">
+                          <XCircle aria-hidden="true" />
                         </Button>
-                        <Button size="icon" onClick={() => update.mutate({ id: issue.id, status: "reviewed" })} title="Marcar revisada">
-                          <CheckCircle2 />
+                        <Button size="icon" onClick={() => update.mutate({ id: issue.id, status: "reviewed" })} title="Marcar revisada" aria-label="Marcar como revisada">
+                          <CheckCircle2 aria-hidden="true" />
                         </Button>
                       </div>
                     </TableCell>

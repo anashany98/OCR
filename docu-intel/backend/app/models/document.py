@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, JSON, String, Text
@@ -38,7 +38,7 @@ class Document(Base):
     duplicate_of_document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     pages = relationship("DocumentPage", back_populates="document", cascade="all, delete-orphan")
@@ -79,7 +79,7 @@ class DocumentPage(Base):
     review_notes: Mapped[str | None] = mapped_column(Text)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     document = relationship("Document", back_populates="pages")
     blocks = relationship("DocumentBlock", back_populates="page", cascade="all, delete-orphan")
@@ -100,7 +100,7 @@ class DocumentBlock(Base):
     bbox_y2: Mapped[float | None] = mapped_column(Float)
     confidence: Mapped[float | None] = mapped_column(Float)
     source_engine: Mapped[str | None] = mapped_column(String(80))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     document = relationship("Document", back_populates="blocks")
     page = relationship("DocumentPage", back_populates="blocks")
@@ -117,7 +117,7 @@ class DocumentEntity(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
     page_number: Mapped[int | None] = mapped_column(Integer)
     source_block_id: Mapped[int | None] = mapped_column(ForeignKey("document_blocks.id", ondelete="SET NULL"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     document = relationship("Document", back_populates="entities")
 
@@ -134,7 +134,7 @@ class DocumentChunk(Base):
     embedding_fallback: Mapped[bool] = mapped_column(default=False, nullable=False)
     needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     token_count: Mapped[int | None] = mapped_column(Integer)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     document = relationship("Document", back_populates="chunks")
 

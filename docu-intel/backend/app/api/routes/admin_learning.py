@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import require_roles
 from app.database.session import get_db
 from app.models import ClassificationSuggestion, LearnedPattern, User
 from app.schemas.learning import ClassificationSuggestionRead, LearnedPatternRead
@@ -28,7 +28,7 @@ VALID_SUGGESTION_TYPES = Literal[
 @router.get("/admin/classification-suggestions", response_model=list[ClassificationSuggestionRead])
 def list_classification_suggestions(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
     status_filter: Literal["pending", "approved", "rejected", "applied"] | None = Query(default=None, alias="status"),
     suggestion_type: VALID_SUGGESTION_TYPES | None = Query(default=None),
     document_id: int | None = Query(default=None, ge=1),
@@ -48,7 +48,7 @@ def list_classification_suggestions(
 @router.get("/admin/classification-suggestions/counts")
 def classification_suggestion_counts(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> dict:
     rows = db.execute(
         select(ClassificationSuggestion.status, func.count(ClassificationSuggestion.id))
@@ -120,7 +120,7 @@ def reject_classification_suggestion(
 @router.get("/admin/learned-patterns", response_model=list[LearnedPatternRead])
 def list_learned_patterns(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
     status_filter: Literal["active", "disabled", "pending"] | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[LearnedPattern]:
@@ -195,7 +195,7 @@ def enable_learned_pattern(
 @router.get("/admin/learning/health")
 def learning_health(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> dict:
     """Aggregate health metrics for the learning loop.
 

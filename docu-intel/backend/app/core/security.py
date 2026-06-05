@@ -58,7 +58,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
     header = json.loads(_unb64(header_b64))
     alg = header.get("alg", "")
-    if alg not in {"HS256", "HS384", "HS512"}:
+    if alg != settings.jwt_algorithm:
         raise ValueError(f"Unsupported algorithm: {alg}")
 
     payload = json.loads(_unb64(payload_b64))

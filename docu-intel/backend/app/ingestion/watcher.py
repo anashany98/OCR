@@ -29,10 +29,13 @@ class PendingFileRegistry:
     _paths: dict[Path, float] = field(default_factory=dict)
     _retry_counts: dict[Path, int] = field(default_factory=dict)
     MAX_RETRIES: int = 3
+    MAX_ENTRIES: int = 10_000
 
     def add(self, path: Path, *, now: float | None = None) -> None:
         if is_ignored_path(path):
             return
+        if len(self._paths) >= self.MAX_ENTRIES:
+            self._cleanup_old_entries()
         self._paths[path] = time.monotonic() if now is None else now
         self._retry_counts.setdefault(path, 0)
 
@@ -55,6 +58,15 @@ class PendingFileRegistry:
 
     def __len__(self) -> int:
         return len(self._paths)
+
+    def _cleanup_old_entries(self) -> None:
+        """Evict oldest half of entries when at capacity."""
+        sorted_entries = sorted(self._paths.items(), key=lambda item: item[1])
+        evict_count = max(1, len(sorted_entries) // 2)
+        for path, _ in sorted_entries[:evict_count]:
+            self._paths.pop(path, None)
+            self._retry_counts.pop(path, None)
+        logger.warning("pending_registry_evicted count=%d remaining=%d", evict_count, len(self._paths))
 
 
 def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> dict:

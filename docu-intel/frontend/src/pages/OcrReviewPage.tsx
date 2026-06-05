@@ -4,6 +4,7 @@ import { Check, ExternalLink, RefreshCcw, RotateCw, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import { api, pageImageUrl } from "@/api/client"
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { StatusBadge } from "@/components/layout/StatusBadge"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn, formatDate } from "@/lib/utils"
+import { notify } from "@/lib/toast"
 import type { OcrReviewPage } from "@/types/api"
 
 export function OcrReviewPage() {
@@ -37,25 +39,31 @@ export function OcrReviewPage() {
   }, [selected?.page_id])
   const reprocess = useMutation({
     mutationFn: (pageId: number) => api.reprocessOcrPage(pageId),
-    onSuccess: () => {
+    onSuccess: (job) => {
       queryClient.invalidateQueries({ queryKey: ["ocr-review"] })
       queryClient.invalidateQueries({ queryKey: ["jobs"] })
       queryClient.invalidateQueries({ queryKey: ["stats"] })
+      notify.success(`Reprocesamiento OCR encolado`, `Job #${job.id} creado.`)
     },
+    onError: (err) => notify.error(err, "No se pudo reprocesar la página"),
   })
   const reviewMutation = useMutation({
     mutationFn: ({ pageId, reviewStatus, notes }: { pageId: number; reviewStatus: "approved" | "rejected"; notes?: string }) =>
       api.updateOcrReview(pageId, { review_status: reviewStatus, review_notes: notes || null }),
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       setReviewNotes("")
       queryClient.invalidateQueries({ queryKey: ["ocr-review"] })
       queryClient.invalidateQueries({ queryKey: ["audit-logs"] })
       queryClient.invalidateQueries({ queryKey: ["stats"] })
+      const label = vars.reviewStatus === "approved" ? "aprobada" : "denegada"
+      notify.success(`Página ${label}`)
     },
+    onError: (err) => notify.error(err, "No se pudo registrar la revisión"),
   })
 
   return (
     <>
+      <Breadcrumbs items={[{ label: "Revisión OCR" }]} />
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
         <PageHeader title="Verificación OCR" description="Revisión humana de páginas con confianza OCR inferior al umbral seleccionado." />
         <div className="flex flex-wrap items-center gap-2">

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import require_roles
 from app.database.session import get_db
 from app.models import DocumentPage, User
 
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("/admin/ocr-stats")
 def ocr_stats(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> dict:
     """Counts of pages grouped by OCR engine and the share routed to PaddleOCR.
 

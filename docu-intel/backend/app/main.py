@@ -8,17 +8,29 @@ from slowapi.errors import RateLimitExceeded
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.multipart_limits import _APPLIED_MAX_FILES
 from app.core.rate_limit import limiter
 from app.core.sentry import init_sentry
 from app.database.init_db import create_initial_admin
 from app.database.session import SessionLocal
 from app.middleware.performance_monitor import PerformanceMonitorMiddleware
 from app.middleware.request_id import RequestIDMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.services.metrics import register_metrics_endpoint
 
 
 setup_logging()
 init_sentry()
+
+# Multipart file-part cap: imported for its side effect (patches
+# Starlette's Request._get_form default). Must run before any route
+# resolves its dependencies, hence the top-level import.
+import logging as _logging
+_logging.getLogger("app.bootstrap").info(
+    "multipart max_files patched from %d to %d",
+    1000,
+    _APPLIED_MAX_FILES,
+)
 
 
 @asynccontextmanager
@@ -43,11 +55,16 @@ app.add_middleware(RequestIDMiddleware)
 # Performance monitoring
 app.add_middleware(PerformanceMonitorMiddleware)
 
+# Security headers
+app.add_middleware(SecurityHeadersMiddleware)
+
 # CORS configuration - more restrictive in production
 allow_origins = settings.cors_origins
 if settings.environment == "production":
     # In production, ensure only specific domains are allowed
     allow_origins = [origin.strip() for origin in allow_origins if origin.strip() and not origin.startswith("http://localhost")]
+    if "*" in allow_origins:
+        raise ValueError("CORS_ORIGINS must not contain '*' in production environment")
 
 app.add_middleware(
     CORSMiddleware,

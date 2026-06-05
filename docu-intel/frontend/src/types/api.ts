@@ -506,12 +506,75 @@ export type AIAnswerSource = {
   excerpt: string | null
 }
 
+export type ResolvedDocumentEntity = {
+  number?: string | null
+  client?: string | null
+  supplier?: string | null
+  date?: string | null
+  total_amount?: number | null
+  currency?: string | null
+  status?: string | null
+  accepted?: boolean | null
+  related_budget_id?: number | null
+  related_order_id?: number | null
+  project_name?: string | null
+  scale_text?: string | null
+  has_valid_scale?: boolean | null
+  line_count?: number | null
+  lines_preview?: Array<Record<string, unknown>>
+  rooms_preview?: Array<Record<string, unknown>>
+  [k: string]: unknown
+}
+
+export type ResolvedDocumentVision = {
+  model: string
+  description: string
+  applied_at: string
+}
+
+export type ResolvedDocument = {
+  document: {
+    id: number
+    filename: string
+    source_path: string | null
+    document_type: string
+    status: string
+    confidence: number | null
+    page_count: number | null
+    created_at: string | null
+    entities: {
+      budget?: ResolvedDocumentEntity
+      order?: ResolvedDocumentEntity
+      invoice?: ResolvedDocumentEntity
+      plan?: ResolvedDocumentEntity
+      generic?: Array<{ type: string; value: string; page?: number | null; confidence?: number | null }>
+    }
+    vision?: ResolvedDocumentVision
+  }
+  related: Array<{
+    document_id: number
+    filename: string
+    source_path: string | null
+    document_type: string
+    relation: string
+    label: string
+    entities?: {
+      budget?: ResolvedDocumentEntity
+      order?: ResolvedDocumentEntity
+      invoice?: ResolvedDocumentEntity
+      plan?: ResolvedDocumentEntity
+    }
+  }>
+}
+
 export type AIAnswer = {
   id: number
   question_id: number
   answer: string
   confidence: number | null
   model_name: string | null
+  resolved_document: ResolvedDocument | null
+  followups: string[]
   created_at: string
   sources: AIAnswerSource[]
 }

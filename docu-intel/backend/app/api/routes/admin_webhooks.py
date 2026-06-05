@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import require_roles
 from app.database.session import get_db
 from app.models import User, WebhookOutbox
 from app.workers.webhooks_tasks import manual_retry
@@ -46,7 +46,7 @@ class WebhookOutboxRow(BaseModel):
 @router.get("/admin/webhooks/outbox", response_model=list[WebhookOutboxRow])
 def list_outbox(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
     status_filter: Literal["pending", "sending", "delivered", "dead_letter"] | None = Query(default=None, alias="status"),
     event_type: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
@@ -63,7 +63,7 @@ def list_outbox(
 @router.get("/admin/webhooks/dead-letter", response_model=list[WebhookOutboxRow])
 def list_dead_letter(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> list[WebhookOutbox]:
     stmt = (
@@ -95,7 +95,7 @@ def retry_dead_letter(
 @router.get("/admin/webhooks/outbox/stats")
 def outbox_stats(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> dict:
     """Counts of outbox rows grouped by status, plus oldest pending age."""
     counts = dict(

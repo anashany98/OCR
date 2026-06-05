@@ -2,6 +2,7 @@
 import ReactDOM from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RouterProvider } from "react-router-dom"
+import { Toaster } from "sonner"
 
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { AuthProvider } from "@/hooks/useAuth"
@@ -17,6 +18,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
+      staleTime: 30_000,
     },
   },
 })
@@ -42,6 +44,19 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <AuthProvider>
         <RootErrorBoundary>
           <RouterProvider router={router} />
+          <Toaster
+            position="bottom-right"
+            richColors
+            closeButton
+            duration={5000}
+            toastOptions={{
+              classNames: {
+                toast: "font-sans",
+                title: "text-[13px] font-medium",
+                description: "text-[12px] text-muted-foreground",
+              },
+            }}
+          />
         </RootErrorBoundary>
       </AuthProvider>
     </QueryClientProvider>

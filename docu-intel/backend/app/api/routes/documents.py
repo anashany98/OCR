@@ -2,7 +2,7 @@ from pathlib import Path
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -64,17 +64,42 @@ def upload_document(
 @router.post("/upload/batch", response_model=BatchUploadResponse)
 def upload_batch(
     files: list[UploadFile] = File(...),
+    relative_paths: str = Form(default="[]"),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor")),
 ):
+    import json as _json
+
+    try:
+        parsed_paths = _json.loads(relative_paths) if relative_paths else []
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="relative_paths must be a JSON list of strings")
+
+    if parsed_paths and len(parsed_paths) != len(files):
+        raise HTTPException(
+            status_code=422,
+            detail=f"relative_paths length ({len(parsed_paths)}) must match files length ({len(files)})",
+        )
+
     uploaded = 0
     duplicates = 0
     failed = 0
     results = []
 
-    for file in files:
+    for index, file in enumerate(files):
+        # Preserve the relative path inside the selected folder so the IA
+        # agent can use the directory tree as a classification hint (e.g.
+        # /presupuestos/245745/foo.pdf ⇒ budget code 245745).
+        source_path = parsed_paths[index] if parsed_paths else None
         try:
-            document, job = register_upload(db, filename=file.filename, stream=file.file, user=user, enqueue=True)
+            document, job = register_upload(
+                db,
+                filename=file.filename,
+                stream=file.file,
+                user=user,
+                enqueue=True,
+                source_path=source_path,
+            )
             if document.status == "duplicate":
                 duplicates += 1
             else:
