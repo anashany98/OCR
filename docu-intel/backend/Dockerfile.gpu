@@ -1,10 +1,13 @@
-# GPU variant of the backend image. PaddlePaddle 3.3.0 ships GPU support
-# in the unified `paddlepaddle` wheel, so all this image has to do is
-# provide a CUDA runtime + cuDNN on top of Python 3.11.
+# GPU variant of the backend image. PaddlePaddle 3.3.1 ships GPU support
+# under the `paddlepaddle-gpu` package on PaddlePaddle's own CUDA index;
+# we install it on top of a CUDA 12.6 runtime base and add
+# `paddlex[ocr]` for the optional Tier-3 PP-Structure pipeline
+# (layout_parsing: layout detection + table recognition + OCR).
 #
-# The CPU image (../Dockerfile) stays on python:3.11-slim. The two images
-# are interchangeable at the code level — only the OCR worker performance
-# differs.
+# The CPU image (../Dockerfile) stays on python:3.11-slim with the
+# CPU-only `paddlepaddle` wheel. The two images are interchangeable at
+# the code level — the only difference is the OCR worker performance
+# and the availability of Tier 3.
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -38,6 +41,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-core \
     curl \
     ca-certificates \
+    tesseract-ocr \
+    tesseract-ocr-spa \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # Force python3.11 to be the default `python` and bootstrap pip (the
@@ -56,14 +62,17 @@ RUN groupadd --system --gid 10001 appuser \
     && chown -R appuser:appuser /app
 
 COPY requirements.txt /app/requirements.txt
-# paddlepaddle-gpu is published only on PaddlePaddle's own index; PyPI
-# only carries the CPU build. We pin to cu126 to match the CUDA 12.6
+# PaddlePaddle 3.x ships GPU support under the `paddlepaddle-gpu` package
+# name on PaddlePaddle's own CUDA index. The plain `paddlepaddle` wheel
+# on the same index is a CPU-only build, which is why the CPU image and
+# the GPU image diverge here. We pin to cu126 to match the CUDA 12.6
 # runtime in the nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 base.
 RUN python -m pip install --default-timeout=120 --retries=5 \
     -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
     --extra-index-url https://pypi.org/simple \
-    paddlepaddle-gpu==3.3.0 \
-    && python -m pip install --default-timeout=120 --retries=5 -r /app/requirements.txt
+    paddlepaddle-gpu==3.3.1 \
+    && python -m pip install --default-timeout=120 --retries=5 -r /app/requirements.txt \
+    && python -m pip install --default-timeout=120 --retries=5 'paddlex[ocr]==3.5.2'
 
 COPY app /app/app
 COPY alembic /app/alembic

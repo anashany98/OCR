@@ -120,6 +120,14 @@ class Settings(BaseSettings):
     # pay the PaddleOCR init cost.
     ocr_cascading_min_chars: int = 30
     ocr_cascading_min_confidence: float = 0.5
+    # Optional Tier 3: PP-Structure (PaddleX layout_parsing). Only fires
+    # when Tier 1 AND Tier 2 both fail to produce a usable result. GPU
+    # only — the engine refuses to instantiate on CPU because the
+    # PaddlePaddle 3.3.x PIR executor crashes layout_parsing on CPU.
+    # Off by default; enable per environment.
+    ocr_cascading_use_pp_structure: bool = False
+    pp_structure_device: str = "gpu"
+    pp_structure_lang: str = "es"
 
     embedding_provider: str = "local_hash"
     embedding_base_url: str = ""

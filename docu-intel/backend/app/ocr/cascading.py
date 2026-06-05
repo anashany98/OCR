@@ -9,10 +9,15 @@ Strategy:
      the init cost.
   4. The fallback result replaces the primary one whenever it has
      either more text or higher average confidence.
+  5. **Optional Tier 3**: if ``pp_structure`` is wired in and both
+     Tier 1 and Tier 2 produced weak results, escalate to PP-Structure
+     (PaddleX layout_parsing). Tier 3 is GPU-only and only fires on
+     the hardest cases so we don't pay the ~500 MB model download on
+     every page.
 
 The cascaded :attr:`name` is updated on every call to reflect which
 engine produced the winning result, so the admin UI can break down the
-share of pages that escalated to Paddle.
+share of pages that escalated to Paddle / PP-Structure.
 """
 from __future__ import annotations
 
@@ -40,9 +45,11 @@ class CascadingOCREngine:
         *,
         min_chars: int = 30,
         min_confidence: float = 0.5,
+        pp_structure: BaseOCREngine | None = None,
     ) -> None:
         self.primary = primary
         self.fallback = fallback
+        self.pp_structure = pp_structure
         self.min_chars = min_chars
         self.min_confidence = min_confidence
         # ``name`` is the engine identity of the last result; default to
@@ -76,11 +83,62 @@ class CascadingOCREngine:
         track_ocr_duration(time.perf_counter() - start)
 
         if self._is_better(fallback_result, primary_result):
+            # Tier 2 won — try Tier 3 only if it's wired in AND Tier 2
+            # is still weak (below thresholds). Otherwise return Tier 2.
+            if self.pp_structure is not None and not self._is_acceptable(fallback_result):
+                tier3 = self._try_tier3(image_path, primary_result, fallback_result)
+                if tier3 is not None:
+                    return tier3
             self._name = self.fallback.name
             return fallback_result
 
+        # Tier 2 didn't beat Tier 1 — try Tier 3 if available.
+        if self.pp_structure is not None:
+            tier3 = self._try_tier3(image_path, primary_result, fallback_result)
+            if tier3 is not None:
+                return tier3
+
         self._name = self.primary.name
         return primary_result
+
+    def _try_tier3(
+        self,
+        image_path: Path,
+        primary_result: OCRResult,
+        fallback_result: OCRResult,
+    ) -> OCRResult | None:
+        """Run PP-Structure on the page. Returns the best of the three
+        results, or ``None`` if Tier 3 failed / didn't beat the others.
+
+        PP-Structure init is expensive (~5-10 s on first call) and the
+        model is heavy, so we keep the try/except tight: any failure
+        falls back to whichever of Tier 1 / Tier 2 is better.
+        """
+        assert self.pp_structure is not None  # caller-guaranteed
+        start = time.perf_counter()
+        try:
+            tier3_result = self.pp_structure.extract(image_path)
+        except Exception:
+            track_ocr_duration(time.perf_counter() - start)
+            return None
+        track_ocr_duration(time.perf_counter() - start)
+
+        # PP-Structure is also judged on text length; a run that
+        # returned nothing useful should never replace a Tier 2 result.
+        if not tier3_result.text or len(tier3_result.text.strip()) < self.min_chars:
+            return None
+
+        # PP-Structure wins if it produced strictly more text than the
+        # best of Tier 1 / Tier 2. Confidence is rarely populated by
+        # the layout pipeline, so we don't gate on it.
+        best_prior_chars = max(
+            len(primary_result.text.strip()),
+            len(fallback_result.text.strip()),
+        )
+        if len(tier3_result.text.strip()) > best_prior_chars:
+            self._name = self.pp_structure.name
+            return tier3_result
+        return None
 
     def _is_acceptable(self, result: OCRResult) -> bool:
         """A primary result is acceptable when it has enough text and

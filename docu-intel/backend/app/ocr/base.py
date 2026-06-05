@@ -20,11 +20,17 @@ from typing import Protocol
 
 @dataclass
 class OCRBlock:
-    """A single detected text block from an OCR pass."""
+    """A single detected text block from an OCR pass.
+
+    ``block_type`` carries the layout type when the backend can tell
+    text from table from figure (PP-Structure / layout_parsing). Plain
+    OCR engines leave it ``None``; parsers fall back to "text".
+    """
 
     text: str
     confidence: float | None
     bbox: tuple[float, float, float, float] | None
+    block_type: str | None = None
 
 
 @dataclass

@@ -42,6 +42,11 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
 
         return PaddleOCREngine
 
+    if engine == "pp_structure":
+        from app.ocr.pp_structure import PPStructureEngine
+
+        return PPStructureEngine
+
     if engine == "cascading":
         from app.ocr.cascading import CascadingOCREngine
         from app.ocr.paddle import PaddleOCREngine
@@ -56,7 +61,7 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
             name = "cascading"
 
             def __new__(cls) -> BaseOCREngine:  # type: ignore[override]
-                return CascadingOCREngine(
+                kwargs: dict[str, object] = dict(
                     primary=TesseractOCREngine(
                         lang=settings.tesseract_lang,
                         oem=settings.tesseract_oem,
@@ -66,11 +71,22 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
                     min_chars=settings.ocr_cascading_min_chars,
                     min_confidence=settings.ocr_cascading_min_confidence,
                 )
+                if settings.ocr_cascading_use_pp_structure:
+                    # PP-Structure is GPU-only; importing lazily so CPU
+                    # images that never opt in don't pay the paddlex[ocr]
+                    # install cost.
+                    from app.ocr.pp_structure import PPStructureEngine
+
+                    kwargs["pp_structure"] = PPStructureEngine(
+                        device=settings.pp_structure_device,
+                        lang=settings.pp_structure_lang,
+                    )
+                return CascadingOCREngine(**kwargs)  # type: ignore[arg-type]
 
         return _CascadingFactory  # type: ignore[return-value]
 
     raise ValueError(
-        f"Unknown ocr_engine: {engine!r}. Expected 'tesseract', 'paddleocr', or 'cascading'."
+        f"Unknown ocr_engine: {engine!r}. Expected 'tesseract', 'paddleocr', 'cascading', or 'pp_structure'."
     )
 
 
