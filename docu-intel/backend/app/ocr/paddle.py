@@ -1,30 +1,30 @@
+"""PaddleOCR 3.x engine (multi-GPU aware).
+
+Heavyweight GPU-accelerated engine, used by the cascading OCR router as
+the fallback when Tesseract's confidence / text length is too low. Kept
+in the Docker image alongside Tesseract so the cascade can escalate to
+it on hard cases (handwriting, low-quality scans, complex layouts).
+
+Multi-GPU support: each Celery worker has ``CUDA_VISIBLE_DEVICES``
+pinned to a single card (see docker-compose). PaddleOCR's underlying
+Paddle picks it up automatically. The cross-process init lock in
+:pydata:`paddleocr_init_lock` keeps the first call from racing across
+concurrent workers.
+"""
 from __future__ import annotations
 
 import os
+import tempfile
+import threading
 import time
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from contextlib import contextmanager, nullcontext
-import tempfile
 import sys
-import threading
 
+from app.ocr.base import OCRBlock, OCRResult
 from app.services.metrics import track_ocr_duration
-
-
-@dataclass
-class OCRBlock:
-    text: str
-    confidence: float | None
-    bbox: tuple[float, float, float, float] | None
-
-
-@dataclass
-class OCRResult:
-    text: str
-    confidence: float | None
-    blocks: list[OCRBlock]
 
 
 # =============================================================================
@@ -35,6 +35,7 @@ class OCRResult:
 # - worker-gpu-1: CUDA_VISIBLE_DEVICES=1 (GPU 1)
 # PaddleOCR usará automáticamente el GPU asignado
 # =============================================================================
+
 
 def _get_gpu_device() -> str | None:
     """Obtiene el GPU device del environment variable."""
@@ -49,10 +50,12 @@ def _get_gpu_device() -> str | None:
 
 
 class PaddleOCREngine:
+    """PaddleOCR 3.x engine. Implements the :class:`BaseOCREngine` protocol."""
+
+    name: str = "paddleocr"
+
     @cached_property
     def _engine(self):
-        import threading
-
         result = [None]
         error = [None]
 
@@ -85,7 +88,7 @@ class PaddleOCREngine:
         confidences: list[float] = []
 
         if raw is None:
-            return OCRResult(text="", confidence=None, blocks=[])
+            return OCRResult(text="", confidence=None, blocks=[], engine=self.name)
 
         if not isinstance(raw, (list, tuple)):
             raw = [raw]
@@ -130,7 +133,7 @@ class PaddleOCREngine:
         text = "\n".join(block.text for block in blocks if block.text)
         average = sum(confidences) / len(confidences) if confidences else None
         track_ocr_duration(time.perf_counter() - start)
-        return OCRResult(text=text, confidence=average, blocks=blocks)
+        return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
 
     def _parse_ocr_line(self, line: object) -> tuple[str, float, tuple[float, float, float, float] | None] | None:
         """Parse a single OCR line, handling both 2.x and 3.x formats."""
@@ -192,3 +195,6 @@ def paddleocr_init_lock():
             yield
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+
+
+__all__ = ["PaddleOCREngine", "paddleocr_init_lock"]

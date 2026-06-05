@@ -38,36 +38,44 @@ def db():
 def test_parse_pdf_digital_records_pymupdf_per_page(db, tmp_path):
     """For a digital-only PDF, every page must be labelled ocr_engine='pymupdf'."""
     from app.parsers.pdf import parse_pdf
-    from app.ocr.paddle import PaddleOCREngine
 
     pdf_path = _build_digital_pdf(tmp_path / "digital.pdf")
     output_dir = tmp_path / "out"
-    doc = parse_pdf(pdf_path, output_dir, PaddleOCREngine())
+
+    class _NoopEngine:
+        name = "paddleocr"
+
+        def extract(self, image_path: Path):
+            raise AssertionError("digital PDF should never reach the OCR engine")
+
+    doc = parse_pdf(pdf_path, output_dir, _NoopEngine())
     assert len(doc.pages) == 3
     for page in doc.pages:
         assert page.ocr_engine == "pymupdf"
 
 
-def test_parse_pdf_mixed_routes_ocr_pages_to_paddleocr(db, tmp_path):
-    """For a mixed PDF, scanned pages must be labelled ocr_engine='paddleocr'.
+def test_parse_pdf_mixed_routes_ocr_pages_to_cascade_or_paddleocr(db, tmp_path):
+    """For a mixed PDF, scanned pages must be labelled with an OCR engine.
 
-    Slow integration test: loads the PaddleOCR model. Skipped unless the
-    RUN_SLOW_OCR_TESTS env var is set.
+    The cascade can route scanned pages to either tesseract (when the
+    result is clean enough) or paddleocr (the fallback). Slow integration
+    test: loads the cascade. Skipped unless the RUN_SLOW_OCR_TESTS env
+    var is set.
     """
     import os
 
     if not os.environ.get("RUN_SLOW_OCR_TESTS"):
-        pytest.skip("set RUN_SLOW_OCR_TESTS=1 to run the PaddleOCR integration test")
+        pytest.skip("set RUN_SLOW_OCR_TESTS=1 to run the cascade integration test")
     pytest.importorskip("paddleocr")
-    from app.ocr.paddle import PaddleOCREngine
+    from app.ocr.factory import get_ocr_engine_class
     from app.parsers.pdf import parse_pdf
 
     pdf_path = _build_mixed_pdf(tmp_path / "mixed.pdf")
     output_dir = tmp_path / "out"
-    doc = parse_pdf(pdf_path, output_dir, PaddleOCREngine())
+    doc = parse_pdf(pdf_path, output_dir, get_ocr_engine_class()())
     engines = {p.page_number: p.ocr_engine for p in doc.pages}
     assert "pymupdf" in engines.values()
-    assert any(e in {"paddleocr", "empty"} for e in engines.values())
+    assert any(e in {"tesseract", "paddleocr", "empty"} for e in engines.values())
 
 
 # ---------------------------------------------------------------------------
@@ -84,21 +92,25 @@ def test_ocr_stats_endpoint_groups_by_engine(db):
             DocumentPage(document_id=1, page_number=1, text="x", ocr_engine="pymupdf"),
             DocumentPage(document_id=1, page_number=2, text="x", ocr_engine="pymupdf"),
             DocumentPage(document_id=1, page_number=3, text="x", ocr_engine="paddleocr"),
-            DocumentPage(document_id=1, page_number=4, text="x", ocr_engine=None),  # unset
-            DocumentPage(document_id=1, page_number=5, text="x", ocr_engine="empty"),
+            DocumentPage(document_id=1, page_number=4, text="x", ocr_engine="tesseract"),
+            DocumentPage(document_id=1, page_number=5, text="x", ocr_engine=None),  # unset
+            DocumentPage(document_id=1, page_number=6, text="x", ocr_engine="empty"),
         ]
     )
     db.commit()
 
     result = ocr_stats(db)
-    assert result["total_pages"] == 5
+    assert result["total_pages"] == 6
     assert result["counts"]["pymupdf"] == 2
     assert result["counts"]["paddleocr"] == 1
+    assert result["counts"]["tesseract"] == 1
     assert result["counts"]["unset"] == 1
     assert result["counts"]["empty"] == 1
-    assert result["share"]["pymupdf"] == 0.4
-    assert result["share"]["paddleocr"] == 0.2
-    assert result["share"]["empty"] == 0.2
+    assert result["share"]["pymupdf"] == round(2 / 6, 4)
+    assert result["share"]["paddleocr"] == round(1 / 6, 4)
+    assert result["share"]["tesseract"] == round(1 / 6, 4)
+    assert result["share"]["empty"] == round(1 / 6, 4)
+    assert result["share"]["ocr_share"] == round(2 / 6, 4)
 
 
 # ---------------------------------------------------------------------------

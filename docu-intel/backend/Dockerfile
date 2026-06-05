@@ -31,6 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     libreoffice-core \
     curl \
+    tesseract-ocr \
+    tesseract-ocr-spa \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install /usr/local

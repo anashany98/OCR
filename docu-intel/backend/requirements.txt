@@ -8,10 +8,19 @@ numpy==1.26.4
 opencv-python-headless==4.10.0.84
 openpyxl==3.1.5
 paddleocr==3.5.0
-# paddlepaddle is installed separately per-Dockerfile:
+# paddlepaddle is installed separately per-Dockerfile with --no-deps:
 # - Dockerfile (CPU) installs `paddlepaddle==3.3.0` from PyPI.
 # - Dockerfile.gpu installs `paddlepaddle-gpu==3.3.0` from the
 #   PaddlePaddle custom index (the GPU wheel is not on PyPI).
+# Both PaddleOCR and Tesseract stay installed so the cascade can use
+# the cheap Tesseract first and only escalate to Paddle on hard cases.
+pytesseract==0.3.13
+# paddlepaddle transitive deps (we install paddle with --no-deps to avoid
+# version conflicts with paddlex/paddleocr, so we list the bare minimum
+# paddlepaddle needs to import successfully).
+protobuf>=4.25.0
+opt_einsum==3.3.0
+safetensors>=0.6.0
 pandas==2.2.3
 pdfplumber==0.11.4
 pgvector==0.3.6

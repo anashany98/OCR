@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentEntity, DocumentPage, ExtractionJob, Plan
-from app.ocr.paddle import PaddleOCREngine
 from app.parsers.router import parse_document
 from app.services.business_extraction import persist_business_extraction
 from app.services.cache import cache_service
@@ -278,7 +277,8 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         raise ValueError("Document has no stored file")
     stored_path = settings.files_dir / document.stored_filename
     page_image_dir = settings.files_dir / document.file_hash[:2] / f"{document.file_hash}_pages"
-    extracted = _facade().parse_document(stored_path, page_image_dir, _facade().PaddleOCREngine())
+    ocr_engine = _facade().get_ocr_engine_class()()
+    extracted = _facade().parse_document(stored_path, page_image_dir, ocr_engine)
     for extracted_page in extracted.pages:
         extracted_page.text = sanitize_text_for_database(extracted_page.text)
         for extracted_block in extracted_page.blocks:
@@ -381,7 +381,8 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
     db.flush()
     try:
         page_path = _resolve_files_dir_path(page.image_path)
-        ocr = _facade().PaddleOCREngine().extract(page_path)
+        engine = _facade().get_ocr_engine_class()()
+        ocr = engine.extract(page_path)
     except Exception as exc:
         page.page_status = "failed"
         page.error_message = str(exc)
@@ -389,6 +390,7 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
         db.flush()
         return _process_classification_only(db, document)
 
+    actual_engine = ocr.engine or engine.name
     page.text = sanitize_text_for_database(ocr.text)
     page.ocr_confidence = ocr.confidence
     page.page_status = _page_status_from_confidence(ocr.confidence)
@@ -418,7 +420,7 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
                 bbox_x2=bbox[2],
                 bbox_y2=bbox[3],
                 confidence=block_payload.confidence,
-                source_engine="paddleocr",
+                source_engine=actual_engine,
             )
         )
     db.flush()

@@ -107,8 +107,19 @@ class Settings(BaseSettings):
     # wastes tokens on CoT and often returns empty content.
     vision_model_structured: str = ""
 
-    ocr_engine: Literal["paddleocr"] = "paddleocr"
+    ocr_engine: Literal["tesseract", "paddleocr", "cascading"] = "cascading"
     enable_dots_mocr: bool = False
+    # Tesseract 5 settings (used as primary in the cascade and as the
+    # only engine when ocr_engine == "tesseract").
+    tesseract_lang: str = "spa+eng"
+    tesseract_oem: int = 1   # 1 = LSTM only (Tesseract 5 default, fastest, best quality)
+    tesseract_psm: int = 3   # 3 = fully automatic page segmentation
+    # Cascade escalation thresholds. The cascade runs Tesseract first
+    # and escalates to PaddleOCR when the primary result is "weak" by
+    # these metrics. Easy documents (digital PDFs, clean scans) never
+    # pay the PaddleOCR init cost.
+    ocr_cascading_min_chars: int = 30
+    ocr_cascading_min_confidence: float = 0.5
 
     embedding_provider: str = "local_hash"
     embedding_base_url: str = ""

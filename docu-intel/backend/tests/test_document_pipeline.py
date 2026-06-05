@@ -167,9 +167,10 @@ def test_image_pipeline_uses_mocked_ocr_for_tiny_png(tmp_path, monkeypatch):
                 text="OCR simulado Hotel Demo",
                 confidence=0.98,
                 blocks=[OCRBlock(text="OCR simulado Hotel Demo", confidence=0.98, bbox=(0.0, 0.0, 1.0, 1.0))],
+                engine="paddleocr",
             )
 
-    monkeypatch.setattr(document_service, "PaddleOCREngine", FakePaddleOCREngine)
+    monkeypatch.setattr(document_service, "get_ocr_engine_class", lambda: FakePaddleOCREngine)
 
     sessions = _session_factory()
     with sessions() as db:

@@ -231,9 +231,10 @@ def test_process_page_specific_ocr_job_replaces_only_selected_page(monkeypatch, 
                 text="Texto OCR corregido Referencia ABC999",
                 confidence=0.93,
                 blocks=[OCRBlock(text="Texto OCR corregido", confidence=0.93, bbox=(1.0, 2.0, 3.0, 4.0))],
+                engine="paddleocr",
             )
 
-    monkeypatch.setattr(document_service, "PaddleOCREngine", FakeOcrEngine)
+    monkeypatch.setattr(document_service, "get_ocr_engine_class", lambda: FakeOcrEngine)
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: False)
 
     with sessions() as db:
@@ -349,7 +350,7 @@ def test_failed_page_specific_ocr_marks_page_failed_without_failing_document(mon
         def extract(self, image_path: Path):
             raise RuntimeError("ocr timeout")
 
-    monkeypatch.setattr(document_service, "PaddleOCREngine", FailingOcrEngine)
+    monkeypatch.setattr(document_service, "get_ocr_engine_class", lambda: FailingOcrEngine)
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: False)
 
     with sessions() as db:

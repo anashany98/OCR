@@ -3,12 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.config import settings
-from app.ocr.paddle import PaddleOCREngine
+from app.ocr.base import BaseOCREngine
 from app.ocr.preprocess import preprocess_for_ocr
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 
 
-def parse_image(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> ExtractedDocument:
+def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
     from PIL import Image
 
     with Image.open(path) as image:
@@ -19,6 +19,10 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Ex
 
     ocr_path = preprocess_for_ocr(path)
     result = ocr_engine.extract(ocr_path)
+    # ``result.engine`` reports which engine actually produced the
+    # text (the cascade's primary or fallback). Fall back to the
+    # engine's static name for engines that don't set the field.
+    actual_engine = result.engine or ocr_engine.name
     blocks = [
         ExtractedBlock(
             block_type="text",
@@ -26,7 +30,7 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Ex
             page_number=1,
             bbox=block.bbox,
             confidence=block.confidence,
-            source_engine="paddleocr",
+            source_engine=actual_engine,
         )
         for block in result.blocks
     ]
@@ -37,13 +41,14 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Ex
         text=result.text,
         image_path=str(path),
         ocr_confidence=result.confidence,
+        ocr_engine=actual_engine,
         blocks=blocks,
     )
 
-    # On-demand vision fallback: if PaddleOCR couldn't extract enough
-    # text (low confidence / very few blocks), ask the vision model to
-    # transcribe the image. The vision model is loaded just for this
-    # call and then scheduled to unload.
+    # On-demand vision fallback: if OCR (cascading tesseract+paddle) couldn't
+    # extract enough text, ask the vision model to transcribe the image.
+    # The vision model is loaded just for this call and then scheduled to
+    # unload.
     if (
         settings.vision_table_transcription
         and settings.vision_model
@@ -85,7 +90,7 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Ex
                     page.ocr_confidence = 0.85
             VisionManager.schedule_unload()
         except Exception:
-            # Vision fallback is best-effort; PaddleOCR's result still stands.
+            # Vision fallback is best-effort; the OCR result still stands.
             pass
 
     return ExtractedDocument(pages=[page])

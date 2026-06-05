@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.ocr.paddle import PaddleOCREngine
+from app.ocr.base import BaseOCREngine
 from app.parsers.doc import parse_doc
 from app.parsers.docx import parse_docx
 from app.parsers.excel import parse_excel
@@ -18,7 +18,7 @@ TEXT_EXTENSIONS = {".txt", ".csv", ".tsv", ".log", ".eml"}
 MSG_EXTENSIONS = {".msg"}
 
 
-def parse_document(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> ExtractedDocument:
+def parse_document(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
     extension = path.suffix.lower()
     if extension == ".pdf":
         return parse_pdf(path, output_dir, ocr_engine)

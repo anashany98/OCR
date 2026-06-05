@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.config import settings
-from app.ocr.paddle import PaddleOCREngine
+from app.ocr.base import BaseOCREngine
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 
 
@@ -142,7 +142,7 @@ async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> 
         return ""
 
 
-def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> ExtractedDocument:
+def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
     import fitz
 
     # Fast path: if PDF is fully digital text, skip OCR but still render the
@@ -226,6 +226,10 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
                 page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).save(image_file)
                 image_path = str(image_file)
                 ocr = ocr_engine.extract(image_file)
+                # ``ocr.engine`` reports which engine the cascade picked
+                # (tesseract / paddleocr). Fall back to the engine's
+                # static name for engines that don't set the field.
+                actual_engine = ocr.engine or ocr_engine.name
                 text = ocr.text or text
                 ocr_confidence = ocr.confidence
                 blocks = [
@@ -235,11 +239,11 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
                         page_number=index,
                         bbox=block.bbox,
                         confidence=block.confidence,
-                        source_engine="paddleocr",
+                        source_engine=actual_engine,
                     )
                     for block in ocr.blocks
                 ]
-                # If PaddleOCR returned nothing useful, try the vision LLM
+                # If the cascade returned nothing useful, try the vision LLM
                 # as a recovery path for tables (best-effort).
                 if not text and settings.vision_table_transcription and settings.vision_model:
                     import asyncio
@@ -267,10 +271,11 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> Extr
                             page_engine = "vision"
                     except Exception:
                         pass
-                # If PaddleOCR returned nothing, keep the engine label as
-                # ``empty`` so the admin can spot pages that came in blank
-                # despite being routed to OCR.
-                page_engine = page_engine or ("paddleocr" if text else "empty")
+                # Keep the engine label accurate: if we got text from the
+                # cascade, use the cascade's pick; if the page is still
+                # empty, mark it as "empty" so the admin can spot the
+                # pages that came in blank despite being routed to OCR.
+                page_engine = page_engine or (actual_engine if text else "empty")
 
             pages.append(
                 ExtractedPage(

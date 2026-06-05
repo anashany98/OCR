@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.ocr.paddle import PaddleOCREngine
+from app.ocr.base import BaseOCREngine
 from app.parsers.types import ExtractedDocument
 
 
@@ -22,12 +22,12 @@ def parse_msg(path: Path) -> ExtractedDocument:
     return _impl(path)
 
 
-def parse_pdf(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> ExtractedDocument:
+def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
     from app.parsers.pdf import parse_pdf as _impl
     return _impl(path, output_dir, ocr_engine)
 
 
-def parse_image(path: Path, output_dir: Path, ocr_engine: PaddleOCREngine) -> ExtractedDocument:
+def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
     from app.parsers.image import parse_image as _impl
     return _impl(path, output_dir, ocr_engine)
 
