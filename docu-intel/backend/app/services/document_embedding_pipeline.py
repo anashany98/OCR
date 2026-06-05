@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys as _sys
 
 from sqlalchemy import delete
@@ -8,8 +9,10 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import DocumentChunk
 from app.services.chunking import build_chunks
-from app.services.embeddings import embed_many, should_create_embeddings
+from app.services.embeddings import EmbeddingProviderError, embed_many, should_create_embeddings
 from app.services.metrics import track_embedding_fallback
+
+logger = logging.getLogger("app.services.document_embedding_pipeline")
 
 
 def _facade():
@@ -17,7 +20,39 @@ def _facade():
 
 
 def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, bool]]:
-    embeddings = _facade().embed_many(texts)
+    """Embed a batch of texts, returning one ``(embedding, provider, fallback)``
+    tuple per text.
+
+    On a non-recoverable embedding failure (provider unreachable, model
+    can't load, fallback disabled) we return ``(None, "failed", True)``
+    for every text instead of raising. Downstream code stores the
+    chunks with ``embedding=None`` and ``needs_reembedding=True`` so the
+    document survives and an admin can re-trigger embedding later. This
+    is the deliberate behaviour the user asked for ("pues que el
+    documento se quede sin embedding") — never silently substitute
+    hash embeddings when the real one fails.
+    """
+    if not texts:
+        return []
+    try:
+        embeddings = _facade().embed_many(texts)
+    except EmbeddingProviderError as exc:
+        logger.warning(
+            "Embedding provider failed for %d chunk(s); storing without embedding: %s",
+            len(texts),
+            exc,
+        )
+        track_embedding_fallback()
+        return [(None, "failed", True) for _ in texts]
+    except Exception as exc:  # noqa: BLE001 — surface anything, but never crash the document
+        logger.warning(
+            "Unexpected embedding error for %d chunk(s); storing without embedding: %s",
+            len(texts),
+            exc,
+        )
+        track_embedding_fallback()
+        return [(None, "failed", True) for _ in texts]
+
     provider = settings.embedding_provider.lower().strip() or "local_hash"
     fallback = provider in {"local", "local_hash"}
     return [(embedding, provider, fallback) for embedding in embeddings]
