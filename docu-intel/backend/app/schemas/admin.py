@@ -27,6 +27,20 @@ class AdminAlertRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class NeedsReembeddingItem(BaseModel):
+    """One document whose chunks have ``needs_reembedding=True``."""
+
+    document_id: int
+    original_filename: str
+    document_type: str | None = None
+    status: str
+    created_at: datetime
+    chunks_total: int
+    chunks_needing_reembedding: int
+
+    model_config = {"from_attributes": True}
+
+
 class ProcessingMetricsRead(BaseModel):
     documents_by_status: dict[str, int]
     documents_by_type: dict[str, int]

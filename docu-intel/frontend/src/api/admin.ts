@@ -129,6 +129,16 @@ export const adminApi = {
       chunks_needing_reembedding: number
       provider: string
     }>("/admin/documents/" + documentId + "/re-embed", { method: "POST" }),
+  documentsNeedingReembedding: (params: { limit?: number } = {}) =>
+    request<Array<{
+      document_id: number
+      original_filename: string
+      document_type: string | null
+      status: string
+      created_at: string
+      chunks_total: number
+      chunks_needing_reembedding: number
+    }>>("/admin/documents/needs-re-embedding" + (params.limit ? "?limit=" + params.limit : "")),
   ocrErrors: () => request<Document[]>(`/admin/ocr-errors`),
   duplicates: () => request<Document[]>(`/admin/duplicates`),
   hotelChains: () => request<HotelChain[]>(`/admin/hotel-chains`),

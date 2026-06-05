@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import Integer, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
@@ -10,6 +10,7 @@ from app.database.session import get_db
 from app.models import (
     Budget,
     Document,
+    DocumentChunk,
     DocumentPage,
     ExtractionJob,
     IngestionEvent,
@@ -18,6 +19,7 @@ from app.models import (
     WatchedFile,
 )
 from app.schemas.admin import (
+    NeedsReembeddingItem,
     PaginatedDocumentsResponse,
     QueueStatusRead,
     StorageIntegrityResponse,
@@ -490,3 +492,52 @@ def reembed_document_endpoint(
     )
     db.commit()
     return result
+
+
+@router.get("/documents/needs-re-embedding", response_model=list[NeedsReembeddingItem])
+def list_documents_needing_reembedding(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
+) -> list[NeedsReembeddingItem]:
+    """List documents with at least one chunk where ``needs_reembedding=True``.
+
+    One row per document, with the total chunk count and the count of
+    chunks that still need an embedding. Ordered by document creation
+    date (newest first) so freshly-failed uploads surface at the top of
+    the list.
+    """
+    # Conditional aggregation: count total chunks and chunks needing
+    # re-embedding per document. We only emit a row for documents that
+    # have at least one chunk needing re-embedding.
+    needs_case = case((DocumentChunk.needs_reembedding.is_(True), 1), else_=0)
+    stats_subq = (
+        select(
+            DocumentChunk.document_id.label("document_id"),
+            func.count(DocumentChunk.id).label("chunks_total"),
+            func.coalesce(func.sum(needs_case), 0).label("chunks_needing"),
+        )
+        .group_by(DocumentChunk.document_id)
+        .having(func.sum(needs_case) > 0)
+        .subquery()
+    )
+    rows = db.execute(
+        select(Document, stats_subq.c.chunks_total, stats_subq.c.chunks_needing)
+        .join(stats_subq, Document.id == stats_subq.c.document_id)
+        .where(Document.deleted_at.is_(None))
+        .order_by(Document.created_at.desc())
+        .limit(limit)
+    ).all()
+
+    return [
+        NeedsReembeddingItem(
+            document_id=document.id,
+            original_filename=document.original_filename,
+            document_type=document.document_type,
+            status=document.status,
+            created_at=document.created_at,
+            chunks_total=int(chunks_total),
+            chunks_needing_reembedding=int(chunks_needing),
+        )
+        for document, chunks_total, chunks_needing in rows
+    ]

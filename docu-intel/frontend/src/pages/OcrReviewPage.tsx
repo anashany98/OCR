@@ -67,6 +67,7 @@ export function OcrReviewPage() {
       queryClient.invalidateQueries({ queryKey: ["audit-logs"] })
       queryClient.invalidateQueries({ queryKey: ["stats"] })
       queryClient.invalidateQueries({ queryKey: ["documents"] })
+      queryClient.invalidateQueries({ queryKey: ["needs-reembedding"] })
       const embedded = result.chunks_with_embedding
       const pending = result.chunks_needing_reembedding
       if (pending === 0) {
@@ -83,10 +84,95 @@ export function OcrReviewPage() {
     },
     onError: (err) => notify.error(err, "No se pudo re-embebir el documento"),
   })
+  const needsReembeddingQuery = useQuery({
+    queryKey: ["needs-reembedding"],
+    queryFn: () => api.documentsNeedingReembedding({ limit: 50 }),
+    refetchInterval: 30_000,
+  })
+  const needsReembedding = needsReembeddingQuery.data ?? []
 
   return (
     <>
       <Breadcrumbs items={[{ label: "Revisión OCR" }]} />
+
+      {needsReembedding.length > 0 ? (
+        <Card className="border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/20">
+          <CardHeader>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-600" />
+                  Documentos que necesitan re-embedding
+                </CardTitle>
+                <CardDescription>
+                  {needsReembedding.length} documento(s) con chunks sin embedding
+                  (el provider de embeddings falló durante el procesamiento inicial).
+                  Usa el botón para regenerar embeddings sin re-OCR.
+                </CardDescription>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => needsReembeddingQuery.refetch()}
+                disabled={needsReembeddingQuery.isFetching}
+              >
+                <RotateCw data-icon="inline-start" />
+                Actualizar
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-72 overflow-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Documento</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Chunks pendientes</TableHead>
+                    <TableHead className="text-right">Acción</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {needsReembedding.map((doc) => (
+                    <TableRow key={doc.document_id}>
+                      <TableCell className="font-medium">
+                        <Link
+                          className="hover:underline"
+                          to={`/documents/${doc.document_id}`}
+                        >
+                          {doc.original_filename}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {doc.document_type ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="warning">
+                          {doc.chunks_needing_reembedding} / {doc.chunks_total}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={reembed.isPending}
+                          onClick={() => reembed.mutate(doc.document_id)}
+                        >
+                          <Sparkles data-icon="inline-start" />
+                          {reembed.isPending && reembed.variables === doc.document_id
+                            ? "Re-embediendo…"
+                            : "Re-embebir"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
         <PageHeader title="Verificación OCR" description="Revisión humana de páginas con confianza OCR inferior al umbral seleccionado." />
         <div className="flex flex-wrap items-center gap-2">
