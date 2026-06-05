@@ -452,3 +452,41 @@ def work_inbox_action(
         enqueued=enqueued,
         job_ids=job_ids,
     )
+
+
+@router.post("/documents/{document_id}/re-embed")
+def reembed_document_endpoint(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "gestor", "auditor")),
+) -> dict:
+    """Re-run the embedding step for an existing document.
+
+    Re-uses the page texts already stored in ``DocumentPage.text`` so we
+    don't re-OCR. Useful when the original embedding failed (provider
+    was down, model couldn't load on a CPU worker, etc.) and the
+    document is sitting in the queue with ``needs_reembedding=True``
+    on every chunk.
+
+    Never raises on embedding failure: chunks that still can't be
+    embedded keep ``needs_reembedding=True`` so the admin can try
+    again. This matches the "no silent hash fallback" policy.
+    """
+    from app.services.document_embedding_pipeline import reembed_document
+
+    result = reembed_document(db, document_id)
+    write_audit(
+        db,
+        user=user,
+        action="document_reembed",
+        entity_type="document",
+        entity_id=document_id,
+        details={
+            "chunks_updated": result["chunks_updated"],
+            "chunks_with_embedding": result["chunks_with_embedding"],
+            "chunks_needing_reembedding": result["chunks_needing_reembedding"],
+            "provider": result["provider"],
+        },
+    )
+    db.commit()
+    return result

@@ -121,6 +121,14 @@ export const adminApi = {
       body: JSON.stringify(payload),
     }),
   reprocessOcrPage: (pageId: number) => request<Job>("/admin/quality/pages/" + pageId + "/reprocess-ocr", { method: "POST" }),
+  reembedDocument: (documentId: number) =>
+    request<{
+      document_id: number
+      chunks_updated: number
+      chunks_with_embedding: number
+      chunks_needing_reembedding: number
+      provider: string
+    }>("/admin/documents/" + documentId + "/re-embed", { method: "POST" }),
   ocrErrors: () => request<Document[]>(`/admin/ocr-errors`),
   duplicates: () => request<Document[]>(`/admin/duplicates`),
   hotelChains: () => request<HotelChain[]>(`/admin/hotel-chains`),

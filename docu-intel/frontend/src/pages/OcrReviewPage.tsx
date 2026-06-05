@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, ExternalLink, RefreshCcw, RotateCw, X } from "lucide-react"
+import { Check, ExternalLink, RefreshCcw, RotateCw, Sparkles, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import { api, pageImageUrl } from "@/api/client"
@@ -59,6 +59,29 @@ export function OcrReviewPage() {
       notify.success(`Página ${label}`)
     },
     onError: (err) => notify.error(err, "No se pudo registrar la revisión"),
+  })
+  const reembed = useMutation({
+    mutationFn: (documentId: number) => api.reembedDocument(documentId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["ocr-review"] })
+      queryClient.invalidateQueries({ queryKey: ["audit-logs"] })
+      queryClient.invalidateQueries({ queryKey: ["stats"] })
+      queryClient.invalidateQueries({ queryKey: ["documents"] })
+      const embedded = result.chunks_with_embedding
+      const pending = result.chunks_needing_reembedding
+      if (pending === 0) {
+        notify.success(
+          `Re-embedding completado`,
+          `${embedded} chunks re-embedidos con ${result.provider}.`,
+        )
+      } else {
+        notify.warn(
+          `Re-embedding parcial`,
+          `${embedded} chunks con embedding, ${pending} aún pendientes. Revisa el provider.`,
+        )
+      }
+    },
+    onError: (err) => notify.error(err, "No se pudo re-embebir el documento"),
   })
 
   return (
@@ -190,6 +213,16 @@ export function OcrReviewPage() {
                   <Button variant="outline" size="sm" disabled={reprocess.isPending} onClick={() => reprocess.mutate(selected.page_id)}>
                     <RefreshCcw data-icon="inline-start" />
                     Reprocesar OCR
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={reembed.isPending}
+                    onClick={() => reembed.mutate(selected.document_id)}
+                    title="Vuelve a generar los embeddings de todos los chunks del documento. Útil cuando el embedding falló durante el procesamiento inicial."
+                  >
+                    <Sparkles data-icon="inline-start" />
+                    {reembed.isPending ? "Re-embediendo…" : "Re-embebir documento"}
                   </Button>
                 </div>
               ) : null}
