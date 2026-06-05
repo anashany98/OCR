@@ -1,12 +1,28 @@
 """Cross-encoder reranker for improving hybrid search precision.
 
-Uses a local reranker model (e.g., bge-reranker-v2-m3) via OpenAI-compatible
-/rerank endpoint. Falls back gracefully when unavailable.
+Two backends are supported:
+
+1. **HTTP** (default, backward-compatible): the existing OpenAI-compatible
+   ``/rerank`` endpoint. Useful when the reranker runs in a separate
+   inference server (TEI, vLLM, LM Studio, etc.) or when the
+   ``embedding_base_url`` points at a shared inference host.
+
+2. **In-process** (``sentence_transformers.CrossEncoder``): the
+   reranker model loads directly into the worker. Default model is
+   ``BAAI/bge-reranker-v2-m3`` (multilingual, 568M params). The model
+   is downloaded from HuggingFace on first use (~1.1 GB).
+
+The backend is selected by setting ``reranker_local_model`` to a
+non-empty string in the environment. Otherwise the HTTP path is used.
+
+Both paths fall back to the original candidate order on any error, so a
+broken reranker never blocks search.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass
 
 import httpx
@@ -27,6 +43,82 @@ class RerankerResult:
     score: float
 
 
+# ---------------------------------------------------------------------------
+# In-process reranker (sentence-transformers CrossEncoder)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LocalSentenceTransformerReranker:
+    """Lazy-loaded BGE-reranker-v2-m3 (or compatible) cross-encoder.
+
+    Scores ``(query, passage)`` pairs in a single forward pass. Output
+    is a single float per pair; we sort descending and return the top
+    ``top_k`` indices in their original SearchResult order.
+    """
+
+    model_name: str
+    device: str = "cuda"
+    max_length: int = 512
+
+    _model: object = None  # CrossEncoder | None
+    _init_lock: threading.Lock = None  # type: ignore[assignment]
+    _init_error: BaseException | None = None
+
+    def __post_init__(self) -> None:
+        self._init_lock = threading.Lock()
+
+    def _ensure_loaded(self) -> object:
+        if self._model is not None:
+            return self._model
+        with self._init_lock:
+            if self._model is not None:
+                return self._model
+            if self._init_error is not None:
+                raise self._init_error
+            try:
+                from sentence_transformers import CrossEncoder  # type: ignore[import-not-found]
+
+                self._model = CrossEncoder(
+                    self.model_name,
+                    device=self.device,
+                    max_length=self.max_length,
+                )
+            except Exception as exc:
+                self._init_error = exc
+                raise
+        return self._model
+
+    def score(self, query: str, passages: list[str]) -> list[float]:
+        """Return one relevance score per passage. Higher = more relevant."""
+        if not passages:
+            return []
+        model = self._ensure_loaded()
+        pairs = [(query, p) for p in passages]
+        raw = model.predict(pairs, show_progress_bar=False, convert_to_numpy=True)
+        return [float(s) for s in raw]
+
+
+_local_reranker: "LocalSentenceTransformerReranker | None" = None
+_local_reranker_lock = threading.Lock()
+
+
+def get_local_reranker() -> LocalSentenceTransformerReranker:
+    """Worker-scoped singleton local reranker, built from settings."""
+    global _local_reranker
+    if _local_reranker is not None:
+        return _local_reranker
+    with _local_reranker_lock:
+        if _local_reranker is not None:
+            return _local_reranker
+        _local_reranker = LocalSentenceTransformerReranker(
+            model_name=settings.reranker_local_model,
+            device=settings.reranker_local_device,
+            max_length=settings.reranker_local_max_length,
+        )
+    return _local_reranker
+
+
 def _reranker_url() -> str | None:
     """Resolve the reranker endpoint URL from settings."""
     base = settings.embedding_base_url.strip() or settings.ai_base_url.strip()
@@ -43,8 +135,18 @@ async def rerank(
 ) -> list[SearchResult]:
     """Reorder candidates using a cross-encoder reranker.
 
-    If the reranker endpoint is unavailable or returns an error,
-    returns the top_k candidates in their original order as a safe fallback.
+    Two backends are tried in order:
+
+    1. **In-process** if ``settings.reranker_local_model`` is non-empty.
+       Loads BGE-reranker-v2-m3 (or whatever's configured) into the
+       worker the first time, then reuses it.
+    2. **HTTP** if ``settings.embedding_base_url`` (or
+       ``settings.ai_base_url``) points at an OpenAI-compatible
+       ``/rerank`` endpoint. Used when the reranker lives in a
+       separate inference server.
+
+    Both paths fall back to the original candidate order on any error,
+    so a broken reranker never blocks search.
 
     Args:
         query: The search query text.
@@ -57,6 +159,18 @@ async def rerank(
     if len(candidates) <= MIN_CANDIDATES_FOR_RERANK:
         return candidates[:top_k]
 
+    # Path 1: in-process. Fastest, no network hop, no extra service.
+    if settings.reranker_local_model.strip():
+        loop = asyncio.get_running_loop()
+        try:
+            return await loop.run_in_executor(
+                None, _rerank_local_sync, query, candidates, top_k
+            )
+        except Exception as exc:
+            logger.warning("Local reranker failed, falling back: %s", exc)
+            return candidates[:top_k]
+
+    # Path 2: HTTP /rerank endpoint. Backward-compatible default.
     url = _reranker_url()
     if url is None:
         return candidates[:top_k]
@@ -123,17 +237,55 @@ async def rerank(
         return candidates[:top_k]
 
 
+def _rerank_local_sync(
+    query: str,
+    candidates: list[SearchResult],
+    top_k: int,
+) -> list[SearchResult]:
+    """Synchronous in-process rerank. Runs in a worker thread from the
+    async ``rerank()`` to avoid blocking the event loop on GPU work."""
+    reranker = get_local_reranker()
+    passages = [c.excerpt for c in candidates]
+    scores = reranker.score(query, passages)
+    order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+    reranked: list[SearchResult] = []
+    for idx in order[:top_k]:
+        original = candidates[idx]
+        score = scores[idx]
+        reranked.append(
+            original.__class__(
+                document_id=original.document_id,
+                original_filename=original.original_filename,
+                document_type=original.document_type,
+                status=original.status,
+                page_number=original.page_number,
+                block_id=original.block_id,
+                score=round(float(score), 6),
+                excerpt=original.excerpt,
+                ocr_confidence=original.ocr_confidence,
+                source_type=original.source_type,
+            )
+        )
+    return reranked
+
+
 def rerank_sync(
     query: str,
     candidates: list[SearchResult],
     top_k: int = 5,
 ) -> list[SearchResult]:
     """Synchronous wrapper for rerank()."""
+    if len(candidates) <= MIN_CANDIDATES_FOR_RERANK:
+        return candidates[:top_k]
+    if settings.reranker_local_model.strip():
+        try:
+            return _rerank_local_sync(query, candidates, top_k)
+        except Exception as exc:
+            logger.warning("Local reranker failed, falling back: %s", exc)
+            return candidates[:top_k]
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(rerank(query, candidates, top_k))
     # Already in async context — caller should use rerank() directly
-    if len(candidates) <= MIN_CANDIDATES_FOR_RERANK:
-        return candidates[:top_k]
     return candidates[:top_k]

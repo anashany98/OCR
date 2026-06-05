@@ -21,6 +21,10 @@ pytesseract==0.3.13
 protobuf>=4.25.0
 opt_einsum==3.3.0
 safetensors>=0.6.0
+# In-process embeddings + reranker (local_sentence_transformers provider).
+# Granite 311M multilingual + BGE-reranker-v2-m3 run on the GPU workers
+# via sentence-transformers; no external inference server needed.
+sentence-transformers>=3.0.0
 pandas==2.2.3
 pdfplumber==0.11.4
 pgvector==0.3.6

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import math
 import re
+import threading
 import time
 import unicodedata
 from collections.abc import Iterable
@@ -235,6 +236,17 @@ def _generate_embeddings_batch(
                 return [embed_text_hash(t, dimensions) for t in texts]
         else:
             return [embed_text_hash(t, dimensions) for t in texts]
+    if provider == "local_sentence_transformers":
+        try:
+            client = get_local_embedding_client()
+            return client.embed_many(texts)
+        except Exception as exc:
+            if not settings.embedding_fallback_to_hash:
+                raise EmbeddingProviderError(
+                    f"Local sentence-transformers embedding failed: {exc}"
+                ) from exc
+            track_embedding_fallback()
+            return [embed_text_hash(t, dimensions) for t in texts]
     else:
         return [embed_text_hash(t, dimensions) for t in texts]
 
@@ -293,6 +305,22 @@ async def _generate_embeddings_batch_async(
                 return [embed_text_hash(t, dimensions) for t in texts]
         else:
             return [embed_text_hash(t, dimensions) for t in texts]
+    if provider == "local_sentence_transformers":
+        # The local path is CPU-bound during encode (PyTorch releases the
+        # GIL inside the kernel), so we run it in the default executor
+        # to avoid blocking the event loop.
+        loop = asyncio.get_running_loop()
+        try:
+            return await loop.run_in_executor(
+                None, get_local_embedding_client().embed_many, texts
+            )
+        except Exception as exc:
+            if not settings.embedding_fallback_to_hash:
+                raise EmbeddingProviderError(
+                    f"Local sentence-transformers embedding failed: {exc}"
+                ) from exc
+            track_embedding_fallback()
+            return [embed_text_hash(t, dimensions) for t in texts]
     else:
         return [embed_text_hash(t, dimensions) for t in texts]
 
@@ -316,8 +344,179 @@ def should_create_embeddings() -> bool:
         "local",
         "local_hash",
         "local_openai_compatible",
+        "local_sentence_transformers",
         "openai_compatible",
     }
+
+
+# ---------------------------------------------------------------------------
+# In-process embedding via sentence-transformers
+# ---------------------------------------------------------------------------
+# Used when ``embedding_provider == "local_sentence_transformers"``. Loads
+# the configured model (default: IBM Granite 311M multilingual) on the
+# configured device (default: cuda) on first use, then reuses the loaded
+# model for every subsequent call. The model is downloaded from
+# HuggingFace on first init (~600 MB for Granite 311M).
+#
+# Granite 311M uses ASYMMETRIC embeddings: queries get a "query: " prefix
+# and passages get a "passage: " prefix. sentence-transformers handles this
+# via the ``prompt`` argument at encode time, so callers must pass the
+# right role. The provider exposes two methods — ``embed_query`` and
+# ``embed_passages`` — that wrap ``SentenceTransformer.encode`` with the
+# correct prompt. The bulk path ``embed_many`` defaults to passage mode
+# (it's what the indexing pipeline needs).
+
+
+# Prompts used by IBM Granite embedding. The model card mandates these
+# exact strings for the multilingual R2 release.
+_GRANITE_QUERY_PROMPT = "query: "
+_GRANITE_PASSAGE_PROMPT = "passage: "
+# Models that use asymmetric query/passage prompts. Add more here as we
+# onboard other asymmetric embedding models.
+_ASYMMETRIC_MODELS: set[str] = {
+    "ibm-granite/granite-embedding-311m-multilingual-r2",
+    "ibm-granite/granite-embedding-125m-english",
+    "ibm-granite/granite-embedding-107m-multilingual",
+}
+
+
+def _query_prompt_for(model_name: str) -> str | None:
+    """Return the query-side prompt for asymmetric models, or ``None``
+    for symmetric models (BGE, E5-base, etc.) which take a single
+    prefix for both sides or no prefix at all."""
+    if model_name in _ASYMMETRIC_MODELS or model_name.startswith("ibm-granite/granite-embedding"):
+        return _GRANITE_QUERY_PROMPT
+    return None
+
+
+def _passage_prompt_for(model_name: str) -> str | None:
+    if model_name in _ASYMMETRIC_MODELS or model_name.startswith("ibm-granite/granite-embedding"):
+        return _GRANITE_PASSAGE_PROMPT
+    return None
+
+
+@dataclass
+class LocalSentenceTransformerEmbeddingClient:
+    """In-process sentence-transformers embedding client.
+
+    Loads the model lazily on the first call. The download + GPU upload
+    can take 10-30 s the first time; subsequent calls are tens of ms
+    per batch on an RTX 4070.
+
+    The model is loaded in a background thread (same pattern as
+    PaddleOCR) so the constructor never blocks the caller.
+    """
+
+    model_name: str
+    device: str = "cuda"
+    batch_size: int = 32
+    max_length: int = 512
+    normalize: bool = True  # cosine-similarity friendly
+
+    _model: object = None  # SentenceTransformer | None
+    _init_lock: threading.Lock = None  # type: ignore[assignment]
+    _init_error: BaseException | None = None
+
+    def __post_init__(self) -> None:
+        self._init_lock = threading.Lock()
+
+    def _ensure_loaded(self) -> object:
+        if self._model is not None:
+            return self._model
+        with self._init_lock:
+            if self._model is not None:
+                return self._model
+            if self._init_error is not None:
+                raise self._init_error
+            try:
+                from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+
+                self._model = SentenceTransformer(
+                    self.model_name,
+                    device=self.device,
+                    trust_remote_code=False,
+                )
+                self._model.max_seq_length = self.max_length
+            except Exception as exc:
+                self._init_error = exc
+                raise
+        return self._model
+
+    @property
+    def dimensions(self) -> int:
+        """Embedding dimensionality. We load the model to query it the
+        first time; after that it's cached on the instance."""
+        model = self._ensure_loaded()
+        return int(model.get_sentence_embedding_dimension())
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._encode_one(text, role="query")
+
+    def embed_passage(self, text: str) -> list[float]:
+        return self._encode_one(text, role="passage")
+
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        return self._encode_many(texts, role="query")
+
+    def embed_passages(self, texts: list[str]) -> list[list[float]]:
+        return self._encode_many(texts, role="passage")
+
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        """Bulk embed in passage mode (the indexing pipeline's default)."""
+        return self._encode_many(texts, role="passage")
+
+    def _encode_one(self, text: str, *, role: str) -> list[float]:
+        return self._encode_many([text], role=role)[0]
+
+    def _encode_many(self, texts: list[str], *, role: str) -> list[list[float]]:
+        if not texts:
+            return []
+        model = self._ensure_loaded()
+        prompt = _query_prompt_for(self.model_name) if role == "query" else _passage_prompt_for(self.model_name)
+        # sentence-transformers' encode handles ``prompt`` for asymmetric
+        # models; for symmetric models it should be ``None`` to avoid
+        # adding an unwanted prefix.
+        kwargs: dict[str, object] = {
+            "batch_size": self.batch_size,
+            "convert_to_numpy": True,
+            "normalize_embeddings": self.normalize,
+            "show_progress_bar": False,
+        }
+        if prompt is not None:
+            kwargs["prompt"] = prompt
+        vectors = model.encode(texts, **kwargs)
+        return [v.tolist() for v in vectors]
+
+
+# Module-level singleton keyed by (model_name, device) so the same worker
+# reuses one model across calls. The factory returns the right one.
+_local_embedding_clients: dict[tuple[str, str], LocalSentenceTransformerEmbeddingClient] = {}
+_local_embedding_lock = threading.Lock()
+
+
+def get_local_embedding_client() -> LocalSentenceTransformerEmbeddingClient:
+    """Return the worker-scoped singleton local embedding client.
+
+    Reads ``embedding_local_model`` / ``embedding_local_device`` /
+    ``embedding_local_batch_size`` / ``embedding_local_max_length`` from
+    settings. The first call downloads the model from HuggingFace.
+    """
+    key = (settings.embedding_local_model, settings.embedding_local_device)
+    client = _local_embedding_clients.get(key)
+    if client is not None:
+        return client
+    with _local_embedding_lock:
+        client = _local_embedding_clients.get(key)
+        if client is not None:
+            return client
+        client = LocalSentenceTransformerEmbeddingClient(
+            model_name=settings.embedding_local_model,
+            device=settings.embedding_local_device,
+            batch_size=settings.embedding_local_batch_size,
+            max_length=settings.embedding_local_max_length,
+        )
+        _local_embedding_clients[key] = client
+    return client
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:

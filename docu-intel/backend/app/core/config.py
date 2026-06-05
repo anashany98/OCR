@@ -136,6 +136,20 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 1024
     embedding_timeout_seconds: float = 30.0
     embedding_fallback_to_hash: bool = True
+    # In-process embedding via sentence-transformers. The model runs on
+    # the GPU workers; on CPU-only deployments set device="cpu" and accept
+    # the ~10× latency hit. Granite 311M uses asymmetric query/passage
+    # prefixes — see LocalSentenceTransformerEmbeddingClient.
+    embedding_local_model: str = "ibm-granite/granite-embedding-311m-multilingual-r2"
+    embedding_local_device: str = "cuda"
+    embedding_local_batch_size: int = 32
+    embedding_local_max_length: int = 512
+    # In-process reranker via sentence-transformers CrossEncoder. The
+    # BGE-reranker-v2-m3 model scores (query, passage) pairs in a single
+    # forward pass. Runs on the GPU workers.
+    reranker_local_model: str = "BAAI/bge-reranker-v2-m3"
+    reranker_local_device: str = "cuda"
+    reranker_local_max_length: int = 512
 
     integration_clients: str = ""
     integration_enqueue_uploads: bool = True
