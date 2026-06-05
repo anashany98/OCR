@@ -76,7 +76,7 @@ export function OcrReviewPage() {
           `${embedded} chunks re-embedidos con ${result.provider}.`,
         )
       } else {
-        notify.warn(
+        notify.warning(
           `Re-embedding parcial`,
           `${embedded} chunks con embedding, ${pending} aún pendientes. Revisa el provider.`,
         )
