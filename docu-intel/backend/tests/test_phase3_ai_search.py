@@ -63,7 +63,53 @@ def test_hybrid_merge_deduplicates_sources_with_rrf_score():
     merged = merge_hybrid_results([text_result], [semantic_result], limit=5)
 
     assert len(merged) == 1
-    assert merged[0].score > text_result.score
+    assert merged[0].source_type == "hybrid_rrf"
+    assert merged[0].score == 2 / 61
+
+
+def test_hybrid_rrf_allows_semantic_rank_to_beat_lower_text_rank():
+    text_results = [
+        SearchResult(
+            document_id=1,
+            original_filename="lexico_fuerte.pdf",
+            document_type="factura",
+            status="processed",
+            page_number=1,
+            block_id=None,
+            score=1.0,
+            excerpt="Factura",
+            ocr_confidence=0.8,
+        ),
+        SearchResult(
+            document_id=2,
+            original_filename="lexico_debil.pdf",
+            document_type="factura",
+            status="processed",
+            page_number=1,
+            block_id=None,
+            score=1.0,
+            excerpt="Factura",
+            ocr_confidence=0.8,
+        ),
+    ]
+    semantic_results = [
+        SearchResult(
+            document_id=3,
+            original_filename="semantico_relevante.pdf",
+            document_type="factura",
+            status="processed",
+            page_number=4,
+            block_id=None,
+            score=0.94,
+            excerpt="Base imponible y total de mayo",
+            ocr_confidence=None,
+            source_type="semantic_chunk",
+        )
+    ]
+
+    merged = merge_hybrid_results(text_results, semantic_results, limit=2)
+
+    assert [item.document_id for item in merged] == [1, 3]
 
 
 def test_ai_agent_selects_only_controlled_tools_for_common_intents():

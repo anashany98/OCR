@@ -263,24 +263,26 @@ def merge_hybrid_results(
     text_results: list[SearchResult],
     semantic_results: list[SearchResult],
     limit: int = 10,
+    k: int = 60,
 ) -> list[SearchResult]:
-    merged: dict[tuple[int, int | None, int | None], SearchResult] = {}
-    for item in text_results:
+    scores: dict[tuple[int, int | None, int | None], float] = {}
+    items: dict[tuple[int, int | None, int | None], SearchResult] = {}
+
+    for rank, item in enumerate(text_results):
         key = (item.document_id, item.page_number, item.block_id)
-        merged[key] = replace(item, source_type="hybrid_text", score=item.score * 1.1)
-    for item in semantic_results:
+        scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+        items[key] = item
+
+    for rank, item in enumerate(semantic_results):
         key = (item.document_id, item.page_number, item.block_id)
-        if key in merged:
-            current = merged[key]
-            merged[key] = replace(
-                current,
-                score=current.score + item.score * 0.75,
-                source_type="hybrid_text_semantic",
-                excerpt=current.excerpt or item.excerpt,
-            )
-        else:
-            merged[key] = replace(item, source_type="hybrid_semantic", score=item.score * 0.9)
-    return sorted(merged.values(), key=lambda item: item.score, reverse=True)[:limit]
+        scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+        items.setdefault(key, item)
+
+    ranked_keys = sorted(scores, key=scores.get, reverse=True)[:limit]
+    return [
+        replace(items[key], score=scores[key], source_type="hybrid_rrf")
+        for key in ranked_keys
+    ]
 
 
 def _excerpt(text: str, query: str, radius: int = 160) -> str:
