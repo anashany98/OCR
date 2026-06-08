@@ -54,10 +54,15 @@ def _frame_to_markdown(frame, sheet_name: str) -> str:
         frame = frame.iloc[:, keep]
         frame.columns = [c.strip() for c in frame.columns]
 
-    # Replace NaN with empty string and strip.
+    # Replace NaN with empty string and strip. Use positional indexing
+    # (``frame.iloc[:, i]``) instead of label-based (``frame[col]``) so we
+    # don't blow up when the header row had duplicate names — label-based
+    # indexing on a DataFrame with duplicate columns returns a DataFrame,
+    # which has no ``.str`` accessor and crashes with
+    # ``'DataFrame' object has no attribute 'str'``.
     frame = frame.fillna("").astype(str)
-    for col in frame.columns:
-        frame[col] = frame[col].str.strip()
+    for i in range(len(frame.columns)):
+        frame.iloc[:, i] = frame.iloc[:, i].str.strip()
 
     # Drop rows that are now all empty.
     frame = frame[(frame != "").any(axis=1)].reset_index(drop=True)
