@@ -1,10 +1,12 @@
 import json
 
 import httpx
+import pytest
 
 from app.core.config import settings
 from app.services import embeddings
-from app.services.embeddings import EMBEDDING_DIMENSIONS, OpenAICompatibleEmbeddingClient, embed_many, embed_text
+
+from app.services.embeddings import EMBEDDING_DIMENSIONS, EmbeddingProviderError, OpenAICompatibleEmbeddingClient, embed_many, embed_text
 
 
 def test_openai_compatible_embedding_client_posts_to_local_embeddings_endpoint():
@@ -20,8 +22,8 @@ def test_openai_compatible_embedding_client_posts_to_local_embeddings_endpoint()
             200,
             json={
                 "data": [
-                    {"index": 0, "embedding": [1, 2]},
-                    {"index": 1, "embedding": [3, 4, 5, 6, 7]},
+                    {"index": 0, "embedding": [1, 2, 3, 4]},
+                    {"index": 1, "embedding": [3, 4, 5, 6]},
                 ]
             },
         )
@@ -35,10 +37,29 @@ def test_openai_compatible_embedding_client_posts_to_local_embeddings_endpoint()
     )
 
     assert client.embed_many(["pedido ABC123", "plano salon"]) == [
-        [1.0, 2.0, 0.0, 0.0],
+        [1.0, 2.0, 3.0, 4.0],
         [3.0, 4.0, 5.0, 6.0],
     ]
     assert len(requests) == 1
+
+
+def test_embedding_dimension_mismatch_fails_fast():
+    from app.services.embeddings import coerce_embedding_dimensions
+
+    with pytest.raises(EmbeddingProviderError, match="dimension mismatch"):
+        coerce_embedding_dimensions([1, 2], 4)
+
+
+def test_embedding_dimension_migration_flag_keeps_legacy_coercion(monkeypatch):
+    from app.services.embeddings import coerce_embedding_dimensions
+
+    if not hasattr(settings, "embedding_allow_dimension_coercion"):
+        pytest.fail("migration flag embedding_allow_dimension_coercion is missing")
+
+    monkeypatch.setattr(settings, "embedding_allow_dimension_coercion", True)
+
+    assert coerce_embedding_dimensions([1, 2], 4) == [1.0, 2.0, 0.0, 0.0]
+    assert coerce_embedding_dimensions([1, 2, 3, 4, 5], 4) == [1.0, 2.0, 3.0, 4.0]
 
 
 def test_embed_many_uses_configured_local_openai_provider(monkeypatch):

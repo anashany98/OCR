@@ -135,6 +135,7 @@ class Settings(BaseSettings):
     embedding_model: str = "bge-m3"
     embedding_api_key: str = ""
     embedding_dimensions: int = 1024
+    embedding_allow_dimension_coercion: bool = False
     embedding_timeout_seconds: float = 30.0
     embedding_fallback_to_hash: bool = True
     # In-process embedding via sentence-transformers. The model runs on

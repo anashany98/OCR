@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import Document, DocumentChunk
 from app.services.embeddings import cosine_similarity
 
@@ -159,4 +160,11 @@ def _coerce_embedding(value) -> list[float]:
 
 
 def _vector_literal(values: list[float]) -> str:
+    expected_dimensions = int(settings.embedding_dimensions)
+    if len(values) != expected_dimensions:
+        raise ValueError(
+            f"Query embedding dimension mismatch: got {len(values)}, expected "
+            f"{expected_dimensions}. Check EMBEDDING_MODEL/EMBEDDING_DIMENSIONS "
+            "before querying pgvector."
+        )
     return "[" + ",".join(str(float(value)) for value in values) + "]"

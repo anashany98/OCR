@@ -141,7 +141,10 @@ def embed_query_text(text: str, dimensions: int | None = None) -> list[float]:
     track_cache_miss()
 
     try:
-        vector = get_local_embedding_client().embed_query(text)
+        vector = coerce_embedding_dimensions(
+            get_local_embedding_client().embed_query(text),
+            vector_dimensions,
+        )
     except Exception as exc:
         if not settings.embedding_fallback_to_hash:
             raise EmbeddingProviderError(
@@ -273,7 +276,10 @@ def _generate_embeddings_batch(
     if provider == "local_sentence_transformers":
         try:
             client = get_local_embedding_client()
-            return client.embed_many(texts)
+            return [
+                coerce_embedding_dimensions(vector, dimensions)
+                for vector in client.embed_many(texts)
+            ]
         except Exception as exc:
             if not settings.embedding_fallback_to_hash:
                 raise EmbeddingProviderError(
@@ -345,9 +351,13 @@ async def _generate_embeddings_batch_async(
         # to avoid blocking the event loop.
         loop = asyncio.get_running_loop()
         try:
-            return await loop.run_in_executor(
+            vectors = await loop.run_in_executor(
                 None, get_local_embedding_client().embed_many, texts
             )
+            return [
+                coerce_embedding_dimensions(vector, dimensions)
+                for vector in vectors
+            ]
         except Exception as exc:
             if not settings.embedding_fallback_to_hash:
                 raise EmbeddingProviderError(
@@ -596,6 +606,12 @@ def coerce_embedding_dimensions(raw_embedding: object, dimensions: int) -> list[
     if not isinstance(raw_embedding, list):
         raise EmbeddingProviderError("Embedding item is not a list")
     vector = [float(value) for value in raw_embedding]
+    if len(vector) != dimensions and not settings.embedding_allow_dimension_coercion:
+        raise EmbeddingProviderError(
+            f"Embedding dimension mismatch: got {len(vector)}, expected {dimensions}. "
+            "Check EMBEDDING_MODEL/EMBEDDING_DIMENSIONS or enable "
+            "EMBEDDING_ALLOW_DIMENSION_COERCION only during a controlled migration."
+        )
     if len(vector) < dimensions:
         vector.extend([0.0] * (dimensions - len(vector)))
     return vector[:dimensions]
