@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from typing import Any, AsyncIterator
 
 import httpx
+from langdetect import DetectorFactory, LangDetectException, detect_langs
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,7 @@ from app.tools import internal
 from app.tools.internal import _money_filters as _money_filters_internal  # re-exported below
 
 logger = logging.getLogger("app.ai.agent")
+DetectorFactory.seed = 0
 LOW_OCR_CONFIDENCE_THRESHOLD = 0.70
 LOW_OCR_MARKER = "[OCR DUDOSO]"
 
@@ -1238,9 +1240,8 @@ def _has_required_sections(answer: str) -> bool:
     return True
 
 
-# Spanish-specific characters and common Spanish function words. The LLM
-# usually answers in Spanish, so a long response with none of these is a strong
-# signal that it replied in English (or another language).
+# Spanish-specific characters and common Spanish function words. Used only as
+# a fallback for very short or ambiguous text where langdetect has low signal.
 _SPANISH_HINTS = ("ñ", "á", "é", "í", "ó", "ú", "ü", "¿", "¡",
                   " el ", " la ", " los ", " las ", " de ", " que ",
                   " con ", " para ", " por ", " según ", " documento",
@@ -1249,21 +1250,50 @@ _SPANISH_HINTS = ("ñ", "á", "é", "í", "ó", "ú", "ü", "¿", "¡",
 
 
 def _response_looks_spanish(answer: str) -> bool:
-    if not answer or len(answer) < 40:
+    if not answer or not answer.strip():
         return False
-    lowered = " " + answer.lower() + " "
-    hint_count = sum(1 for hint in _SPANISH_HINTS if hint in lowered)
-    # At least 2 Spanish hints, OR a Spanish-specific character anywhere.
     if any(ch in answer for ch in "ñáéíóúü¿¡"):
         return True
+    detected = _detect_language(answer)
+    if detected:
+        language, probability = detected
+        if language == "es" and probability >= 0.55:
+            return True
+        if language != "es" and probability >= 0.75:
+            return False
+    lowered = " " + answer.lower() + " "
+    hint_count = sum(1 for hint in _SPANISH_HINTS if hint in lowered)
     return hint_count >= 2
 
 
 def _question_is_spanish(question: str) -> bool:
+    if not question or not question.strip():
+        return False
     if any(ch in question for ch in "ñáéíóúü¿¡"):
         return True
+    detected = _detect_language(question)
+    if detected:
+        language, probability = detected
+        if language == "es" and probability >= 0.55:
+            return True
+        if language != "es" and probability >= 0.85:
+            return False
     lowered = " " + question.lower() + " "
     return any(hint in lowered for hint in (" el ", " la ", " los ", " las ", " de ", " que "))
+
+
+def _detect_language(text: str) -> tuple[str, float] | None:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if len(cleaned) < 12:
+        return None
+    try:
+        candidates = detect_langs(cleaned)
+    except LangDetectException:
+        return None
+    if not candidates:
+        return None
+    best = candidates[0]
+    return best.lang, float(best.prob)
 
 
 def _response_fabricates_documents(answer: str, context_items: list[ContextItem]) -> bool:
