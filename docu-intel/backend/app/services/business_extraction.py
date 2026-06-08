@@ -12,6 +12,7 @@ from app.models import (
     BudgetLine,
     Document,
     DocumentEntity,
+    Invoice,
     Order,
     OrderLine,
 )
@@ -57,9 +58,26 @@ class OrderExtraction:
 
 
 @dataclass
+class InvoiceExtraction:
+    document_id: int
+    invoice_number: str | None
+    supplier_name: str | None
+    supplier_tax_id: str | None
+    client_name: str | None
+    date: date | None
+    taxable_base: float | None
+    vat_amount: float | None
+    total_amount: float | None
+    currency: str | None
+    related_order_number: str | None
+    confidence: float
+
+
+@dataclass
 class PersistedBusinessExtraction:
     budget: Budget | None = None
     order: Order | None = None
+    invoice: Invoice | None = None
     needs_review: bool = False
 
 
@@ -130,6 +148,50 @@ def extract_order(document_id: int, text: str, document_confidence: float | None
         related_budget_number=related_budget_number,
         confidence=score,
         lines=lines,
+    )
+
+
+def extract_invoice(document_id: int, text: str, document_confidence: float | None) -> InvoiceExtraction | None:
+    if not text.strip():
+        return None
+
+    invoice_number = _first_match(
+        text,
+        [
+            r"\bfactura\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{1,})",
+            r"\bn[ºo]\s*factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{1,})",
+        ],
+    )
+    supplier_name = _line_value(text, ["proveedor", "emisor", "empresa", "razon social", "razón social"])
+    supplier_tax_id = _tax_id(text)
+    client_name = _line_value(text, ["cliente", "receptor"])
+    parsed_date = _date_from_label(text, ["fecha factura", "fecha"])
+    taxable_base, base_currency = _amount_from_label(text, ["base imponible", "base"])
+    vat_amount, vat_currency = _amount_from_label(text, ["iva", "importe iva"])
+    total_amount, total_currency = _total_amount(text, "factura")
+    related_order_number = _line_value(text, ["pedido relacionado", "pedido", "orden de compra"])
+    if related_order_number:
+        related_order_number = related_order_number.split()[0].strip(" .,:;")
+    currency = total_currency or base_currency or vat_currency
+
+    score = _confidence(
+        document_confidence,
+        [invoice_number, supplier_name, supplier_tax_id, parsed_date, taxable_base, vat_amount, total_amount],
+        False,
+    )
+    return InvoiceExtraction(
+        document_id=document_id,
+        invoice_number=invoice_number,
+        supplier_name=supplier_name,
+        supplier_tax_id=supplier_tax_id,
+        client_name=client_name,
+        date=parsed_date,
+        taxable_base=taxable_base,
+        vat_amount=vat_amount,
+        total_amount=total_amount,
+        currency=currency,
+        related_order_number=related_order_number,
+        confidence=score,
     )
 
 
@@ -206,12 +268,34 @@ def persist_business_extraction(db: Session, document: Document, text: str) -> P
         _add_entities_for_order(db, document.id, extraction)
         return PersistedBusinessExtraction(order=order, needs_review=_order_needs_review(extraction, related_budget_id))
 
+    if document.document_type == "factura":
+        extraction = extract_invoice(document.id, text, document.confidence)
+        if not extraction:
+            return PersistedBusinessExtraction(needs_review=True)
+        related_order_id = _find_related_order_id(db, extraction)
+        invoice = Invoice(
+            document_id=document.id,
+            invoice_number=extraction.invoice_number,
+            supplier_name=extraction.supplier_name,
+            client_name=extraction.client_name,
+            date=extraction.date,
+            total_amount=extraction.total_amount,
+            currency=extraction.currency,
+            related_order_id=related_order_id,
+            confidence=extraction.confidence,
+        )
+        db.add(invoice)
+        db.flush()
+        _add_entities_for_invoice(db, document.id, extraction)
+        return PersistedBusinessExtraction(invoice=invoice, needs_review=_invoice_needs_review(extraction))
+
     return PersistedBusinessExtraction()
 
 
 def _delete_existing_business_data(db: Session, document_id: int) -> None:
     budget_ids = list(db.scalars(select(Budget.id).where(Budget.document_id == document_id)).all())
     order_ids = list(db.scalars(select(Order.id).where(Order.document_id == document_id)).all())
+    invoice_ids = list(db.scalars(select(Invoice.id).where(Invoice.document_id == document_id)).all())
     if budget_ids:
         db.execute(delete(BudgetLine).where(BudgetLine.budget_id.in_(budget_ids)))
         db.execute(delete(Order).where(Order.related_budget_id.in_(budget_ids)))
@@ -219,6 +303,8 @@ def _delete_existing_business_data(db: Session, document_id: int) -> None:
     if order_ids:
         db.execute(delete(OrderLine).where(OrderLine.order_id.in_(order_ids)))
         db.execute(delete(Order).where(Order.id.in_(order_ids)))
+    if invoice_ids:
+        db.execute(delete(Invoice).where(Invoice.id.in_(invoice_ids)))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document_id))
     db.flush()
 
@@ -239,6 +325,18 @@ def _add_entities_for_order(db: Session, document_id: int, extraction: OrderExtr
     _entity(db, document_id, "total_amount", _amount_text(extraction.total_amount), extraction.confidence)
     for line in extraction.lines:
         _entity(db, document_id, "reference", line.reference, line.confidence)
+
+
+def _add_entities_for_invoice(db: Session, document_id: int, extraction: InvoiceExtraction) -> None:
+    _entity(db, document_id, "invoice_number", extraction.invoice_number, extraction.confidence)
+    _entity(db, document_id, "supplier_name", extraction.supplier_name, extraction.confidence)
+    _entity(db, document_id, "supplier_tax_id", extraction.supplier_tax_id, extraction.confidence)
+    _entity(db, document_id, "client_name", extraction.client_name, extraction.confidence)
+    _entity(db, document_id, "invoice_date", extraction.date.isoformat() if extraction.date else None, extraction.confidence)
+    _entity(db, document_id, "taxable_base", _amount_text(extraction.taxable_base), extraction.confidence)
+    _entity(db, document_id, "vat_amount", _amount_text(extraction.vat_amount), extraction.confidence)
+    _entity(db, document_id, "total_amount", _amount_text(extraction.total_amount), extraction.confidence)
+    _entity(db, document_id, "related_order_number", extraction.related_order_number, extraction.confidence)
 
 
 def _entity(db: Session, document_id: int, entity_type: str, value: str | None, confidence: float) -> None:
@@ -263,6 +361,14 @@ def _find_related_budget_id(db: Session, extraction: OrderExtraction) -> int | N
     return None
 
 
+def _find_related_order_id(db: Session, extraction: InvoiceExtraction) -> int | None:
+    if extraction.related_order_number:
+        order = db.scalar(select(Order).where(Order.order_number == extraction.related_order_number).limit(1))
+        if order:
+            return order.id
+    return None
+
+
 def _budget_needs_review(extraction: BudgetExtraction) -> bool:
     return extraction.confidence < 0.65 or not extraction.budget_number or not extraction.total_amount
 
@@ -271,6 +377,15 @@ def _order_needs_review(extraction: OrderExtraction, related_budget_id: int | No
     relation_was_expected = bool(extraction.related_budget_number)
     return extraction.confidence < 0.65 or not extraction.order_number or not extraction.total_amount or (
         relation_was_expected and related_budget_id is None
+    )
+
+
+def _invoice_needs_review(extraction: InvoiceExtraction) -> bool:
+    return (
+        extraction.confidence < 0.65
+        or not extraction.invoice_number
+        or not extraction.total_amount
+        or not extraction.date
     )
 
 
@@ -299,6 +414,25 @@ def _date_from_label(text: str, labels: list[str]) -> date | None:
                 return parsed
     match = re.search(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", text)
     return _parse_date(match.group(1)) if match else None
+
+
+def _amount_from_label(text: str, labels: list[str]) -> tuple[float | None, str | None]:
+    for label in labels:
+        pattern = rf"^\s*{re.escape(label)}(?:\s+\d{{1,2}}%)?\s*[:#-]\s*([0-9][0-9.,]*)\s*(€|eur|euros)?"
+        match = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
+        if match:
+            return _parse_amount(match.group(1)), _currency(match.group(2))
+    return None, None
+
+
+def _tax_id(text: str) -> str | None:
+    return _first_match(
+        text,
+        [
+            r"\b(?:nif|cif)\s*[:#-]?\s*([A-Z]\d{7,8}[A-Z0-9]?)",
+            r"\b(?:nif|cif)\s*[:#-]?\s*(\d{8}[A-Z])",
+        ],
+    )
 
 
 def _parse_date(value: str) -> date | None:
