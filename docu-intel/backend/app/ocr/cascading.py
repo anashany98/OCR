@@ -63,12 +63,16 @@ class CascadingOCREngine:
         min_chars: int = 30,
         min_confidence: float = 0.5,
         pp_structure: BaseOCREngine | None = None,
+        vlm_ocr: BaseOCREngine | None = None,
+        tier4_quality_threshold: float = 0.62,
     ) -> None:
         self.primary = primary
         self.fallback = fallback
         self.pp_structure = pp_structure
+        self.vlm_ocr = vlm_ocr
         self.min_chars = min_chars
         self.min_confidence = min_confidence
+        self.tier4_quality_threshold = tier4_quality_threshold
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
         # value.
@@ -84,7 +88,7 @@ class CascadingOCREngine:
         track_ocr_duration(time.perf_counter() - start)
 
         if self._is_acceptable(primary_result):
-            return self._record_winner(self.primary.name, primary_result)
+            return self._finalize(image_path, self.primary.name, primary_result)
 
         # Escalate to the fallback. Any failure here is best-effort:
         # we keep the primary result so the user at least sees *some*
@@ -96,7 +100,7 @@ class CascadingOCREngine:
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.fallback.name, exc)
-            return self._record_winner(self.primary.name, primary_result)
+            return self._finalize(image_path, self.primary.name, primary_result)
         track_ocr_duration(time.perf_counter() - start)
 
         if self._is_better(fallback_result, primary_result):
@@ -105,16 +109,16 @@ class CascadingOCREngine:
             if self.pp_structure is not None and not self._is_acceptable(fallback_result):
                 tier3 = self._try_tier3(image_path, primary_result, fallback_result)
                 if tier3 is not None:
-                    return tier3
-            return self._record_winner(self.fallback.name, fallback_result)
+                    return self._finalize(image_path, self.pp_structure.name if self.pp_structure else self._name, tier3)
+            return self._finalize(image_path, self.fallback.name, fallback_result)
 
         # Tier 2 didn't beat Tier 1 — try Tier 3 if available.
         if self.pp_structure is not None:
             tier3 = self._try_tier3(image_path, primary_result, fallback_result)
             if tier3 is not None:
-                return tier3
+                return self._finalize(image_path, self.pp_structure.name, tier3)
 
-        return self._record_winner(self.primary.name, primary_result)
+        return self._finalize(image_path, self.primary.name, primary_result)
 
     def _try_tier3(
         self,
@@ -146,7 +150,30 @@ class CascadingOCREngine:
 
         best_prior = fallback_result if self._is_better(fallback_result, primary_result) else primary_result
         if self._is_better(tier3_result, best_prior):
-            return self._record_winner(self.pp_structure.name, tier3_result)
+            return tier3_result
+        return None
+
+    def _finalize(self, image_path: Path, tier: str, result: OCRResult) -> OCRResult:
+        if self.vlm_ocr is None or _quality(result) >= self.tier4_quality_threshold:
+            return self._record_winner(tier, result)
+        tier4_result = self._try_tier4(image_path, result)
+        if tier4_result is not None:
+            return tier4_result
+        return self._record_winner(tier, result)
+
+    def _try_tier4(self, image_path: Path, best_prior: OCRResult) -> OCRResult | None:
+        assert self.vlm_ocr is not None
+        start = time.perf_counter()
+        try:
+            tier4_result = self.vlm_ocr.extract(image_path)
+        except Exception as exc:
+            track_ocr_duration(time.perf_counter() - start)
+            self._track_fallback_failure(self.vlm_ocr.name, exc)
+            return None
+        track_ocr_duration(time.perf_counter() - start)
+
+        if self._is_better(tier4_result, best_prior):
+            return self._record_winner(self.vlm_ocr.name, tier4_result)
         return None
 
     def _is_acceptable(self, result: OCRResult) -> bool:

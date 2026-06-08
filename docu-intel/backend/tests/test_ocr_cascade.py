@@ -185,6 +185,29 @@ def test_cascade_escalates_when_primary_confidence_below_threshold(tmp_path: Pat
     assert fallback.calls == 1
 
 
+def test_cascade_uses_tier4_vlm_when_prior_quality_is_low(tmp_path: Path):
+    primary = _RecordingEngine("fake_primary", _result("x", confidence=0.2, engine="tesseract"))
+    fallback = _RecordingEngine("fake_fallback", _result("y", confidence=0.2, engine="paddleocr"))
+    vlm = _RecordingEngine("fake_vlm", _result("Factura limpia con total 123,45 euros y fecha 01/05/2026", confidence=0.96, engine="dots_mocr"))
+    cascade = CascadingOCREngine(
+        primary=primary,
+        fallback=fallback,
+        min_chars=30,
+        min_confidence=0.5,
+        vlm_ocr=vlm,
+        tier4_quality_threshold=0.8,
+    )
+
+    image = tmp_path / "blank.png"
+    image.write_bytes(b"")
+
+    result = cascade.extract(image)
+
+    assert result.engine == "dots_mocr"
+    assert cascade.name == "fake_vlm"
+    assert vlm.calls == 1
+
+
 def test_quality_penalizes_long_symbol_noise():
     clean = _result("Factura 2026/154 total 123,45 euros", confidence=0.93, engine="tesseract")
     noisy = _result("%%%% !!!!! #### " * 80, confidence=0.41, engine="paddleocr")

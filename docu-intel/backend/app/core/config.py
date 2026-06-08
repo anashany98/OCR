@@ -114,6 +114,10 @@ class Settings(BaseSettings):
 
     ocr_engine: Literal["tesseract", "paddleocr", "cascading"] = "cascading"
     enable_dots_mocr: bool = False
+    dots_mocr_endpoint: str = ""
+    dots_mocr_api_key: str = ""
+    dots_mocr_timeout_seconds: float = 120.0
+    dots_mocr_quality_threshold: float = 0.62
     # Tesseract 5 settings (used as primary in the cascade and as the
     # only engine when ocr_engine == "tesseract").
     tesseract_lang: str = "spa+eng"

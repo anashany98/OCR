@@ -127,6 +127,18 @@ def _build_cascading_engine() -> BaseOCREngine:
             device=settings.pp_structure_device,
             lang=settings.pp_structure_lang,
         )
+    if settings.enable_dots_mocr:
+        from app.ocr.dots_mocr import DotsMOCRConfig, DotsMOCREngine
+
+        kwargs["vlm_ocr"] = DotsMOCREngine(
+            DotsMOCRConfig(
+                enabled=True,
+                endpoint=settings.dots_mocr_endpoint,
+                api_key=settings.dots_mocr_api_key or None,
+                timeout_seconds=settings.dots_mocr_timeout_seconds,
+            )
+        )
+        kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
     return CascadingOCREngine(**kwargs)  # type: ignore[arg-type]
 
 
@@ -135,6 +147,8 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
         _warm_ocr_engine(engine.fallback)  # type: ignore[attr-defined]
     if hasattr(engine, "pp_structure") and engine.pp_structure is not None:  # type: ignore[attr-defined]
         _warm_ocr_engine(engine.pp_structure)  # type: ignore[attr-defined]
+    if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:  # type: ignore[attr-defined]
+        _warm_ocr_engine(engine.vlm_ocr)  # type: ignore[attr-defined]
     if hasattr(engine, "_engine"):
         getattr(engine, "_engine")
     if hasattr(engine, "_pipeline"):
