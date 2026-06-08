@@ -29,6 +29,8 @@ from app.tools import internal
 from app.tools.internal import _money_filters as _money_filters_internal  # re-exported below
 
 logger = logging.getLogger("app.ai.agent")
+LOW_OCR_CONFIDENCE_THRESHOLD = 0.70
+LOW_OCR_MARKER = "[OCR DUDOSO]"
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,7 @@ class ContextItem:
     relevance_score: float | None = None
     excerpt: str | None = None
     confidence: float | None = None
+    ocr_confidence: float | None = None
     # Folder-relative path the document was uploaded from. The IA uses it as
     # a disambiguation hint (e.g. two files with the same name in different
     # budget folders).
@@ -620,6 +623,7 @@ def collect_context(
                     relevance_score=result.score,
                     excerpt=result.excerpt,
                     confidence=result.ocr_confidence,
+                    ocr_confidence=result.ocr_confidence,
                     source_path=result.source_path,
                 )
                 for result in results
@@ -834,6 +838,7 @@ def build_grounded_response(
             model_name="backend_grounded_fallback",
         )
 
+    warnings = _warnings_with_low_ocr_notice(context_items, warnings)
     confidence = _average_confidence(context_items)
     top = context_items[0]
     file_label = top.document_filename or top.title or "el documento mas relevante"
@@ -914,10 +919,7 @@ async def _try_local_ai_answer(
     if not settings.ai_base_url or not settings.ai_model:
         return None
 
-    context_text = "\n".join(
-        f"[{index}] Fuente={_format_source(item)} | Ruta={item.source_path or '-'} | Confianza={item.confidence} | Texto={item.summary}"
-        for index, item in enumerate(context_items[:8], start=1)
-    )
+    context_text = _context_text_for_ai(context_items)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
     messages = _build_ai_messages(question, context_text, warning_text)
     try:
@@ -966,10 +968,7 @@ async def _stream_local_ai_answer(
     if not settings.ai_base_url or not settings.ai_model:
         return
 
-    context_text = "\n".join(
-        f"[{index}] Fuente={_format_source(item)} | Ruta={item.source_path or '-'} | Confianza={item.confidence} | Texto={item.summary}"
-        for index, item in enumerate(context_items[:8], start=1)
-    )
+    context_text = _context_text_for_ai(context_items)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
 
     # Reuse the system + user prompts that the non-streaming path uses, so
@@ -1013,6 +1012,22 @@ async def _stream_local_ai_answer(
     yield StreamOutcome(text=full, ok=True)
 
 
+def _context_text_for_ai(context_items: list[ContextItem]) -> str:
+    return "\n".join(
+        _context_line_for_ai(index, item)
+        for index, item in enumerate(context_items[:8], start=1)
+    )
+
+
+def _context_line_for_ai(index: int, item: ContextItem) -> str:
+    marker = f" {LOW_OCR_MARKER}" if _is_low_ocr_context(item) else ""
+    ocr_confidence = item.ocr_confidence if item.ocr_confidence is not None else "-"
+    return (
+        f"[{index}]{marker} Fuente={_format_source(item)} | Ruta={item.source_path or '-'} | "
+        f"Confianza={item.confidence} | ConfianzaOCR={ocr_confidence} | Texto={item.summary}"
+    )
+
+
 def _build_ai_messages(question: str, context_text: str, warning_text: str) -> list[dict]:
     """Build the system + user messages for the LLM. Used by both the
     streaming and the non-streaming paths so the behaviour stays consistent."""
@@ -1044,6 +1059,8 @@ def _build_ai_messages(question: str, context_text: str, warning_text: str) -> l
                 "- Si hay DATOS ESTRUCTURADOS (entidades) y EXTRACTOS, integra los dos: las entidades dan "
                 "los hechos clave (numero, importe, fecha), los extractos dan el detalle y el matiz.\n"
                 "- Si una entidad existe (ej. importe del presupuesto), usala en vez de 'aproximadamente'.\n\n"
+                "- Si una fuente esta marcada como [OCR DUDOSO], advierte que el dato procede de OCR de "
+                "baja confianza y que conviene contrastarlo en el documento original.\n\n"
                 "COMO HABLAS:\n"
                 "- Siempre en espanol, con un tono cercano y profesional, como un companero de trabajo que "
                 "conoce el proyecto.\n"
@@ -1166,12 +1183,34 @@ def _clip_excerpt(text: str, max_chars: int) -> str:
 
 
 def _warning_lines(items: list[ContextItem], warnings: list[str]) -> str:
-    lines = list(warnings)
+    lines = _warnings_with_low_ocr_notice(items, warnings)
     if any(item.confidence is not None and item.confidence < 0.8 for item in items):
         lines.append("Hay resultados con confianza inferior al 80%; conviene revisar la fuente.")
     if not lines:
         lines.append("Sin advertencias adicionales.")
     return "\n".join(f"- {line}" for line in lines)
+
+
+def _warnings_with_low_ocr_notice(
+    items: list[ContextItem],
+    warnings: list[str],
+) -> list[str]:
+    lines = list(warnings)
+    if any(_is_low_ocr_context(item) for item in items):
+        notice = (
+            "Hay fuentes marcadas como OCR dudoso; conviene contrastar esos datos "
+            "con el documento original."
+        )
+        if notice not in lines:
+            lines.append(notice)
+    return lines
+
+
+def _is_low_ocr_context(item: ContextItem) -> bool:
+    return (
+        item.ocr_confidence is not None
+        and item.ocr_confidence < LOW_OCR_CONFIDENCE_THRESHOLD
+    )
 
 
 def _average_confidence(items: list[ContextItem]) -> float:
