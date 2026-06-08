@@ -102,7 +102,7 @@ class OpenAICompatibleEmbeddingClient:
         return vectors
 
 
-def _embedding_cache_key(text: str, dimensions: int) -> str:
+def _embedding_cache_key(text: str, dimensions: int, *, role: str = "passage") -> str:
     namespace = "|".join(
         [
             settings.embedding_provider.lower().strip(),
@@ -110,6 +110,7 @@ def _embedding_cache_key(text: str, dimensions: int) -> str:
             settings.embedding_model.strip(),
             f"{OpenAICompatibleEmbeddingClient.__module__}.{OpenAICompatibleEmbeddingClient.__qualname__}",
             str(dimensions),
+            role,
         ]
     )
     content = f"{namespace}:{text}"
@@ -118,6 +119,39 @@ def _embedding_cache_key(text: str, dimensions: int) -> str:
 
 def embed_text(text: str, dimensions: int | None = None) -> list[float]:
     return embed_many([text], dimensions=dimensions)[0]
+
+
+def embed_query_text(text: str, dimensions: int | None = None) -> list[float]:
+    """Embed a user query with query-side semantics when the provider needs it.
+
+    The public ``embed_many`` path remains passage-mode because it is used by
+    indexing. OpenAI-compatible providers do not distinguish query/passage, so
+    they keep the existing behavior.
+    """
+    vector_dimensions = dimensions or _configured_dimensions()
+    provider = settings.embedding_provider.lower().strip()
+    if provider != "local_sentence_transformers":
+        return embed_text(text, dimensions=vector_dimensions)
+
+    cache_key = _embedding_cache_key(text, vector_dimensions, role="query")
+    cached = cache_service.get(cache_key)
+    if cached is not None:
+        track_cache_hit()
+        return cached
+    track_cache_miss()
+
+    try:
+        vector = get_local_embedding_client().embed_query(text)
+    except Exception as exc:
+        if not settings.embedding_fallback_to_hash:
+            raise EmbeddingProviderError(
+                f"Local sentence-transformers query embedding failed: {exc}"
+            ) from exc
+        track_embedding_fallback()
+        vector = embed_text_hash(text, vector_dimensions)
+
+    cache_service.set(cache_key, vector, EMBEDDING_CACHE_TTL)
+    return vector
 
 
 def embed_many(texts: Iterable[str], dimensions: int | None = None) -> list[list[float]]:
@@ -135,7 +169,7 @@ def embed_many(texts: Iterable[str], dimensions: int | None = None) -> list[list
     uncached_texts = []
 
     for i, text in enumerate(text_list):
-        cache_key = _embedding_cache_key(text, vector_dimensions)
+        cache_key = _embedding_cache_key(text, vector_dimensions, role="passage")
         cached_val = cache_service.get(cache_key)
         if cached_val is not None:
             cached.append(cached_val)
@@ -153,7 +187,7 @@ def embed_many(texts: Iterable[str], dimensions: int | None = None) -> list[list
         start = time.perf_counter()
         for idx, emb in zip(uncached_indices, embeddings):
             cached[idx] = emb
-            cache_key = _embedding_cache_key(text_list[idx], vector_dimensions)
+            cache_key = _embedding_cache_key(text_list[idx], vector_dimensions, role="passage")
             cache_service.set(cache_key, emb, EMBEDDING_CACHE_TTL)
         track_embedding_latency(time.perf_counter() - start)
 
@@ -175,7 +209,7 @@ async def embed_many_async(texts: Iterable[str], dimensions: int | None = None) 
     uncached_texts = []
 
     for i, text in enumerate(text_list):
-        cache_key = _embedding_cache_key(text, vector_dimensions)
+        cache_key = _embedding_cache_key(text, vector_dimensions, role="passage")
         cached_val = cache_service.get(cache_key)
         if cached_val is not None:
             cached.append(cached_val)
@@ -195,7 +229,7 @@ async def embed_many_async(texts: Iterable[str], dimensions: int | None = None) 
 
         for idx, emb in zip(uncached_indices, embeddings):
             cached[idx] = emb
-            cache_key = _embedding_cache_key(text_list[idx], vector_dimensions)
+            cache_key = _embedding_cache_key(text_list[idx], vector_dimensions, role="passage")
             cache_service.set(cache_key, emb, EMBEDDING_CACHE_TTL)
 
     return cached

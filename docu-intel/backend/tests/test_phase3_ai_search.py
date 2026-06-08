@@ -1,5 +1,6 @@
 from app.ai.agent import build_grounded_response, select_tools_for_question
 from app.services.embeddings import cosine_similarity, embed_text
+from app.services import search_service
 from app.services.search_service import SearchResult, merge_hybrid_results
 
 
@@ -12,7 +13,30 @@ def test_local_embedding_is_1024_dimensional_and_semantically_useful():
     assert cosine_similarity(query_vector, related_vector) > cosine_similarity(query_vector, unrelated_vector)
 
 
-def test_hybrid_merge_deduplicates_sources_and_combines_scores():
+def test_search_semantic_uses_query_embedding_role(monkeypatch):
+    calls: list[str] = []
+
+    class _FakePgvectorStore:
+        def search(self, db, *, query_embedding, limit, filters):
+            assert query_embedding == [0.4, 0.3, 0.2, 0.1]
+            return []
+
+    monkeypatch.setattr(search_service.cache_service, "get", lambda key: None)
+    monkeypatch.setattr(search_service.cache_service, "set", lambda key, value, ttl_seconds: True)
+    monkeypatch.setattr(search_service, "_is_postgres", lambda db: True)
+    monkeypatch.setattr(search_service, "PgvectorStore", lambda: _FakePgvectorStore())
+    monkeypatch.setattr(
+        search_service,
+        "embed_query_text",
+        lambda text: calls.append(text) or [0.4, 0.3, 0.2, 0.1],
+        raising=False,
+    )
+
+    assert search_service.search_semantic(db=object(), query="  total factura  ", limit=3) == []
+    assert calls == ["total factura"]
+
+
+def test_hybrid_merge_deduplicates_sources_with_rrf_score():
     text_result = SearchResult(
         document_id=7,
         original_filename="pedido_154.pdf",

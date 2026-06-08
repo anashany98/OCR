@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
 from app.services.cache import cache_service
-from app.services.embeddings import cosine_similarity, embed_text
+from app.services.embeddings import cosine_similarity, embed_query_text
 from app.services.metrics import track_search_latency
 from app.services.vector_store import PgvectorStore, _is_postgres
 
@@ -151,7 +151,7 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
         if cached is not None:
             return [_dict_to_search_result(r) for r in cached]
 
-        query_embedding = embed_text(normalized)
+        query_embedding = embed_query_text(normalized)
 
         pg = PgvectorStore()
         if _is_postgres(db):

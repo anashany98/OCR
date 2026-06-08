@@ -136,6 +136,30 @@ def test_local_client_uses_asymmetric_prompts(fake_sentence_transformers):
     assert encode_call["kwargs"]["prompt"] == "passage: "
 
 
+def test_embed_query_text_uses_local_query_mode(monkeypatch):
+    from app.services import embeddings
+
+    calls: list[tuple[str, str]] = []
+
+    class _FakeLocalClient:
+        def embed_query(self, text: str) -> list[float]:
+            calls.append(("query", text))
+            return [0.1, 0.2, 0.3, 0.4]
+
+        def embed_many(self, texts: list[str]) -> list[list[float]]:
+            calls.append(("passage", texts[0]))
+            return [[0.9, 0.8, 0.7, 0.6] for _ in texts]
+
+    monkeypatch.setattr(settings, "embedding_provider", "local_sentence_transformers")
+    monkeypatch.setattr(settings, "embedding_dimensions", 4)
+    monkeypatch.setattr(embeddings, "get_local_embedding_client", lambda: _FakeLocalClient())
+    monkeypatch.setattr(embeddings.cache_service, "get", lambda key: None)
+    monkeypatch.setattr(embeddings.cache_service, "set", lambda key, value, ttl_seconds: True)
+
+    assert embeddings.embed_query_text("¿Cuánto es el total?") == [0.1, 0.2, 0.3, 0.4]
+    assert calls == [("query", "¿Cuánto es el total?")]
+
+
 def test_local_client_omits_prompt_for_symmetric_models(fake_sentence_transformers):
     from app.services.embeddings import LocalSentenceTransformerEmbeddingClient
 
