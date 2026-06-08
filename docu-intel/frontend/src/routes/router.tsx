@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react"
-import { Navigate, createBrowserRouter } from "react-router-dom"
+import { Navigate, createBrowserRouter, isRouteErrorResponse, useRouteError } from "react-router-dom"
 
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { AppShell } from "@/components/layout/AppShell"
 import { LoadingState } from "@/components/layout/LoadingState"
 import { PermissionGate } from "@/components/layout/PermissionGate"
@@ -15,6 +16,7 @@ const DocumentsPage = lazy(() => import("@/pages/DocumentsPage").then((module) =
 const InvoicesPage = lazy(() => import("@/pages/InvoicesPage").then((module) => ({ default: module.InvoicesPage })))
 const JobsPage = lazy(() => import("@/pages/JobsPage").then((module) => ({ default: module.JobsPage })))
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((module) => ({ default: module.LoginPage })))
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })))
 const OrdersPage = lazy(() => import("@/pages/OrdersPage").then((module) => ({ default: module.OrdersPage })))
 const OcrReviewPage = lazy(() => import("@/pages/OcrReviewPage").then((module) => ({ default: module.OcrReviewPage })))
 const PlanoAnnotationPage = lazy(() =>
@@ -71,11 +73,36 @@ function protectedPage(element: ReactNode, roles: string[]) {
   return page(<RequireRole roles={roles}>{element}</RequireRole>)
 }
 
+function RouteErrorElement() {
+  return (
+    <ErrorBoundary>
+      <RouteErrorFallback />
+    </ErrorBoundary>
+  )
+}
+
+function RouteErrorFallback() {
+  const error = useRouteError()
+  const message = isRouteErrorResponse(error)
+    ? `${error.status} ${error.statusText}`
+    : error instanceof Error
+      ? error.message
+      : "Error inesperado"
+
+  return (
+    <div className="mx-auto mt-12 max-w-xl rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-4 text-sm text-[var(--text-secondary)]">
+      <h1 className="text-base font-semibold text-[var(--text-primary)]">No se pudo cargar esta vista</h1>
+      <p className="mt-2">{message}</p>
+    </div>
+  )
+}
+
 export const router = createBrowserRouter([
-  { path: "/login", element: page(<LoginPage />) },
+  { path: "/login", element: page(<LoginPage />), errorElement: <RouteErrorElement /> },
   {
     path: "/",
     element: <RequireAuth />,
+    errorElement: <RouteErrorElement />,
     children: [
       { index: true, element: page(<DashboardPage />) },
       { path: "documents", element: page(<DocumentsPage />) },
@@ -92,6 +119,7 @@ export const router = createBrowserRouter([
       { path: "plans", element: protectedPage(<PlansPage />, MANAGER_ROLES) },
       { path: "chat", element: page(<ChatPage />) },
       { path: "admin", element: protectedPage(<AdminPage />, ADMIN_ROLES) },
+      { path: "*", element: page(<NotFoundPage />) },
     ],
   },
 ])
