@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react"
-import { Outlet, useLocation, useNavigate } from "react-router-dom"
+import { Outlet, useMatches, useNavigate, type UIMatch } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, Command as CommandIcon, FileText, LogOut, Menu, Search } from "lucide-react"
 
@@ -17,16 +17,15 @@ import { cn } from "@/lib/utils"
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
+  const matches = useMatches()
   const [query, setQuery] = useState("")
   const [drawerOpen, setDrawerOpen] = useState(false)
   const health = useQuery({ queryKey: ["system-health"], queryFn: api.systemHealth, refetchInterval: 30000 })
   const inbox = useQuery({ queryKey: ["work-inbox-count"], queryFn: () => api.workInboxCount(), refetchInterval: 30000 })
 
   const inboxCount = inbox.data?.count ?? 0
-  const currentPath = location.pathname
 
-  const pageTitle = getPageTitle(currentPath)
+  const pageTitle = getPageTitle(matches)
 
   function setMobileDrawer(open: boolean) {
     if (open && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) return
@@ -170,24 +169,14 @@ export function AppShell() {
   )
 }
 
-function getPageTitle(pathname: string): string {
-  const titles: Record<string, string> = {
-    "/": "Dashboard",
-    "/documents": "Documentos",
-    "/work-inbox": "Tareas",
-    "/ocr-review": "Revisión OCR",
-    "/search": "Buscar",
-    "/chat": "Preguntar a documentos",
-    "/jobs": "Procesamiento",
-    "/budgets": "Presupuestos",
-    "/orders": "Pedidos",
-    "/invoices": "Facturas",
-    "/reconciliation": "Incidencias",
-    "/plans": "Planos",
-    "/admin": "Administración",
-  }
+type PageTitleHandle = {
+  title?: string
+}
 
-  if (titles[pathname]) return titles[pathname]
-  if (pathname.startsWith("/documents/")) return "Detalle de documento"
+function getPageTitle(matches: UIMatch<unknown, unknown>[]): string {
+  for (const match of [...matches].reverse()) {
+    const title = (match.handle as PageTitleHandle | undefined)?.title
+    if (title) return title
+  }
   return "Docu-Intel"
 }

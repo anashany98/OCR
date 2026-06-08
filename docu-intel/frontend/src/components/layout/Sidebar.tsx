@@ -26,6 +26,7 @@ import {
 import { api } from "@/api/client"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
+import { ADMIN_TAB_LABELS } from "@/routes/adminTabs"
 
 export type NavItem = {
   to: string
@@ -94,10 +95,10 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Sistema",
     items: [
       { to: "/jobs", label: "Procesamiento", icon: DatabaseZap, roles: ["admin"], keywords: ["jobs", "celery", "cola"] },
-      { to: "/admin?tab=sistema", label: "Estado técnico", icon: Settings, roles: ["admin"], keywords: ["salud", "infraestructura"] },
-      { to: "/admin?tab=acceso", label: "Usuarios y permisos", icon: Users, roles: ["admin"], keywords: ["permisos", "rbac"] },
-      { to: "/admin?tab=integraciones", label: "Integraciones", icon: KeyRound, roles: ["admin"], keywords: ["api", "cliente", "webhook"] },
-      { to: "/admin?tab=aprendizaje", label: "Aprendizaje IA", icon: Brain, roles: ["admin"], keywords: ["ia", "patrones"] },
+      { to: "/admin?tab=sistema", label: ADMIN_TAB_LABELS.sistema, icon: Settings, roles: ["admin"], keywords: ["salud", "infraestructura"] },
+      { to: "/admin?tab=acceso", label: ADMIN_TAB_LABELS.acceso, icon: Users, roles: ["admin"], keywords: ["permisos", "rbac"] },
+      { to: "/admin?tab=integraciones", label: ADMIN_TAB_LABELS.integraciones, icon: KeyRound, roles: ["admin"], keywords: ["api", "cliente", "webhook"] },
+      { to: "/admin?tab=aprendizaje", label: ADMIN_TAB_LABELS.aprendizaje, icon: Brain, roles: ["admin"], keywords: ["ia", "patrones"] },
     ],
   },
 ]

@@ -1,18 +1,11 @@
 import { FormEvent, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  Brain,
-  KeyRound,
-  ScanSearch,
-  Settings,
-  ShieldCheck,
-  Users,
-} from "lucide-react"
 
 import { api } from "@/api/client"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
+import { ADMIN_TABS, normalizeAdminTab, type AdminTab } from "@/routes/adminTabs"
 
 import { AdminAccessTab } from "./admin/AdminAccessTab"
 import { AdminIntegrationsTab } from "./admin/AdminIntegrationsTab"
@@ -22,19 +15,10 @@ import { AdminQualityTab } from "./admin/AdminQualityTab"
 import { AdminSystemTab } from "./admin/AdminSystemTab"
 import { csv, ids, optionalId, parseJsonObject } from "./admin/shared"
 
-type AdminTab = "operativa" | "sistema" | "integraciones" | "acceso" | "calidad" | "aprendizaje"
 const tenantAdminEnabled = import.meta.env.VITE_ENABLE_TENANT_ADMIN === "true"
 
 function tabFromParam(param: string | null): AdminTab {
-  const map: Record<string, AdminTab> = {
-    operativa: "operativa",
-    sistema: "sistema",
-    integraciones: "integraciones",
-    acceso: "acceso",
-    calidad: "calidad",
-    aprendizaje: "aprendizaje",
-  }
-  return map[param ?? ""] ?? "operativa"
+  return normalizeAdminTab(param)
 }
 
 export function AdminPage() {
@@ -393,34 +377,15 @@ export function AdminPage() {
     }
   }, [searchParams])
 
-  const tabLabels: Record<AdminTab, string> = {
-    operativa: "Operativa",
-    sistema: "Estado técnico",
-    integraciones: "Integraciones",
-    acceso: "Usuarios y permisos",
-    calidad: "Calidad",
-    aprendizaje: "Aprendizaje IA",
-  }
-
-  const tabIcons: Record<AdminTab, React.ComponentType<{ className?: string }>> = {
-    operativa: ShieldCheck,
-    sistema: Settings,
-    integraciones: KeyRound,
-    acceso: Users,
-    calidad: ScanSearch,
-    aprendizaje: Brain,
-  }
-
   return (
     <>
       <PageHeader title="Administración" description="Operación documental, integración segura, colas y auditoría." />
       <div className="mb-4 flex flex-wrap gap-2">
-        {(Object.keys(tabLabels) as AdminTab[]).map((tabId) => {
-          const Icon = tabIcons[tabId]
+        {ADMIN_TABS.map(({ id: tabId, label, icon: Icon }) => {
           return (
             <Button key={tabId} type="button" variant={activeTab === tabId ? "default" : "outline"} size="sm" onClick={() => switchTab(tabId)}>
               <Icon data-icon="inline-start" />
-              {tabLabels[tabId]}
+              {label}
             </Button>
           )
         })}
