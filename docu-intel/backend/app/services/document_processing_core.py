@@ -324,8 +324,7 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             db.add(block)
 
     page_texts_list = [(page.page_number, page.text) for page in extracted.pages]
-    _replace_document_chunks(db, document.id, page_texts_list)
-    return _apply_classification_and_extraction(
+    needs_review = _apply_classification_and_extraction(
         db,
         document,
         text=extracted.text,
@@ -336,6 +335,14 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             if page.ocr_confidence is not None and page.ocr_confidence < 0.70
         ],
     )
+    _replace_document_chunks(
+        db,
+        document.id,
+        page_texts_list,
+        document_type=document.document_type,
+        original_filename=document.original_filename,
+    )
+    return needs_review
 
 
 def _process_classification_only(db: Session, document: Document) -> bool:
@@ -355,7 +362,13 @@ def _process_embeddings_only(db: Session, document: Document) -> None:
     page_texts = _load_existing_page_texts(db, document.id)
     if not page_texts:
         raise ValueError("No extracted pages available; run a full or OCR reprocess first")
-    _replace_document_chunks(db, document.id, page_texts)
+    _replace_document_chunks(
+        db,
+        document.id,
+        page_texts,
+        document_type=document.document_type,
+        original_filename=document.original_filename,
+    )
 
 
 def _process_ocr_page_only(db: Session, document: Document, *, page_number: int) -> bool:
@@ -425,14 +438,21 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
         )
     db.flush()
     page_texts = _load_existing_page_texts(db, document.id)
-    _replace_document_chunks(db, document.id, page_texts)
-    return _apply_classification_and_extraction(
+    needs_review = _apply_classification_and_extraction(
         db,
         document,
         text=_full_text_from_page_texts(page_texts),
         page_count=len(page_texts),
         low_ocr_confidences=_load_low_ocr_confidences(db, document.id),
     )
+    _replace_document_chunks(
+        db,
+        document.id,
+        page_texts,
+        document_type=document.document_type,
+        original_filename=document.original_filename,
+    )
+    return needs_review
 
 
 def _apply_classification_and_extraction(

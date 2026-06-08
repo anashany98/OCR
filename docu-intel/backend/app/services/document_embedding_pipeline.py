@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import DocumentChunk
-from app.services.chunking import build_chunks
+from app.services.chunking import build_chunks, embedding_text_with_metadata
 from app.services.embeddings import EmbeddingProviderError, embed_many, should_create_embeddings
 from app.services.metrics import track_embedding_fallback
 
@@ -58,17 +58,29 @@ def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, b
     return [(embedding, provider, fallback) for embedding in embeddings]
 
 
-def prepare_document_chunks(document_id: int, page_texts: list[tuple[int, str | None]]) -> list[DocumentChunk]:
+def prepare_document_chunks(
+    document_id: int,
+    page_texts: list[tuple[int, str | None]],
+    *,
+    document_type: str | None = None,
+    original_filename: str | None = None,
+) -> list[DocumentChunk]:
     from app.services.document_processing_core import sanitize_text_for_database
 
-    chunk_payloads: list[tuple[int, str, int]] = []
+    chunk_payloads: list[tuple[int, str, str, int]] = []
     for page_number, page_text in page_texts:
         clean_text = sanitize_text_for_database(page_text)
         for chunk_text, token_count in build_chunks(clean_text):
-            chunk_payloads.append((page_number, chunk_text, token_count))
+            embedding_text = embedding_text_with_metadata(
+                chunk_text,
+                document_type=document_type,
+                filename=original_filename,
+                page_number=page_number,
+            )
+            chunk_payloads.append((page_number, chunk_text, embedding_text, token_count))
 
     embedding_payloads = (
-        _facade().embed_many_with_metadata([chunk_text for _, chunk_text, _ in chunk_payloads])
+        _facade().embed_many_with_metadata([embedding_text for _, _, embedding_text, _ in chunk_payloads])
         if chunk_payloads and _facade().should_create_embeddings()
         else [(None, None, False)] * len(chunk_payloads)
     )
@@ -90,13 +102,26 @@ def prepare_document_chunks(document_id: int, page_texts: list[tuple[int, str | 
             needs_reembedding=fallback,
             token_count=token_count,
         )
-        for (page_number, chunk_text, token_count), (embedding, provider, fallback) in zip(chunk_payloads, embedding_payloads, strict=True)
+        for (page_number, chunk_text, _, token_count), (embedding, provider, fallback)
+        in zip(chunk_payloads, embedding_payloads, strict=True)
     ]
 
 
-def _replace_document_chunks(db: Session, document_id: int, page_texts: list[tuple[int, str | None]]) -> None:
+def _replace_document_chunks(
+    db: Session,
+    document_id: int,
+    page_texts: list[tuple[int, str | None]],
+    *,
+    document_type: str | None = None,
+    original_filename: str | None = None,
+) -> None:
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
-    for chunk in prepare_document_chunks(document_id, page_texts):
+    for chunk in prepare_document_chunks(
+        document_id,
+        page_texts,
+        document_type=document_type,
+        original_filename=original_filename,
+    ):
         db.add(chunk)
     db.flush()
 
@@ -134,7 +159,12 @@ def reembed_document(db: Session, document_id: int) -> dict:
     page_texts = [(p.page_number, p.text) for p in pages]
 
     # Build the new chunks (same as initial processing).
-    new_chunks = prepare_document_chunks(document_id, page_texts)
+    new_chunks = prepare_document_chunks(
+        document_id,
+        page_texts,
+        document_type=document.document_type,
+        original_filename=document.original_filename,
+    )
 
     # Load existing chunks keyed by (page_number, chunk_text) so we can
     # preserve their ids and carry over non-embedding fields.

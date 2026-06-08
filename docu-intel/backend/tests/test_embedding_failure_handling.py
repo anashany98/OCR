@@ -107,3 +107,36 @@ def test_prepare_document_chunks_stores_unembedded_when_provider_fails():
         # The text itself is preserved — OCR work is not lost.
         assert chunk.chunk_text
         assert chunk.token_count > 0
+
+
+def test_prepare_document_chunks_embeds_metadata_header_without_polluting_chunk_text():
+    from app.services.document_embedding_pipeline import prepare_document_chunks
+
+    embedded_texts: list[str] = []
+
+    def fake_embed_many(texts: list[str]) -> list[list[float]]:
+        embedded_texts.extend(texts)
+        return [[0.1] * 1024 for _ in texts]
+
+    page_texts = [(2, "Total factura 120 euros. Base imponible 100 euros.")]
+
+    with (
+        patch.object(document_service, "embed_many", side_effect=fake_embed_many),
+        patch.object(
+            document_service,
+            "should_create_embeddings",
+            return_value=True,
+        ),
+    ):
+        chunks = prepare_document_chunks(
+            document_id=42,
+            page_texts=page_texts,
+            document_type="factura",
+            original_filename="2024_0345.pdf",
+        )
+
+    assert chunks[0].chunk_text == "Total factura 120 euros. Base imponible 100 euros."
+    assert embedded_texts == [
+        "[tipo=factura | fichero=2024_0345.pdf | pág=2] "
+        "Total factura 120 euros. Base imponible 100 euros."
+    ]
