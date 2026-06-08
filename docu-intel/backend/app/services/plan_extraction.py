@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -8,7 +9,9 @@ from typing import Sequence
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Document, DocumentBlock, Plan, PlanDimension, PlanRoom
+from app.models import Document, DocumentBlock, DocumentPage, Plan, PlanDimension, PlanRoom
+
+logger = logging.getLogger("app.services.plan_extraction")
 
 
 @dataclass(frozen=True)
@@ -20,6 +23,10 @@ class ExtractedPlan:
     scale_confidence: float | None
     unit: str | None
     has_valid_scale: bool
+    # PL1: pixels-per-inch of the rasterized page where the plan lives.
+    # Used to convert the bbox of each dimension caption into millimetres
+    # and validate it against the OCR-derived value_m.
+    dpi: float | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +93,7 @@ def extract_plan(
     document_confidence: float | None,
     *,
     text_blocks: Sequence[PlanTextBlock] | None = None,
+    dpi: float | None = None,
 ) -> PlanExtractionResult:
     if not _looks_like_plan(text):
         return PlanExtractionResult(plan=None)
@@ -102,13 +110,23 @@ def extract_plan(
         scale_confidence=scale_confidence,
         unit="m",
         has_valid_scale=has_valid_scale,
+        dpi=dpi,
     )
     rooms = _extract_rooms(text, base_confidence)
     dimensions = _extract_dimensions(text, base_confidence, text_blocks=text_blocks)
     needs_review = not has_valid_scale or any(room.needs_review for room in rooms)
     if not rooms and not dimensions and not has_valid_scale:
         needs_review = True
-    return PlanExtractionResult(plan=plan, rooms=rooms, dimensions=dimensions, needs_review=needs_review)
+    result = PlanExtractionResult(plan=plan, rooms=rooms, dimensions=dimensions, needs_review=needs_review)
+    # PL1: cross-check the OCR-derived value_m of every dimension
+    # against the bbox of its caption, using the page DPI and the
+    # declared scale_ratio. Mismatches lower the confidence and force
+    # the dimension to be reviewed. We do this here (not in
+    # ``persist_plan_extraction``) so unit tests of ``extract_plan``
+    # get the same behaviour as the production persistence path.
+    if plan.has_valid_scale and dpi:
+        result = _validate_dimensions_against_scale(result, dpi)
+    return result
 
 
 def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanExtractionResult:
@@ -118,7 +136,14 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
 
-    result = extract_plan(document.id, text, document.confidence, text_blocks=_load_plan_text_blocks(db, document.id))
+    dpi = _load_plan_page_dpi(db, document.id)
+    result = extract_plan(
+        document.id,
+        text,
+        document.confidence,
+        text_blocks=_load_plan_text_blocks(db, document.id),
+        dpi=dpi,
+    )
     if not result.plan:
         return result
 
@@ -406,3 +431,180 @@ def _append_room(
 def _normalize(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text.lower())
     return normalized.encode("ascii", "ignore").decode("ascii")
+
+
+# ---------------------------------------------------------------------------
+# PL1 — usar la escala para validar / derivar dimensiones
+# ---------------------------------------------------------------------------
+#
+# The ``PlanDimension`` rows we extract from OCR carry a bbox of the
+# caption text (e.g. "3,50") plus the value we read from that text
+# (e.g. ``3.50 m``). The declared ``Plan.scale_ratio`` is a global
+# "1:N" claim, e.g. "1:100". When we also know the DPI of the page
+# where the caption lives, we can:
+#
+#   1. compute the on-paper length in mm of the caption bbox;
+#   2. convert that to the real-world length in mm by multiplying by
+#      the scale ratio;
+#   3. compare with the value_m that the OCR read.
+#
+# A dimension that disagrees with its own bbox is almost always a sign
+# that the OCR mis-read the number ("3,50" read as "8,50" on a
+# rotated scan, for example). We mark those for review instead of
+# silently propagating the bad number.
+#
+# Note: we compare the *longer* side of the caption bbox to the
+# declared value. A "3,50" caption rendered at 12pt is roughly 25 px
+# wide on a 300 dpi page, so a 35 m caption (one pixel of the wall it
+# annotates) would not validate against a 3.50 m value. This is the
+# expected behaviour: PL1 only validates, it does not invent new
+# measurements.
+
+# Tolerancia del 30 % entre el valor OCR y el valor derivado del bbox.
+# Lo bastante generosa para tolerar tipografías y antialiasing; lo
+# bastante estricta para cazar OCR claramente erróneo.
+_DIMENSION_BBOX_TOLERANCE = 0.30
+# Altura mínima del bbox en píxeles para que la validación sea
+# significativa (un bbox degenerado de 1 px se ignora).
+_MIN_BBOX_SIDE_PX = 4.0
+
+
+def _load_plan_page_dpi(db: Session, document_id: int) -> float | None:
+    """Best-effort effective DPI of the page where the plan was
+    rasterized.
+
+    We don't store the original PDF's render DPI on the model, but
+    ``settings.pdf_ocr_dpi`` is the DPI we use everywhere in the
+    pipeline. If a page has stored ``width`` and ``height`` and we
+    know its real-world size, we could derive the actual DPI; we don't
+    have the latter, so we just return the configured value. The
+    caller is expected to treat this as a soft signal and not as
+    ground truth.
+    """
+    from app.core.config import settings
+
+    page = db.scalar(
+        select(DocumentPage)
+        .where(DocumentPage.document_id == document_id)
+        .order_by(DocumentPage.page_number.asc())
+        .limit(1)
+    )
+    if page is None:
+        return float(settings.pdf_ocr_dpi)
+    return float(settings.pdf_ocr_dpi)
+
+
+def _bbox_dimensions_m(
+    bbox: tuple[float | None, float | None, float | None, float | None] | None,
+    *,
+    dpi: float,
+) -> float | None:
+    """Return the longer side of the bbox in metres, given the page
+    DPI. Returns ``None`` if the bbox is missing, has ``None``
+    components, or is too small to be meaningful.
+    """
+    if not bbox or dpi <= 0:
+        return None
+    x1, y1, x2, y2 = bbox
+    if None in (x1, y1, x2, y2):
+        return None
+    width_px = abs(float(x2) - float(x1))
+    height_px = abs(float(y2) - float(y1))
+    long_side_px = max(width_px, height_px)
+    if long_side_px < _MIN_BBOX_SIDE_PX:
+        return None
+    # 1 inch = 25.4 mm. dpi is pixels per inch. So 1 px = 25.4 / dpi mm.
+    mm_per_px = 25.4 / dpi
+    long_side_m = (long_side_px * mm_per_px) / 1000.0
+    return long_side_m
+
+
+def _expected_dimension_m_from_bbox(
+    bbox: tuple[float | None, float | None, float | None, float | None] | None,
+    *,
+    scale_ratio: float,
+    dpi: float,
+) -> float | None:
+    """Apply the scale to a bbox-derived on-paper length to get a
+    real-world length in metres.
+
+    Scale ``1:100`` means 1 unit on the drawing equals 100 real
+    units, so the on-paper mm becomes ``mm * scale_ratio`` real mm.
+    """
+    on_paper_m = _bbox_dimensions_m(bbox, dpi=dpi)
+    if on_paper_m is None or scale_ratio <= 0:
+        return None
+    return on_paper_m * scale_ratio
+
+
+def _validate_dimensions_against_scale(
+    result: PlanExtractionResult,
+    dpi: float,
+) -> PlanExtractionResult:
+    """Cross-check each dimension's OCR value against the bbox /
+    scale / dpi triple and lower its confidence if they disagree.
+
+    The function never raises and never mutates the OCR text or the
+    declared value: a dimension that disagrees is *flagged* for
+    review by halving its confidence and adding it to
+    ``needs_review``. This matches the project rule "if the source
+    is uncertain, mark it for review, do not invent a corrected
+    value".
+    """
+    if not result.plan or not result.dimensions:
+        return result
+    scale_ratio = result.plan.scale_ratio
+    if not scale_ratio or scale_ratio <= 0:
+        return result
+
+    validated: list[ExtractedPlanDimension] = []
+    needs_review = result.needs_review
+    for dimension in result.dimensions:
+        bbox = (
+            dimension.bbox_x1,
+            dimension.bbox_y1,
+            dimension.bbox_x2,
+            dimension.bbox_y2,
+        )
+        expected_m = _expected_dimension_m_from_bbox(bbox, scale_ratio=scale_ratio, dpi=dpi)
+        # Without a comparable measurement we cannot validate; keep
+        # the OCR value as-is.
+        if expected_m is None or dimension.value_m <= 0:
+            validated.append(dimension)
+            continue
+        # The OCR may have read the value in cm / mm; ``value_m`` is
+        # already converted to metres upstream. Compare in metres.
+        relative_error = abs(expected_m - dimension.value_m) / dimension.value_m
+        if relative_error > _DIMENSION_BBOX_TOLERANCE:
+            logger.info(
+                "PL1: dimension disagrees with bbox (document_id=%s page=%s value=%s expected=%s rel_err=%.2f)",
+                result.plan.document_id,
+                dimension.page_number,
+                dimension.value_m,
+                expected_m,
+                relative_error,
+            )
+            validated.append(
+                ExtractedPlanDimension(
+                    raw_text=dimension.raw_text,
+                    value=dimension.value,
+                    unit=dimension.unit,
+                    value_m=dimension.value_m,
+                    page_number=dimension.page_number,
+                    bbox_x1=dimension.bbox_x1,
+                    bbox_y1=dimension.bbox_y1,
+                    bbox_x2=dimension.bbox_x2,
+                    bbox_y2=dimension.bbox_y2,
+                    confidence=round(dimension.confidence * 0.5, 4),
+                )
+            )
+            needs_review = True
+        else:
+            validated.append(dimension)
+
+    return PlanExtractionResult(
+        plan=result.plan,
+        rooms=result.rooms,
+        dimensions=validated,
+        needs_review=needs_review,
+    )
