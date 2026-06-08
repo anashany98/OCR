@@ -33,11 +33,23 @@ _metrics: dict[str, float] = {
 }
 
 _queue_pending_by_name: dict[str, int] = {}
+_ocr_cascade_fallbacks: dict[tuple[str, str], int] = {}
+_ocr_tier_used: dict[str, int] = {}
 
 
 def track_ocr_duration(duration: float) -> None:
     _metrics["ocr_duration_sum"] += duration
     _metrics["ocr_duration_count"] += 1
+
+
+def track_ocr_cascade_fallback(engine_name: str, reason: str) -> None:
+    key = (engine_name or "unknown", reason or "unknown")
+    _ocr_cascade_fallbacks[key] = _ocr_cascade_fallbacks.get(key, 0) + 1
+
+
+def track_ocr_tier_used(tier: str) -> None:
+    clean_tier = tier or "unknown"
+    _ocr_tier_used[clean_tier] = _ocr_tier_used.get(clean_tier, 0) + 1
 
 
 def track_embedding_latency(duration: float) -> None:
@@ -107,6 +119,12 @@ def get_metrics() -> dict[str, float]:
     data = _metrics.copy()
     for queue_name, pending in _queue_pending_by_name.items():
         data[f"jobs_pending_{queue_name}"] = float(pending)
+    data["ocr_cascade_fallback_total"] = float(sum(_ocr_cascade_fallbacks.values()))
+    for (engine_name, reason), count in _ocr_cascade_fallbacks.items():
+        suffix = f"{_metric_key(engine_name)}_{_metric_key(reason)}"
+        data[f"ocr_cascade_fallback_total_{suffix}"] = float(count)
+    for tier, count in _ocr_tier_used.items():
+        data[f"ocr_tier_used_total_{_metric_key(tier)}"] = float(count)
     return data
 
 
@@ -177,6 +195,26 @@ def get_prometheus_text(*, db: Session | None = None, queue_status=None) -> str:
         for queue_name, pending in sorted(_queue_pending_by_name.items()):
             lines.append(f'docuintel_jobs_pending_by_queue{{queue="{queue_name}"}} {pending}')
 
+    if _ocr_cascade_fallbacks:
+        lines.extend([
+            "",
+            "# HELP docuintel_ocr_cascade_fallback_total OCR cascade fallback failures",
+            "# TYPE docuintel_ocr_cascade_fallback_total counter",
+        ])
+        for (engine_name, reason), count in sorted(_ocr_cascade_fallbacks.items()):
+            lines.append(
+                f'docuintel_ocr_cascade_fallback_total{{engine="{_label(engine_name)}",reason="{_label(reason)}"}} {count}'
+            )
+
+    if _ocr_tier_used:
+        lines.extend([
+            "",
+            "# HELP docuintel_ocr_tier_used_total OCR winning tier count",
+            "# TYPE docuintel_ocr_tier_used_total counter",
+        ])
+        for tier, count in sorted(_ocr_tier_used.items()):
+            lines.append(f'docuintel_ocr_tier_used_total{{tier="{_label(tier)}"}} {count}')
+
     lines.extend([
         "",
         "# HELP docuintel_documents_processed_total Documents processed",
@@ -242,3 +280,11 @@ def register_metrics_endpoint(app: FastAPI) -> None:
     @app.get("/metrics")
     def metrics() -> Response:
         return Response(content=get_prometheus_text(), media_type="text/plain; charset=utf-8")
+
+
+def _metric_key(value: str) -> str:
+    return "".join(ch.lower() if ch.isalnum() else "_" for ch in value).strip("_") or "unknown"
+
+
+def _label(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')

@@ -206,6 +206,24 @@ def test_cascade_3tier_keeps_best_when_pp_structure_returns_less_text(tmp_path: 
     assert pp.calls == 1  # was called, but lost
 
 
+def test_cascade_3tier_rejects_long_low_quality_pp_structure_text(tmp_path: Path):
+    """Tier 3 must beat the best previous result on quality, not just
+    raw character count."""
+    pp = _FakeEngine("pp_structure", _result("%%%% !!!! #### " * 100, confidence=0.2, engine="pp_structure"))
+    cascade = CascadingOCREngine(
+        primary=_FakeEngine("tesseract", _result("Factura total 123 euros", confidence=0.92, engine="tesseract")),
+        fallback=_FakeEngine("paddleocr", _result("Factura total 123 euros", confidence=0.88, engine="paddleocr")),
+        pp_structure=pp,
+        min_chars=30,
+        min_confidence=0.95,
+    )
+
+    result = cascade.extract(tmp_path / "x.png")
+
+    assert result.engine == "tesseract"
+    assert pp.calls == 1
+
+
 def test_cascade_3tier_falls_back_silently_when_pp_structure_raises(tmp_path: Path):
     """If Tier 3 blows up (e.g. GPU OOM), the cascade returns the
     best of Tier 1 / Tier 2 and never propagates the error."""

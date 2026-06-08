@@ -7,13 +7,14 @@ Strategy:
   3. Otherwise try the heavy fallback (PaddleOCR). PaddleOCR loads its
      model lazily on the first escalation, so easy documents never pay
      the init cost.
-  4. The fallback result replaces the primary one whenever it has
-     either more text or higher average confidence.
+  4. The fallback result replaces the primary one only when its quality
+     score beats the current best result. The score combines confidence,
+     useful-character density and a saturated length factor.
   5. **Optional Tier 3**: if ``pp_structure`` is wired in and both
      Tier 1 and Tier 2 produced weak results, escalate to PP-Structure
      (PaddleX layout_parsing). Tier 3 is GPU-only and only fires on
      the hardest cases so we don't pay the ~500 MB model download on
-     every page.
+     every page. Tier 3 also wins by quality score, not raw text length.
 
 The cascaded :attr:`name` is updated on every call to reflect which
 engine produced the winning result, so the admin UI can break down the
@@ -21,12 +22,28 @@ share of pages that escalated to Paddle / PP-Structure.
 """
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
-from typing import ClassVar
 
 from app.ocr.base import BaseOCREngine, OCRResult
-from app.services.metrics import track_ocr_duration
+from app.services.metrics import track_ocr_cascade_fallback, track_ocr_duration, track_ocr_tier_used
+
+
+logger = logging.getLogger("app.ocr.cascading")
+QUALITY_EPSILON = 0.01
+
+
+def _quality(result: OCRResult) -> float:
+    text = (result.text or "").strip()
+    if not text:
+        return 0.0
+    alnum = sum(1 for char in text if char.isalnum() or char.isspace())
+    density = alnum / max(len(text), 1)
+    confidence = result.confidence if result.confidence is not None else 0.5
+    confidence = max(0.0, min(1.0, confidence))
+    length_factor = min(len(text) / 500.0, 1.0)
+    return confidence * 0.5 + density * 0.3 + length_factor * 0.2
 
 
 class CascadingOCREngine:
@@ -67,8 +84,7 @@ class CascadingOCREngine:
         track_ocr_duration(time.perf_counter() - start)
 
         if self._is_acceptable(primary_result):
-            self._name = self.primary.name
-            return primary_result
+            return self._record_winner(self.primary.name, primary_result)
 
         # Escalate to the fallback. Any failure here is best-effort:
         # we keep the primary result so the user at least sees *some*
@@ -77,9 +93,10 @@ class CascadingOCREngine:
         start = time.perf_counter()
         try:
             fallback_result = self.fallback.extract(image_path)
-        except Exception:
-            self._name = self.primary.name
-            return primary_result
+        except Exception as exc:
+            track_ocr_duration(time.perf_counter() - start)
+            self._track_fallback_failure(self.fallback.name, exc)
+            return self._record_winner(self.primary.name, primary_result)
         track_ocr_duration(time.perf_counter() - start)
 
         if self._is_better(fallback_result, primary_result):
@@ -89,8 +106,7 @@ class CascadingOCREngine:
                 tier3 = self._try_tier3(image_path, primary_result, fallback_result)
                 if tier3 is not None:
                     return tier3
-            self._name = self.fallback.name
-            return fallback_result
+            return self._record_winner(self.fallback.name, fallback_result)
 
         # Tier 2 didn't beat Tier 1 — try Tier 3 if available.
         if self.pp_structure is not None:
@@ -98,8 +114,7 @@ class CascadingOCREngine:
             if tier3 is not None:
                 return tier3
 
-        self._name = self.primary.name
-        return primary_result
+        return self._record_winner(self.primary.name, primary_result)
 
     def _try_tier3(
         self,
@@ -118,8 +133,9 @@ class CascadingOCREngine:
         start = time.perf_counter()
         try:
             tier3_result = self.pp_structure.extract(image_path)
-        except Exception:
+        except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
+            self._track_fallback_failure(self.pp_structure.name, exc)
             return None
         track_ocr_duration(time.perf_counter() - start)
 
@@ -128,16 +144,9 @@ class CascadingOCREngine:
         if not tier3_result.text or len(tier3_result.text.strip()) < self.min_chars:
             return None
 
-        # PP-Structure wins if it produced strictly more text than the
-        # best of Tier 1 / Tier 2. Confidence is rarely populated by
-        # the layout pipeline, so we don't gate on it.
-        best_prior_chars = max(
-            len(primary_result.text.strip()),
-            len(fallback_result.text.strip()),
-        )
-        if len(tier3_result.text.strip()) > best_prior_chars:
-            self._name = self.pp_structure.name
-            return tier3_result
+        best_prior = fallback_result if self._is_better(fallback_result, primary_result) else primary_result
+        if self._is_better(tier3_result, best_prior):
+            return self._record_winner(self.pp_structure.name, tier3_result)
         return None
 
     def _is_acceptable(self, result: OCRResult) -> bool:
@@ -152,19 +161,21 @@ class CascadingOCREngine:
     def _is_better(self, candidate: OCRResult, baseline: OCRResult) -> bool:
         """Decide whether the fallback result should replace the primary.
 
-        Heuristic: the fallback wins if it produced strictly more text
-        OR strictly higher confidence. On a tie we keep the primary so
-        we don't penalise fast pages by running paddle every time.
+        The candidate must beat the baseline on quality by a small margin.
+        Length is only one saturated component of the score, so noisy OCR
+        cannot win just by emitting more characters.
         """
-        cand_chars = len((candidate.text or "").strip())
-        base_chars = len((baseline.text or "").strip())
-        cand_conf = candidate.confidence or 0.0
-        base_conf = baseline.confidence or 0.0
-        if cand_chars > base_chars and cand_chars > 0:
-            return True
-        if cand_conf > base_conf and cand_chars >= max(self.min_chars, base_chars // 2):
-            return True
-        return False
+        return _quality(candidate) > _quality(baseline) + QUALITY_EPSILON
+
+    def _record_winner(self, tier: str, result: OCRResult) -> OCRResult:
+        self._name = tier
+        track_ocr_tier_used(tier)
+        return result
+
+    def _track_fallback_failure(self, engine_name: str, exc: Exception) -> None:
+        reason = str(exc) or exc.__class__.__name__
+        logger.warning("OCR cascade engine %s failed: %s", engine_name, reason)
+        track_ocr_cascade_fallback(engine_name, reason)
 
 
-__all__ = ["CascadingOCREngine"]
+__all__ = ["CascadingOCREngine", "_quality"]
