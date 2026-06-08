@@ -89,6 +89,7 @@ export function AppShell() {
                 variant="warning"
                 className="hidden cursor-pointer items-center gap-1 sm:inline-flex"
                 onClick={() => navigate("/work-inbox")}
+                aria-label={`${inboxCount} ${inboxCount === 1 ? "tarea pendiente" : "tareas pendientes"}`}
               >
                 <span>{inboxCount} {inboxCount === 1 ? "tarea" : "tareas"}</span>
               </Badge>

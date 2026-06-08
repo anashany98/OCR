@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react"
+import { FormEvent, useEffect, useId, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
@@ -83,6 +83,7 @@ export function AdminPage() {
   const [notificationEventType, setNotificationEventType] = useState("ocr_failed")
   const [notificationChannel, setNotificationChannel] = useState("webhook")
   const [notificationTarget, setNotificationTarget] = useState("")
+  const [reprocessConfirmOpen, setReprocessConfirmOpen] = useState(false)
 
   const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats })
   const alerts = useQuery({ queryKey: ["alerts"], queryFn: api.alerts })
@@ -358,9 +359,12 @@ export function AdminPage() {
 
   function onReprocessSubmit(event: FormEvent) {
     event.preventDefault()
-    if (window.confirm("¿Reprocesar documentos en lote? Esta acci\u00f3n encolar\u00e1 nuevos jobs.")) {
-      reprocess.mutate()
-    }
+    setReprocessConfirmOpen(true)
+  }
+
+  function confirmReprocess() {
+    setReprocessConfirmOpen(false)
+    reprocess.mutate()
   }
 
   function switchTab(tab: AdminTab) {
@@ -607,6 +611,89 @@ export function AdminPage() {
           disablePattern={{ mutate: (id: number) => disablePattern.mutate(id), isPending: disablePattern.isPending, data: disablePattern.data, isError: disablePattern.isError, error: disablePattern.error }}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={reprocessConfirmOpen}
+        title="Reprocesar documentos"
+        description="Esta acción encolará nuevos jobs para los documentos que coincidan con los filtros actuales."
+        confirmLabel="Reprocesar"
+        confirmDisabled={reprocess.isPending}
+        onCancel={() => setReprocessConfirmOpen(false)}
+        onConfirm={confirmReprocess}
+      />
     </>
+  )
+}
+
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel,
+  confirmDisabled = false,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean
+  title: string
+  description: string
+  confirmLabel: string
+  confirmDisabled?: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const cancelRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    cancelRef.current?.focus()
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onCancel()
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [open, onCancel])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <button
+        type="button"
+        aria-label="Cancelar acción"
+        className="absolute inset-0 bg-black/45"
+        onClick={onCancel}
+        tabIndex={-1}
+      />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="relative w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-5 shadow-xl"
+      >
+        <h2 id={titleId} className="text-base font-semibold text-[var(--text-primary)]">
+          {title}
+        </h2>
+        <p id={descriptionId} className="mt-2 text-sm text-[var(--text-secondary)]">
+          {description}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button ref={cancelRef} type="button" variant="outline" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={onConfirm} disabled={confirmDisabled}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
