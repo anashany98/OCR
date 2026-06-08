@@ -1,4 +1,6 @@
-from app.services.plan_extraction import extract_plan
+import pytest
+
+from app.services.plan_extraction import _looks_like_plan, _parse_number, extract_plan
 
 
 def test_extracts_scale_dimensions_and_rooms_from_plan_text():
@@ -44,3 +46,58 @@ def test_does_not_mark_plan_as_measurable_without_valid_scale_or_text_dimensions
     assert result.dimensions == []
     assert result.rooms == []
     assert result.needs_review is True
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("1.234,56", 1234.56),
+        ("1,234.56", 1234.56),
+        ("3,5", 3.5),
+        ("12.5", 12.5),
+        ("1.234", 1234.0),
+    ],
+)
+def test_parse_number_handles_decimal_and_thousands_formats(raw, expected):
+    assert _parse_number(raw) == expected
+
+
+def test_looks_like_plan_requires_distinct_word_signals():
+    text = "Informe de implantación con incidencia de mascota y referencia 12 m2"
+
+    assert _looks_like_plan(text) is False
+    assert extract_plan(document_id=14, text=text, document_confidence=0.8).plan is None
+
+
+def test_extracts_room_width_length_and_derived_area_from_dimension_pair():
+    text = """
+    Plano planta baja
+    Escala 1:100
+    Dormitorio 1 3,50 x 4,20 m
+    """
+
+    result = extract_plan(document_id=15, text=text, document_confidence=0.84)
+
+    assert len(result.rooms) == 1
+    room = result.rooms[0]
+    assert room.name == "Dormitorio 1"
+    assert room.width_m == 3.5
+    assert room.length_m == 4.2
+    assert room.area_m2 == pytest.approx(14.7)
+
+
+def test_room_area_parser_filters_plan_labels_and_keeps_room_numbers():
+    text = """
+    Plano planta baja
+    Escala 1:100
+    Planta baja 20 m2
+    Dormitorio 1 15 m2
+    cocina-office 12 m2
+    """
+
+    result = extract_plan(document_id=16, text=text, document_confidence=0.91)
+
+    assert [(room.name, room.area_m2) for room in result.rooms] == [
+        ("Dormitorio 1", 15.0),
+        ("cocina-office", 12.0),
+    ]

@@ -57,12 +57,18 @@ class PlanExtractionResult:
 
 SCALE_RE = re.compile(r"\b(?:escala|e)\s*[:\-]?\s*1\s*[:/]\s*(\d{1,5})\b", re.IGNORECASE)
 PROJECT_RE = re.compile(r"\b(?:proyecto|obra)\s*[:\-]\s*(.+)", re.IGNORECASE)
-DIMENSION_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(mm|cm|m)\b(?!\s*[2²])", re.IGNORECASE)
+NUMBER_PATTERN = r"(?:\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
+DIMENSION_RE = re.compile(rf"\b({NUMBER_PATTERN})\s*(mm|cm|m)\b(?!\s*[2²])", re.IGNORECASE)
 ROOM_AREA_RE = re.compile(
-    r"\b([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,40}?)\s+(\d+(?:[.,]\d+)?)\s*m\s*(?:2|²)\b",
+    rf"^\s*([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 ._/\-]{{1,60}}?)\s+({NUMBER_PATTERN})\s*m\s*(?:2|²)\b",
     re.IGNORECASE,
 )
-PLAN_KEYWORDS = {"plano", "planta", "escala", "cota", "cotas", "alzado", "seccion", "seccion", "m2"}
+ROOM_DIMENSION_PAIR_RE = re.compile(
+    rf"^\s*([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 ._/\-]{{1,60}}?)\s+({NUMBER_PATTERN})\s*[x×X]\s*({NUMBER_PATTERN})\s*m\b",
+    re.IGNORECASE,
+)
+PLAN_KEYWORDS = {"plano", "planta", "escala", "cota", "cotas", "alzado", "seccion", "m2"}
+NON_ROOM_WORDS = {"escala", "cota", "cotas", "total", "plano", "proyecto", "obra", "planta", "plantas", "nivel"}
 
 
 def extract_plan(document_id: int, text: str, document_confidence: float | None) -> PlanExtractionResult:
@@ -170,28 +176,36 @@ def _extract_rooms(text: str, confidence: float) -> list[ExtractedPlanRoom]:
     rooms: list[ExtractedPlanRoom] = []
     seen: set[tuple[str, float]] = set()
     for line in text.splitlines():
-        for match in ROOM_AREA_RE.finditer(line):
-            name = _clean_room_name(match.group(1))
-            if not name or _is_non_room_label(name):
-                continue
-            area = _parse_number(match.group(2))
-            if area <= 0:
-                continue
-            key = (name.lower(), area)
-            if key in seen:
-                continue
-            seen.add(key)
-            rooms.append(
-                ExtractedPlanRoom(
-                    name=name,
-                    area_m2=area,
-                    width_m=None,
-                    length_m=None,
-                    polygon_json=None,
-                    confidence=confidence,
-                    source="ocr_text",
-                    needs_review=confidence < 0.70,
-                )
+        stripped = line.strip()
+        area_match = ROOM_AREA_RE.search(stripped)
+        if area_match:
+            name = _clean_room_name(area_match.group(1))
+            area = _parse_number(area_match.group(2))
+            _append_room(
+                rooms,
+                seen,
+                name=name,
+                area_m2=area,
+                width_m=None,
+                length_m=None,
+                confidence=confidence,
+            )
+            continue
+
+        pair_match = ROOM_DIMENSION_PAIR_RE.search(stripped)
+        if pair_match:
+            name = _clean_room_name(pair_match.group(1))
+            width = _parse_number(pair_match.group(2))
+            length = _parse_number(pair_match.group(3))
+            area = round(width * length, 4) if width > 0 and length > 0 else None
+            _append_room(
+                rooms,
+                seen,
+                name=name,
+                area_m2=area,
+                width_m=width,
+                length_m=length,
+                confidence=confidence,
             )
     return rooms
 
@@ -228,7 +242,15 @@ def _extract_dimensions(text: str, confidence: float) -> list[ExtractedPlanDimen
 
 def _looks_like_plan(text: str) -> bool:
     normalized = _normalize(text)
-    return any(keyword in normalized for keyword in PLAN_KEYWORDS)
+    signals: set[str] = set()
+    for keyword in PLAN_KEYWORDS:
+        if keyword == "m2":
+            if re.search(r"\bm\s*2\b", normalized):
+                signals.add(keyword)
+            continue
+        if re.search(rf"\b{re.escape(keyword)}\b", normalized):
+            signals.add(keyword)
+    return len(signals) >= 2
 
 
 def _to_meters(value: float, unit: str) -> float:
@@ -242,7 +264,25 @@ def _to_meters(value: float, unit: str) -> float:
 
 
 def _parse_number(value: str) -> float:
-    return float(value.replace(".", "").replace(",", ".") if "," in value else value)
+    cleaned = re.sub(r"\s+", "", value.strip())
+    if not cleaned:
+        return 0.0
+
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?", cleaned):
+        return float(cleaned.replace(".", "").replace(",", "."))
+    if re.fullmatch(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", cleaned):
+        return float(cleaned.replace(",", ""))
+    if re.fullmatch(r"\d+,\d+", cleaned):
+        integer, fraction = cleaned.split(",", 1)
+        if len(fraction) == 3 and len(integer) <= 3:
+            return float(integer + fraction)
+        return float(f"{integer}.{fraction}")
+    if re.fullmatch(r"\d+\.\d+", cleaned):
+        integer, fraction = cleaned.split(".", 1)
+        if len(fraction) == 3 and len(integer) <= 3:
+            return float(integer + fraction)
+        return float(cleaned)
+    return float(cleaned.replace(",", "."))
 
 
 def _confidence(value: float | None, *, fallback: float) -> float:
@@ -254,7 +294,7 @@ def _confidence(value: float | None, *, fallback: float) -> float:
 def _clean_room_name(value: str) -> str:
     cleaned = _clean_label(value)
     cleaned = re.sub(r"\b(?:superficie|sup|area)\b\s*[:\-]?\s*", "", cleaned, flags=re.IGNORECASE)
-    return cleaned.title()
+    return cleaned
 
 
 def _clean_label(value: str) -> str:
@@ -263,7 +303,45 @@ def _clean_label(value: str) -> str:
 
 def _is_non_room_label(name: str) -> bool:
     normalized = _normalize(name)
-    return any(word in normalized for word in ["escala", "cota", "total", "plano", "proyecto", "obra"])
+    words = set(re.findall(r"[a-z0-9]+", normalized))
+    return bool(words & NON_ROOM_WORDS)
+
+
+def _append_room(
+    rooms: list[ExtractedPlanRoom],
+    seen: set[tuple[str, float]],
+    *,
+    name: str,
+    area_m2: float | None,
+    width_m: float | None,
+    length_m: float | None,
+    confidence: float,
+) -> None:
+    if not name or _is_non_room_label(name):
+        return
+    if area_m2 is not None and area_m2 <= 0:
+        return
+    if width_m is not None and width_m <= 0:
+        return
+    if length_m is not None and length_m <= 0:
+        return
+    dedupe_area = area_m2 if area_m2 is not None else 0.0
+    key = (name.lower(), dedupe_area)
+    if key in seen:
+        return
+    seen.add(key)
+    rooms.append(
+        ExtractedPlanRoom(
+            name=name,
+            area_m2=area_m2,
+            width_m=width_m,
+            length_m=length_m,
+            polygon_json=None,
+            confidence=confidence,
+            source="ocr_text",
+            needs_review=confidence < 0.70,
+        )
+    )
 
 
 def _normalize(text: str) -> str:
