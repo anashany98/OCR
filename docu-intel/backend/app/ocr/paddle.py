@@ -18,11 +18,11 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 import sys
 
+from app.core.config import settings
 from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
@@ -55,32 +55,23 @@ class PaddleOCREngine:
 
     name: str = "paddleocr"
 
+    def __init__(self, lang: str | None = None, device: str | None = None) -> None:
+        self.lang = lang or settings.paddle_lang
+        self.device = device or _format_paddle_device(_get_gpu_device())
+
     @cached_property
     def _engine(self):
-        result = [None]
-        error = [None]
+        with paddleocr_init_lock():
+            from paddleocr import PaddleOCR
 
-        def _init_engine():
-            try:
-                with paddleocr_init_lock():
-                    from paddleocr import PaddleOCR
-                    result[0] = PaddleOCR(
-                        use_angle_cls=True,
-                        lang="es",
-                        enable_mkldnn=False,
-                    )
-            except Exception as e:
-                error[0] = e
-
-        t = threading.Thread(target=_init_engine, daemon=True)
-        t.start()
-        t.join(timeout=120)
-
-        if t.is_alive():
-            raise TimeoutError("PaddleOCR initialization timed out after 120s")
-        if error[0] is not None:
-            raise error[0]
-        return result[0]
+            kwargs = {
+                "use_textline_orientation": True,
+                "lang": self.lang,
+                "enable_mkldnn": False,
+            }
+            if self.device:
+                kwargs["device"] = self.device
+            return PaddleOCR(**kwargs)
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
@@ -166,6 +157,14 @@ class PaddleOCREngine:
 def _polygon_to_bbox(polygon: object) -> tuple[float, float, float, float] | None:
     if not isinstance(polygon, (list, tuple)):
         return None
+
+
+def _format_paddle_device(device_id: str | None) -> str | None:
+    if not device_id:
+        return None
+    if device_id.startswith(("gpu", "cpu", "xpu", "npu")):
+        return device_id
+    return f"gpu:{device_id}"
     try:
         xs = [float(point[0]) for point in polygon]
         ys = [float(point[1]) for point in polygon]

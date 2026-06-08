@@ -86,6 +86,51 @@ def test_factory_caches_results(monkeypatch):
         get_ocr_engine_class.cache_clear()
 
 
+def test_cascading_factory_reuses_single_engine_instance(monkeypatch):
+    import sys
+    from types import ModuleType
+
+    from app.core.config import settings
+    from app.ocr import factory
+
+    created: list[str] = []
+
+    class _FakeTesseract:
+        name = "tesseract"
+
+        def __init__(self, **kwargs):
+            created.append("tesseract")
+
+    class _FakePaddle:
+        name = "paddleocr"
+
+        def __init__(self, **kwargs):
+            created.append("paddleocr")
+
+    tesseract_module = ModuleType("app.ocr.tesseract")
+    tesseract_module.TesseractOCREngine = _FakeTesseract
+    paddle_module = ModuleType("app.ocr.paddle")
+    paddle_module.PaddleOCREngine = _FakePaddle
+    monkeypatch.setitem(sys.modules, "app.ocr.tesseract", tesseract_module)
+    monkeypatch.setitem(sys.modules, "app.ocr.paddle", paddle_module)
+    monkeypatch.setattr(settings, "ocr_engine", "cascading")
+    monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", False)
+    factory.get_ocr_engine_class.cache_clear()
+    if hasattr(factory, "clear_ocr_engine_cache"):
+        factory.clear_ocr_engine_cache()
+
+    try:
+        first = factory.get_ocr_engine()
+        second = factory.get_ocr_engine()
+    finally:
+        factory.get_ocr_engine_class.cache_clear()
+        if hasattr(factory, "clear_ocr_engine_cache"):
+            factory.clear_ocr_engine_cache()
+
+    assert first is second
+    assert created == ["tesseract", "paddleocr"]
+
+
 # ---------------------------------------------------------------------------
 # Cascade escalation
 # ---------------------------------------------------------------------------

@@ -21,9 +21,11 @@ def test_paddleocr_initialization_runs_inside_process_lock(monkeypatch):
     from app.ocr import paddle
 
     events: list[str] = []
+    kwargs_seen: list[dict] = []
 
     class FakePaddleOCR:
         def __init__(self, **kwargs):
+            kwargs_seen.append(kwargs)
             events.append(f"init:{kwargs['lang']}")
 
     class FakeLock:
@@ -37,11 +39,41 @@ def test_paddleocr_initialization_runs_inside_process_lock(monkeypatch):
     fake_module.PaddleOCR = FakePaddleOCR
     monkeypatch.setitem(__import__("sys").modules, "paddleocr", fake_module)
     monkeypatch.setattr(paddle, "paddleocr_init_lock", lambda: FakeLock())
+    monkeypatch.setattr(paddle.threading, "Thread", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("daemon thread used")))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1")
 
-    engine = paddle.PaddleOCREngine()
+    engine = paddle.PaddleOCREngine(lang="en")
     _ = engine._engine
 
-    assert events == ["lock_enter", "init:es", "lock_exit"]
+    assert events == ["lock_enter", "init:en", "lock_exit"]
+    assert kwargs_seen == [
+        {
+            "use_textline_orientation": True,
+            "lang": "en",
+            "enable_mkldnn": False,
+            "device": "gpu:1",
+        }
+    ]
+
+
+def test_pp_structure_pipeline_initialization_does_not_spawn_daemon_thread(monkeypatch):
+    from app.ocr import pp_structure
+
+    class _FakePipeline:
+        pass
+
+    def fake_create_pipeline(**kwargs):
+        assert kwargs == {"pipeline": "layout_parsing", "device": "gpu"}
+        return _FakePipeline()
+
+    fake_module = ModuleType("paddlex")
+    fake_module.create_pipeline = fake_create_pipeline
+    monkeypatch.setitem(__import__("sys").modules, "paddlex", fake_module)
+    monkeypatch.setattr(pp_structure.threading, "Thread", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("daemon thread used")))
+
+    engine = pp_structure.PPStructureEngine(device="gpu")
+
+    assert isinstance(engine._pipeline, _FakePipeline)
 
 
 def test_successful_reprocess_clears_stale_job_error(monkeypatch, tmp_path):

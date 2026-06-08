@@ -128,6 +128,7 @@ class Settings(BaseSettings):
     ocr_cascading_use_pp_structure: bool = False
     pp_structure_device: str = "gpu"
     pp_structure_lang: str = "es"
+    paddle_lang: str = "es"
 
     embedding_provider: str = "local_hash"
     embedding_base_url: str = ""

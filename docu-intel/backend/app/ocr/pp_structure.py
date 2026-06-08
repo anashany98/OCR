@@ -63,29 +63,12 @@ class PPStructureEngine:
     @cached_property
     def _pipeline(self):
         """Lazily build the PaddleX pipeline on first use (thread-safe)."""
-        result: list[object] = [None]
-        error: list[BaseException | None] = [None]
+        from paddlex import create_pipeline
 
-        def _init():
-            try:
-                from paddlex import create_pipeline
-
-                result[0] = create_pipeline(
-                    pipeline="layout_parsing",
-                    device=self.device,
-                )
-            except BaseException as exc:  # noqa: BLE001 — surface anything to the caller
-                error[0] = exc
-
-        t = threading.Thread(target=_init, daemon=True)
-        t.start()
-        t.join(timeout=300)  # first init can take 1-2 min (model download + compile)
-
-        if t.is_alive():
-            raise TimeoutError("PPStructure pipeline init timed out after 300s")
-        if error[0] is not None:
-            raise error[0]
-        return result[0]
+        return create_pipeline(
+            pipeline="layout_parsing",
+            device=self.device,
+        )
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()

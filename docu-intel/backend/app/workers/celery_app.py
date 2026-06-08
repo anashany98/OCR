@@ -1,7 +1,13 @@
+import logging
+
 from celery import Celery
 from celery.schedules import schedule
+from celery.signals import worker_process_init
 
 from app.core.config import settings
+
+
+logger = logging.getLogger("app.workers.celery_app")
 
 celery_app = Celery(
     "docuintel",
@@ -53,3 +59,13 @@ celery_app.conf.task_routes = {
     "app.workers.learning_health_tasks.auto_reject_stale_suggestions_task": {"queue": "maintenance"},
     "app.workers.webhooks_tasks.deliver_pending_webhooks_task": {"queue": "maintenance"},
 }
+
+
+@worker_process_init.connect
+def preload_worker_ocr_engine(**_kwargs) -> None:
+    try:
+        from app.ocr.factory import preload_ocr_engine
+
+        preload_ocr_engine()
+    except Exception as exc:
+        logger.warning("OCR engine preload failed during worker init: %s", exc)
