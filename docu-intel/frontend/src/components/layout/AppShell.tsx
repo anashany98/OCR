@@ -1,13 +1,14 @@
 import { FormEvent, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronDown, Command as CommandIcon, LogOut, Menu, Search, X } from "lucide-react"
+import { ChevronDown, Command as CommandIcon, FileText, LogOut, Menu, Search } from "lucide-react"
 
 import { api } from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CommandPalette } from "@/components/layout/CommandPalette"
+import { SidebarNav } from "@/components/layout/Sidebar"
 import { SidebarDrawer, useSidebarDrawerHotkey } from "@/components/layout/SidebarDrawer"
 import { ThemeToggle } from "@/components/layout/ThemeToggle"
 import { useAuth } from "@/hooks/useAuth"
@@ -27,8 +28,12 @@ export function AppShell() {
 
   const pageTitle = getPageTitle(currentPath)
 
-  // Cmd/Ctrl+B → open drawer
-  useSidebarDrawerHotkey(setDrawerOpen)
+  function setMobileDrawer(open: boolean) {
+    if (open && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) return
+    setDrawerOpen(open)
+  }
+
+  useSidebarDrawerHotkey(setMobileDrawer)
 
   function onSearch(event: FormEvent) {
     event.preventDefault()
@@ -41,15 +46,32 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
-      {/* Main area (no persistent sidebar) */}
+      <aside className="hidden w-[260px] flex-shrink-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] lg:flex">
+        <div className="flex h-12 items-center gap-2.5 border-b border-[var(--sidebar-border)] px-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-md">
+            <FileText className="h-4 w-4" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-[15px] font-medium leading-tight tracking-tight text-[var(--sidebar-text)]">
+              Docu-Intel
+            </p>
+            <p className="truncate text-[10px] uppercase tracking-[0.12em] text-[var(--sidebar-muted)]">
+              Operación documental
+            </p>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <SidebarNav />
+        </div>
+      </aside>
+
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Topbar */}
         <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-surface)]/95 backdrop-blur-sm">
           <div className="flex h-12 items-center gap-3 px-4">
-            {/* Hamburger / drawer trigger */}
             <button
               onClick={() => setDrawerOpen(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)]"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)] lg:hidden"
               aria-label="Abrir menú de navegación"
               title="Menú (⌘B)"
             >
@@ -142,7 +164,6 @@ export function AppShell() {
         </main>
       </div>
 
-      {/* Drawer + global command palette */}
       <SidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <CommandPalette />
     </div>

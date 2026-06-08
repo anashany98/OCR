@@ -126,9 +126,8 @@ function writeRecent(userId: string | number | undefined, paths: string[]) {
 }
 
 // ---------------------------------------------------------------------------
-// SidebarNav — pure content. Used by both the (legacy) inline sidebar and the
-// SidebarDrawer. The `embedded` prop adjusts padding/density for the drawer
-// use case where the panel has more room.
+// SidebarNav — shared navigation content used by the persistent desktop
+// sidebar and the mobile drawer.
 // ---------------------------------------------------------------------------
 export function SidebarNav({ embedded = false, onNavigate }: { embedded?: boolean; onNavigate?: () => void }) {
   const { user } = useAuth()

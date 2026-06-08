@@ -8,7 +8,7 @@ import { SidebarNav } from "./Sidebar"
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 /**
- * Slide-in navigation drawer. Replaces the persistent sidebar.
+ * Slide-in navigation drawer for small screens.
  *
  * Open: dispatched event "docu-intel:open-sidebar" or pressing Cmd/Ctrl+B.
  * Close: ESC, click backdrop, or click nav item.
