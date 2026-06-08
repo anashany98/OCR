@@ -228,6 +228,25 @@ class Settings(BaseSettings):
     learning_per_client_max_pending: int = 100
     learning_per_client_window_seconds: int = 3_600  # 1 hour
 
+    # A7 - Automatic re-embed / re-OCR loop. Picks documents that still
+    # have chunks with ``needs_reembedding=True`` (embeddings failed
+    # during the original processing) or whose OCR confidence fell below
+    # ``reembed_low_confidence_threshold`` (likely the OCR engine or
+    # pre-processing has improved since), and re-runs the cheap embedding
+    # step or the full pipeline respectively.
+    #
+    # Set ``reembed_enabled=False`` to disable the beat schedule without
+    # removing the task from the include list.
+    reembed_enabled: bool = True
+    reembed_interval_seconds: int = 900  # 15 min
+    reembed_batch_size: int = 5
+    reembed_low_confidence_threshold: float = 0.70
+    # When a document qualifies for re-OCR (low confidence) we don't want
+    # to spam the heavy queue with 500 docs at once, so we cap the heavy
+    # re-OCR portion of a single tick to this number. Re-embed-only
+    # documents are still capped by ``reembed_batch_size``.
+    reembed_reocr_per_tick: int = 1
+
     admin_email: str = "admin@local"
     admin_password: str = "dev_only_admin_password_change_me"
     admin_name: str = "Administrador"

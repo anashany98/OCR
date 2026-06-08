@@ -33,6 +33,13 @@ class Document(Base):
     quality_score: Mapped[float | None] = mapped_column(Float)
     quality_flags_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
+    # A7 - aggregate flag set by the embedding pipeline whenever any
+    # chunk for the document lands with ``needs_reembedding=True``;
+    # cleared by the periodic re-embed sweep (or by the manual
+    # ``/admin/documents/{id}/re-embed`` endpoint) when the chunks
+    # are successfully re-embedded. Lets the sweep find candidates
+    # without a LEFT JOIN + GROUP BY on every tick.
+    needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     page_count: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(Text)
     duplicate_of_document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"))
