@@ -8,7 +8,7 @@ import {
   useState,
 } from "react"
 import { Link } from "react-router-dom"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation } from "@tanstack/react-query"
 import {
   AlertTriangle,
   ArrowRight,
@@ -48,6 +48,7 @@ import { formatDate } from "@/lib/utils"
 import { notify } from "@/lib/toast"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { thumbnailUrl, pageImageUrl } from "@/api/core"
+import { useAiHistory } from "@/hooks/useAiHistory"
 import type { AIAnswer, AIQuestion, ResolvedDocument, ResolvedDocumentEntity } from "@/types/api"
 
 // ---------------------------------------------------------------------------
@@ -207,7 +208,7 @@ export function ChatPage() {
   const [documentType, setDocumentType] = useState("")
   const [markedIncorrect, setMarkedIncorrect] = useState<Set<string>>(new Set())
 
-  const history = useQuery({ queryKey: ["ai-history"], queryFn: api.aiHistory, refetchInterval: 30000 })
+  const history = useAiHistory()
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
