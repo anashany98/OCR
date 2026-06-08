@@ -3,11 +3,12 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from typing import Sequence
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Document, Plan, PlanDimension, PlanRoom
+from app.models import Document, DocumentBlock, Plan, PlanDimension, PlanRoom
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,14 @@ class ExtractedPlanDimension:
 
 
 @dataclass(frozen=True)
+class PlanTextBlock:
+    text: str
+    page_number: int | None = None
+    bbox: tuple[float | None, float | None, float | None, float | None] | None = None
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
 class PlanExtractionResult:
     plan: ExtractedPlan | None
     rooms: list[ExtractedPlanRoom] = field(default_factory=list)
@@ -71,7 +80,13 @@ PLAN_KEYWORDS = {"plano", "planta", "escala", "cota", "cotas", "alzado", "seccio
 NON_ROOM_WORDS = {"escala", "cota", "cotas", "total", "plano", "proyecto", "obra", "planta", "plantas", "nivel"}
 
 
-def extract_plan(document_id: int, text: str, document_confidence: float | None) -> PlanExtractionResult:
+def extract_plan(
+    document_id: int,
+    text: str,
+    document_confidence: float | None,
+    *,
+    text_blocks: Sequence[PlanTextBlock] | None = None,
+) -> PlanExtractionResult:
     if not _looks_like_plan(text):
         return PlanExtractionResult(plan=None)
 
@@ -89,7 +104,7 @@ def extract_plan(document_id: int, text: str, document_confidence: float | None)
         has_valid_scale=has_valid_scale,
     )
     rooms = _extract_rooms(text, base_confidence)
-    dimensions = _extract_dimensions(text, base_confidence)
+    dimensions = _extract_dimensions(text, base_confidence, text_blocks=text_blocks)
     needs_review = not has_valid_scale or any(room.needs_review for room in rooms)
     if not rooms and not dimensions and not has_valid_scale:
         needs_review = True
@@ -103,7 +118,7 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
 
-    result = extract_plan(document.id, text, document.confidence)
+    result = extract_plan(document.id, text, document.confidence, text_blocks=_load_plan_text_blocks(db, document.id))
     if not result.plan:
         return result
 
@@ -152,6 +167,25 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
         )
 
     return result
+
+
+def _load_plan_text_blocks(db: Session, document_id: int) -> list[PlanTextBlock]:
+    blocks = db.scalars(
+        select(DocumentBlock)
+        .where(DocumentBlock.document_id == document_id)
+        .where(DocumentBlock.text.is_not(None))
+        .order_by(DocumentBlock.page_number.asc().nullslast(), DocumentBlock.id.asc())
+    ).all()
+    return [
+        PlanTextBlock(
+            text=block.text or "",
+            page_number=block.page_number,
+            bbox=(block.bbox_x1, block.bbox_y1, block.bbox_x2, block.bbox_y2),
+            confidence=block.confidence,
+        )
+        for block in blocks
+        if block.text
+    ]
 
 
 def _extract_scale(text: str, document_confidence: float | None) -> tuple[str | None, float | None, float | None]:
@@ -210,34 +244,59 @@ def _extract_rooms(text: str, confidence: float) -> list[ExtractedPlanRoom]:
     return rooms
 
 
-def _extract_dimensions(text: str, confidence: float) -> list[ExtractedPlanDimension]:
+def _extract_dimensions(
+    text: str,
+    confidence: float,
+    *,
+    text_blocks: Sequence[PlanTextBlock] | None = None,
+) -> list[ExtractedPlanDimension]:
     dimensions: list[ExtractedPlanDimension] = []
-    seen: set[str] = set()
-    for match in DIMENSION_RE.finditer(text):
-        raw = match.group(0)
-        if raw in seen:
-            continue
-        seen.add(raw)
-        value = _parse_number(match.group(1))
-        unit = match.group(2).lower()
-        value_m = _to_meters(value, unit)
-        if value_m <= 0:
-            continue
-        dimensions.append(
-            ExtractedPlanDimension(
-                raw_text=raw,
-                value=value,
-                unit=unit,
-                value_m=value_m,
-                page_number=None,
-                bbox_x1=None,
-                bbox_y1=None,
-                bbox_x2=None,
-                bbox_y2=None,
-                confidence=confidence,
-            )
-        )
+    seen: set[tuple[str, int | None, tuple[float | None, float | None, float | None, float | None] | None]] = set()
+
+    sources = list(text_blocks or [])
+    if not sources:
+        sources = [PlanTextBlock(text=text, confidence=confidence)]
+
+    for source in sources:
+        for match in DIMENSION_RE.finditer(source.text):
+            _append_dimension_from_match(dimensions, seen, match, source, confidence)
+
     return dimensions
+
+
+def _append_dimension_from_match(
+    dimensions: list[ExtractedPlanDimension],
+    seen: set[tuple[str, int | None, tuple[float | None, float | None, float | None, float | None] | None]],
+    match: re.Match[str],
+    source: PlanTextBlock,
+    fallback_confidence: float,
+) -> None:
+    raw = match.group(0)
+    bbox = source.bbox
+    key = (raw, source.page_number, bbox)
+    if key in seen:
+        return
+    seen.add(key)
+    value = _parse_number(match.group(1))
+    unit = match.group(2).lower()
+    value_m = _to_meters(value, unit)
+    if value_m <= 0:
+        return
+    x1, y1, x2, y2 = bbox or (None, None, None, None)
+    dimensions.append(
+        ExtractedPlanDimension(
+            raw_text=raw,
+            value=value,
+            unit=unit,
+            value_m=value_m,
+            page_number=source.page_number,
+            bbox_x1=x1,
+            bbox_y1=y1,
+            bbox_x2=x2,
+            bbox_y2=y2,
+            confidence=_confidence(source.confidence, fallback=fallback_confidence),
+        )
+    )
 
 
 def _looks_like_plan(text: str) -> bool:

@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.plan_extraction import _looks_like_plan, _parse_number, extract_plan
+from app.services.plan_extraction import PlanTextBlock, _looks_like_plan, _parse_number, extract_plan
 
 
 def test_extracts_scale_dimensions_and_rooms_from_plan_text():
@@ -101,3 +101,32 @@ def test_room_area_parser_filters_plan_labels_and_keeps_room_numbers():
         ("Dormitorio 1", 15.0),
         ("cocina-office", 12.0),
     ]
+
+
+def test_dimensions_from_ocr_blocks_keep_page_bbox_and_confidence():
+    text = """
+    Plano planta baja
+    Escala 1:100
+    Cota salon 3,50 m
+    """
+
+    result = extract_plan(
+        document_id=17,
+        text=text,
+        document_confidence=0.8,
+        text_blocks=[
+            PlanTextBlock(
+                text="Cota salon 3,50 m",
+                page_number=2,
+                bbox=(10.0, 20.0, 120.0, 44.0),
+                confidence=0.93,
+            )
+        ],
+    )
+
+    assert len(result.dimensions) == 1
+    dimension = result.dimensions[0]
+    assert dimension.raw_text == "3,50 m"
+    assert dimension.page_number == 2
+    assert (dimension.bbox_x1, dimension.bbox_y1, dimension.bbox_x2, dimension.bbox_y2) == (10.0, 20.0, 120.0, 44.0)
+    assert dimension.confidence == 0.93
