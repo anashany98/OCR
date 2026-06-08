@@ -30,6 +30,7 @@ from functools import cached_property
 from pathlib import Path
 
 from app.ocr.base import BaseOCREngine, OCRBlock, OCRResult
+from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 
 
@@ -88,8 +89,9 @@ class PPStructureEngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
+        ocr_path = preprocess_for_paddle(image_path)
         try:
-            results = list(self._pipeline.predict(str(image_path)))
+            results = list(self._pipeline.predict(str(ocr_path)))
         except Exception:
             track_ocr_duration(time.perf_counter() - start)
             raise

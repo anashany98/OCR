@@ -24,6 +24,7 @@ import pytesseract
 from PIL import Image
 
 from app.ocr.base import BaseOCREngine, OCRBlock, OCRResult
+from app.ocr.preprocess import preprocess_for_tesseract
 from app.services.metrics import track_ocr_duration
 
 
@@ -54,7 +55,8 @@ class TesseractOCREngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
-        image = Image.open(image_path)
+        ocr_path = preprocess_for_tesseract(image_path)
+        image = Image.open(ocr_path)
         # ``image_to_data`` returns one row per detected token plus its
         # bounding box and a 0-100 confidence. We turn the confidence
         # into 0-1 to match what PaddleOCR returned and what the

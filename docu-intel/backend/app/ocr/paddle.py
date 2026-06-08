@@ -24,6 +24,7 @@ from pathlib import Path
 import sys
 
 from app.ocr.base import OCRBlock, OCRResult
+from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 
 
@@ -83,7 +84,8 @@ class PaddleOCREngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
-        raw = self._engine.ocr(str(image_path))
+        ocr_path = preprocess_for_paddle(image_path)
+        raw = self._engine.ocr(str(ocr_path))
         blocks: list[OCRBlock] = []
         confidences: list[float] = []
 

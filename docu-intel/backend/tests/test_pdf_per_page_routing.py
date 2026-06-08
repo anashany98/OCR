@@ -146,3 +146,22 @@ def test_very_short_text_still_routes_to_ocr(tmp_path: Path):
     doc = parse_pdf(pdf, out_dir, eng)
     assert doc.pages[0].ocr_engine == "tesseract"
     assert eng.extract.call_count == 1
+
+
+def test_scanned_pdf_pages_render_at_300_dpi_by_default(tmp_path: Path):
+    pdf = tmp_path / "scanned.pdf"
+    _make_pdf_with_pages(pdf, [""])
+    out_dir = tmp_path / "out"
+    eng = _fake_ocr_engine()
+
+    from PIL import Image
+    from app.parsers.pdf import parse_pdf
+
+    doc = parse_pdf(pdf, out_dir, eng)
+    rendered = Path(doc.pages[0].image_path)
+
+    with Image.open(rendered) as image:
+        width, height = image.size
+
+    assert width == pytest.approx(595 * 300 / 72, abs=3)
+    assert height == pytest.approx(842 * 300 / 72, abs=3)
