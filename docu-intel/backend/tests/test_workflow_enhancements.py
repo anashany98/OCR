@@ -139,10 +139,14 @@ def test_work_inbox_collects_ocr_unknown_duplicate_failed_and_business_items():
         db.commit()
 
     response = client.get("/admin/work-inbox", headers={"Authorization": f"Bearer {token}"})
+    count_response = client.get("/admin/work-inbox/count", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
     kinds = {item["kind"] for item in response.json()}
     assert {"low_ocr", "unknown_type", "duplicate", "failed_job", "missing_fields", "accepted_budget_without_order"} <= kinds
+    assert count_response.status_code == 200
+    assert count_response.json()["count"] == 6
+    assert count_response.json()["by_kind"]["low_ocr"] == 1
 
 
 def test_work_inbox_bulk_actions_retry_failed_jobs_and_approve_high_ocr_pages():

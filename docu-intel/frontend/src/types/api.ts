@@ -163,6 +163,11 @@ export type WorkInboxItem = {
   created_at: string | null
 }
 
+export type WorkInboxCount = {
+  count: number
+  by_kind: Record<string, number>
+}
+
 export type WorkInboxActionResponse = {
   action: string
   matched: number

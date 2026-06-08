@@ -149,11 +149,10 @@ export function SidebarNav({ embedded = false, onNavigate }: { embedded?: boolea
 
   const inbox = useQuery({
     queryKey: ["work-inbox-count"],
-    queryFn: () => api.workInbox({ limit: 200 }),
+    queryFn: () => api.workInboxCount(),
     refetchInterval: 30000,
   })
-  const inboxCount = inbox.data?.length ?? 0
-  const inboxCapped = inboxCount >= 200
+  const inboxCount = inbox.data?.count ?? 0
 
   const allItems = useMemo(() => {
     const map = new Map<string, NavItem>()
@@ -242,7 +241,6 @@ export function SidebarNav({ embedded = false, onNavigate }: { embedded?: boolea
                   item={item}
                   active={isActive(item.to)}
                   inboxCount={item.badge ? inboxCount : 0}
-                  inboxCapped={item.badge ? inboxCapped : false}
                   onNavigate={onNavigate}
                 />
               ))}
@@ -273,13 +271,11 @@ function SidebarItem({
   item,
   active,
   inboxCount,
-  inboxCapped,
   onNavigate,
 }: {
   item: NavItem
   active: boolean
   inboxCount: number
-  inboxCapped: boolean
   onNavigate?: () => void
 }) {
   const Icon = item.icon
@@ -313,6 +309,7 @@ function SidebarItem({
         <span className="flex-1 truncate">{item.label}</span>
         {item.badge && inboxCount > 0 && (
           <span
+            aria-label={`${inboxCount} ${inboxCount === 1 ? "tarea pendiente" : "tareas pendientes"}`}
             className={cn(
               "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums leading-none",
               active
@@ -320,7 +317,7 @@ function SidebarItem({
                 : "bg-[var(--sidebar-muted)]/25 text-[var(--sidebar-text)]",
             )}
           >
-            {inboxCapped ? "200+" : inboxCount > 99 ? "99+" : inboxCount}
+            {inboxCount > 99 ? "99+" : inboxCount}
           </span>
         )}
         {item.beta && (

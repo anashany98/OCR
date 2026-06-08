@@ -25,6 +25,7 @@ from app.schemas.admin import (
     StorageIntegrityResponse,
     WorkInboxActionRequest,
     WorkInboxActionResponse,
+    WorkInboxCountRead,
     WorkInboxItemRead,
 )
 from app.schemas.documents import DocumentRead
@@ -322,6 +323,77 @@ def work_inbox(
 
     items.sort(key=lambda item: (_severity_rank(item.severity), item.created_at or datetime.min), reverse=True)
     return items[:limit]
+
+
+def _work_inbox_counts(db: Session, *, max_ocr_confidence: float) -> dict[str, int]:
+    ordered_budget_ids = select(Order.related_budget_id).where(Order.related_budget_id.is_not(None))
+    counts = {
+        "low_ocr": int(
+            db.scalar(
+                select(func.count(DocumentPage.id))
+                .join(Document, Document.id == DocumentPage.document_id)
+                .where(Document.deleted_at.is_(None))
+                .where(DocumentPage.ocr_confidence.is_not(None))
+                .where(DocumentPage.ocr_confidence < max_ocr_confidence)
+                .where(DocumentPage.review_status != "approved")
+            )
+            or 0
+        ),
+        "unknown_type": int(
+            db.scalar(
+                select(func.count(Document.id))
+                .where(Document.deleted_at.is_(None))
+                .where(Document.document_type == "desconocido")
+            )
+            or 0
+        ),
+        "duplicate": int(
+            db.scalar(
+                select(func.count(Document.id))
+                .where(Document.deleted_at.is_(None))
+                .where(Document.status == "duplicate")
+            )
+            or 0
+        ),
+        "failed_job": int(
+            db.scalar(
+                select(func.count(ExtractionJob.id))
+                .join(Document, Document.id == ExtractionJob.document_id)
+                .where(Document.deleted_at.is_(None))
+                .where(ExtractionJob.status == "failed")
+            )
+            or 0
+        ),
+        "quality_review": int(
+            db.scalar(
+                select(func.count(Document.id))
+                .where(Document.deleted_at.is_(None))
+                .where(Document.quality_status.in_(["processed_missing_fields", "needs_human_review", "processed_low_quality"]))
+            )
+            or 0
+        ),
+        "accepted_budget_without_order": int(
+            db.scalar(
+                select(func.count(Budget.id))
+                .join(Document, Document.id == Budget.document_id)
+                .where(Document.deleted_at.is_(None))
+                .where(or_(Budget.accepted_detected.is_(True), Budget.status.in_(["aceptado", "aprobado", "accepted"])))
+                .where(Budget.id.not_in(ordered_budget_ids))
+            )
+            or 0
+        ),
+    }
+    return counts
+
+
+@router.get("/work-inbox/count", response_model=WorkInboxCountRead)
+def work_inbox_count(
+    max_ocr_confidence: float = Query(default=0.70, ge=0, le=1),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "gestor", "auditor")),
+) -> WorkInboxCountRead:
+    by_kind = _work_inbox_counts(db, max_ocr_confidence=max_ocr_confidence)
+    return WorkInboxCountRead(count=sum(by_kind.values()), by_kind=by_kind)
 
 
 @router.post("/work-inbox/actions", response_model=WorkInboxActionResponse)

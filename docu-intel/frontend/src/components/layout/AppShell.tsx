@@ -20,12 +20,9 @@ export function AppShell() {
   const [query, setQuery] = useState("")
   const [drawerOpen, setDrawerOpen] = useState(false)
   const health = useQuery({ queryKey: ["system-health"], queryFn: api.systemHealth, refetchInterval: 30000 })
-  // Cap at 200 because the API returns a flat array — once the backend
-  // exposes a count endpoint, switch to that and remove the cap.
-  const inbox = useQuery({ queryKey: ["work-inbox-count"], queryFn: () => api.workInbox({ limit: 200 }), refetchInterval: 30000 })
+  const inbox = useQuery({ queryKey: ["work-inbox-count"], queryFn: () => api.workInboxCount(), refetchInterval: 30000 })
 
-  const inboxCount = inbox.data?.length ?? 0
-  const inboxCapped = inboxCount >= 200
+  const inboxCount = inbox.data?.count ?? 0
   const currentPath = location.pathname
 
   const pageTitle = getPageTitle(currentPath)
@@ -72,7 +69,7 @@ export function AppShell() {
                 className="hidden cursor-pointer items-center gap-1 sm:inline-flex"
                 onClick={() => navigate("/work-inbox")}
               >
-                <span>{inboxCapped ? "200+" : inboxCount} {inboxCount === 1 ? "tarea" : "tareas"}</span>
+                <span>{inboxCount} {inboxCount === 1 ? "tarea" : "tareas"}</span>
               </Badge>
             )}
 

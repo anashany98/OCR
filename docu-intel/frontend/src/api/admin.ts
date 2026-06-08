@@ -37,6 +37,7 @@ import type {
   SystemHealth,
   WatchedFile,
   WorkInboxActionResponse,
+  WorkInboxCount,
   WorkInboxItem,
   WorkItem,
   WorkItemComment,
@@ -54,6 +55,8 @@ export const adminApi = {
   resumeQueues: () => request<QueueStatus>("/admin/queues/resume", { method: "POST" }),
   workInbox: (params?: { max_ocr_confidence?: number; limit?: number }) =>
     request<WorkInboxItem[]>("/admin/work-inbox" + buildSearchParams(params)),
+  workInboxCount: (params?: { max_ocr_confidence?: number }) =>
+    request<WorkInboxCount>("/admin/work-inbox/count" + buildSearchParams(params)),
   runWorkInboxAction: (payload: { action: string; limit?: number; min_confidence?: number }) =>
     request<WorkInboxActionResponse>("/admin/work-inbox/actions", { method: "POST", body: JSON.stringify(payload) }),
   workItems: (params?: { status?: string; priority?: string; limit?: number }) =>

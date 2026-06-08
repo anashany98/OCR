@@ -152,6 +152,11 @@ class WorkInboxItemRead(BaseModel):
     created_at: datetime | None = None
 
 
+class WorkInboxCountRead(BaseModel):
+    count: int
+    by_kind: dict[str, int] = Field(default_factory=dict)
+
+
 class WorkInboxActionRequest(BaseModel):
     action: Literal[
         "retry_failed_jobs",
