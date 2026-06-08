@@ -8,6 +8,24 @@ import { PermissionGate } from "@/components/layout/PermissionGate"
 import { useAuth } from "@/hooks/useAuth"
 
 const AdminPage = lazy(() => import("@/pages/AdminPage").then((module) => ({ default: module.AdminPage })))
+const AdminOperationalRoute = lazy(() =>
+  import("@/pages/admin/AdminOperationalRoute").then((module) => ({ default: module.AdminOperationalRoute })),
+)
+const AdminSystemRoute = lazy(() =>
+  import("@/pages/admin/AdminSystemRoute").then((module) => ({ default: module.AdminSystemRoute })),
+)
+const AdminIntegrationsRoute = lazy(() =>
+  import("@/pages/admin/AdminIntegrationsRoute").then((module) => ({ default: module.AdminIntegrationsRoute })),
+)
+const AdminAccessRoute = lazy(() =>
+  import("@/pages/admin/AdminAccessRoute").then((module) => ({ default: module.AdminAccessRoute })),
+)
+const AdminQualityRoute = lazy(() =>
+  import("@/pages/admin/AdminQualityRoute").then((module) => ({ default: module.AdminQualityRoute })),
+)
+const AdminLearningRoute = lazy(() =>
+  import("@/pages/admin/AdminLearningRoute").then((module) => ({ default: module.AdminLearningRoute })),
+)
 const BudgetsPage = lazy(() => import("@/pages/BudgetsPage").then((module) => ({ default: module.BudgetsPage })))
 const ChatPage = lazy(() => import("@/pages/ChatPage").then((module) => ({ default: module.ChatPage })))
 const DashboardPage = lazy(() => import("@/pages/DashboardPage").then((module) => ({ default: module.DashboardPage })))
@@ -118,7 +136,74 @@ export const router = createBrowserRouter([
       { path: "reconciliation", element: page(<ReconciliationPage />), handle: { title: "Incidencias" } },
       { path: "plans", element: protectedPage(<PlansPage />, MANAGER_ROLES), handle: { title: "Planos" } },
       { path: "chat", element: page(<ChatPage />), handle: { title: "Preguntar a documentos" } },
-      { path: "admin", element: protectedPage(<AdminPage />, ADMIN_ROLES), handle: { title: "Administración" } },
+      {
+        path: "admin",
+        element: protectedPage(<AdminPage />, ADMIN_ROLES),
+        handle: { title: "Administración" },
+        children: [
+          // F4b - each admin tab is now its own lazy route. The
+          // shell (``AdminPage``) renders the page header, the inner
+          // tab nav and an ``<Outlet />``; the child route pulls
+          // the data it needs from ``useAdminData`` on demand. The
+          // shell still owns the cross-cutting reprocess confirm
+          // dialog, but no other state or queries are shared.
+          { index: true, element: <Navigate to="operativa" replace /> },
+          {
+            path: "operativa",
+            element: (
+              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+                <AdminOperationalRoute />
+              </Suspense>
+            ),
+            handle: { title: "Administración · Operativa" },
+          },
+          {
+            path: "sistema",
+            element: (
+              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+                <AdminSystemRoute />
+              </Suspense>
+            ),
+            handle: { title: "Administración · Estado técnico" },
+          },
+          {
+            path: "integraciones",
+            element: (
+              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+                <AdminIntegrationsRoute />
+              </Suspense>
+            ),
+            handle: { title: "Administración · Integraciones" },
+          },
+          {
+            path: "acceso",
+            element: (
+              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+                <AdminAccessRoute />
+              </Suspense>
+            ),
+            handle: { title: "Administración · Usuarios y permisos" },
+          },
+          {
+            path: "calidad",
+            element: (
+              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+                <AdminQualityRoute />
+              </Suspense>
+            ),
+            handle: { title: "Administración · Calidad" },
+          },
+          {
+            path: "aprendizaje",
+            element: (
+              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+                <AdminLearningRoute />
+              </Suspense>
+            ),
+            handle: { title: "Administración · Aprendizaje IA" },
+          },
+        ],
+      },
       { path: "*", element: page(<NotFoundPage />), handle: { title: "No encontrado" } },
     ],
   },

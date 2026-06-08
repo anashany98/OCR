@@ -80,9 +80,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/invoices", label: "Facturas", icon: Receipt, keywords: ["cobro"] },
       { to: "/reconciliation", label: "Incidencias", icon: Scale, keywords: ["conciliación", "diferencias"] },
       { to: "/ocr-review", label: "OCR y calidad", icon: Eye, keywords: ["revisión", "baja confianza"] },
-      { to: "/admin?tab=calidad#duplicates", label: "Duplicados", icon: FileWarning, keywords: ["duplicado"] },
+      { to: "/admin/calidad", label: "Duplicados", icon: FileWarning, keywords: ["duplicado"] },
       {
-        to: "/admin?tab=calidad#quarantine",
+        to: "/admin/calidad",
         label: "Cuarentena",
         icon: Filter,
         roles: ["admin", "gestor"],
@@ -95,10 +95,10 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Sistema",
     items: [
       { to: "/jobs", label: "Procesamiento", icon: DatabaseZap, roles: ["admin"], keywords: ["jobs", "celery", "cola"] },
-      { to: "/admin?tab=sistema", label: ADMIN_TAB_LABELS.sistema, icon: Settings, roles: ["admin"], keywords: ["salud", "infraestructura"] },
-      { to: "/admin?tab=acceso", label: ADMIN_TAB_LABELS.acceso, icon: Users, roles: ["admin"], keywords: ["permisos", "rbac"] },
-      { to: "/admin?tab=integraciones", label: ADMIN_TAB_LABELS.integraciones, icon: KeyRound, roles: ["admin"], keywords: ["api", "cliente", "webhook"] },
-      { to: "/admin?tab=aprendizaje", label: ADMIN_TAB_LABELS.aprendizaje, icon: Brain, roles: ["admin"], keywords: ["ia", "patrones"] },
+      { to: "/admin/sistema", label: ADMIN_TAB_LABELS.sistema, icon: Settings, roles: ["admin"], keywords: ["salud", "infraestructura"] },
+      { to: "/admin/acceso", label: ADMIN_TAB_LABELS.acceso, icon: Users, roles: ["admin"], keywords: ["permisos", "rbac"] },
+      { to: "/admin/integraciones", label: ADMIN_TAB_LABELS.integraciones, icon: KeyRound, roles: ["admin"], keywords: ["api", "cliente", "webhook"] },
+      { to: "/admin/aprendizaje", label: ADMIN_TAB_LABELS.aprendizaje, icon: Brain, roles: ["admin"], keywords: ["ia", "patrones"] },
     ],
   },
 ]
