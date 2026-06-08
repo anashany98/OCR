@@ -143,55 +143,25 @@ async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> 
 
 
 def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
+    """Extract text from a PDF, per-page.
+
+    Decision is made **per page**, not per document:
+
+    - **Digital page** (>= 30 chars of embedded text): use ``page.get_text()``
+      directly. No image rendering, no OCR. ~10-50 ms per page.
+    - **Scanned page** (< 30 chars): render to image, run OCR cascade
+      (Tesseract -> PaddleOCR). ~2-10 s per page.
+    - **Vision fallback**: if a scanned page yields no text, ask the
+      vision LLM to transcribe tables. Best-effort.
+
+    This replaces the old all-or-nothing ``is_digital_pdf`` check that
+    would route a 100-page document with 90 digital + 10 scanned pages
+    entirely through OCR.
+    """
     import fitz
 
-    # Fast path: if PDF is fully digital text, skip OCR but still render the
-    # page to an image so the document viewer has a preview to show.
-    if is_digital_pdf(path):
-        pages: list[ExtractedPage] = []
-        output_dir.mkdir(parents=True, exist_ok=True)
-        with fitz.open(path) as pdf:
-            if len(pdf) > settings.max_pdf_pages:
-                raise ValueError(f"max_pdf_pages exceeded: {len(pdf)} > {settings.max_pdf_pages}")
-            for index, page in enumerate(pdf, start=1):
-                text = page.get_text("text").strip()
-                rect = page.rect
-                # Append any tables detected by pdfplumber as markdown
-                # so the LLM can keep column structure.
-                table_md = _extract_table_markdown(path, index - 1)
-                if table_md:
-                    text = f"{text}\n{table_md}" if text else table_md.lstrip()
-                # Render page to a preview PNG (~2x zoom). Cheap and gives the
-                # viewer something to show without re-running OCR.
-                image_file = output_dir / f"page_{index}.png"
-                page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False).save(image_file)
-                pages.append(
-                    ExtractedPage(
-                        page_number=index,
-                        width=float(rect.width),
-                        height=float(rect.height),
-                        text=text,
-                        image_path=str(image_file),
-                        ocr_confidence=1.0,
-                        # Per-page engine tag. We use a single helper so the
-                        # OCR/no-OCR decision and the engine label stay in sync.
-                        ocr_engine="pymupdf",
-                        blocks=[
-                            ExtractedBlock(
-                                block_type="text",
-                                text=text,
-                                page_number=index,
-                                bbox=(0.0, 0.0, float(rect.width), float(rect.height)),
-                                confidence=1.0,
-                                source_engine="pymupdf",
-                            )
-                        ],
-                    )
-                )
-        return ExtractedDocument(pages=pages)
-
-    # Original OCR path for scanned/image PDFs
     pages: list[ExtractedPage] = []
+    output_dir.mkdir(parents=True, exist_ok=True)
     with fitz.open(path) as pdf:
         if len(pdf) > settings.max_pdf_pages:
             raise ValueError(f"max_pdf_pages exceeded: {len(pdf)} > {settings.max_pdf_pages}")
@@ -201,12 +171,17 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
             blocks: list[ExtractedBlock] = []
             image_path: str | None = None
             ocr_confidence: float | None = None
-            page_engine: str = "empty"
+            # Empty string = "no engine picked yet". Using "" (falsy) so the
+            # ``or`` fallback below correctly promotes the OCR result's engine
+            # label when this page is scanned. Initialising to "empty"
+            # (a truthy string) would make the ``or`` always short-circuit.
+            page_engine: str = ""
 
-            if text:
+            # --- Digital fast path: embedded text is enough ----------
+            if len(text) >= 30:
                 table_md = _extract_table_markdown(path, index - 1)
                 if table_md:
-                    text = f"{text}\n{table_md}"
+                    text = f"{text}\n{table_md}" if text else table_md.lstrip()
                 blocks.append(
                     ExtractedBlock(
                         block_type="text",
@@ -217,10 +192,18 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                         source_engine="pymupdf",
                     )
                 )
+                # Render a low-res preview so the document viewer has
+                # something to show, but skip the high-res render the
+                # OCR path would do.
+                image_file = output_dir / f"page_{index}.png"
+                page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False).save(image_file)
+                image_path = str(image_file)
+                # Digital extraction has perfect confidence: the text
+                # is straight from the PDF's content stream, not guessed.
+                ocr_confidence = 1.0
                 page_engine = "pymupdf"
-
-            if len(text) < 30:
-                output_dir.mkdir(parents=True, exist_ok=True)
+            else:
+                # --- Scanned / image page: OCR cascade ----------------
                 image_file = output_dir / f"page_{index}.png"
                 zoom = max(0.5, float(settings.pdf_ocr_dpi) / 72.0)
                 page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).save(image_file)
@@ -243,8 +226,8 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                     )
                     for block in ocr.blocks
                 ]
-                # If the cascade returned nothing useful, try the vision LLM
-                # as a recovery path for tables (best-effort).
+                # If the cascade returned nothing useful, try the vision
+                # LLM as a recovery path for tables (best-effort).
                 if not text and settings.vision_table_transcription and settings.vision_model:
                     import asyncio
                     try:
@@ -271,8 +254,8 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                             page_engine = "vision"
                     except Exception:
                         pass
-                # Keep the engine label accurate: if we got text from the
-                # cascade, use the cascade's pick; if the page is still
+                # Keep the engine label accurate: if the cascade got
+                # text, use the cascade's pick; if the page is still
                 # empty, mark it as "empty" so the admin can spot the
                 # pages that came in blank despite being routed to OCR.
                 page_engine = page_engine or (actual_engine if text else "empty")
@@ -293,7 +276,12 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
 
 
 def is_digital_pdf(path: Path) -> bool:
-    """Check if PDF has sufficient digital text content (>90% text pages)."""
+    """Check if PDF has sufficient digital text content (>90% text pages).
+
+    Kept for backward compatibility with callers that want a quick
+    yes/no answer. The per-page parser no longer uses this — it makes
+    the digital/OCR decision per page.
+    """
     import fitz
 
     with fitz.open(path) as pdf:
