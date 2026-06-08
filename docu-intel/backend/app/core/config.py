@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     ai_base_url: str = ""
     ai_model: str = ""
     ai_api_key: str = ""
+    ai_request_timeout_seconds: float = 120.0
+    ai_max_retries: int = 2
+    ai_retry_base_delay_seconds: float = 0.25
+    ai_circuit_breaker_failures: int = 3
+    ai_circuit_breaker_reset_seconds: float = 30.0
     # Vision LLM (multimodal). When configured, the agent can ask the
     # vision model to describe image documents (jpg/png/tif/webp) so the
     # main LLM has actual visual content, not just bad OCR. Leave empty

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
+import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
@@ -27,6 +30,23 @@ class LocalVisionConfig:
     api_key_configured: bool
 
 
+class LocalAICircuitOpen(RuntimeError):
+    pass
+
+
+@dataclass
+class _CircuitState:
+    failures: int = 0
+    opened_until: float = 0.0
+
+
+_LOCAL_AI_CIRCUITS: dict[tuple[str, str], _CircuitState] = {}
+
+
+def reset_local_ai_circuit_breakers() -> None:
+    _LOCAL_AI_CIRCUITS.clear()
+
+
 def get_local_ai_config() -> LocalAIConfig:
     return LocalAIConfig(
         provider=settings.ai_provider,
@@ -46,35 +66,69 @@ def get_local_vision_config() -> LocalVisionConfig:
 
 
 class LocalOpenAICompatibleClient:
-    def __init__(self, base_url: str | None = None, model: str | None = None, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+        max_retries: int | None = None,
+        retry_base_delay_seconds: float | None = None,
+        circuit_breaker_failures: int | None = None,
+        circuit_breaker_reset_seconds: float | None = None,
+    ) -> None:
         self.base_url = (base_url or settings.ai_base_url).rstrip("/")
         self.model = model or settings.ai_model
         self.api_key = api_key if api_key is not None else settings.ai_api_key
+        self.transport = transport
+        self.max_retries = max(0, settings.ai_max_retries if max_retries is None else max_retries)
+        self.retry_base_delay_seconds = max(
+            0.0,
+            settings.ai_retry_base_delay_seconds
+            if retry_base_delay_seconds is None
+            else retry_base_delay_seconds,
+        )
+        self.circuit_breaker_failures = max(
+            1,
+            settings.ai_circuit_breaker_failures
+            if circuit_breaker_failures is None
+            else circuit_breaker_failures,
+        )
+        self.circuit_breaker_reset_seconds = max(
+            0.0,
+            settings.ai_circuit_breaker_reset_seconds
+            if circuit_breaker_reset_seconds is None
+            else circuit_breaker_reset_seconds,
+        )
 
-    async def chat(self, messages: list[dict], temperature: float = 0.0, timeout: float = 120.0, max_tokens: int = 2000) -> str:
+    async def chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.0,
+        timeout: float | None = None,
+        max_tokens: int = 2000,
+    ) -> str:
         if not self.base_url or not self.model:
             raise RuntimeError("Local AI is not configured")
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-            return payload["choices"][0]["message"]["content"]
+        payload = await self._post_chat_completion(
+            headers=headers,
+            timeout=timeout or settings.ai_request_timeout_seconds,
+            json_payload={
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+        return payload["choices"][0]["message"]["content"]
 
     async def chat_stream(
         self,
         messages: list[dict],
         temperature: float = 0.0,
-        timeout: float = 120.0,
+        timeout: float | None = None,
         max_tokens: int = 2000,
     ) -> AsyncIterator[str | tuple[str, str]]:
         """Yield text chunks as the LLM produces them.
@@ -89,46 +143,130 @@ class LocalOpenAICompatibleClient:
             raise RuntimeError("Local AI is not configured")
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         headers["Accept"] = "text/event-stream"
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream(
-                "POST",
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "stream": True,
-                },
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    if line.startswith("data:"):
-                        data = line[len("data:"):].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            import json
-                            payload = json.loads(data)
-                        except Exception:
+        self._raise_if_circuit_open()
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout or settings.ai_request_timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
+                        "stream": True,
+                    },
+                ) as response:
+                    response.raise_for_status()
+                    self._record_success()
+                    async for line in response.aiter_lines():
+                        if not line:
                             continue
-                        choices = payload.get("choices") or []
-                        if not choices:
-                            continue
-                        delta = (choices[0] or {}).get("delta") or {}
-                        # Qwen3 (and other reasoning models) stream their
-                        # internal reasoning in `reasoning_content`. We
-                        # surface it as a separate event so the UI can
-                        # show "razonando..." while the model is thinking.
-                        thinking = delta.get("reasoning_content")
-                        if thinking:
-                            yield ("thinking", thinking)
-                        piece = delta.get("content")
-                        if piece:
-                            yield piece
+                        if line.startswith("data:"):
+                            data = line[len("data:"):].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                import json
+                                payload = json.loads(data)
+                            except Exception:
+                                continue
+                            choices = payload.get("choices") or []
+                            if not choices:
+                                continue
+                            delta = (choices[0] or {}).get("delta") or {}
+                            # Qwen3 (and other reasoning models) stream their
+                            # internal reasoning in `reasoning_content`. We
+                            # surface it as a separate event so the UI can
+                            # show "razonando..." while the model is thinking.
+                            thinking = delta.get("reasoning_content")
+                            if thinking:
+                                yield ("thinking", thinking)
+                            piece = delta.get("content")
+                            if piece:
+                                yield piece
+        except Exception:
+            self._record_failure()
+            raise
+
+    async def _post_chat_completion(
+        self,
+        *,
+        headers: dict[str, str],
+        timeout: float,
+        json_payload: dict,
+    ) -> dict:
+        self._raise_if_circuit_open()
+        last_exc: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=timeout,
+                    transport=self.transport,
+                ) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=json_payload,
+                    )
+                    response.raise_for_status()
+                    self._record_success()
+                    return response.json()
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= self.max_retries or not _is_retryable_ai_error(exc):
+                    self._record_failure()
+                    raise
+                await self._sleep_before_retry(attempt)
+        raise RuntimeError("AI request failed without an exception") from last_exc
+
+    async def _sleep_before_retry(self, attempt: int) -> None:
+        delay = self.retry_base_delay_seconds * (2 ** attempt)
+        if delay <= 0:
+            return
+        jitter = random.uniform(0.0, delay * 0.25)
+        await asyncio.sleep(delay + jitter)
+
+    @property
+    def _circuit_key(self) -> tuple[str, str]:
+        return (self.base_url, self.model)
+
+    def _state(self) -> _CircuitState:
+        return _LOCAL_AI_CIRCUITS.setdefault(self._circuit_key, _CircuitState())
+
+    def _raise_if_circuit_open(self) -> None:
+        state = self._state()
+        now = time.monotonic()
+        if state.opened_until > now:
+            raise LocalAICircuitOpen(
+                f"Local AI temporarily unavailable for {self.model}; "
+                f"circuit resets in {state.opened_until - now:.1f}s"
+            )
+        if state.opened_until and state.opened_until <= now:
+            state.failures = 0
+            state.opened_until = 0.0
+
+    def _record_success(self) -> None:
+        state = self._state()
+        state.failures = 0
+        state.opened_until = 0.0
+
+    def _record_failure(self) -> None:
+        state = self._state()
+        state.failures += 1
+        if state.failures >= self.circuit_breaker_failures:
+            state.opened_until = time.monotonic() + self.circuit_breaker_reset_seconds
+
+
+def _is_retryable_ai_error(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code
+        return status_code == 429 or status_code >= 500
+    return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
 
 
 # ---------------------------------------------------------------------------
