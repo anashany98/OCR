@@ -62,6 +62,16 @@ export function polygonAreaM2(points: Point[], scaleMperPx: number): number {
   return Math.abs(area / 2) * scaleMperPx * scaleMperPx
 }
 
+/** P4 — Helper: nearest point on a line segment to a given point. */
+function _nearestPointOnSegment(p: Point, a: Point, b: Point): Point {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return a
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq))
+  return { x: a.x + t * dx, y: a.y + t * dy }
+}
+
 export function usePlanAnnotation(documentId: number) {
   const qc = useQueryClient()
 
@@ -206,6 +216,58 @@ export function usePlanAnnotation(documentId: number) {
     [rooms],
   )
 
+  // P4 — Snap-to-line: find the nearest vertex or edge point from
+  // existing rooms and dimensions within a threshold distance.
+  const SNAP_THRESHOLD = 8 // SVG units
+  const snapPoint = useCallback(
+    (p: Point): Point => {
+      let best = p
+      let bestDist = SNAP_THRESHOLD
+
+      // Check vertices of existing rooms
+      for (const r of rooms) {
+        if (!r.polygon) continue
+        for (const v of r.polygon) {
+          const d = Math.sqrt((v.x - p.x) ** 2 + (v.y - p.y) ** 2)
+          if (d < bestDist) {
+            bestDist = d
+            best = v
+          }
+        }
+      }
+
+      // Check dimension endpoints
+      for (const d of dimensions) {
+        for (const pt of [d.start, d.end]) {
+          if (!pt) continue
+          const dd = Math.sqrt((pt.x - p.x) ** 2 + (pt.y - p.y) ** 2)
+          if (dd < bestDist) {
+            bestDist = dd
+            best = pt
+          }
+        }
+      }
+
+      // Check edges (nearest point on line segment) of existing rooms
+      for (const r of rooms) {
+        if (!r.polygon || r.polygon.length < 2) continue
+        for (let i = 0; i < r.polygon.length; i++) {
+          const a = r.polygon[i]
+          const b = r.polygon[(i + 1) % r.polygon.length]
+          const nearest = _nearestPointOnSegment(p, a, b)
+          const d = Math.sqrt((nearest.x - p.x) ** 2 + (nearest.y - p.y) ** 2)
+          if (d < bestDist) {
+            bestDist = d
+            best = nearest
+          }
+        }
+      }
+
+      return best
+    },
+    [rooms, dimensions],
+  )
+
   const onCanvasClick = useCallback(
     (e: ReactMouseEvent<SVGSVGElement>) => {
       const p = toSvgCoords(e)
@@ -222,7 +284,7 @@ export function usePlanAnnotation(documentId: number) {
       }
 
       if (tool === "room") {
-        setPolygonInProgress((cur) => [...cur, p])
+        setPolygonInProgress((cur) => [...cur, snapPoint(p)])
         setDirty(true)
         return
       }
@@ -236,11 +298,11 @@ export function usePlanAnnotation(documentId: number) {
             unit: "m",
             value_m: null,
             page_number: page,
-            start: p,
+            start: snapPoint(p),
             end: null,
           })
         } else if (draftDim && !draftDim.end) {
-          const completed: DraftDimension = { ...draftDim, end: p }
+          const completed: DraftDimension = { ...draftDim, end: snapPoint(p) }
           setDimensions((cur) => [...cur, completed])
           setDraftDim(null)
           setTool("select")
@@ -258,11 +320,11 @@ export function usePlanAnnotation(documentId: number) {
             unit: "m",
             value_m: null,
             page_number: page,
-            start: p,
+            start: snapPoint(p),
             end: null,
           })
         } else {
-          const completed: DraftDimension = { ...draftDim, end: p }
+          const completed: DraftDimension = { ...draftDim, end: snapPoint(p) }
           setDimensions((cur) => [...cur, completed])
           setDraftDim(null)
           setTool("select")
@@ -271,7 +333,7 @@ export function usePlanAnnotation(documentId: number) {
         return
       }
     },
-    [tool, toSvgCoords, hitRoom, draftDim, page],
+    [tool, toSvgCoords, hitRoom, snapPoint, draftDim, page],
   )
 
   const onCanvasDoubleClick = useCallback(() => {
