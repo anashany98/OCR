@@ -11,6 +11,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { plansApi, type Plan, type PlanDimension, type PlanRoom } from "@/api/plans"
 import { notify } from "@/lib/toast"
 
+import { usePlanSymbols, filterSymbolsByPage } from "./usePlanSymbols"
+
 // ---------------------------------------------------------------------------
 // F8b-cont - plan annotation hook
 // ---------------------------------------------------------------------------
@@ -357,6 +359,16 @@ export function usePlanAnnotation(documentId: number) {
   }, [scaleDimension, scaleLengthM])
   const scaleRatio = computeScale()
 
+  // --- P2 — YOLO plan symbol detection ------------------------------------
+  // We attach the symbol hook to the same usePlanAnnotation surface so
+  // the page does not need to know about two parallel hooks. The
+  // page-filtered overlay is what the canvas actually paints.
+  const symbols = usePlanSymbols(planId)
+  const visibleSymbolsOnPage = useMemo(
+    () => filterSymbolsByPage(symbols.visibleSymbols, page),
+    [symbols.visibleSymbols, page],
+  )
+
   // --- Save ----------------------------------------------------------------
   const onSave = useCallback(async () => {
     if (!planId) return
@@ -425,6 +437,9 @@ export function usePlanAnnotation(documentId: number) {
     selected,
     scaleDimension,
     scaleRatio,
+    // P2 — YOLO plan symbol detection
+    symbols,
+    visibleSymbolsOnPage,
     // actions
     suggest,
     suggesting,

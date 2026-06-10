@@ -1,4 +1,4 @@
-import { request } from "./core"
+import { buildSearchParams, request } from "./core"
 
 export type PlanRoom = {
   id: number
@@ -54,6 +54,35 @@ export type PlanVisionSuggestionResponse = {
   model: string | null
 }
 
+// ---------------------------------------------------------------------------
+// P2 — YOLO plan symbol detection
+// ---------------------------------------------------------------------------
+//
+// A ``PlanSymbol`` is one detection from the YOLO model. The bbox is in
+// pixel coordinates of the page image (not PDF points) — this matches
+// the SVG canvas coordinate system (1200x850) so the overlay can
+// draw the boxes without further arithmetic.
+
+export type PlanSymbol = {
+  id: number
+  plan_id: number
+  symbol_class: string
+  confidence: number
+  page_number: number | null
+  bbox_x1: number | null
+  bbox_y1: number | null
+  bbox_x2: number | null
+  bbox_y2: number | null
+  source_model: string | null
+}
+
+export type PlanSymbolSummary = {
+  plan_id: number
+  counts: Record<string, number>
+  total: number
+  source_model: string | null
+}
+
 export const plansApi = {
   list: (limit = 50) => request<Plan[]>(`/plans?limit=${limit}`),
   get: (id: number) => request<Plan>(`/plans/${id}`),
@@ -98,6 +127,26 @@ export const plansApi = {
       method: "POST",
       body: JSON.stringify({ page_number }),
     }),
+  // P2 — YOLO plan symbol detection. ``getSymbols`` returns the full
+  // list (one row per detection). ``getSymbolsSummary`` returns the
+  // counts per class — what the side panel uses so the user can see
+  // "this plan has 4 doors, 6 windows, 1 toilet" without downloading
+  // every bbox.
+  getSymbols: (
+    id: number,
+    params?: {
+      symbol_class?: string
+      min_confidence?: number
+      page_number?: number
+    },
+  ) => {
+    const q = buildSearchParams(params)
+    return request<PlanSymbol[]>(`/plans/${id}/symbols${q}`)
+  },
+  getSymbolsSummary: (id: number, min_confidence = 0) =>
+    request<PlanSymbolSummary>(
+      `/plans/${id}/symbols/summary?min_confidence=${min_confidence}`,
+    ),
   deleteRoom: (planId: number, roomId: number) =>
     request<void>(`/plans/${planId}/rooms/${roomId}`, { method: "DELETE" }),
   deleteDimension: (planId: number, dimId: number) =>

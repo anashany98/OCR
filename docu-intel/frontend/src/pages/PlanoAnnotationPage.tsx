@@ -10,6 +10,9 @@ import {
   Breadcrumbs,
   CanvasToolbar,
   PlanCanvas,
+  SymbolLegend,
+  SymbolOverlay,
+  colorForSymbolClass as _colorForSymbolClass,
 } from "./plano/components"
 import { usePlanAnnotation } from "./plano/usePlanAnnotation"
 
@@ -119,7 +122,7 @@ export function PlanoAnnotationPage() {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 sm:p-4 lg:grid-cols-[280px_minmax(0,1fr)_300px]">
-        {/* LEFT: rooms + dimensions */}
+        {/* LEFT: rooms + dimensions + P2 symbol legend */}
         <Card className="flex min-h-0 flex-col overflow-hidden">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
             <AnnotationSidebar
@@ -127,6 +130,21 @@ export function PlanoAnnotationPage() {
               dimensions={a.dimensions}
               selectedId={a.selectedId}
               setSelectedId={a.setSelectedId}
+              symbolLegend={
+                <SymbolLegend
+                  visible={a.symbols.showSymbols}
+                  onToggleVisible={() => a.symbols.setShowSymbols((cur) => !cur)}
+                  total={a.symbols.summary?.total ?? 0}
+                  classes={a.symbols.allClasses}
+                  counts={a.symbols.summary?.counts ?? {}}
+                  activeClasses={a.symbols.activeClasses}
+                  onToggleClass={a.symbols.toggleClass}
+                  onEnableAll={a.symbols.enableAllClasses}
+                  onDisableAll={a.symbols.disableAllClasses}
+                  sourceModel={a.symbols.summary?.source_model ?? null}
+                  isLoading={a.symbols.listQuery.isLoading || a.symbols.summaryQuery.isLoading}
+                />
+              }
             />
           </CardContent>
         </Card>
@@ -154,6 +172,14 @@ export function PlanoAnnotationPage() {
               onCanvasClick={a.onCanvasClick}
               onCanvasDoubleClick={a.onCanvasDoubleClick}
               svgRef={a.svgRef}
+              symbolOverlay={
+                a.symbols.showSymbols && a.visibleSymbolsOnPage.length > 0 ? (
+                  <SymbolOverlay
+                    symbols={a.visibleSymbolsOnPage}
+                    colorForClass={_colorForSymbolClass}
+                  />
+                ) : null
+              }
             />
           </CardContent>
         </Card>
