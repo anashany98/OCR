@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys as _sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentEntity, DocumentPage, ExtractionJob, Plan
+from app.ocr.factory import get_ocr_engine_class
 from app.parsers.router import parse_document
 from app.services.business_extraction import persist_business_extraction
 from app.services.cache import cache_service
@@ -21,18 +21,28 @@ from app.services.quality import evaluate_document_quality, update_document_qual
 from app.services.tenant_access import apply_folder_rules_to_document
 from app.services.webhooks import emit_integration_webhook
 
+# This module sits at the centre of the document processing
+# pipeline. It used to import many of its helpers from
+# ``app.services.document_service`` (a re-export hub) via a
+# ``_facade()`` helper that looked the module up through
+# ``sys.modules`` at call time. The pattern worked but it was
+# three problems at once: type checkers could not see the
+# imports, a typo in the path would not surface until a webhook
+# fired at 3am, and the indirection made the file hard to read.
+# The hub itself (document_service.py) is preserved as a
+# public facade for the routes and the worker, but this file
+# now imports the helpers directly. There is no cycle:
+# ``app.services.webhooks``, ``app.ocr.factory`` and
+# ``app.parsers.router`` are all leaves that do not import
+# anything from this module or from ``document_service``.
 
-def _facade():
-    return _sys.modules["app.services.document_service"]
+from app.services.document_embedding_pipeline import _replace_document_chunks
 
 
 def sanitize_text_for_database(text: str | None) -> str:
     if not text:
         return ""
     return text.replace("\x00", "")
-
-
-from app.services.document_embedding_pipeline import _replace_document_chunks
 
 
 def processing_mode_from_job_type(job_type: str | None) -> str:
@@ -138,10 +148,10 @@ def _emit_document_webhooks(document: Document, job: ExtractionJob) -> None:
         "processed_at": document.processed_at.isoformat() if document.processed_at else None,
     }
     if document.status == "needs_review":
-        _facade().emit_integration_webhook("document.needs_review", payload)
+        emit_integration_webhook("document.needs_review", payload)
     elif document.status == "processed":
-        _facade().emit_integration_webhook("document.processed", payload)
-    _facade().emit_integration_webhook("job.finished", payload)
+        emit_integration_webhook("document.processed", payload)
+    emit_integration_webhook("job.finished", payload)
 
 
 def process_document(db: Session, *, document_id: int, job_id: int, final_failure: bool = True) -> None:
@@ -182,7 +192,7 @@ def process_document(db: Session, *, document_id: int, job_id: int, final_failur
             needs_review = _process_classification_only(db, document)
             document.status = "needs_review" if needs_review else "processed"
         else:
-            needs_review = _facade()._process_full_parse(db, document)
+            needs_review = _process_full_parse(db, document)
             document.status = "needs_review" if needs_review else "processed"
 
         document.processed_at = datetime.utcnow()
@@ -208,7 +218,7 @@ def process_document(db: Session, *, document_id: int, job_id: int, final_failur
                 watched_file=watched,
             )
         db.commit()
-        _facade()._emit_document_webhooks(document, job)
+        _emit_document_webhooks(document, job)
     except Exception as exc:
         _handle_process_failure(db, document_id=document_id, job_id=job_id, error=exc, final_failure=final_failure)
         raise
@@ -259,7 +269,7 @@ def _handle_process_failure(
     db.commit()
     if final_failure and document and job:
         track_document_failed()
-        _facade().emit_integration_webhook(
+        emit_integration_webhook(
             "document.failed",
             {
                 "document_id": document.id,
@@ -277,8 +287,8 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         raise ValueError("Document has no stored file")
     stored_path = settings.files_dir / document.stored_filename
     page_image_dir = settings.files_dir / document.file_hash[:2] / f"{document.file_hash}_pages"
-    ocr_engine = _facade().get_ocr_engine_class()()
-    extracted = _facade().parse_document(stored_path, page_image_dir, ocr_engine)
+    ocr_engine = get_ocr_engine_class()()
+    extracted = parse_document(stored_path, page_image_dir, ocr_engine)
     for extracted_page in extracted.pages:
         extracted_page.text = sanitize_text_for_database(extracted_page.text)
         for extracted_block in extracted_page.blocks:
@@ -394,7 +404,7 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
     db.flush()
     try:
         page_path = _resolve_files_dir_path(page.image_path)
-        engine = _facade().get_ocr_engine_class()()
+        engine = get_ocr_engine_class()()
         ocr = engine.extract(page_path)
     except Exception as exc:
         page.page_status = "failed"
@@ -468,12 +478,12 @@ def _apply_classification_and_extraction(
     document.confidence = classification.confidence
     document.page_count = page_count
 
-    business_result = _facade().persist_business_extraction(db, document, text)
+    business_result = persist_business_extraction(db, document, text)
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
-    plan_result = _facade().persist_plan_extraction(db, document, text)
+    plan_result = persist_plan_extraction(db, document, text)
 
-    quality = _facade().evaluate_document_quality(
+    quality = evaluate_document_quality(
         db,
         document,
         text=text,
@@ -482,5 +492,5 @@ def _apply_classification_and_extraction(
         business_needs_review=business_result.needs_review,
         plan_needs_review=plan_result.needs_review,
     )
-    _facade().update_document_quality(db, document, quality)
+    update_document_quality(db, document, quality)
     return quality.needs_review

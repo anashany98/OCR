@@ -87,11 +87,10 @@ def test_reembed_document_populates_embeddings_on_success():
         fake_vectors = [[0.01 * (i + 1)] * dim for i in range(n)]
 
         with patch(
-            "app.services.document_service.embed_many",
+            "app.services.document_embedding_pipeline.embed_many",
             return_value=fake_vectors,
-        ), patch.object(
-            __import__("app.services.document_service", fromlist=["should_create_embeddings"]),
-            "should_create_embeddings",
+        ), patch(
+            "app.services.document_embedding_pipeline.should_create_embeddings",
             return_value=True,
         ):
             result = reembed_document(db, document_id)
@@ -137,11 +136,10 @@ def test_reembed_document_preserves_unembedded_chunks_when_provider_fails():
         assert n > 0, "page text should produce at least one chunk"
 
         with patch(
-            "app.services.document_service.embed_many",
+            "app.services.document_embedding_pipeline.embed_many",
             side_effect=EmbeddingProviderError("model not loaded"),
-        ), patch.object(
-            __import__("app.services.document_service", fromlist=["should_create_embeddings"]),
-            "should_create_embeddings",
+        ), patch(
+            "app.services.document_embedding_pipeline.should_create_embeddings",
             return_value=True,
         ):
             result = reembed_document(db, document_id)

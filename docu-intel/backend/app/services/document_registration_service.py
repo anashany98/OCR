@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import mimetypes
-import sys as _sys
 import tempfile
 from pathlib import Path
 from typing import BinaryIO
@@ -19,9 +18,11 @@ from app.services.file_security import inspect_file_for_ingestion
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
 from app.services.tenant_access import apply_folder_rules_to_document
 
-
-def _facade():
-    return _sys.modules["app.services.document_service"]
+# This module used to look up ``inspect_file_for_ingestion`` through
+# a ``_facade()`` helper that reached into
+# ``sys.modules["app.services.document_service"]`` at call time.
+# The helper itself is imported directly (line 18); we removed
+# the facade so the type checker can see the dependency.
 
 
 def _type_from_extension(extension: str) -> str:
@@ -78,7 +79,7 @@ def register_existing_file(
     file_hash = calculate_sha256(source)
     extension = source.suffix.lower()
     mime_type, _ = mimetypes.guess_type(str(source))
-    security_result = _facade().inspect_file_for_ingestion(source)
+    security_result = inspect_file_for_ingestion(source)
     existing = db.scalar(
         select(Document)
         .where(Document.file_hash == file_hash)

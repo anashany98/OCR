@@ -9,10 +9,14 @@ documento se quede sin embedding".
 """
 from __future__ import annotations
 
-# Importing document_service at module level so it lives in sys.modules
-# before the pipeline's ``_facade()`` looks it up. The facade is a
-# thin wrapper that does ``_sys.modules["app.services.document_service"]``,
-# so the module has to be importable for the patch to take.
+# The embedding pipeline imports ``embed_many`` and
+# ``should_create_embeddings`` directly from ``app.services.embeddings``
+# since the ``_facade()`` antipattern was removed. The tests
+# therefore patch the symbols on the module that defines them
+# (``app.services.embeddings``) rather than on the historical
+# re-export hub (``app.services.document_service``). The hub is still
+# imported for side effect: other tests in the suite exercise
+# the public facade and rely on it being importable.
 from app.services import document_service  # noqa: F401  (imported for side effect)
 from unittest.mock import patch
 
@@ -27,10 +31,8 @@ def test_embed_many_with_metadata_swallows_provider_error():
     every text so the chunks can be stored without an embedding."""
     from app.services.document_embedding_pipeline import embed_many_with_metadata
 
-    with patch.object(
-        document_service,
-        "embed_many",
-        side_effect=EmbeddingProviderError("boom"),
+    with patch(
+            "app.services.document_embedding_pipeline.embed_many",side_effect=EmbeddingProviderError("boom"),
     ):
         out = embed_many_with_metadata(["chunk a", "chunk b", "chunk c"])
 
@@ -47,10 +49,8 @@ def test_embed_many_with_metadata_swallows_unexpected_errors():
     lose the OCR work too."""
     from app.services.document_embedding_pipeline import embed_many_with_metadata
 
-    with patch.object(
-        document_service,
-        "embed_many",
-        side_effect=RuntimeError("GPU OOM"),
+    with patch(
+            "app.services.document_embedding_pipeline.embed_many",side_effect=RuntimeError("GPU OOM"),
     ):
         out = embed_many_with_metadata(["chunk a"])
 
@@ -68,10 +68,7 @@ def test_embed_many_with_metadata_passes_through_on_success():
     plus the configured provider label and the fallback flag."""
     from app.services.document_embedding_pipeline import embed_many_with_metadata
 
-    with patch.object(
-        document_service,
-        "embed_many",
-        return_value=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+    with patch("app.services.document_embedding_pipeline.embed_many", return_value=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
     ):
         out = embed_many_with_metadata(["a", "b"])
 
@@ -90,11 +87,9 @@ def test_prepare_document_chunks_stores_unembedded_when_provider_fails():
         (1, "Primera página del documento. Tiene suficiente texto para chunking serio."),
     ]
 
-    with patch.object(
-        document_service,
-        "embed_many",
-        side_effect=EmbeddingProviderError("model not loaded"),
-    ), patch.object(document_service, "should_create_embeddings", return_value=True):
+    with patch(
+            "app.services.document_embedding_pipeline.embed_many",side_effect=EmbeddingProviderError("model not loaded"),
+    ), patch("app.services.document_embedding_pipeline.should_create_embeddings", return_value=True):
         chunks = prepare_document_chunks(document_id=42, page_texts=page_texts)
 
     assert len(chunks) >= 1
@@ -121,11 +116,9 @@ def test_prepare_document_chunks_embeds_metadata_header_without_polluting_chunk_
     page_texts = [(2, "Total factura 120 euros. Base imponible 100 euros.")]
 
     with (
-        patch.object(document_service, "embed_many", side_effect=fake_embed_many),
-        patch.object(
-            document_service,
-            "should_create_embeddings",
-            return_value=True,
+        patch("app.services.document_embedding_pipeline.embed_many", side_effect=fake_embed_many),
+        patch(
+            "app.services.document_embedding_pipeline.should_create_embeddings",return_value=True,
         ),
     ):
         chunks = prepare_document_chunks(

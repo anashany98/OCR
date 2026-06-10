@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys as _sys
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -14,9 +13,15 @@ from app.services.metrics import track_embedding_fallback
 
 logger = logging.getLogger("app.services.document_embedding_pipeline")
 
-
-def _facade():
-    return _sys.modules["app.services.document_service"]
+# This module used to look up its sibling helpers through a
+# ``_facade()`` helper that reached into
+# ``sys.modules["app.services.document_service"]`` at call
+# time. The indirection was needed because the sibling re-export
+# hub imported this module, so a top-level import would have
+# created a cycle. We now import the helpers directly (lines
+# 12) and there is no cycle: ``app.services.embeddings`` and
+# ``app.services.chunking`` are leaves that do not import
+# anything from this module or from ``document_service``.
 
 
 def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, bool]]:
@@ -35,7 +40,7 @@ def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, b
     if not texts:
         return []
     try:
-        embeddings = _facade().embed_many(texts)
+        embeddings = embed_many(texts)
     except EmbeddingProviderError as exc:
         logger.warning(
             "Embedding provider failed for %d chunk(s); storing without embedding: %s",
@@ -95,8 +100,8 @@ def prepare_document_chunks(
             )
 
     embedding_payloads = (
-        _facade().embed_many_with_metadata([embedding_text for _, _, embedding_text, _, _ in chunk_payloads])
-        if chunk_payloads and _facade().should_create_embeddings()
+        embed_many_with_metadata([embedding_text for _, _, embedding_text, _, _ in chunk_payloads])
+        if chunk_payloads and should_create_embeddings()
         else [(None, None, False)] * len(chunk_payloads)
     )
     if len(embedding_payloads) != len(chunk_payloads):
