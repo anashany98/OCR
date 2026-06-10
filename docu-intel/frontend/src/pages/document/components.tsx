@@ -351,7 +351,11 @@ export function BlocksTable({
         </thead>
         <tbody>
           {blocks.slice(0, 30).map((b) => (
-            <tr key={b.id} className="border-b last:border-0 hover:bg-slate-50">
+            <tr
+              key={b.id}
+              data-block-id={b.id}
+              className="border-b last:border-0 hover:bg-slate-50 transition-colors"
+            >
               <td className="px-3 py-1.5 text-xs">{b.page_number ?? "—"}</td>
               <td className="px-3 py-1.5 text-xs capitalize">{b.block_type}</td>
               <td className="max-w-[240px] truncate px-3 py-1.5 text-xs">{b.text ?? "—"}</td>

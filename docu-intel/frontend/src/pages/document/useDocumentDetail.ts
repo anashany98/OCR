@@ -79,6 +79,28 @@ export function useDocumentDetail(documentId: number) {
   const queryClient = useQueryClient()
   const valid = Number.isFinite(documentId)
 
+  // R4 — Scroll to cited block when navigating from AI chat sources.
+  // The URL hash is #page=N&block=M (set by the chat source link).
+  useEffect(() => {
+    const hash = window.location.hash
+    if (!hash) return
+    const params = new URLSearchParams(hash.slice(1))
+    const blockId = params.get("block")
+    if (!blockId) return
+    // Wait for the blocks table to render, then scroll to the cited block.
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-block-id="${blockId}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" })
+        el.classList.add("ring-2", "ring-amber-400", "bg-amber-50")
+        setTimeout(() => {
+          el.classList.remove("ring-2", "ring-amber-400", "bg-amber-50")
+        }, 3000)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [])
+
   // Local UI state
   const [selectedPageNumber, setSelectedPageNumber] = useState<number | null>(null)
   const [textQuery, setTextQuery] = useState("")

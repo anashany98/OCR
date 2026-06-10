@@ -201,9 +201,11 @@ export function SourceChip({ source }: { source: NonNullable<AIAnswer["sources"]
       </span>
     )
   }
+  const pageHash = source.page_number != null ? `#page=${source.page_number}` : ""
+  const blockHash = source.block_id != null ? `&block=${source.block_id}` : ""
   return (
     <Link
-      to={`/documents/${source.document_id}`}
+      to={`/documents/${source.document_id}${pageHash}${blockHash}`}
       className="inline-flex max-w-[260px] items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
       title={source.excerpt ?? ""}
     >
