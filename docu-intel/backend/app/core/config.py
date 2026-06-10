@@ -46,6 +46,7 @@ class Settings(BaseSettings):
             ".eml",
             ".doc",
             ".docx",
+            ".dxf",
         ]
     )
     file_storage_strategy: Literal["copy", "hardlink", "auto"] = "auto"

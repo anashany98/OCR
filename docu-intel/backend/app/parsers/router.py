@@ -5,6 +5,7 @@ from pathlib import Path
 from app.ocr.base import BaseOCREngine
 from app.parsers.doc import parse_doc
 from app.parsers.docx import parse_docx
+from app.parsers.dxf import parse_dxf
 from app.parsers.excel import parse_excel
 from app.parsers.image import parse_image
 from app.parsers.msg import parse_msg
@@ -16,6 +17,7 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 EXCEL_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
 TEXT_EXTENSIONS = {".txt", ".csv", ".tsv", ".log", ".eml"}
 MSG_EXTENSIONS = {".msg"}
+DXF_EXTENSIONS = {".dxf"}
 
 
 def parse_document(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
@@ -32,6 +34,8 @@ def parse_document(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> E
         return parse_doc(path)
     if extension in MSG_EXTENSIONS:
         return parse_msg(path)
+    if extension in DXF_EXTENSIONS:
+        return parse_dxf(path, output_dir)
     if extension in TEXT_EXTENSIONS:
         return parse_plain_text(path)
     return parse_plain_text(path)
