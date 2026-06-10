@@ -15,6 +15,10 @@ import httpx
 
 from app.core.config import settings
 from app.services.cache import cache_service
+from app.services.circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerOpen,
+)
 from app.services.metrics import track_embedding_fallback, track_embedding_latency, track_cache_hit, track_cache_miss
 
 if TYPE_CHECKING:
@@ -31,6 +35,45 @@ class EmbeddingProviderError(RuntimeError):
     pass
 
 
+# ---------------------------------------------------------------------------
+# Circuit breaker for the remote embedding endpoint.
+#
+# Why a module-level singleton:
+# - Multiple workers and FastAPI threads call ``OpenAICompatibleEmbeddingClient``
+#   concurrently. Sharing one breaker gives the whole process a unified view
+#   of "the embedding service is down", instead of every thread tripping
+#   independently after its own 5 failures.
+# - The thresholds come from the existing ``ai_circuit_breaker_*`` settings
+#   so the AI and embedding breakers trip at the same rate. The ``name``
+#   is a Prometheus label so the metrics UI can distinguish them.
+# - The breaker is created lazily on first use to avoid importing it at
+#   module-import time (settings are still warming up at that point).
+# ---------------------------------------------------------------------------
+_embedding_breaker: CircuitBreaker | None = None
+_embedding_breaker_lock = threading.Lock()
+
+
+def _get_embedding_breaker() -> CircuitBreaker:
+    global _embedding_breaker
+    if _embedding_breaker is not None:
+        return _embedding_breaker
+    with _embedding_breaker_lock:
+        if _embedding_breaker is None:
+            _embedding_breaker = CircuitBreaker(
+                fail_max=int(getattr(settings, "ai_circuit_breaker_failures", 3)),
+                reset_timeout=float(getattr(settings, "ai_circuit_breaker_reset_seconds", 30.0)),
+                name="embeddings",
+            )
+    return _embedding_breaker
+
+
+def reset_embedding_breaker() -> None:
+    """Test/admin helper: force the embedding breaker back to CLOSED."""
+    global _embedding_breaker
+    if _embedding_breaker is not None:
+        _embedding_breaker.reset()
+
+
 @dataclass
 class OpenAICompatibleEmbeddingClient:
     base_url: str
@@ -39,6 +82,41 @@ class OpenAICompatibleEmbeddingClient:
     dimensions: int = EMBEDDING_DIMENSIONS
     timeout_seconds: float = 30.0
     transport: httpx.BaseTransport | None = None
+    breaker: CircuitBreaker | None = None  # injectable for tests
+
+    def _do_request(self, client: httpx.Client, headers: dict, payload: dict) -> dict:
+        try:
+            response = client.post(
+                _embedding_endpoint(self.base_url),
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            # Convert transport/HTTP errors into EmbeddingProviderError so
+            # the circuit breaker can count them as failures. Without this
+            # wrap, ``httpx.HTTPStatusError`` (4xx/5xx) would propagate
+            # through the breaker and the breaker would not see it as a
+            # failure (it only counts ``RuntimeError``-like signals by
+            # accident — better to be explicit).
+            raise EmbeddingProviderError(
+                f"Embedding endpoint request failed: {exc}"
+            ) from exc
+        return response.json()
+
+    def _parse_payload(self, payload: dict, texts: list[str]) -> list[list[float]]:
+        data = payload.get("data")
+        if not isinstance(data, list):
+            raise EmbeddingProviderError("Embedding response does not contain a data list")
+        indexed_items = sorted(enumerate(data), key=lambda item: item[1].get("index", item[0]))
+        vectors = [
+            coerce_embedding_dimensions(item.get("embedding"), self.dimensions)
+            for _, item in indexed_items
+            if isinstance(item, dict)
+        ]
+        if len(vectors) != len(texts):
+            raise EmbeddingProviderError("Embedding response length does not match requested texts")
+        return vectors
 
     def embed_many(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -46,60 +124,52 @@ class OpenAICompatibleEmbeddingClient:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        payload = {"model": self.model, "input": texts}
+        breaker = self.breaker or _get_embedding_breaker()
 
-        with httpx.Client(timeout=self.timeout_seconds, transport=self.transport) as client:
-            response = client.post(
-                _embedding_endpoint(self.base_url),
-                headers=headers,
-                json={"model": self.model, "input": texts},
+        def _call() -> dict:
+            with httpx.Client(timeout=self.timeout_seconds, transport=self.transport) as client:
+                return self._do_request(client, headers, payload)
+
+        try:
+            response_payload = breaker.call(_call)
+        except CircuitBreakerOpen:
+            # Service is known-down; surface as a provider error so the
+            # caller's existing fallback-to-hash path handles it.
+            raise EmbeddingProviderError(
+                f"Embedding circuit '{breaker.name}' is OPEN"
             )
-            response.raise_for_status()
-
-        payload = response.json()
-        data = payload.get("data")
-        if not isinstance(data, list):
-            raise EmbeddingProviderError("Embedding response does not contain a data list")
-
-        indexed_items = sorted(enumerate(data), key=lambda item: item[1].get("index", item[0]))
-        vectors = [
-            coerce_embedding_dimensions(item.get("embedding"), self.dimensions)
-            for _, item in indexed_items
-            if isinstance(item, dict)
-        ]
-        if len(vectors) != len(texts):
-            raise EmbeddingProviderError("Embedding response length does not match requested texts")
-        return vectors
+        return self._parse_payload(response_payload, texts)
 
     async def embed_many_async(self, texts: list[str]) -> list[list[float]]:
-        """Async version of embed_many for better performance in async contexts."""
+        """Async version of embed_many for better performance in async contexts.
+
+        The circuit breaker is shared with the sync path. We re-use the
+        sync ``_do_request`` by offloading it to a worker thread, which
+        keeps the event loop free for the rest of the request handler.
+        """
         if not texts:
             return []
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        payload = {"model": self.model, "input": texts}
+        breaker = self.breaker or _get_embedding_breaker()
 
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(
-                _embedding_endpoint(self.base_url),
-                headers=headers,
-                json={"model": self.model, "input": texts},
+        def _call() -> dict:
+            with httpx.Client(timeout=self.timeout_seconds, transport=self.transport) as client:
+                return self._do_request(client, headers, payload)
+
+        try:
+            # Offload to a worker thread: the breaker is fast (microseconds)
+            # but the HTTP call is the slow part, so doing both in the
+            # worker thread keeps the event loop responsive.
+            response_payload = await asyncio.to_thread(breaker.call, _call)
+        except CircuitBreakerOpen:
+            raise EmbeddingProviderError(
+                f"Embedding circuit '{breaker.name}' is OPEN"
             )
-            response.raise_for_status()
-
-        payload = response.json()
-        data = payload.get("data")
-        if not isinstance(data, list):
-            raise EmbeddingProviderError("Embedding response does not contain a data list")
-
-        indexed_items = sorted(enumerate(data), key=lambda item: item[1].get("index", item[0]))
-        vectors = [
-            coerce_embedding_dimensions(item.get("embedding"), self.dimensions)
-            for _, item in indexed_items
-            if isinstance(item, dict)
-        ]
-        if len(vectors) != len(texts):
-            raise EmbeddingProviderError("Embedding response length does not match requested texts")
-        return vectors
+        return self._parse_payload(response_payload, texts)
 
 
 def _embedding_cache_key(text: str, dimensions: int, *, role: str = "passage") -> str:
@@ -627,3 +697,30 @@ def _embedding_endpoint(base_url: str) -> str:
 def _configured_dimensions() -> int:
     dimensions = int(settings.embedding_dimensions or EMBEDDING_DIMENSIONS)
     return max(1, dimensions)
+
+
+def chunks_needing_model_migration(db) -> int:
+    """Count how many chunks have an ``embedding_model_version``
+    that differs from the current ``settings.embedding_model``.
+
+    This is the cheap check the periodic re-embed sweep runs
+    every tick to decide whether to kick off a migration batch.
+    The actual migration is done by
+    :func:`app.services.document_embedding_pipeline.reembed_document`.
+    """
+    from app.models import DocumentChunk
+
+    current = settings.embedding_model
+    if not current:
+        return 0
+    from sqlalchemy import func, select
+
+    count = db.scalar(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(
+            DocumentChunk.embedding_model_version.is_not(None),
+            DocumentChunk.embedding_model_version != current,
+        )
+    )
+    return int(count or 0)

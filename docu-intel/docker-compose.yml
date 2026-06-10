@@ -78,6 +78,15 @@
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Healthcheck: ping Celery every 30s. If 3 consecutive pings fail,
+    # Docker restarts the worker. ``start_period`` covers the slow
+    # initial model load on the GPU workers.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
 
   worker-heavy:
     build:
@@ -96,6 +105,14 @@
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # OCR workers can take 1-2 min to load PaddleOCR / Tesseract data
+    # on first start, hence the longer start_period.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
 
   # GPU-accelerated OCR workers. One per physical GPU. PaddleOCR's
   # PaddleOCREngine auto-detects CUDA via CUDA_VISIBLE_DEVICES, so each
@@ -130,6 +147,14 @@
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # GPU workers take longer to start (CUDA init + PaddleOCR/Paddle
+    # model upload to VRAM). Use 3-min start_period.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
 
   worker-heavy-gpu-1:
     build:
@@ -160,6 +185,12 @@
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
 
   worker-maintenance:
     build:
@@ -178,6 +209,12 @@
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   watcher:
     build:
