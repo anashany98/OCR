@@ -139,6 +139,53 @@ export function CanvasToolbar({
   )
 }
 
+// ---------------------------------------------------------------------------
+// P1 — Zoom controls overlay
+// ---------------------------------------------------------------------------
+export function ZoomControls({
+  zoomPercent,
+  onZoomIn,
+  onZoomOut,
+  onReset,
+}: {
+  zoomPercent: number
+  onZoomIn: () => void
+  onZoomOut: () => void
+  onReset: () => void
+}) {
+  return (
+    <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-surface)]/90 px-1.5 py-1 shadow-sm backdrop-blur-sm">
+      <button
+        type="button"
+        onClick={onZoomOut}
+        className="flex h-6 w-6 items-center justify-center rounded text-[14px] font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-surface-2)]"
+        title="Alejar (-)"
+      >
+        −
+      </button>
+      <span className="min-w-[3ch] text-center text-[11px] font-medium text-[var(--text-muted)]">
+        {zoomPercent}%
+      </span>
+      <button
+        type="button"
+        onClick={onZoomIn}
+        className="flex h-6 w-6 items-center justify-center rounded text-[14px] font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-surface-2)]"
+        title="Acercar (+)"
+      >
+        +
+      </button>
+      <button
+        type="button"
+        onClick={onReset}
+        className="ml-1 flex h-6 items-center rounded px-1.5 text-[10px] text-[var(--text-muted)] hover:bg-[var(--bg-surface-2)]"
+        title="Restablecer zoom (0)"
+      >
+        Reset
+      </button>
+    </div>
+  )
+}
+
 const fmt = (n: number | null | undefined, digits = 1) =>
   n == null || !isFinite(n) ? "—" : n.toFixed(digits)
 
@@ -160,6 +207,9 @@ export function PlanCanvas({
   onCanvasDoubleClick,
   svgRef,
   symbolOverlay,
+  zoom = 1,
+  panX = 0,
+  panY = 0,
 }: {
   documentId: number
   page: number
@@ -174,22 +224,23 @@ export function PlanCanvas({
   onCanvasClick: (e: React.MouseEvent<SVGSVGElement>) => void
   onCanvasDoubleClick: (e: React.MouseEvent<SVGSVGElement>) => void
   svgRef: React.RefObject<SVGSVGElement>
-  /** P2 — YOLO symbol overlay, rendered behind the in-progress
-   * drawings so the user's current room/dimension/scale work is
-   * never hidden by a detection. Pass ``null`` to disable. */
   symbolOverlay?: React.ReactNode
+  zoom?: number
+  panX?: number
+  panY?: number
 }) {
   return (
-    <div className="relative min-h-0 flex-1 overflow-auto bg-[#1a1a1a] p-4">
+    <div className="relative min-h-0 flex-1 overflow-hidden bg-[#1a1a1a] p-4">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${SVG_W} ${SVG_H}`}
         preserveAspectRatio="xMidYMid meet"
         className="h-full w-full"
-        style={{ cursor: tool === "select" ? "default" : "crosshair" }}
+        style={{ cursor: tool === "select" ? "grab" : "crosshair" }}
         onClick={onCanvasClick}
         onDoubleClick={onCanvasDoubleClick}
       >
+        <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
         {/* Page image as a background layer */}
         <image
           href={pageImageUrl(documentId, page)}
@@ -305,6 +356,7 @@ export function PlanCanvas({
             strokeDasharray="4 2"
           />
         )}
+        </g>
       </svg>
 
       <CanvasHint tool={tool} polygonInProgress={polygonInProgress} draftDim={draftDim} />
