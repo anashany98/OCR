@@ -11,7 +11,7 @@ fixture.
 from __future__ import annotations
 
 from app.parsers.pdf import _DPI_LADDER, _DPI_MIN_CONFIDENCE, _DPI_MIN_TEXT_LENGTH, _ocr_is_usable
-from app.services.metrics import track_ocr_dpi_escalation, _ocr_dpi_escalations
+from app.services.metrics import _registry, track_ocr_dpi_escalation
 
 
 # ---------------------------------------------------------------------------
@@ -69,16 +69,29 @@ def test_ocr_is_usable_false_when_zero_confidence():
 # ---------------------------------------------------------------------------
 
 
+def _dpi_count(from_dpi: str, to_dpi: str) -> float:
+    """Read the current value of the (from, to) cell of the
+    prometheus_client Counter. Returns 0.0 if the label set has
+    not been initialised yet (i.e. the transition was never
+    recorded)."""
+    child = _registry.OCR_DPI_ESCALATION._metrics.get((from_dpi, to_dpi))
+    return child._value.get() if child is not None else 0.0
+
+
 def test_track_ocr_dpi_escalation_records_transition():
-    _ocr_dpi_escalations.clear()
+    # prometheus_client Counters are monotonic across the test
+    # session. We capture the baseline once and assert the
+    # increment matches the number of calls.
+    baseline_300_400 = _dpi_count("300", "400")
+    baseline_400_600 = _dpi_count("400", "600")
     track_ocr_dpi_escalation(from_dpi=300, to_dpi=400)
     track_ocr_dpi_escalation(from_dpi=300, to_dpi=400)
     track_ocr_dpi_escalation(from_dpi=400, to_dpi=600)
-    assert _ocr_dpi_escalations.get(("300", "400")) == 2
-    assert _ocr_dpi_escalations.get(("400", "600")) == 1
+    assert _dpi_count("300", "400") - baseline_300_400 == 2
+    assert _dpi_count("400", "600") - baseline_400_600 == 1
 
 
 def test_track_ocr_dpi_escalation_does_not_raise_on_zero():
-    _ocr_dpi_escalations.clear()
+    baseline = _dpi_count("0", "300")
     track_ocr_dpi_escalation(from_dpi=0, to_dpi=300)
-    assert _ocr_dpi_escalations.get(("0", "300")) == 1
+    assert _dpi_count("0", "300") - baseline == 1

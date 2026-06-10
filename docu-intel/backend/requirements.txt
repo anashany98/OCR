@@ -38,6 +38,10 @@ psycopg[binary]==3.2.3
 # pretrained YOLOv8n model (COCO classes) as a safe zero-config baseline;
 # operators can swap in a domain-specific model via PLAN_SYMBOLS_MODEL_PATH.
 ultralytics>=8.0.0
+# Prometheus client library. The /metrics endpoint uses
+# ``generate_latest()`` from this package to format the OpenMetrics
+# payload the operator's scrape jobs expect.
+prometheus_client>=0.20.0
 pydantic==2.10.5
 pydantic-settings==2.6.1
 pymupdf==1.24.13

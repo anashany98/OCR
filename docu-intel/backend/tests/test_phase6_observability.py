@@ -56,6 +56,45 @@ def _seed_document(db, filename="scan.pdf", status="pending", quality="pending")
     return doc
 
 
+def _search_total_count() -> float:
+    """Sum of all ``docuintel_search_duration_seconds_count``
+    observations across every label set.
+
+    ``prometheus_client`` exposes the count of observations
+    through the public ``REGISTRY.get_sample_value`` API; we use
+    that instead of poking at private histogram internals.
+    """
+    from prometheus_client import REGISTRY
+
+    total = 0.0
+    for labels in _search_seen_labels():
+        value = REGISTRY.get_sample_value(
+            "docuintel_search_duration_seconds_count", labels
+        )
+        if value is not None:
+            total += value
+    return total
+
+
+def _search_seen_labels() -> list[dict[str, str]]:
+    """Read the per-label-set that the search histogram has
+    recorded so far. We iterate the child objects because the
+    public API does not list "every label set that exists" — it
+    only takes a specific label set as input.
+    """
+    from app.services.metrics import _registry
+
+    seen: list[dict[str, str]] = []
+    for child_key in _registry.SEARCH_DURATION._metrics.keys():
+        # ``child_key`` is a tuple like ``("unknown",)``. The
+        # public ``get_sample_value`` API takes a dict whose
+        # keys match the label names.
+        if not child_key:
+            continue
+        seen.append({"strategy": child_key[0]})
+    return seen
+
+
 def test_search_metrics_increment_on_search_text():
     from app.services.search_service import search_text
     sessions = _test_client()[1]
@@ -63,9 +102,9 @@ def test_search_metrics_increment_on_search_text():
         doc = _seed_document(db, "one.txt", status="processed", quality="processed_ok")
         db.add(DocumentPage(document_id=doc.id, page_number=1, text="referencia ABC123 pedido confirmado"))
         db.commit()
-        before = get_metrics().get("search_latency_count", 0)
+        before = _search_total_count()
         search_text(db, "ABC123", limit=5)
-        after = get_metrics().get("search_latency_count", 0)
+        after = _search_total_count()
     assert after > before
 
 
@@ -73,10 +112,10 @@ def test_search_metrics_increment_on_empty_query():
     from app.services.search_service import search_text, search_semantic
     sessions = _test_client()[1]
     with sessions() as db:
-        before = get_metrics().get("search_latency_count", 0)
+        before = _search_total_count()
         search_text(db, "", limit=5)
         search_semantic(db, "", limit=5)
-        after = get_metrics().get("search_latency_count", 0)
+        after = _search_total_count()
     assert after >= before + 2
 
 
@@ -115,16 +154,28 @@ def test_readiness_includes_required_keys():
 
 
 def test_metrics_endpoint_exposes_counters():
+    """Verify the prometheus_client exposition format includes the
+    full set of metrics we expect. The metric names have changed
+    slightly from the hand-written format (e.g.
+    ``docuintel_ocr_duration_seconds`` is now a ``Histogram`` so
+    the ``_total`` suffix is added by the library, and
+    ``search`` is recorded as a labelled histogram rather than a
+    pair of sum/count counters)."""
     client, sessions = _test_client()
     with sessions() as db:
         _seed_admin(db)
     resp = client.get("/metrics")
     assert resp.status_code == 200
     body = resp.text
-    for name in ["docuintel_ocr_duration_seconds_total", "docuintel_search_requests_total",
-                 "docuintel_cache_hits_total", "docuintel_documents_processed_total",
-                 "docuintel_documents_failed_total", "docuintel_embedding_fallback_total",
-                 "docuintel_watcher_errors_total"]:
+    for name in [
+        "docuintel_ocr_duration_seconds",  # Histogram (no _total)
+        "docuintel_search_duration_seconds",
+        "docuintel_cache_hits_total",
+        "docuintel_documents_processed_total",
+        "docuintel_documents_failed_total",
+        "docuintel_embedding_fallbacks_total",
+        "docuintel_watcher_errors_total",
+    ]:
         assert name in body, f"missing {name} in /metrics"
 
 
@@ -146,6 +197,9 @@ def test_performance_middleware_adds_response_time_header():
 
 
 def test_search_semantic_metrics_on_cache_hit(monkeypatch):
+    """Cache hit on the semantic path: the metric must still
+    record the call (otherwise cache hits would silently
+    disappear from the latency histogram)."""
     from app.services.search_service import search_semantic
     from app.services.cache import cache_service
     sessions = _test_client()[1]
@@ -156,7 +210,7 @@ def test_search_semantic_metrics_on_cache_hit(monkeypatch):
     with sessions() as db:
         _seed_document(db, "x.pdf", status="processed", quality="processed_ok")
         db.commit()
-        before = get_metrics().get("search_latency_count", 0)
+        before = _search_total_count()
         search_semantic(db, "test", limit=5)
-        after = get_metrics().get("search_latency_count", 0)
+        after = _search_total_count()
     assert after > before
