@@ -1,0 +1,19 @@
+{
+  "samples": [
+    {
+      "id": "escritorio_vistamar",
+      "source_filename": "ESCRITORIO VISTAMAR.pdf",
+      "document_type": "plano",
+      "page_count": 1,
+      "sha256": "c33889c3859ede804051a62491c7e2999a3a714bf8f5981536a6b5dac64e4c1e",
+      "keywords": [
+        "10/12/2025",
+        "88,75",
+        "104,40",
+        "193,15",
+        "40,56",
+        "233,71"
+      ]
+    }
+  ]
+}

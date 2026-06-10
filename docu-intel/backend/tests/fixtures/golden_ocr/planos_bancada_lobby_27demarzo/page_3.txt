@@ -1,0 +1,39 @@
+ROC LINDA
+Titulo:
+Bancada Lobby - Bancada esquina
+Dibujó:
+Julia Therisod
+Fecha:
+27/02/2026
+1000
+90
+450
+540
+60
+665
+590
+460
+50
+100
+150
+160
+A
+A
+A-A (1:15)
+70
+120
+50
+410
+B
+B
+B-B (1:15)
+1000
+140
+70
+Estructura para
+colocar HPL
+160
+400
+515
+2 Modulos Derecha - 2 Modulos izquierda
+300

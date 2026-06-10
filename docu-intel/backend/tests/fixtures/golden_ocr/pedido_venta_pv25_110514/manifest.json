@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "id": "pedido_venta_pv25_110514",
+      "source_filename": "Pedido venta PV25-110514.pdf",
+      "document_type": "pedido",
+      "page_count": 1,
+      "sha256": "8d0b91d566cc4aec405cd025d985688f1b3d459ae4a75657691e0da308b398d1",
+      "keywords": [
+        "B57976979",
+        "2.046",
+        "6,863",
+        "14.041,70",
+        "161230.50",
+        "1.900",
+        "23,57",
+        "38.513,38"
+      ]
+    }
+  ]
+}

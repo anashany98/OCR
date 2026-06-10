@@ -141,6 +141,30 @@ class DocumentChunk(Base):
     embedding_fallback: Mapped[bool] = mapped_column(default=False, nullable=False)
     needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     token_count: Mapped[int | None] = mapped_column(Integer)
+    # E1 — distinguishes prose chunks from table chunks and
+    # headings. The default is ``"text"`` so chunks produced by
+    # the old chunker (or by deployments that have not migrated)
+    # keep behaving as plain text. Indexed so the retriever can
+    # filter ``block_type="table"`` cheaply (planned for E3).
+    chunk_type: Mapped[str] = mapped_column(String(20), default="text", nullable=False, index=True)
+    # E2 — PostgreSQL ``tsvector`` column generated from
+    # ``chunk_text`` via ``to_tsvector('simple', ...)``. We do
+    # not declare the generation expression at the ORM level
+    # (the migration 0021 owns it) so the SQLAlchemy model is
+    # portable to engines other than Postgres. The column is
+    # ``nullable=True`` because the generated expression can
+    # legally be NULL when ``chunk_text`` is NULL, and a stale
+    # row inserted before the column existed would otherwise fail
+    # the NOT NULL check on a SELECT.
+    tsv: Mapped[Any | None] = mapped_column(Text(), nullable=True)
+    # E4 — versioned embedding model. When the operator changes
+    # ``EMBEDDING_MODEL`` (e.g. ``bge-m3`` → ``bge-m3-v2``),
+    # every chunk whose ``embedding_model_version`` differs from
+    # the current setting is a candidate for re-embedding. The
+    # periodic re-embed sweep reads this column alongside
+    # ``needs_reembedding`` so the admin can see "N chunks need
+    # re-embedding because the model changed" in the dashboard.
+    embedding_model_version: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     document = relationship("Document", back_populates="chunks")

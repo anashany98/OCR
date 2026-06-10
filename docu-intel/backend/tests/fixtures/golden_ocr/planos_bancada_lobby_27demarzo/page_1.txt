@@ -1,0 +1,39 @@
+ROC LINDA
+Titulo:
+Bancada Lobby - Medidas Generales
+Dibujó:
+Julia Therisod
+Fecha:
+27/02/2026
+1667.5
+1667.5
+1667.5
+1667.5
+1017
+1017
+1017.5
+1017.5
+410
+120
+60
+590
+60
+120
+665
+485
+1000
+460
+50
+100
+150
+160
+540
+450
+90
+410
+50
+50
+120
+Modulo "Recto" x4
+Modulo esquina x4
+(2 derecha- 2 izquierda)

@@ -318,3 +318,68 @@ def clear_cache(user: User = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=403, detail="Only admins can clear the cache")
     deleted = invalidate_all_ai_cache()
     return {"message": f"Cache cleared", "entries_deleted": deleted}
+
+
+# ---------------------------------------------------------------------------
+# R3 — feedback loop
+# ---------------------------------------------------------------------------
+
+
+from pydantic import BaseModel, Field  # noqa: E402  (placed near the feedback route)
+
+
+class FeedbackRequest(BaseModel):
+    vote: int = Field(..., ge=-1, le=1, description="+1 for thumbs up, -1 for thumbs down")
+    reason: str | None = Field(default=None, max_length=40)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class FeedbackResponse(BaseModel):
+    accepted: bool
+    reason: str
+    new_chunk_weight: float | None = None
+
+
+@router.post(
+    "/answers/{answer_id}/feedback",
+    response_model=FeedbackResponse,
+)
+def post_feedback(
+    answer_id: int,
+    payload: FeedbackRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> FeedbackResponse:
+    """R3 — record a 👍/👎 vote on an answer and (when the
+    min-votes gate is met) adjust the weights on the cited
+    chunks. See :mod:`app.services.feedback_loop` for the
+    loop semantics.
+    """
+    from app.services.feedback_loop import record_feedback
+
+    outcome = record_feedback(
+        db,
+        answer_id=answer_id,
+        user_id=user.id,
+        vote=payload.vote,
+        reason=payload.reason,
+        comment=payload.comment,
+    )
+    if not outcome.accepted:
+        # Map the soft reasons to HTTP status codes so the UI
+        # can react (e.g. show "ya has votado esto" vs "respuesta
+        # no encontrada").
+        status_map = {
+            "answer_not_found": 404,
+            "invalid_vote": 422,
+            "duplicate": 409,
+        }
+        raise HTTPException(
+            status_code=status_map.get(outcome.reason, 400),
+            detail=outcome.reason,
+        )
+    return FeedbackResponse(
+        accepted=True,
+        reason=outcome.reason,
+        new_chunk_weight=outcome.new_chunk_weight,
+    )

@@ -33,6 +33,7 @@ class AIAnswer(Base):
 
     question = relationship("AIQuestion", back_populates="answers")
     sources = relationship("AIAnswerSource", back_populates="answer", cascade="all, delete-orphan")
+    feedbacks = relationship("AIAnswerFeedback", back_populates="answer", cascade="all, delete-orphan")
 
 
 class AIAnswerSource(Base):
@@ -45,6 +46,49 @@ class AIAnswerSource(Base):
     block_id: Mapped[int | None] = mapped_column(ForeignKey("document_blocks.id", ondelete="SET NULL"))
     relevance_score: Mapped[float | None] = mapped_column(Float)
     excerpt: Mapped[str | None] = mapped_column(Text)
+    # R3 — feedback-derived multiplier. Defaults to 1.0; bumped
+    # up by positive feedback and down by negative feedback via
+    # :func:`app.services.feedback_loop.apply_chunk_weights`.
+    # The field is read at retrieval time and applied as a
+    # multiplier on the source's relevance score so the retriever
+    # ranks community-endorsed chunks higher.
+    weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=False, index=True)
 
     answer = relationship("AIAnswer", back_populates="sources")
+
+
+class AIAnswerFeedback(Base):
+    """R3 — single 👍/👎 vote on an answer, optionally tagged
+    with a reason + a free-form comment.
+
+    Multiple votes per user on the same answer are allowed (the
+    user can change their mind); the loop keeps only the most
+    recent vote per ``(answer_id, user_id)`` pair when applying
+    the weight adjustment. Anonymous feedback (no user) is
+    rejected by the API layer — every vote must be tied to a
+    real user so we can audit the loop and roll back spam.
+    """
+
+    __tablename__ = "ai_answer_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    answer_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_answers.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    # +1 (positive) or -1 (negative). Encoded as a small int
+    # so we can keep the column indexed cheaply.
+    vote: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Optional reason: ``"alucinacion"``, ``"fuente_incorrecta"``,
+    # ``"irrelevante"``, ``"otro"``. Free-form ``Text`` so the
+    # operator can extend the set without a migration.
+    reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True
+    )
+
+    answer = relationship("AIAnswer", back_populates="feedbacks")
 

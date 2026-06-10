@@ -1,0 +1,19 @@
+{
+  "samples": [
+    {
+      "id": "dtm_004_escritorio_habitaciones_sin_minibar",
+      "source_filename": "DTM-004 ESCRITORIO HABITACIONES SIN MINIBAR.pdf",
+      "document_type": "plano",
+      "page_count": 1,
+      "sha256": "6fd53f84ecdba2912a7a8628365264f4426ef4d05c765943016f6c6723bab6bf",
+      "keywords": [
+        "1:10",
+        "170 M",
+        "500 M",
+        "03 M",
+        "25 M",
+        "15 M"
+      ]
+    }
+  ]
+}

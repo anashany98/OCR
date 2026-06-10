@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_query_text
@@ -240,17 +241,53 @@ def search_hybrid(db: Session, query: str, limit: int = 10, filters: dict | None
         if cached is not None:
             return [_dict_to_search_result(r) for r in cached]
 
+        from app.services.bm25 import search_bm25
+        from app.services.metrics import track_search_strategy_used
+
         text_results = search_text(db, query, limit=max(limit, 10), filters=filters)
         semantic_results = search_semantic(db, query, limit=max(limit, 10), filters=filters)
+        bm25_results: list[SearchResult] = []
+        if settings.search_use_bm25:
+            bm25_results = search_bm25(
+                db, query, limit=max(limit, 10), filters=filters
+            )
+        track_search_strategy_used("hybrid", "executed")
 
-        # Merge with a larger pool so the reranker has enough candidates to work with
+        # Merge with a larger pool so the reranker has enough
+        # candidates to work with. The RRF k constant comes from
+        # settings; the per-strategy bias is applied through the
+        # rank-only contribution (RRF does not use raw scores).
         rerank_pool_size = max(limit * 3, 15)
-        merged = merge_hybrid_results(text_results, semantic_results, limit=rerank_pool_size)
+        merged = merge_hybrid_results(
+            text_results,
+            semantic_results,
+            bm25_results=bm25_results,
+            limit=rerank_pool_size,
+            k=settings.search_rrf_k,
+        )
 
         # Apply cross-encoder reranker for better precision
         if len(merged) > limit:
             from app.services.reranker import rerank_sync
             merged = rerank_sync(query.strip(), merged, top_k=limit)
+
+        # E5 — MMR diversity pass. We pull a slightly larger
+        # pool (so MMR has actual candidates to swap), apply
+        # MMR, then trim back to ``limit``. The cross-encoder
+        # rerank above already ordered by relevance, so MMR
+        # sees a relevance-sorted input and the diversity
+        # re-ordering is bounded.
+        if settings.search_use_mmr and len(merged) > limit:
+            from app.services.mmr import mmr_rerank
+
+            pool_size = settings.search_mmr_pool_size or max(limit * 3, 15)
+            mmr_pool = merged[:pool_size]
+            mmr_outcome = mmr_rerank(
+                mmr_pool,
+                top_k=limit,
+                lambda_param=settings.search_mmr_lambda,
+            )
+            merged = mmr_outcome.results
 
         cache_service.set(cache_key, [_search_result_to_dict(r) for r in merged], SEARCH_CACHE_TTL)
 
@@ -262,21 +299,43 @@ def search_hybrid(db: Session, query: str, limit: int = 10, filters: dict | None
 def merge_hybrid_results(
     text_results: list[SearchResult],
     semantic_results: list[SearchResult],
+    *,
+    bm25_results: list[SearchResult] | None = None,
     limit: int = 10,
     k: int = 60,
 ) -> list[SearchResult]:
+    """Fuse ranked lists from the available retrieval strategies.
+
+    Each strategy contributes ``1.0 / (k + rank + 1)`` per hit to the
+    fused score. The RRF machinery is order-sensitive: a strategy
+    that returns the right doc at rank 0 has a strong vote, a
+    strategy that returns it at rank 7 has a much weaker one.
+
+    BM25 results are included when ``bm25_results`` is not None.
+    Backward compatibility: callers that omit ``bm25_results`` keep
+    the legacy 2-source fusion.
+    """
     scores: dict[tuple[int, int | None, int | None], float] = {}
     items: dict[tuple[int, int | None, int | None], SearchResult] = {}
 
-    for rank, item in enumerate(text_results):
+    for rank, item in enumerate(text_results or []):
         key = (item.document_id, item.page_number, item.block_id)
         scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
         items[key] = item
 
-    for rank, item in enumerate(semantic_results):
+    for rank, item in enumerate(semantic_results or []):
         key = (item.document_id, item.page_number, item.block_id)
         scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
         items.setdefault(key, item)
+
+    if bm25_results:
+        for rank, item in enumerate(bm25_results):
+            key = (item.document_id, item.page_number, item.block_id)
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+            # Prefer the BM25 result when both branches hit the
+            # same chunk because BM25 has the cleaner source_type
+            # label for the admin UI.
+            items[key] = item
 
     ranked_keys = sorted(scores, key=scores.get, reverse=True)[:limit]
     return [
@@ -298,27 +357,15 @@ def _excerpt(text: str, query: str, radius: int = 160) -> str:
 
 
 def _apply_document_filters(stmt, filters: dict | None):
-    if not filters:
-        return stmt
-    budget_scope_id = filters.get("budget_scope_id")
-    document_type = filters.get("document_type")
-    status = filters.get("status")
-    quality_status = filters.get("quality_status")
-    extension = filters.get("extension")
-    if budget_scope_id:
-        stmt = stmt.where(Document.budget_scope_id == int(budget_scope_id))
-    if document_type:
-        stmt = stmt.where(Document.document_type == document_type)
-    if status:
-        stmt = stmt.where(Document.status == status)
-    if quality_status:
-        stmt = stmt.where(Document.quality_status == quality_status)
-    if extension:
-        clean_extension = str(extension).lower()
-        if clean_extension and not clean_extension.startswith("."):
-            clean_extension = "." + clean_extension
-        stmt = stmt.where(Document.extension == clean_extension)
-    return stmt
+    """E3 — delegate to the shared filter module so the new
+    filters (date range, quality flags, exclude_statuses) apply
+    uniformly. Kept as a thin wrapper for backward compatibility
+    with callers that pass a raw ``select`` or already-built
+    statement.
+    """
+    from app.services.search_filters import apply_document_filters
+
+    return apply_document_filters(stmt, filters)
 
 
 def _coerce_embedding(value) -> list[float]:

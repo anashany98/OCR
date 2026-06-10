@@ -1,0 +1,12 @@
+{
+  "samples": [
+    {
+      "id": "hoja_de_confeccion",
+      "source_filename": "hoja de confeccion.pdf",
+      "document_type": "presupuesto",
+      "page_count": 1,
+      "sha256": "f5d3ae6e57f98d353d1070d53f9a4ea8bf4d910fdd099a6d135deac2048510c1",
+      "keywords": []
+    }
+  ]
+}

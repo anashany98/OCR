@@ -8,13 +8,19 @@ Strategy:
      model lazily on the first escalation, so easy documents never pay
      the init cost.
   4. The fallback result replaces the primary one only when its quality
-     score beats the current best result. The score combines confidence,
-     useful-character density and a saturated length factor.
+     score beats the current best result by a *significant* margin
+     (configurable, default delta 0.10) or it adds at least
+     ``ocr_cascading_skip_alnum_gain`` alphanumeric characters. This
+     keeps the cascade from spending GPU on a marginal improvement.
   5. **Optional Tier 3**: if ``pp_structure`` is wired in and both
      Tier 1 and Tier 2 produced weak results, escalate to PP-Structure
      (PaddleX layout_parsing). Tier 3 is GPU-only and only fires on
      the hardest cases so we don't pay the ~500 MB model download on
      every page. Tier 3 also wins by quality score, not raw text length.
+  6. **Optional Tier 4 (VLM OCR)**: if ``vlm_ocr`` is wired in and the
+     best Tier 1-3 result is still below ``tier4_quality_threshold``,
+     ask a vision LLM to transcribe the page. Only used as a last
+     resort; cost is 5-10s on a local vision model.
 
 The cascaded :attr:`name` is updated on every call to reflect which
 engine produced the winning result, so the admin UI can break down the
@@ -26,8 +32,16 @@ import logging
 import time
 from pathlib import Path
 
+from app.core.config import settings
 from app.ocr.base import BaseOCREngine, OCRResult
-from app.services.metrics import track_ocr_cascade_fallback, track_ocr_duration, track_ocr_tier_used
+from app.services.metrics import (
+    track_ocr_cascade_fallback,
+    track_ocr_duration,
+    track_ocr_language_threshold_used,
+    track_ocr_skip_tier2,
+    track_ocr_tier_used,
+)
+from app.services.ocr_language import LanguageThresholds, thresholds_for
 
 
 logger = logging.getLogger("app.ocr.cascading")
@@ -44,6 +58,69 @@ def _quality(result: OCRResult) -> float:
     confidence = max(0.0, min(1.0, confidence))
     length_factor = min(len(text) / 500.0, 1.0)
     return confidence * 0.5 + density * 0.3 + length_factor * 0.2
+
+
+def _alnum_count(text: str | None) -> int:
+    if not text:
+        return 0
+    return sum(1 for char in text if char.isalnum())
+
+
+def _should_replace_with_fallback(
+    primary: OCRResult,
+    fallback: OCRResult,
+) -> tuple[bool, str]:
+    """Decide whether the Tier 2 fallback should replace the primary.
+
+    Returns ``(True, "ok")`` when the cascade should swap, or
+    ``(False, "<reason>")`` when the primary should be kept. The reason
+    is a short label that is also exposed as a Prometheus counter so
+    the admin UI can break down *why* the cascade skipped Tier 2 on any
+    given page.
+
+    The decision is governed by two settings:
+
+    * ``ocr_cascading_skip_if_no_significant_gain`` (default True):
+      when False the function falls back to the legacy behaviour of
+      "any quality improvement wins" (a single ``QUALITY_EPSILON``
+      delta is enough).
+    * ``ocr_cascading_skip_quality_improvement`` (default 0.10): the
+      minimum delta on the combined quality score for the fallback to
+      be considered a "significant" win.
+    * ``ocr_cascading_skip_alnum_gain`` (default 30): the fallback can
+      also win when it adds at least this many alphanumeric characters,
+      even if the quality delta is small (covers the noisy-OCR case
+      where density is high but the actual letters are wrong).
+    """
+    primary_quality = _quality(primary)
+    fallback_quality = _quality(fallback)
+    quality_delta = fallback_quality - primary_quality
+
+    # Both results are basically noise: keep the primary so the user
+    # sees *some* text (even if it is wrong) instead of swapping it
+    # for equally-wrong Tier 2 output.
+    if fallback_quality <= QUALITY_EPSILON and primary_quality <= QUALITY_EPSILON:
+        return False, "both_weak"
+
+    if not settings.ocr_cascading_skip_if_no_significant_gain:
+        # Legacy behaviour: any positive delta wins.
+        if quality_delta > QUALITY_EPSILON:
+            return True, "ok"
+        return False, "no_improvement"
+
+    primary_alnum = _alnum_count(primary.text)
+    fallback_alnum = _alnum_count(fallback.text)
+    alnum_gain = fallback_alnum - primary_alnum
+
+    if quality_delta >= settings.ocr_cascading_skip_quality_improvement:
+        return True, "ok"
+    if alnum_gain >= settings.ocr_cascading_skip_alnum_gain:
+        return True, "alnum_gain"
+    if quality_delta <= 0.0:
+        return False, "no_improvement"
+    if quality_delta < settings.ocr_cascading_skip_quality_improvement:
+        return False, "no_significant_gain"
+    return False, "no_improvement"
 
 
 class CascadingOCREngine:
@@ -73,6 +150,14 @@ class CascadingOCREngine:
         self.min_chars = min_chars
         self.min_confidence = min_confidence
         self.tier4_quality_threshold = tier4_quality_threshold
+        # O2 — per-page language context. The parser sets this before
+        # each ``extract`` call; the cascade reads it to look up the
+        # per-language thresholds. ``None`` means "no detection, use
+        # the legacy document-wide constants". The cascade is *not*
+        # thread-safe w.r.t. this attribute; the workers that build
+        # a fresh cascade per process rely on the parser always
+        # setting it before calling.
+        self.current_language: str | None = None
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
         # value.
@@ -103,7 +188,8 @@ class CascadingOCREngine:
             return self._finalize(image_path, self.primary.name, primary_result)
         track_ocr_duration(time.perf_counter() - start)
 
-        if self._is_better(fallback_result, primary_result):
+        should_replace, reason = _should_replace_with_fallback(primary_result, fallback_result)
+        if should_replace:
             # Tier 2 won — try Tier 3 only if it's wired in AND Tier 2
             # is still weak (below thresholds). Otherwise return Tier 2.
             if self.pp_structure is not None and not self._is_acceptable(fallback_result):
@@ -111,6 +197,22 @@ class CascadingOCREngine:
                 if tier3 is not None:
                     return self._finalize(image_path, self.pp_structure.name if self.pp_structure else self._name, tier3)
             return self._finalize(image_path, self.fallback.name, fallback_result)
+
+        # S0.6 — record why the cascade kept the primary result instead
+        # of paying for the Tier 2 win. The Prometheus label lets the
+        # admin UI distinguish "fallback was barely better" (the common
+        # case) from "both engines failed" (the rare, harder case).
+        track_ocr_skip_tier2(reason)
+        logger.info(
+            "OCR skip Tier 2: image=%s primary_chars=%d fallback_chars=%d "
+            "primary_quality=%.3f fallback_quality=%.3f reason=%s",
+            image_path.name,
+            len((primary_result.text or "").strip()),
+            len((fallback_result.text or "").strip()),
+            _quality(primary_result),
+            _quality(fallback_result),
+            reason,
+        )
 
         # Tier 2 didn't beat Tier 1 — try Tier 3 if available.
         if self.pp_structure is not None:
@@ -178,12 +280,39 @@ class CascadingOCREngine:
 
     def _is_acceptable(self, result: OCRResult) -> bool:
         """A primary result is acceptable when it has enough text and
-        a confidence above the configured floor."""
-        if not result.text or len(result.text.strip()) < self.min_chars:
+        a confidence above the configured floor.
+
+        The thresholds come from :data:`settings.ocr_cascading_*`
+        unless O2 adaptive thresholds are enabled, in which case
+        they are looked up per detected language via
+        :func:`app.services.ocr_language.thresholds_for`. The
+        lookup result is exposed through the
+        ``track_ocr_language_threshold_used`` counter so the admin
+        UI can show which thresholds are actually firing.
+        """
+        thresholds = self._thresholds_for_current_page()
+        if not result.text or len(result.text.strip()) < thresholds.min_chars:
             return False
-        if result.confidence is not None and result.confidence < self.min_confidence:
+        if result.confidence is not None and result.confidence < thresholds.min_confidence:
             return False
         return True
+
+    def _thresholds_for_current_page(self) -> LanguageThresholds:
+        """Return the thresholds to use for the current page.
+
+        Falls back to the document-wide ``self.min_chars`` /
+        ``self.min_confidence`` when adaptive thresholds are
+        disabled or no language has been detected.
+        """
+        if not settings.ocr_cascading_use_adaptive_thresholds or not self.current_language:
+            return LanguageThresholds(
+                min_chars=self.min_chars,
+                min_confidence=self.min_confidence,
+            )
+        thresholds = thresholds_for(self.current_language)
+        track_ocr_language_threshold_used(self.current_language, "min_chars")
+        track_ocr_language_threshold_used(self.current_language, "min_confidence")
+        return thresholds
 
     def _is_better(self, candidate: OCRResult, baseline: OCRResult) -> bool:
         """Decide whether the fallback result should replace the primary.
@@ -205,4 +334,4 @@ class CascadingOCREngine:
         track_ocr_cascade_fallback(engine_name, reason)
 
 
-__all__ = ["CascadingOCREngine", "_quality"]
+__all__ = ["CascadingOCREngine", "_quality", "_should_replace_with_fallback"]

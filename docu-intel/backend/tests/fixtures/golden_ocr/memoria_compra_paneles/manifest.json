@@ -1,0 +1,19 @@
+{
+  "samples": [
+    {
+      "id": "memoria_compra_paneles",
+      "source_filename": "memoria compra paneles.pdf",
+      "document_type": "presupuesto",
+      "page_count": 1,
+      "sha256": "eb9aecdbbe0954a27a5afc7e5ba7dfbaf20350c8fcdcfa7f2c80071797703170",
+      "keywords": [
+        "2,65",
+        "2,68",
+        "2,65 m",
+        "2,68 m",
+        "60 m",
+        "50 m"
+      ]
+    }
+  ]
+}

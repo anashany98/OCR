@@ -1,0 +1,39 @@
+ROC LINDA
+Titulo:
+Bancada Lobby - Bancada Recta
+Dibujó:
+Julia Therisod
+Fecha:
+27/02/2026
+1667.5
+C
+C
+C-C (1:15)
+300
+50
+100
+150
+60
+160
+460
+1000
+1667.5
+1000
+145
+400
+385
+435
+50
+50
+100
+160
+70
+4 Unidades
+1000
+450
+90
+665
+1667.5
+60
+120
+485

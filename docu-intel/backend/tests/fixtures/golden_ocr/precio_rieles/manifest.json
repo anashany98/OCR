@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "id": "precio_rieles",
+      "source_filename": "precio rieles.pdf",
+      "document_type": "presupuesto",
+      "page_count": 1,
+      "sha256": "ecc7daf3a41e6f77459be29c691dc88ff8460dabc6f96c679ed9794e047133a4",
+      "keywords": [
+        "B57976979",
+        "4,00",
+        "14,220",
+        "2.844,000",
+        "200,00",
+        "2.15",
+        "8,090",
+        "3.236,000"
+      ]
+    }
+  ]
+}

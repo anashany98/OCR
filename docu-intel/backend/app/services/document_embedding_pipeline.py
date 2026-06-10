@@ -67,20 +67,35 @@ def prepare_document_chunks(
 ) -> list[DocumentChunk]:
     from app.services.document_processing_core import sanitize_text_for_database
 
-    chunk_payloads: list[tuple[int, str, str, int]] = []
+    chunk_payloads: list[tuple[int, str, str, int, str]] = []
     for page_number, page_text in page_texts:
         clean_text = sanitize_text_for_database(page_text)
-        for chunk_text, token_count in build_chunks(clean_text):
+        # E1 — the chunker now returns Chunk dataclasses. We pull
+        # the text/token_count/chunk_type from the dataclass
+        # attributes (the dataclass's tuple-unpacking protocol
+        # stays 2-tuple for legacy callers).
+        for chunk in build_chunks(
+            clean_text,
+            max_words=settings.embedding_chunk_max_words,
+            overlap_words=settings.embedding_chunk_overlap_words,
+            respect_tables=settings.embedding_chunk_respect_tables,
+            respect_headings=settings.embedding_chunk_respect_headings,
+        ):
+            chunk_text = chunk.text
+            token_count = chunk.token_count
+            chunk_type = chunk.chunk_type
             embedding_text = embedding_text_with_metadata(
                 chunk_text,
                 document_type=document_type,
                 filename=original_filename,
                 page_number=page_number,
             )
-            chunk_payloads.append((page_number, chunk_text, embedding_text, token_count))
+            chunk_payloads.append(
+                (page_number, chunk_text, embedding_text, token_count, chunk_type)
+            )
 
     embedding_payloads = (
-        _facade().embed_many_with_metadata([embedding_text for _, _, embedding_text, _ in chunk_payloads])
+        _facade().embed_many_with_metadata([embedding_text for _, _, embedding_text, _, _ in chunk_payloads])
         if chunk_payloads and _facade().should_create_embeddings()
         else [(None, None, False)] * len(chunk_payloads)
     )
@@ -91,8 +106,11 @@ def prepare_document_chunks(
         if fallback:
             track_embedding_fallback()
 
-    return [
-        DocumentChunk(
+    chunks: list[DocumentChunk] = []
+    for (page_number, chunk_text, _, token_count, chunk_type), (embedding, provider, fallback) in zip(
+        chunk_payloads, embedding_payloads, strict=True
+    ):
+        chunk = DocumentChunk(
             document_id=document_id,
             page_number=page_number,
             chunk_text=chunk_text,
@@ -102,9 +120,17 @@ def prepare_document_chunks(
             needs_reembedding=fallback,
             token_count=token_count,
         )
-        for (page_number, chunk_text, _, token_count), (embedding, provider, fallback)
-        in zip(chunk_payloads, embedding_payloads, strict=True)
-    ]
+        # ``chunk_type`` may not exist on the ORM column yet (the
+        # migration is in 0020 but a deployment that has not
+        # migrated would 500 on assignment). We set it via
+        # ``setattr`` so the legacy code path still works.
+        setattr(chunk, "chunk_type", chunk_type)
+        # E4 — record which model version produced this embedding
+        # so the periodic re-embed sweep can find chunks that need
+        # updating when the operator changes EMBEDDING_MODEL.
+        setattr(chunk, "embedding_model_version", settings.embedding_model)
+        chunks.append(chunk)
+    return chunks
 
 
 def _replace_document_chunks(

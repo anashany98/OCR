@@ -145,6 +145,32 @@ def _embedding_health() -> dict:
         return {"status": "warning", "enabled": True, "endpoint": endpoint, "detail": str(exc)}
 
 
+def _reranker_health() -> dict:
+    """S0.3 — probe the reranker model (BGE-reranker-v2-m3 or
+    the configured local model). Returns ``"ok"`` when the model
+    is loaded and responsive, ``"warning"`` when it is
+    configured but not reachable, ``"ok"`` with ``enabled=False``
+    when no reranker is configured.
+    """
+    if not settings.reranker_local_model and not (settings.embedding_base_url or settings.ai_base_url):
+        return {"status": "ok", "enabled": False, "detail": "No reranker configured"}
+    try:
+        from app.services.search_service import SearchResult
+        from app.services.reranker import rerank_sync
+
+        candidate = SearchResult(
+            document_id=0, original_filename="healthcheck", document_type="otro",
+            status="processed", page_number=1, block_id=None, score=0.5,
+            excerpt="healthcheck", ocr_confidence=None, source_type="text", source_path=None,
+        )
+        result = rerank_sync("test", [candidate], top_k=1)
+        if result:
+            return {"status": "ok", "enabled": True, "model": settings.reranker_local_model}
+        return {"status": "warning", "enabled": True, "detail": "Reranker returned empty result"}
+    except Exception as exc:
+        return {"status": "warning", "enabled": True, "detail": str(exc)[:200]}
+
+
 # ---------- routes ----------
 
 @router.get("/stats", response_model=AdminStats)
@@ -209,6 +235,7 @@ def system_health(
         "queues": _queue_health(db),
         "ai_llm": _ai_llm_health(),
         "embeddings": _embedding_health(),
+        "reranker": _reranker_health(),
     }
     status = "ok" if all(item["status"] == "ok" for item in checks.values()) else "degraded"
     return {"status": status, "checks": checks}

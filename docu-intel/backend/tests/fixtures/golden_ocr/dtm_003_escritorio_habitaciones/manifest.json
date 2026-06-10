@@ -1,0 +1,19 @@
+{
+  "samples": [
+    {
+      "id": "dtm_003_escritorio_habitaciones",
+      "source_filename": "DTM-003 ESCRITORIO HABITACIONES.pdf",
+      "document_type": "plano",
+      "page_count": 1,
+      "sha256": "ec5f4285bc788c70db8042a2fe417846d2da44215a04a4bb873e43a4d71cae84",
+      "keywords": [
+        "1:10",
+        "500 M",
+        "03 M",
+        "105 M",
+        "25 M",
+        "15 M"
+      ]
+    }
+  ]
+}

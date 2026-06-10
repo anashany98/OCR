@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "id": "pedido_de_venta_442403_20260227_130941",
+      "source_filename": "Pedido_de_venta_442403.20260227-130941.pdf",
+      "document_type": "pedido",
+      "page_count": 2,
+      "sha256": "addf08ba673ea51711fd42ae359f36e7800ee2da2e9554668b14aca76dd0fb06",
+      "keywords": [
+        "B57976979",
+        "A03027919",
+        "26-02-2026",
+        "14,00",
+        "28,10",
+        "393,40",
+        "00.03",
+        "2,00"
+      ]
+    }
+  ]
+}

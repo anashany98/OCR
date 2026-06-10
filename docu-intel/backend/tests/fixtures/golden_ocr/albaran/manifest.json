@@ -1,0 +1,12 @@
+{
+  "samples": [
+    {
+      "id": "albaran",
+      "source_filename": "albaran.pdf",
+      "document_type": "albaran",
+      "page_count": 1,
+      "sha256": "8c84a6cba6a443be94ed56469b6d8bec3aefedbb944feadbf3a93d9f907ffa1a",
+      "keywords": []
+    }
+  ]
+}

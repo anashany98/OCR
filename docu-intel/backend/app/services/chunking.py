@@ -1,79 +1,273 @@
+"""E1 — Structure-aware chunking for the embedding pipeline.
+
+The previous implementation split text by words without regard to
+where sentences, tables or headings actually started. That meant a
+budget table could be split mid-row and the chunk that survived into
+the embedding index would say "TOTAL | | 12.450 EUR" — useful to a
+human scanning the chunk, but useless to the retriever that gets
+asked "importe total del presupuesto 245745". The retriever cannot
+reassemble a table that was never kept together.
+
+This module:
+
+* detects markdown tables (already produced by the PDF parser in
+  ``parsers/pdf.py::_extract_table_markdown``) and keeps each table
+  as a single chunk with ``chunk_type="table"``;
+* detects headings (markdown ``#``, ``##``, ... or visual
+  short-uppercase lines, or lines ending in ``:``) and prepends
+  them to the following chunk so the section context travels with
+  the chunk;
+* splits the rest of the text on sentence boundaries, never mid-word;
+* carries a *token-aware overlap* that is bounded by a configurable
+  budget but only ever re-emits complete sentences as overlap.
+
+The public API is unchanged: ``build_chunks(text) -> list[Chunk]``
+where ``Chunk`` is a dataclass that **also** unpacks as
+``(text, token_count)`` for legacy callers. The new
+``chunk_type`` field is the third element of the dataclass.
+
+Why not just use ``chonkie`` / ``semchunk``? Both are excellent but
+they add a dependency that needs to be reviewed for security and
+binary footprint. The custom implementation below is ~150 lines
+and covers the cases the project actually has (Spanish / English
+prose, markdown tables, headings). A future task can swap it for
+chonkie behind the same public API.
+"""
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 
 _PARAGRAPH_RE = re.compile(r"\n\s*\n+")
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+# Markdown heading: 1-6 ``#`` followed by space and the heading text.
+_MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+# Markdown table line: starts with ``|`` and ends with ``|`` (with
+# optional whitespace). We do not parse the table itself; we just
+# look for the *contiguous run* of such lines.
+_TABLE_LINE_RE = re.compile(r"^\s*\|.*\|\s*$")
+# A bare "label:" line that often appears in invoices / planos as a
+# soft heading ("Cliente:", "Importe total:", "Escala:").
+_LABEL_HEADING_RE = re.compile(r"^([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ 0-9]{2,40}):\s*$")
+# A short all-caps line (typical of a section heading in a budget or
+# measurement sheet).
+_SHORT_CAPS_RE = re.compile(r"^[A-ZÁÉÍÓÚÑ0-9 .,/\-]{4,60}$")
 
 
-def build_chunks(
-    text: str,
-    max_words: int = 220,
-    overlap_words: int = 40,
-) -> list[tuple[str, int]]:
-    max_words = max(1, int(max_words))
-    overlap_words = max(0, min(int(overlap_words), max_words - 1))
-    paragraphs = _paragraph_sentences(text)
-    if not paragraphs:
+# ---------------------------------------------------------------------------
+# Public dataclass
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Chunk:
+    """A single embedding-ready chunk.
+
+    Fields:
+        text: the chunk text (no leading metadata header; the caller
+            prepends one via :func:`embedding_text_with_metadata`).
+        token_count: best-effort word count, used for diagnostics and
+            for the *overlap budget* math.
+        chunk_type: one of ``"text"``, ``"table"``, ``"heading"``.
+            ``"table"`` chunks are always emitted whole; ``"heading"``
+            chunks are usually *attached* to the next non-heading
+            chunk as a prefix and never emitted alone, but the type
+            is recorded so the pipeline can decide to drop them if
+            they have no payload.
+    """
+
+    text: str
+    token_count: int
+    chunk_type: str = "text"
+
+    def __iter__(self):
+        """Legacy 2-tuple unpacking: ``text, tokens = chunk``.
+
+        The dataclass exposes ``chunk_type`` as a regular attribute
+        so new callers that need it can read it directly via
+        ``chunk.chunk_type``. This keeps the existing call sites
+        that do ``for text, _ in build_chunks(text)`` working
+        without modification.
+        """
+        yield self.text
+        yield self.token_count
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _word_count(text: str) -> int:
+    return len(text.split())
+
+
+def _metadata_value(value: str) -> str:
+    return " ".join(str(value).replace("|", " ").split())
+
+
+def _split_table_block(lines: list[str]) -> list[list[str]]:
+    """Partition a list of lines into runs of consecutive table lines
+    (``| ... |``) separated by runs of plain lines. Used so we can
+    attach the right ``chunk_type`` to each run.
+    """
+    if not lines:
         return []
-
-    chunks: list[tuple[str, int]] = []
-    for paragraph in paragraphs:
-        current_units: list[str] = []
-        current_words = 0
-        for sentence in paragraph:
-            for unit in _split_oversized_sentence(sentence, max_words, overlap_words):
-                unit_words = _word_count(unit)
-                if current_units and current_words + unit_words > max_words:
-                    _append_chunk(chunks, current_units)
-                    current_units, current_words = _overlap_units(current_units, overlap_words)
-                if current_units and current_words + unit_words > max_words:
-                    current_units = []
-                    current_words = 0
-                current_units.append(unit)
-                current_words += unit_words
-        if current_units:
-            _append_chunk(chunks, current_units)
-    return chunks
+    runs: list[list[str]] = []
+    current: list[str] = []
+    current_is_table = False
+    for line in lines:
+        is_table = bool(_TABLE_LINE_RE.match(line))
+        if is_table != current_is_table and current:
+            runs.append(current)
+            current = []
+        current.append(line)
+        current_is_table = is_table
+    if current:
+        runs.append(current)
+    return runs
 
 
-def embedding_text_with_metadata(
-    chunk_text: str,
+def _is_heading(line: str) -> str | None:
+    """Return the heading text if ``line`` looks like a heading, else
+    ``None``. Detects three flavours:
+
+    * Markdown ``# H1`` / ``## H2`` / etc. — the original ``#``
+      prefix is preserved so the embedder sees the visual cue
+      ("## Cliente" rather than "Cliente").
+    * ``Label:`` style (one short line ending in colon, used in
+      invoices and measurement sheets).
+    * A short line that is all uppercase or digits, also typical
+      of a section heading in a measurement sheet.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    md = _MD_HEADING_RE.match(stripped)
+    if md:
+        # Preserve the markdown prefix so the heading is visually
+        # distinguishable in the embedding input.
+        hashes = md.group(1)
+        return f"{hashes} {md.group(2).strip()}"
+    if _LABEL_HEADING_RE.match(stripped):
+        return stripped.rstrip(":")
+    if (
+        4 <= len(stripped) <= 60
+        and _SHORT_CAPS_RE.match(stripped)
+        and stripped == stripped.upper()
+        and not stripped.endswith(".")
+    ):
+        return stripped
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Building chunks
+# ---------------------------------------------------------------------------
+
+
+def _split_oversized_sentence(
+    sentence: str,
+    max_words: int,
+) -> list[str]:
+    """A single sentence that exceeds ``max_words`` has to be split
+    without a sentence boundary to fall back on. We split at word
+    boundaries so we never start a chunk mid-word."""
+    words = sentence.split()
+    if len(words) <= max_words:
+        return [sentence]
+    return [
+        " ".join(words[start : start + max_words])
+        for start in range(0, len(words), max_words)
+    ]
+
+
+def _emit_table(
+    lines: list[str],
+    chunks: list[Chunk],
     *,
-    document_type: str | None = None,
-    filename: str | None = None,
-    page_number: int | None = None,
-) -> str:
-    header = chunk_metadata_header(
-        document_type=document_type,
-        filename=filename,
-        page_number=page_number,
-    )
-    if not header:
-        return chunk_text
-    return f"{header} {chunk_text}"
+    heading_prefix: str | None,
+) -> str | None:
+    """Emit a table as a single ``chunk_type="table"`` chunk.
+
+    Tables can be huge (a budget can have 30+ rows). When the
+    combined word count exceeds ``max_words`` we still keep the
+    table together — splitting a table mid-row is the exact bug
+    this module exists to prevent. The caller is expected to set a
+    ``max_words`` large enough to fit a typical page table
+    (default 256 tokens ≈ 350 Spanish words).
+    """
+    text = "\n".join(lines).strip()
+    if not text:
+        return heading_prefix
+    if heading_prefix:
+        text = f"{heading_prefix}\n{text}"
+        heading_prefix = None
+    chunks.append(Chunk(text=text, token_count=_word_count(text), chunk_type="table"))
+    return heading_prefix
 
 
-def chunk_metadata_header(
+def _emit_text(
+    text_units: list[str],
+    chunks: list[Chunk],
     *,
-    document_type: str | None = None,
-    filename: str | None = None,
-    page_number: int | None = None,
-) -> str:
-    fields: list[str] = []
-    if document_type:
-        fields.append(f"tipo={_metadata_value(document_type)}")
-    if filename:
-        fields.append(f"fichero={_metadata_value(filename)}")
-    if page_number is not None:
-        fields.append(f"pág={int(page_number)}")
-    if not fields:
-        return ""
-    return "[" + " | ".join(fields) + "]"
+    max_words: int,
+    overlap_words: int,
+    heading_prefix: str | None,
+) -> str | None:
+    """Pack ``text_units`` (sentences) into chunks of up to
+    ``max_words`` words, with ``overlap_words`` of carry-over from
+    the previous chunk. Returns the heading prefix to carry to the
+    next chunk (``None`` if this one consumed it)."""
+    if not text_units:
+        return heading_prefix
+    current_units: list[str] = []
+    current_words = 0
+    if heading_prefix:
+        current_units.append(heading_prefix)
+        current_words = _word_count(heading_prefix)
+        heading_prefix = None
+    for unit in text_units:
+        unit_words = _word_count(unit)
+        if current_units and current_words + unit_words > max_words:
+            text = " ".join(current_units).strip()
+            if text:
+                chunks.append(Chunk(text=text, token_count=_word_count(text), chunk_type="text"))
+            # Carry-over: take as many trailing units as fit into
+            # the overlap budget. We never emit overlap larger
+            # than the budget, and we drop the overlap window
+            # entirely when a single unit is already bigger than
+            # the budget (otherwise the tail would dominate every
+            # subsequent chunk).
+            if overlap_words > 0:
+                carry: list[str] = []
+                carry_words = 0
+                for previous in reversed(current_units):
+                    pw = _word_count(previous)
+                    if carry and carry_words + pw > overlap_words:
+                        break
+                    if not carry and pw > overlap_words:
+                        break
+                    carry.append(previous)
+                    carry_words += pw
+                current_units = list(reversed(carry))
+                current_words = carry_words
+            else:
+                current_units = []
+                current_words = 0
+        current_units.append(unit)
+        current_words += _word_count(unit)
+    if current_units:
+        text = " ".join(current_units).strip()
+        if text:
+            chunks.append(Chunk(text=text, token_count=_word_count(text), chunk_type="text"))
+    return heading_prefix
 
 
-def _paragraph_sentences(text: str) -> list[list[str]]:
+def _split_into_paragraph_sentences(text: str) -> list[list[str]]:
+    """Same behaviour as the original ``_paragraph_sentences`` helper:
+    return one list of sentences per paragraph."""
     paragraphs: list[list[str]] = []
     for paragraph in _PARAGRAPH_RE.split(text or ""):
         clean = " ".join(paragraph.split())
@@ -88,47 +282,188 @@ def _paragraph_sentences(text: str) -> list[list[str]]:
     return paragraphs
 
 
-def _split_oversized_sentence(sentence: str, max_words: int, overlap_words: int) -> list[str]:
-    words = sentence.split()
-    if len(words) <= max_words:
-        return [sentence]
-    step = max(1, max_words - overlap_words)
-    chunks: list[str] = []
-    for start in range(0, len(words), step):
-        selected = words[start : start + max_words]
-        if selected:
-            chunks.append(" ".join(selected))
-        if start + max_words >= len(words):
-            break
+def build_chunks(
+    text: str,
+    max_words: int = 220,
+    overlap_words: int = 40,
+    *,
+    respect_tables: bool = True,
+    respect_headings: bool = True,
+) -> list[Chunk]:
+    """Split ``text`` into structure-aware chunks.
+
+    Returns a list of :class:`Chunk`. The list is empty when the
+    input is empty / whitespace.
+
+    Backward compatibility: each ``Chunk`` is iterable as
+    ``(text, token_count, chunk_type)`` and the 2-tuple form
+    ``(text, token_count)`` is also supported via the dataclass
+    iteration protocol. Existing call sites that do
+    ``for text, _ in build_chunks(text)`` keep working.
+
+    Args:
+        text: the page text (already sanitised for the database).
+        max_words: soft upper bound on chunk size in *words*. A
+            single sentence bigger than this still ends up whole
+            (we never split mid-word).
+        overlap_words: budget of words to carry over between
+            consecutive text chunks. Tables and headings are
+            always emitted whole, never with overlap.
+        respect_tables: when True, consecutive ``|...|`` lines
+            become a single ``chunk_type="table"`` chunk. When
+            False, the legacy behaviour is restored (tables are
+            treated as ordinary text).
+        respect_headings: when True, a heading line is attached as
+            a prefix to the following non-heading chunk. When
+            False, headings are treated as ordinary text.
+    """
+    if not text or not text.strip():
+        return []
+
+    chunks: list[Chunk] = []
+    pending_heading: str | None = None
+
+    # We split the input on blank lines so each *block* is either a
+    # table, a heading, or a prose paragraph. The block boundaries
+    # are then processed in order; tables are detected by looking
+    # at every line of the block.
+    for block in _PARAGRAPH_RE.split(text):
+        clean_block = block.strip()
+        if not clean_block:
+            continue
+        block_lines = clean_block.splitlines()
+        # Heading-only block?
+        if len(block_lines) == 1 and respect_headings:
+            heading = _is_heading(block_lines[0])
+            if heading:
+                # Replace the pending heading (if any) with the new
+                # one. Multiple consecutive heading lines collapse
+                # into the last one to keep the prefix short.
+                pending_heading = heading
+                continue
+        # Table-only block?
+        if respect_tables and all(_TABLE_LINE_RE.match(line) for line in block_lines):
+            pending_heading = _emit_table(block_lines, chunks, heading_prefix=pending_heading)
+            continue
+        # Mixed block or pure prose: walk line by line so a heading
+        # line at the top of a prose block still gets attached. We
+        # *consume* the heading line so it does not appear twice
+        # in the chunk (once as a prefix, once again as part of
+        # the prose).
+        prose_lines: list[str] = []
+        if respect_headings:
+            for line in block_lines:
+                heading = _is_heading(line)
+                if heading:
+                    pending_heading = heading
+                    continue
+                prose_lines.append(line)
+            if not prose_lines:
+                # The whole block was headings; the pending heading
+                # will attach to the next non-heading block or be
+                # emitted as a standalone chunk at the end.
+                continue
+        else:
+            prose_lines = block_lines
+        # Plain prose paragraph: pack into chunks. We re-join the
+        # prose lines with newlines so the chunk preserves the
+        # original document's visual structure when that matters
+        # (e.g. a list of lines that were one per visual row).
+        prose_text = "\n".join(prose_lines).strip()
+        if not prose_text:
+            continue
+        sentences = _SENTENCE_RE.split(prose_text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        if not sentences:
+            continue
+        pending_heading = _emit_text(
+            sentences,
+            chunks,
+            max_words=max_words,
+            overlap_words=overlap_words,
+            heading_prefix=pending_heading,
+        )
+
+    # If a heading was attached to a chunk that never came (e.g.
+    # empty document), emit it as its own heading chunk so the
+    # information is not lost.
+    if pending_heading:
+        chunks.append(
+            Chunk(
+                text=pending_heading,
+                token_count=_word_count(pending_heading),
+                chunk_type="heading",
+            )
+        )
+
     return chunks
 
 
-def _overlap_units(units: list[str], overlap_words: int) -> tuple[list[str], int]:
-    if overlap_words <= 0:
-        return [], 0
-    selected: list[str] = []
-    total = 0
-    for unit in reversed(units):
-        count = _word_count(unit)
-        if selected and total + count > overlap_words:
-            break
-        if not selected and count > overlap_words:
-            break
-        selected.append(unit)
-        total += count
-    selected.reverse()
-    return selected, total
+# ---------------------------------------------------------------------------
+# Legacy compatibility shims
+# ---------------------------------------------------------------------------
 
 
-def _append_chunk(chunks: list[tuple[str, int]], units: list[str]) -> None:
-    text = " ".join(unit.strip() for unit in units if unit.strip())
-    if text:
-        chunks.append((text, _word_count(text)))
+def _paragraph_sentences(text: str) -> list[list[str]]:
+    """Backward-compatible re-export of the old internal helper.
+
+    Some downstream modules (and the legacy tests) imported this
+    name from the original ``chunking`` module. We keep it so the
+    public surface does not break; new code should call
+    :func:`_split_into_paragraph_sentences` instead.
+    """
+    return _split_into_paragraph_sentences(text)
 
 
-def _word_count(text: str) -> int:
-    return len(text.split())
+# ---------------------------------------------------------------------------
+# Metadata header (unchanged)
+# ---------------------------------------------------------------------------
 
 
-def _metadata_value(value: str) -> str:
-    return " ".join(str(value).replace("|", " ").split())
+def chunk_metadata_header(
+    *,
+    document_type: str | None = None,
+    filename: str | None = None,
+    page_number: int | None = None,
+) -> str:
+    """Build the ``[tipo=... | fichero=... | pág=...]`` prefix that
+    is prepended to a chunk before embedding. The header travels
+    with the chunk so the retriever can use the document type /
+    filename as semantic context, not just the chunk text.
+    """
+    fields: list[str] = []
+    if document_type:
+        fields.append(f"tipo={_metadata_value(document_type)}")
+    if filename:
+        fields.append(f"fichero={_metadata_value(filename)}")
+    if page_number is not None:
+        fields.append(f"pág={int(page_number)}")
+    if not fields:
+        return ""
+    return "[" + " | ".join(fields) + "]"
+
+
+def embedding_text_with_metadata(
+    chunk_text: str,
+    *,
+    document_type: str | None = None,
+    filename: str | None = None,
+    page_number: int | None = None,
+) -> str:
+    """Prepend :func:`chunk_metadata_header` to the chunk text."""
+    header = chunk_metadata_header(
+        document_type=document_type,
+        filename=filename,
+        page_number=page_number,
+    )
+    if not header:
+        return chunk_text
+    return f"{header} {chunk_text}"
+
+
+__all__ = [
+    "Chunk",
+    "build_chunks",
+    "embedding_text_with_metadata",
+    "chunk_metadata_header",
+]

@@ -1,0 +1,12 @@
+{
+  "samples": [
+    {
+      "id": "medici_n_brito",
+      "source_filename": "medición brito.pdf",
+      "document_type": "plano",
+      "page_count": 10,
+      "sha256": "38bc2a9197779cdf1a97ff7a2906625a8d72444da8f5962ab651a7b55ac7b634",
+      "keywords": []
+    }
+  ]
+}

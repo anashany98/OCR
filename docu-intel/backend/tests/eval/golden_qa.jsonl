@@ -1,0 +1,54 @@
+# S0.4 — Golden Q&A set for RAG evaluation.
+#
+# This is the STARTER set shipped with the codebase. It is intentionally
+# small and uses placeholder ``expected_document_ids`` so the evaluation
+# harness has something to score against in CI before the team curates
+# the real ground truth.
+#
+# Format: JSONL, one question per line. Lines starting with ``#`` and
+# blank lines are ignored. Fields:
+#
+#   id:                     stable identifier (e.g. "q001").
+#   category:               one of "presupuesto", "pedido", "factura",
+#                           "plano", "exploratory". Used to break down
+#                           metrics in the report.
+#   question:               the exact text the user would type.
+#   expected_document_ids:  document ids the top-k retrieval should
+#                           surface. Use [] for exploratory questions.
+#   expected_keywords:      literal substrings the answer is expected
+#                           to mention (importes, NIFs, dates, room
+#                           names, etc.). Used to score
+#                           answer_relevancy without an LLM.
+#   min_context_recall:     per-question gate. The report flags the
+#                           question as failing when the actual recall
+#                           is below this threshold. Defaults to 0.5
+#                           in the evaluator when omitted.
+#
+# To curate the real set, replace the placeholder
+# ``expected_document_ids`` with the ids returned by
+# ``GET /documents?limit=1&filename=<the file>`` after the relevant
+# documents are indexed. Add at least 30 questions spanning the five
+# categories so the aggregate metrics are statistically meaningful.
+
+# ---- Presupuestos ----
+{"id": "q001", "category": "presupuesto", "question": "Cual es el importe total del presupuesto 245745?", "expected_document_ids": [], "expected_keywords": ["245745", "EUR"], "min_context_recall": 0.5}
+{"id": "q002", "category": "presupuesto", "question": "Que cliente aparece en el presupuesto aceptado de la ultima semana?", "expected_document_ids": [], "expected_keywords": ["cliente", "presupuesto"], "min_context_recall": 0.5}
+{"id": "q003", "category": "presupuesto", "question": "Listame los presupuestos aceptados que aun no tienen pedido asociado.", "expected_document_ids": [], "expected_keywords": ["presupuesto", "aceptado", "pedido"], "min_context_recall": 0.5}
+{"id": "q004", "category": "presupuesto", "question": "Cual es el presupuesto con mayor importe del proyecto?", "expected_document_ids": [], "expected_keywords": ["presupuesto", "importe"], "min_context_recall": 0.5}
+
+# ---- Pedidos ----
+{"id": "q010", "category": "pedido", "question": "Que pedido genero el presupuesto 245745?", "expected_document_ids": [], "expected_keywords": ["245745", "pedido"], "min_context_recall": 0.5}
+{"id": "q011", "category": "pedido", "question": "Cuantos pedidos tiene el proveedor Garcia este ano?", "expected_document_ids": [], "expected_keywords": ["Garcia", "pedido"], "min_context_recall": 0.5}
+{"id": "q012", "category": "pedido", "question": "Cual es el importe total de los pedidos del ejercicio 2025?", "expected_document_ids": [], "expected_keywords": ["pedido", "importe", "2025"], "min_context_recall": 0.5}
+{"id": "q013", "category": "pedido", "question": "Que pedido del proveedor Lopez esta pendiente de facturar?", "expected_document_ids": [], "expected_keywords": ["Lopez", "pedido", "factura"], "min_context_recall": 0.5}
+
+# ---- Planos ----
+{"id": "q020", "category": "plano", "question": "Cual es la superficie del salon en el plano de planta baja?", "expected_document_ids": [], "expected_keywords": ["salon", "m2"], "min_context_recall": 0.5}
+{"id": "q021", "category": "plano", "question": "Que escala tiene el plano del proyecto JESSICA?", "expected_document_ids": [], "expected_keywords": ["JESSICA", "escala"], "min_context_recall": 0.5}
+{"id": "q022", "category": "plano", "question": "Cuantas habitaciones mide el plano de la primera planta?", "expected_document_ids": [], "expected_keywords": ["habitacion", "planta"], "min_context_recall": 0.5}
+{"id": "q023", "category": "plano", "question": "Cuales son las cotas principales del plano de cimentacion?", "expected_document_ids": [], "expected_keywords": ["cota", "cimentacion"], "min_context_recall": 0.5}
+
+# ---- Exploratory (no specific document expected) ----
+{"id": "q030", "category": "exploratory", "question": "Que documentos tenemos con baja confianza OCR?", "expected_document_ids": [], "expected_keywords": ["OCR", "confianza"], "min_context_recall": 0.5}
+{"id": "q031", "category": "exploratory", "question": "Hay documentos duplicados en el sistema?", "expected_document_ids": [], "expected_keywords": ["duplicado"], "min_context_recall": 0.5}
+{"id": "q032", "category": "exploratory", "question": "Cual es el estado general de la cola de procesamiento?", "expected_document_ids": [], "expected_keywords": ["cola", "procesamiento"], "min_context_recall": 0.5}

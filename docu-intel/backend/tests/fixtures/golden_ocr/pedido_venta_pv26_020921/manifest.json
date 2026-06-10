@@ -1,0 +1,21 @@
+{
+  "samples": [
+    {
+      "id": "pedido_venta_pv26_020921",
+      "source_filename": "Pedido venta PV26-020921.pdf",
+      "document_type": "pedido",
+      "page_count": 2,
+      "sha256": "e2ac4e33ff3b1a09ccbe3cc23e2d583b517025fd7aa8177c9aaf2a55f02a16e1",
+      "keywords": [
+        "B57976979",
+        "315.315",
+        "6,94",
+        "666,24",
+        "139,91",
+        "806,15",
+        "0,00",
+        "1 / 2"
+      ]
+    }
+  ]
+}

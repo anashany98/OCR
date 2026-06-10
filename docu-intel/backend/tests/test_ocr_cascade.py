@@ -323,3 +323,142 @@ def test_cascade_name_reflects_last_winner(tmp_path: Path):
     cascade.primary = primary_good
     cascade.extract(image)
     assert cascade.name == "primary"
+
+
+# ---------------------------------------------------------------------------
+# S0.6 — Skip Tier 2 when the quality gain is not significant
+# ---------------------------------------------------------------------------
+
+
+def test_should_replace_with_fallback_keeps_primary_when_quality_delta_is_small():
+    """When the fallback barely improves the quality score (delta < the
+    configured threshold) the cascade should keep the primary result
+    instead of paying for Tier 2."""
+    from app.ocr.cascading import _should_replace_with_fallback
+    from app.core.config import settings
+
+    primary = _result("A" * 50, confidence=0.60, engine="tesseract")
+    fallback = _result("B" * 50, confidence=0.65, engine="paddleocr")  # tiny bump
+
+    # The new flag is True by default; primary should be kept.
+    assert settings.ocr_cascading_skip_if_no_significant_gain is True
+    should, reason = _should_replace_with_fallback(primary, fallback)
+    assert should is False
+    assert reason == "no_significant_gain"
+
+
+def test_should_replace_with_fallback_replaces_when_quality_delta_is_large():
+    """When the fallback improves the quality score by more than the
+    configured threshold the cascade should swap."""
+    from app.ocr.cascading import _should_replace_with_fallback
+
+    primary = _result("x" * 10, confidence=0.30, engine="tesseract")
+    fallback = _result("Y" * 300, confidence=0.92, engine="paddleocr")  # big win
+
+    should, reason = _should_replace_with_fallback(primary, fallback)
+    assert should is True
+    assert reason == "ok"
+
+
+def test_should_replace_with_fallback_uses_alnum_gain_as_escape_hatch():
+    """When the quality delta is small but the fallback adds many
+    alphanumeric characters (e.g. primary returned mostly symbols and
+    the fallback recovered the actual letters), the alnum gain
+    threshold lets the swap through."""
+    from app.ocr.cascading import _should_replace_with_fallback, _quality, _alnum_count
+
+    # Both texts have very high alphanumeric density (long runs of
+    # letters) so the quality score is similar; the only meaningful
+    # difference is the extra alphanumeric characters the fallback
+    # contributes. The quality delta stays below 0.10 and the
+    # alnum_gain branch must let the swap through.
+    primary = _result("AAAAAAAAAA", confidence=0.50, engine="tesseract")
+    fallback = _result("BBBBBBBBBB" * 4, confidence=0.50, engine="paddleocr")
+
+    # Sanity-check the underlying counts.
+    assert _alnum_count(primary.text) == 10
+    assert _alnum_count(fallback.text) == 40
+    assert _alnum_count(fallback.text) - _alnum_count(primary.text) == 30
+
+    # Lengths differ but the quality delta is dominated by density
+    # (both 100% alnum) and confidence (both 0.50) so it stays small.
+    p_q = _quality(primary)
+    f_q = _quality(fallback)
+    assert f_q - p_q < 0.10, f"quality delta too large: {f_q - p_q}"
+
+    should, reason = _should_replace_with_fallback(primary, fallback)
+    assert should is True
+    assert reason == "alnum_gain"
+
+
+def test_should_replace_with_fallback_returns_both_weak_when_both_engines_fail():
+    """When neither engine produced anything usable the cascade keeps
+    the primary (so the user sees *some* text) and reports the reason
+    as ``both_weak`` so the admin UI can spot the hard cases."""
+    from app.ocr.cascading import _should_replace_with_fallback
+
+    primary = _result("", confidence=0.0, engine="tesseract")
+    fallback = _result("", confidence=0.0, engine="paddleocr")
+
+    should, reason = _should_replace_with_fallback(primary, fallback)
+    assert should is False
+    assert reason == "both_weak"
+
+
+def test_cascade_skips_tier2_and_tracks_metric_when_gain_is_marginal(tmp_path: Path, monkeypatch):
+    """End-to-end: when the fallback is only marginally better than
+    the primary the cascade should keep the primary, log the decision
+    and record the skip reason in the metrics counter."""
+    skip_events: list[str] = []
+    monkeypatch.setattr(
+        cascading,
+        "track_ocr_skip_tier2",
+        lambda reason: skip_events.append(reason),
+        raising=False,
+    )
+
+    # Primary is *not* acceptable (only 10 chars, below min_chars=30),
+    # so the cascade escalates to the fallback. The fallback is only
+    # marginally better (11 chars, conf 0.30 — same as primary), so
+    # the cascade should keep the primary and record the skip.
+    primary = _RecordingEngine("primary", _result("A" * 10, confidence=0.30, engine="tesseract"))
+    fallback = _RecordingEngine("fallback", _result("B" * 11, confidence=0.30, engine="paddleocr"))
+    cascade = CascadingOCREngine(primary=primary, fallback=fallback, min_chars=30, min_confidence=0.5)
+
+    image = tmp_path / "blank.png"
+    image.write_bytes(b"")
+
+    result = cascade.extract(image)
+
+    assert result.engine == "tesseract"
+    assert result.text == "A" * 10
+    assert primary.calls == 1
+    assert fallback.calls == 1  # was called, but lost the comparison
+    assert skip_events == ["no_significant_gain"]
+
+
+def test_cascade_legacy_mode_swaps_on_any_positive_delta(tmp_path: Path, monkeypatch):
+    """With ``ocr_cascading_skip_if_no_significant_gain=False`` the
+    cascade restores the legacy behaviour: any positive quality delta
+    is enough to swap to Tier 2. This is the safety valve to disable
+    the new behaviour per deployment."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ocr_cascading_skip_if_no_significant_gain", False)
+
+    # Primary is *not* acceptable (only 10 chars, below min_chars=30).
+    # The fallback is longer (50 chars) and slightly more confident,
+    # so the quality delta is positive. With the new flag on, the
+    # cascade would keep the primary; with the legacy flag off, the
+    # cascade swaps on any positive delta.
+    primary = _RecordingEngine("primary", _result("A" * 10, confidence=0.20, engine="tesseract"))
+    fallback = _RecordingEngine("fallback", _result("B" * 50, confidence=0.40, engine="paddleocr"))
+    cascade = CascadingOCREngine(primary=primary, fallback=fallback, min_chars=30, min_confidence=0.5)
+
+    image = tmp_path / "blank.png"
+    image.write_bytes(b"")
+
+    result = cascade.extract(image)
+
+    assert result.engine == "paddleocr"
+    assert result.text == "B" * 50
