@@ -79,6 +79,11 @@ class DocumentPage(Base):
     # Which engine produced this page's text. NULL for pages that haven't been
     # processed yet. Values: pymupdf | paddleocr | empty
     ocr_engine: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Version of the engine that produced this page (e.g. ``paddleocr-v3.0.0``).
+    # Tracked separately from ``ocr_engine`` (which is the engine name) so the
+    # periodic re-OCR sweep can find pages produced with a stale engine
+    # version and reprocess them automatically.
+    ocr_engine_version: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text)
     processing_time_ms: Mapped[int | None] = mapped_column(Integer)

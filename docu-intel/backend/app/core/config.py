@@ -382,6 +382,21 @@ class Settings(BaseSettings):
     # re-OCR portion of a single tick to this number. Re-embed-only
     # documents are still capped by ``reembed_batch_size``.
     reembed_reocr_per_tick: int = 1
+    # Current version label of the OCR engine. Stored on every
+    # ``DocumentPage.ocr_engine_version`` so the periodic re-OCR sweep
+    # can find pages produced with a stale version and re-process them
+    # automatically. Bump this when you upgrade PaddleOCR / Tesseract /
+    # pp-structure and the next ``reprocess_with_new_ocr_engine_task``
+    # tick will pick them up.
+    current_ocr_engine_version: str = "paddleocr-v3"
+    # Cap the number of re-OCR jobs enqueued per tick by the engine
+    # version sweep. Mirrors ``reembed_reocr_per_tick`` to keep the
+    # heavy queue from being flooded.
+    reocr_versioned_per_tick: int = 1
+    # Master switch for the periodic engine-version sweep. Disabled by
+    # default so deployments that have not migrated pick up no extra
+    # work; set ``OCR_REPROCESS_ON_VERSION_DRIFT=true`` to enable.
+    ocr_reprocess_on_version_drift: bool = False
 
     admin_email: str = "admin@local"
     admin_password: str = "dev_only_admin_password_change_me"

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.database.session import SessionLocal
-from app.models import Document, DocumentChunk, ExtractionJob
+from app.models import Document, DocumentChunk, DocumentPage, ExtractionJob
 from app.services.cache import cache_service
 from app.workers.celery_app import celery_app
 from app.workers.routing import queue_for_document
@@ -192,3 +192,160 @@ def run_reembed_pending_documents(db: Session) -> dict:
     except Exception as exc:  # noqa: BLE001 - never let the whole tick die
         logger.exception("Re-embed worker tick crashed: %s", exc)
         return {"inspected": inspected, "reembedded": reembedded, "reocr_queued": reocr_queued, "errors": errors + 1}
+
+
+# ---------------------------------------------------------------------------
+# Engine-version re-OCR sweep
+# ---------------------------------------------------------------------------
+# When an operator bumps ``settings.current_ocr_engine_version`` (e.g. after
+# upgrading PaddleOCR), every page that was processed with the old version
+# is now stale: it may be missing the new model's accuracy improvements. The
+# sweep below finds documents that have at least one page stamped with an
+# older version and re-runs the full processing pipeline on them so the new
+# engine version is recorded on every page.
+
+
+def _select_stale_engine_documents(
+    db: Session,
+    current_version: str,
+    limit: int,
+) -> list[int]:
+    """Return the IDs of documents that have at least one page with a stale
+    ``ocr_engine_version``.
+
+    We exclude documents that are already in a transient state
+    (``pending`` / ``processing``) so we do not enqueue a second job on
+    top of one that is already running, and we exclude soft-deleted and
+    duplicate documents because there is no point re-OCR'ing them.
+    """
+    if not current_version:
+        return []
+
+    stmt = (
+        select(DocumentPage.document_id)
+        .join(Document, Document.id == DocumentPage.document_id)
+        .where(Document.deleted_at.is_(None))
+        .where(Document.status.notin_(["pending", "processing", "duplicate"]))
+        .where(
+            or_(
+                DocumentPage.ocr_engine_version.is_(None),
+                DocumentPage.ocr_engine_version != current_version,
+            )
+        )
+        .group_by(DocumentPage.document_id)
+        .order_by(DocumentPage.document_id.asc())
+        .limit(limit)
+    )
+    return [row[0] for row in db.execute(stmt).all()]
+
+
+def _enqueue_versioned_reocr(db: Session, document: Document) -> ExtractionJob:
+    """Enqueue a full reprocess for a document whose pages are stale.
+
+    Mirrors :func:`_enqueue_reocr` so the heavy queue gets a single
+    ``reprocess`` job per document; the processing task will refresh
+    ``ocr_engine_version`` on every page as it goes.
+    """
+
+    from app.workers.tasks import process_document_task
+
+    document.status = "pending"
+    document.quality_status = "pending"
+    document.quality_flags_json = []
+    document.error_message = None
+    job = ExtractionJob(document_id=document.id, job_type="reprocess", status="pending")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    cache_service.invalidate_search_cache()
+    process_document_task.apply_async(
+        args=(document.id, job.id),
+        queue=queue_for_document(document, job.job_type),
+    )
+    return job
+
+
+def run_reprocess_with_new_ocr_engine(db: Session) -> dict:
+    """Pure logic for the engine-version re-OCR sweep.
+
+    Returns a small dict so it shows up in Celery's result backend for
+    observability (``{"inspected": N, "queued": X, "current": "v"}``).
+    """
+
+    if not settings.ocr_reprocess_on_version_drift:
+        return {
+            "inspected": 0,
+            "queued": 0,
+            "skipped": "disabled",
+            "current_version": settings.current_ocr_engine_version,
+        }
+
+    current_version = settings.current_ocr_engine_version
+    inspected = 0
+    queued = 0
+    errors = 0
+    try:
+        candidate_ids = _select_stale_engine_documents(
+            db,
+            current_version,
+            limit=settings.reocr_versioned_per_tick,
+        )
+        inspected = len(candidate_ids)
+
+        for document_id in candidate_ids:
+            if queued >= settings.reocr_versioned_per_tick:
+                break
+            try:
+                document = db.get(Document, document_id)
+                if document is None:
+                    continue
+                _enqueue_versioned_reocr(db, document)
+                queued += 1
+            except Exception as exc:  # noqa: BLE001 - never let one doc kill the tick
+                errors += 1
+                db.rollback()
+                logger.warning(
+                    "Versioned re-OCR worker: failed for document_id=%s: %s",
+                    document_id,
+                    exc,
+                )
+
+        logger.info(
+            "Versioned re-OCR worker tick: current=%s inspected=%s queued=%s errors=%s",
+            current_version,
+            inspected,
+            queued,
+            errors,
+        )
+        return {
+            "inspected": inspected,
+            "queued": queued,
+            "errors": errors,
+            "current_version": current_version,
+        }
+    except Exception as exc:  # noqa: BLE001 - never let the whole tick die
+        logger.exception("Versioned re-OCR worker tick crashed: %s", exc)
+        return {
+            "inspected": inspected,
+            "queued": queued,
+            "errors": errors + 1,
+            "current_version": current_version,
+        }
+
+
+@celery_app.task(name="app.workers.embedding_tasks.reprocess_with_new_ocr_engine_task")
+def reprocess_with_new_ocr_engine_task() -> dict:
+    """Beat entry point: re-OCR documents whose pages were processed with
+    a stale engine version.
+
+    Thin wrapper around :func:`run_reprocess_with_new_ocr_engine` that
+    opens a session via ``SessionLocal``. The body is kept in a
+    separate function so unit tests can drive it with an in-memory
+    SQLite engine (see ``tests/test_reprocess_with_new_ocr_engine.py``).
+    """
+    db: Session = SessionLocal()
+    try:
+        return run_reprocess_with_new_ocr_engine(db)
+    finally:
+        db.close()

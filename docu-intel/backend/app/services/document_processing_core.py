@@ -312,6 +312,13 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             page_status=_page_status_from_confidence(extracted_page.ocr_confidence),
             ocr_confidence=extracted_page.ocr_confidence,
             ocr_engine=extracted_page.ocr_engine,
+            # Stamp the configured engine version so the periodic
+            # re-OCR sweep can find pages produced with a stale
+            # version. Pages with no engine (e.g. pymupdf-native text)
+            # get the same label so they participate in the sweep
+            # too — when an operator bumps the OCR stack, every page
+            # should be re-evaluated.
+            ocr_engine_version=settings.current_ocr_engine_version,
             attempts=1 if extracted_page.ocr_confidence is not None else 0,
         )
         db.add(page)
