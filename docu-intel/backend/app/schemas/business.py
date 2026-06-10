@@ -110,6 +110,43 @@ class PlanDimensionRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PlanSymbolRead(BaseModel):
+    """P2 — A single symbol detected by the YOLO detector.
+
+    ``source_model`` records which detector produced the row
+    (e.g. ``SamirShabani/Architect``). Useful when the operator
+    swaps the model and wants to filter stale rows out of the
+    response.
+    """
+
+    id: int
+    plan_id: int
+    symbol_class: str
+    confidence: float
+    page_number: int | None
+    bbox_x1: float | None
+    bbox_y1: float | None
+    bbox_x2: float | None
+    bbox_y2: float | None
+    source_model: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class PlanSymbolSummary(BaseModel):
+    """P2 — Counts of detected symbols grouped by class.
+
+    Returned by the ``/plans/{id}/symbols/summary`` endpoint so the
+    frontend can render a single number per symbol type without
+    downloading the full list.
+    """
+
+    plan_id: int
+    counts: dict[str, int]
+    total: int
+    source_model: str | None
+
+
 class PlanScaleUpdate(BaseModel):
     scale_text: str | None = None
     scale_ratio: float | None = None

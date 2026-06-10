@@ -12,7 +12,7 @@ from app.ai.local_client import LocalVisionClient
 from app.api.deps import get_current_user, require_roles
 from app.core.config import settings
 from app.database.session import get_db
-from app.models import Document, Plan, PlanDimension, PlanRoom, User
+from app.models import Document, Plan, PlanDimension, PlanRoom, PlanSymbol, User
 from app.schemas.business import (
     PlanBulkUpdate,
     PlanDimensionCreate,
@@ -22,6 +22,8 @@ from app.schemas.business import (
     PlanRoomRead,
     PlanRoomUpdate,
     PlanScaleUpdate,
+    PlanSymbolRead,
+    PlanSymbolSummary,
     PlanVisionSuggestion,
     PlanVisionSuggestionRequest,
     PlanVisionSuggestionResponse,
@@ -67,6 +69,73 @@ def get_dimensions(plan_id: int, db: Session = Depends(get_db), user: User = Dep
     if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
         raise HTTPException(status_code=404, detail="Plan not found")
     return list(db.scalars(select(PlanDimension).where(PlanDimension.plan_id == plan_id)).all())
+
+
+# P2 — Plan symbol detection (YOLOv8). The endpoints return what
+# ``persist_plan_extraction`` already wrote to the ``plan_symbols``
+# table. Two flavours are exposed:
+#   - ``GET /plans/{id}/symbols``        → full list (one row per detection)
+#   - ``GET /plans/{id}/symbols/summary`` → counts per class (cheap payload)
+# The summary endpoint is what the frontend uses to render the side
+# panel; the full list is for the plan canvas overlay.
+
+
+@router.get("/{plan_id}/symbols", response_model=list[PlanSymbolRead])
+def get_plan_symbols(
+    plan_id: int,
+    symbol_class: str | None = Query(default=None, description="Filter to a single symbol class (e.g. ``door``)."),
+    min_confidence: float = Query(default=0.0, ge=0.0, le=1.0, description="Drop detections with confidence below this threshold."),
+    page_number: int | None = Query(default=None, ge=1, description="Restrict to a single plan page."),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[PlanSymbol]:
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+        raise HTTPException(status_code=404, detail="Plan not found")
+    stmt = select(PlanSymbol).where(PlanSymbol.plan_id == plan_id)
+    if symbol_class:
+        stmt = stmt.where(PlanSymbol.symbol_class == symbol_class)
+    if min_confidence > 0:
+        stmt = stmt.where(PlanSymbol.confidence >= min_confidence)
+    if page_number is not None:
+        stmt = stmt.where(PlanSymbol.page_number == page_number)
+    stmt = stmt.order_by(PlanSymbol.page_number.asc().nullslast(), PlanSymbol.id.asc())
+    return list(db.scalars(stmt).all())
+
+
+@router.get("/{plan_id}/symbols/summary", response_model=PlanSymbolSummary)
+def get_plan_symbols_summary(
+    plan_id: int,
+    min_confidence: float = Query(default=0.0, ge=0.0, le=1.0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PlanSymbolSummary:
+    """Return the per-class symbol counts and total for a plan.
+
+    The summary is computed on the fly (a single ``GROUP BY`` query
+    would be marginal optimisation) so the endpoint stays correct
+    even after the operator changes the YOLO model and re-runs the
+    pipeline.
+    """
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+        raise HTTPException(status_code=404, detail="Plan not found")
+    stmt = select(PlanSymbol).where(PlanSymbol.plan_id == plan_id)
+    if min_confidence > 0:
+        stmt = stmt.where(PlanSymbol.confidence >= min_confidence)
+    rows = list(db.scalars(stmt).all())
+    counts: dict[str, int] = {}
+    source_model: str | None = None
+    for sym in rows:
+        counts[sym.symbol_class] = counts.get(sym.symbol_class, 0) + 1
+        if source_model is None:
+            source_model = sym.source_model
+    return PlanSymbolSummary(
+        plan_id=plan_id,
+        counts=counts,
+        total=sum(counts.values()),
+        source_model=source_model,
+    )
 
 
 @router.patch("/{plan_id}/scale", response_model=PlanRead)

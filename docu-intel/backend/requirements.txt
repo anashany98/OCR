@@ -34,6 +34,10 @@ pdfplumber==0.11.4
 pgvector==0.3.6
 pillow==10.4.0
 psycopg[binary]==3.2.3
+# P2 — plan symbol detection (YOLOv8). The default detector uses the
+# pretrained YOLOv8n model (COCO classes) as a safe zero-config baseline;
+# operators can swap in a domain-specific model via PLAN_SYMBOLS_MODEL_PATH.
+ultralytics>=8.0.0
 pydantic==2.10.5
 pydantic-settings==2.6.1
 pymupdf==1.24.13

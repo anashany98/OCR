@@ -1,4 +1,4 @@
-from app.models.ai import AIAnswer, AIAnswerSource, AIQuestion
+from app.models.ai import AIAnswer, AIAnswerFeedback, AIAnswerSource, AIQuestion
 from app.models.audit import AuditLog
 from app.models.budget_scope import ApiClientBudgetScope, BudgetScope
 from app.models.business import (
@@ -9,6 +9,7 @@ from app.models.business import (
     Plan,
     PlanDimension,
     PlanRoom,
+    PlanSymbol,
 )
 from app.models.document import (
     Document,
@@ -50,6 +51,7 @@ __all__ = [
     "AccessGroupMember",
     "AccessPolicy",
     "AIAnswer",
+    "AIAnswerFeedback",
     "AIAnswerSource",
     "AIQuestion",
     "AuditLog",
@@ -81,6 +83,7 @@ __all__ = [
     "PlanDimension",
     "PlanMeasurement",
     "PlanRoom",
+    "PlanSymbol",
     "ReconciliationIssue",
     "SavedSearch",
     "SavedView",

@@ -86,10 +86,19 @@ class Plan(Base):
     scale_confidence: Mapped[float | None] = mapped_column(Float)
     unit: Mapped[str | None] = mapped_column(String(20))
     has_valid_scale: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    # P5 — multi-sheet association. ``project_phase`` groups
+    # plans that belong to the same building phase (e.g.
+    # "PLANTA PRIMERA", "SECCIÓN A-A", "ALZADO NORTE").
+    # ``revision`` tracks the drawing revision (e.g. "A", "B",
+    # "REV01"). Both fields are detected from the plan text via
+    # :func:`app.services.plan_extraction.extract_plan_phase`.
+    project_phase: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    revision: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     rooms = relationship("PlanRoom", back_populates="plan", cascade="all, delete-orphan")
     dimensions = relationship("PlanDimension", back_populates="plan", cascade="all, delete-orphan")
+    symbols = relationship("PlanSymbol", back_populates="plan", cascade="all, delete-orphan")
 
 
 class PlanRoom(Base):
@@ -126,4 +135,29 @@ class PlanDimension(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
 
     plan = relationship("Plan", back_populates="dimensions")
+
+
+class PlanSymbol(Base):
+    """P2 — A single symbol detected in a plan by the YOLO detector.
+
+    One row per detection, so a plan with 12 outlets + 4 windows has
+    16 rows. The bounding box is stored in PDF coordinates (points)
+    to match :class:`PlanDimension` and the rest of the plan geometry.
+    """
+
+    __tablename__ = "plan_symbols"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("plans.id", ondelete="CASCADE"), index=True, nullable=False)
+    symbol_class: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bbox_x1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_y1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_x2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bbox_y2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+    plan = relationship("Plan", back_populates="symbols")
 

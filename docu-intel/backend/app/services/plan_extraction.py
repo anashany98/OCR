@@ -9,7 +9,7 @@ from typing import Sequence
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Document, DocumentBlock, DocumentPage, Plan, PlanDimension, PlanRoom
+from app.models import Document, DocumentBlock, DocumentPage, Plan, PlanDimension, PlanRoom, PlanSymbol
 
 logger = logging.getLogger("app.services.plan_extraction")
 
@@ -191,7 +191,122 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
             )
         )
 
+    # P2 — YOLO symbol detection. Runs after dimensions are persisted
+    # so the symbol rows do not block the cheaper text-based extraction
+    # if YOLO is slow or unavailable. The detector is fail-safe
+    # (returns an empty list when the model is missing or errors), so
+    # this call never breaks the rest of the pipeline.
+    _persist_plan_symbols(db, plan, document.id)
+
     return result
+
+
+def _persist_plan_symbols(db: Session, plan: Plan, document_id: int) -> int:
+    """Run YOLO symbol detection on every page of the plan and persist
+    the results as :class:`PlanSymbol` rows.
+
+    Returns the number of symbols persisted. Any error (missing
+    model, missing page image, OOM) is swallowed so the plan
+    processing pipeline stays robust. The caller has already
+    flushed the ``Plan`` row, so ``plan.id`` is available.
+    """
+    # Lazy import: YOLO is an optional heavy dependency and we don't
+    # want to force its import on every test / CLI invocation.
+    try:
+        from app.services.plan_symbols import (
+            detect_symbols,
+            is_model_available,
+        )
+    except Exception:  # pragma: no cover - defensive
+        return 0
+
+    # Cheap early-out: if the model never loaded (e.g. ultralytics
+    # not installed, or the model file is missing), skip without
+    # touching the database.
+    try:
+        if not is_model_available():
+            # Try one more time: ``is_model_available`` only returns
+            # True after the lazy load has completed. Trigger it by
+            # calling ``detect_symbols`` on a non-existent path —
+            # this warms the cache, then bails out because the file
+            # is missing.
+            detect_symbols("/nonexistent.png")
+            if not is_model_available():
+                return 0
+    except Exception:  # pragma: no cover - defensive
+        return 0
+
+    pages = db.scalars(
+        select(DocumentPage)
+        .where(DocumentPage.document_id == document_id)
+        .order_by(DocumentPage.page_number.asc().nullslast())
+    ).all()
+
+    total = 0
+    source_model = _current_source_model()
+    for page in pages:
+        image_path = page.image_path
+        if not image_path:
+            continue
+        # ``image_path`` is a string stored as either a forward-slash
+        # relative path or a Windows path. The detector opens it
+        # via ``Path(image_path)``; containerised workers need the
+        # absolute path. We try the literal value first, then fall
+        # back to joining with ``settings.files_dir``.
+        from pathlib import Path
+        from app.core.config import settings
+
+        candidate = Path(image_path)
+        if not candidate.exists():
+            try:
+                candidate = Path(settings.files_dir) / image_path.lstrip("/\\")
+            except Exception:
+                continue
+        if not candidate.exists():
+            continue
+
+        page_number = page.page_number or 1
+        try:
+            detections = detect_symbols(
+                candidate,
+                page_number=page_number,
+            )
+        except Exception:  # pragma: no cover - defensive
+            continue
+
+        for sym in detections:
+            x1, y1, x2, y2 = sym.bbox
+            db.add(
+                PlanSymbol(
+                    plan_id=plan.id,
+                    symbol_class=sym.symbol_class,
+                    confidence=sym.confidence,
+                    page_number=page_number,
+                    bbox_x1=float(x1),
+                    bbox_y1=float(y1),
+                    bbox_x2=float(x2),
+                    bbox_y2=float(y2),
+                    source_model=source_model,
+                )
+            )
+            total += 1
+    return total
+
+
+def _current_source_model() -> str:
+    """Return a short label identifying the model currently configured.
+
+    Used to fill the ``source_model`` column on every persisted symbol
+    row. When the operator swaps the model, future rows carry the
+    new label, which makes it easy to spot stale rows in the DB
+    (e.g. ``SELECT COUNT(*) FROM plan_symbols WHERE source_model !=
+    current_label``).
+    """
+    try:
+        from app.core.config import settings
+        return str(getattr(settings, "plan_symbols_model_path", "yolov8n"))
+    except Exception:  # pragma: no cover - defensive
+        return "unknown"
 
 
 def _load_plan_text_blocks(db: Session, document_id: int) -> list[PlanTextBlock]:
@@ -608,3 +723,74 @@ def _validate_dimensions_against_scale(
         dimensions=validated,
         needs_review=needs_review,
     )
+
+
+# ---------------------------------------------------------------------------
+# P5 — Multi-sheet plan phase detection
+# ---------------------------------------------------------------------------
+
+# Patterns for building phases. The regex matches the most common
+# Spanish / English plan-header conventions. The match is
+# case-insensitive and normalised to a canonical form.
+_PHASE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bplanta\s+ba(?:ja|ixa)\b", re.IGNORECASE), "PLANTA BAJA"),
+    (re.compile(r"\bplanta\s+primera\b", re.IGNORECASE), "PLANTA PRIMERA"),
+    (re.compile(r"\bplanta\s+segunda\b", re.IGNORECASE), "PLANTA SEGUNDA"),
+    (re.compile(r"\bplanta\s+tercera\b", re.IGNORECASE), "PLANTA TERCERA"),
+    (re.compile(r"\bplanta\s+(\d+)[ªº]?\b", re.IGNORECASE), None),  # dynamic
+    (re.compile(r"\bplanta\s+(\d+)\b", re.IGNORECASE), None),       # "Planta 3"
+    (re.compile(r"\bcubierta\b", re.IGNORECASE), "CUBIERTA"),
+    (re.compile(r"\bs[oó]tano\b", re.IGNORECASE), "SÓTANO"),
+    (re.compile(r"\bsemi[-\s]?s[oó]tano\b", re.IGNORECASE), "SEMI-SÓTANO"),
+    (re.compile(r"\balzado\s+(norte|sur|este|oeste|principal|posterior|lateral)\b", re.IGNORECASE), None),
+    (re.compile(r"\bsecci[oó]n\s+([A-Z])\s*[-–]?\s*([A-Z])?\b", re.IGNORECASE), None),
+    (re.compile(r"\bsecci[oó]n\s+([A-Z])\b", re.IGNORECASE), None),
+    (re.compile(r"\bdetalle\s+(.+?)\s*$", re.IGNORECASE), None),
+]
+
+_REVISION_RE = re.compile(
+    r"\b(?:rev(?:isi[oó]n)?|rev)\s*[:.\-]?\s*([A-Z0-9]{1,5})\b",
+    re.IGNORECASE,
+)
+
+
+def extract_plan_phase(text: str) -> tuple[str | None, str | None]:
+    """Detect the building phase and revision from the plan text.
+
+    Returns ``(project_phase, revision)``. ``project_phase`` is
+    a canonical label (e.g. ``"PLANTA PRIMERA"``, ``"ALZADO
+    NORTE"``, ``"SECCIÓN A-A"``) or ``None`` when no phase is
+    detected. ``revision`` is the revision letter/number (e.g.
+    ``"A"``, ``"01"``, ``"REV02"``) or ``None``.
+
+    The function is case-insensitive and normalises whitespace.
+    Multiple matches are resolved by *first match wins* (the
+    patterns are ordered from most specific to least specific).
+    """
+    if not text:
+        return None, None
+
+    # Phase detection.
+    phase: str | None = None
+    for pattern, canonical in _PHASE_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            if canonical is not None:
+                phase = canonical
+            else:
+                # Dynamic match: build the label from the capture
+                # groups.
+                groups = [g for g in match.groups() if g is not None]
+                if groups:
+                    phase = f"{match.group(0).strip().upper()}"
+                else:
+                    phase = match.group(0).strip().upper()
+            break
+
+    # Revision detection.
+    revision: str | None = None
+    rev_match = _REVISION_RE.search(text)
+    if rev_match:
+        revision = rev_match.group(1).upper()
+
+    return phase, revision

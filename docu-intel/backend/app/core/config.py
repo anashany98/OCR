@@ -129,6 +129,42 @@ class Settings(BaseSettings):
     # pay the PaddleOCR init cost.
     ocr_cascading_min_chars: int = 30
     ocr_cascading_min_confidence: float = 0.5
+    # O2 — Per-page language detection with adaptive thresholds. When
+    # true, the cascade looks up the per-language min_chars /
+    # min_confidence from ``THRESHOLDS_BY_LANG`` (German, CJK, etc.)
+    # instead of the legacy document-wide constants. Set to False to
+    # restore the legacy behaviour of "one threshold for every page".
+    ocr_cascading_use_adaptive_thresholds: bool = True
+    # O2 — Optional per-page language pack for the OCR engines.
+    # When true, the parser detects the dominant language of the
+    # page (from the embedded text when present, else inherited
+    # from the document-level detection) and tells the engines to
+    # load the right language pack (e.g. ``deu`` for German,
+    # ``jpn`` for Japanese). Set to False to use the document-wide
+    # ``tesseract_lang`` / ``paddle_lang`` for every page.
+    ocr_cascading_use_per_page_lang: bool = True
+    # S0.6 — Skip the expensive Tier 2 engine when the quality gain is
+    # marginal. The cascade already only escalates when the primary
+    # result is "unacceptable" (below min_chars / min_confidence), but
+    # the fallback can still be only marginally better. When this flag
+    # is true, the cascade keeps the primary result unless the
+    # fallback beats it by at least
+    # ``ocr_cascading_skip_quality_improvement`` on the combined quality
+    # score (or contributes >= ``ocr_cascading_skip_alnum_gain`` more
+    # alphanumeric characters). Set to False to restore the legacy
+    # behaviour of "any quality improvement wins".
+    ocr_cascading_skip_if_no_significant_gain: bool = True
+    # Minimum quality-score improvement (delta on the cascade's
+    # 0..1 combined score) the fallback must show over the primary
+    # to be considered a "significant" win. Below this delta the
+    # primary is kept and the fallback's result is discarded.
+    ocr_cascading_skip_quality_improvement: float = 0.10
+    # Minimum absolute gain in alphanumeric characters the fallback
+    # must show over the primary to be considered a "significant" win
+    # even when the quality delta is small. Useful for noisy Tier 1
+    # outputs that happen to score high on density (lots of digits /
+    # letters, all wrong).
+    ocr_cascading_skip_alnum_gain: int = 30
     # Optional Tier 3: PP-Structure (PaddleX layout_parsing). Only fires
     # when Tier 1 AND Tier 2 both fail to produce a usable result. GPU
     # only — the engine refuses to instantiate on CPU because the
@@ -147,6 +183,90 @@ class Settings(BaseSettings):
     embedding_allow_dimension_coercion: bool = False
     embedding_timeout_seconds: float = 30.0
     embedding_fallback_to_hash: bool = True
+    # E2 — BM25 (PostgreSQL full-text) hybrid-search knobs. When
+    # ``search_use_bm25`` is true (default) ``search_hybrid`` runs
+    # the BM25 branch alongside the cosine and ILIKE branches and
+    # fuses the three via RRF. The per-strategy weights are
+    # overridden automatically when ``search_bm25_adaptive_weights``
+    # is true and the query matches a code-like or
+    # natural-language shape.
+    search_use_bm25: bool = True
+    search_bm25_adaptive_weights: bool = True
+    # RRF k constant. Larger k reduces the contribution of any
+    # single branch's top-1 hit; smaller k makes the top hit
+    # dominate. 60 is the standard value from the RRF paper.
+    search_rrf_k: int = 60
+    # R1 — Query transformer knobs. The retriever can expand a
+    # terse or ambiguous user query into a list of retrieval-
+    # friendly variants via the local LLM (HyDE for natural-
+    # language questions, multi-query for terse / code-like
+    # questions). The transformer is fail-safe: when the LLM is
+    # unavailable the original query is returned unchanged.
+    search_use_query_transformer: bool = True
+    search_query_transform_strategy: str = "auto"  # hyde | multi_query | auto | off
+    search_query_transform_max_queries: int = 3
+    # E5 — Maximal Marginal Relevance knobs. When enabled, the
+    # reranker is followed by an MMR pass that re-orders the
+    # top-k to reduce near-duplicates. ``lambda`` controls the
+    # relevance / diversity trade-off (1.0 = pure relevance,
+    # 0.0 = pure diversity); 0.7 is the standard sweet spot.
+    search_use_mmr: bool = True
+    search_mmr_lambda: float = 0.7
+    # MMR operates on a small pool. The default ``max(limit*3, 15)``
+    # gives MMR enough candidates to pick from while keeping the
+    # n-gram similarity matrix cheap. Override only when the
+    # operator needs to push diversity harder.
+    search_mmr_pool_size: int = 0  # 0 = use the default
+    # R2 — Prompt-injection defence knobs. ``sensitivity``
+    # controls how aggressive the regex detector is
+    # (``low`` catches only obvious patterns, ``high`` is very
+    # aggressive and will flag some legit Spanish text). ``action``
+    # controls what we do with a flagged chunk: ``sanitize``
+    # redacts the matched text, ``drop`` returns an empty
+    # excerpt, ``log`` is the no-op that just records the
+    # attempt. Default = ``sanitize`` + ``medium``.
+    prompt_injection_sensitivity: str = "medium"  # low | medium | high
+    prompt_injection_action: str = "sanitize"  # log | sanitize | drop
+    # When true, the RAG prompt wraps every chunk in
+    # ``<chunk>...</chunk>`` XML tags with an explicit
+    # "treat-as-data" instruction. The system prompt also
+    # reinforces the structural separation. Disable only when
+    # the LLM is known to handle the wrapping poorly.
+    prompt_injection_use_xml_wrap: bool = True
+    # R3 — Feedback loop knobs. ``positive_weight`` and
+    # ``negative_weight`` are the per-vote deltas applied to a
+    # chunk's ``weight`` column (the value is interpolated
+    # towards 1.0 so a single vote cannot dominate). The
+    # ``min_votes_to_apply`` gate prevents a single user from
+    # swaying the retriever; the loop only adjusts the weight
+    # once at least N distinct votes are on the table. The
+    # ``rebalance_window_days`` knob controls the periodic
+    # decay (a weight of 1.5 drops to 1.25 after 30 days, etc.).
+    feedback_positive_weight: float = 0.20
+    feedback_negative_weight: float = -0.30
+    feedback_min_votes_to_apply: int = 3
+    feedback_rebalance_window_days: int = 30
+    feedback_rebalance_decay_per_day: float = 0.05
+    # E3 — Safety / observability knobs for the new filter set.
+    # ``search_filter_max_date_range_days`` does NOT truncate the
+    # query (the operator is allowed to ask for any range) but
+    # logs a warning when the range is suspiciously wide so a
+    # missing ``created_to`` (defaulting to "epoch") is not
+    # silently shipped to production.
+    search_filter_max_date_range_days: int = 365 * 5
+    # Default OCR confidence floor used by the admin UI when the
+    # operator does not pin one explicitly. Tied to
+    # ``processed_low_quality`` so a single number governs both
+    # ends.
+    search_min_ocr_confidence_default: float = 0.50
+    # E1 — Structure-aware chunking knobs. The legacy defaults
+    # (220 words, 40 overlap) match the previous implementation;
+    # the structure-aware flags are opt-in so a deployment that
+    # pins a behaviour can keep the old chunker.
+    embedding_chunk_max_words: int = 220
+    embedding_chunk_overlap_words: int = 40
+    embedding_chunk_respect_tables: bool = True
+    embedding_chunk_respect_headings: bool = True
     # In-process embedding via sentence-transformers. The model runs on
     # the GPU workers; on CPU-only deployments set device="cpu" and accept
     # the ~10× latency hit. Granite 311M uses asymmetric query/passage
@@ -241,6 +361,22 @@ class Settings(BaseSettings):
     reembed_interval_seconds: int = 900  # 15 min
     reembed_batch_size: int = 5
     reembed_low_confidence_threshold: float = 0.70
+
+    # P2 — Plan symbol detection (YOLO). The default model is the
+    # ``SamirShabani/Architect`` YOLOv8m fine-tuned on FloorPlanCAD
+    # (CC BY-NC 4.0). Operators can point ``plan_symbols_model_path`` to
+    # a local ``.pt`` file (e.g. a custom-trained model on their own
+    # floor plans) without changing the code.
+    #
+    # Set ``plan_symbols_enabled=False`` to keep the pipeline calls in
+    # place but skip inference (useful when the model is missing and
+    # you want to keep the rest of the pipeline fast).
+    plan_symbols_enabled: bool = True
+    plan_symbols_model_path: str = "SamirShabani/Architect"
+    plan_symbols_confidence_threshold: float = 0.35
+    plan_symbols_iou_threshold: float = 0.45
+    plan_symbols_image_size: int = 640
+    plan_symbols_device: str = "cpu"  # "cpu" or "cuda"
     # When a document qualifies for re-OCR (low confidence) we don't want
     # to spam the heavy queue with 500 docs at once, so we cap the heavy
     # re-OCR portion of a single tick to this number. Re-embed-only
