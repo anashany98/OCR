@@ -16,12 +16,294 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterable
 
 # Re-exported so other code in the project that imports
 # ``app.ai.agent._money_filters`` still works (this is the alias the
 # original agent.py used).
 from app.tools.internal import _money_filters  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# Multi-language intent lexicon (AI-007)
+# ---------------------------------------------------------------------------
+# The previous classifier hardcoded Spanish keywords (``presupuest``,
+# ``pedido``, ``factura`` …) which meant that questions in English,
+# French, German, Italian or Portuguese always fell through to the
+# generic ``hybrid_search`` fallback instead of being routed to the
+# dedicated structured tools (``aggregate_business``,
+# ``get_budget_by_number``, …).
+#
+# The lexicon below maps each *concept* the agent can act on to the
+# surface forms that mean the same thing across the working
+# languages of the platform. Every entry has been pre-normalised
+# (lowercased, accents stripped) so the matcher can do cheap
+# substring checks after ``_normalize``.
+#
+# Adding a new language for an existing concept is a one-line change
+# here. Adding a new concept is a new key in the dict plus a
+# consumer in :func:`select_tools_for_question`.
+
+
+_BUDGET_HINTS: frozenset[str] = frozenset(
+    {
+        # Spanish
+        "presupuesto", "presupuestos", "cotizacion", "cotizaciones",
+        "oferta", "ofertas", "estimacion", "estimaciones",
+        # English
+        "budget", "budgets", "quote", "quotes", "quotation",
+        "quotations", "estimate", "estimates", "bid", "bids",
+        # French
+        "devis", "budget",
+        # German
+        "angebot", "kostenvoranschlag", "budget",
+        # Italian
+        "preventivo", "preventivi", "offerta", "offerte", "budget",
+        # Portuguese
+        "orcamento", "orcamentos", "cotacao", "cotacoes", "proposta",
+    }
+)
+
+_ORDER_HINTS: frozenset[str] = frozenset(
+    {
+        # Spanish
+        "pedido", "pedidos", "orden de compra", "ordenes de compra",
+        # English (the bare ``po`` is intentionally absent because
+        # the two-letter token is too short and would match inside
+        # unrelated words like ``pour`` / ``polo``.)
+        "order", "orders", "purchase order", "purchase orders",
+        # French
+        "commande", "commandes", "bon de commande",
+        # German
+        "bestellung", "bestellungen", "auftrag", "auftraege",
+        # Italian
+        "ordine", "ordini", "ordine di acquisto",
+        # Portuguese
+        "pedido", "pedidos", "ordem de compra", "encomenda", "encomendas",
+    }
+)
+
+_INVOICE_HINTS: frozenset[str] = frozenset(
+    {
+        # Spanish (lemma + plural + past participle for "facturado")
+        "factura", "facturas", "facturad", "recibo", "recibos",
+        # English
+        "invoice", "invoices", "invoiced", "bill", "bills", "receipt", "receipts",
+        # French
+        "facture", "factures", "facturee", "recu", "reception",
+        # German
+        "rechnung", "rechnungen", "quittung", "quittungen",
+        # Italian
+        "fattura", "fatture", "ricevuta", "ricevute", "fatturat",
+        # Portuguese
+        "fatura", "faturas", "recibo", "recibos", "conta", "contas",
+    }
+)
+
+_PLAN_HINTS: frozenset[str] = frozenset(
+    {
+        # Spanish
+        "plano", "planos", "planta", "plantas", "croquis",
+        # English
+        "plan", "plans", "floor plan", "floor plans", "blueprint",
+        "blueprints", "drawing", "drawings", "layout", "layouts",
+        # French
+        "plan", "plans",
+        # German
+        "plan", "plaene", "grundriss", "grundrisse", "zeichnung",
+        # Italian
+        "pianta", "piante", "disegno", "disegni",
+        # Portuguese
+        "planta", "plantas", "desenho", "desenhos",
+    }
+)
+
+_AGGREGATION_HINTS: frozenset[str] = frozenset(
+    {
+        # Spanish (lemma + plural + common variants)
+        "cuanto", "cuanta", "cuantos", "cuantas",
+        "total", "suma", "importe", "gastado", "gastados",
+        "cobrado", "cobrados", "promedio", "media",
+        # English
+        "how much", "how many", "total", "sum", "amount", "spent",
+        "invoiced", "collected", "average", "avg", "mean", "tally",
+        # French
+        "combien", "montant", "somme", "moyenne",
+        # German
+        "wieviel", "gesamt", "summe", "betrag", "durchschnitt",
+        # Italian
+        "quanto", "quanti", "quante", "totale", "somma", "importo", "media",
+        # Portuguese
+        "quanto", "quantos", "quantas", "soma", "faturado", "media",
+        # Ranking hints (cross-language)
+        "top", "mayor", "menor", "mas alto", "mas grande",
+        "highest", "largest", "biggest", "lowest", "smallest",
+        "le plus", "le moins", "hoechste", "niedrigste",
+        "piu alto", "piu basso", "mais alto", "mais baixo",
+    }
+)
+
+_ACCEPTED_WITHOUT_ORDER_HINTS: frozenset[str] = frozenset(
+    {
+        # Spanish
+        "aceptados sin pedido", "aceptadas sin pedido",
+        "sin pedido", "no tienen pedido", "sin orden",
+        # English
+        "accepted without order", "approved without po",
+        "approved without purchase order", "accepted without purchase order",
+        "without purchase order", "missing purchase order",
+        "missing po", "no order", "no purchase order",
+        # French
+        "acceptes sans commande", "sans commande",
+        # German
+        "akzeptiert ohne bestellung", "ohne bestellung",
+        # Italian
+        "accettati senza ordine", "senza ordine",
+        # Portuguese
+        "aceites sem pedido", "sem pedido",
+    }
+)
+
+_DUPLICATE_HINTS: frozenset[str] = frozenset(
+    {
+        "duplicado", "duplicados", "duplicada", "duplicadas",
+        "duplicate", "duplicates", "duplicated",
+        "doublon", "doublons", "doppel", "doppelt",
+        "duplicato", "duplicati", "duplicata",
+    }
+)
+
+_LOW_OCR_HINTS: frozenset[str] = frozenset(
+    {
+        "baja confianza", "baja calidad", "error ocr", "errores ocr",
+        "ocr bajo", "confianza ocr", "revisar ocr", "ocr dudoso",
+        "low confidence", "low quality", "ocr error", "ocr errors",
+        "bad ocr", "poor ocr", "review ocr",
+        "faible confiance", "erreur ocr",
+        "niedrige qualitaet", "ocr fehler",
+        "bassa qualita", "errore ocr",
+        "baixa qualidade", "erro ocr",
+    }
+)
+
+# Room lexicon: alias -> canonical name. The first entry wins for
+# any given alias string so that English "kitchen" is mapped to
+# the canonical "kitchen" rather than to the Spanish "cocina".
+# Multi-word aliases ("salle de bain", "living room") are placed
+# before their shorter stems so the matcher does not return the
+# stem's canonical ("bedroom") when the longer phrase is present.
+_ROOM_HINTS: dict[str, str] = {
+    # English (multi-word first to avoid ``room`` shadowing ``living room``)
+    "living room": "living_room",
+    "lounge": "living_room",
+    "sitting": "living_room",
+    "kitchen": "kitchen",
+    "kitchens": "kitchen",
+    "bedroom": "bedroom",
+    "bedrooms": "bedroom",
+    "rooms": "bedroom",
+    "room": "bedroom",
+    "bathroom": "bathroom",
+    "bathrooms": "bathroom",
+    "toilet": "bathroom",
+    "toilets": "bathroom",
+    "wc": "bathroom",
+    "corridor": "corridor",
+    "corridors": "corridor",
+    "hallway": "corridor",
+    # Spanish
+    "salon": "salon",
+    "salones": "salon",
+    "sala": "salon",
+    "cocina": "cocina",
+    "cocinas": "cocina",
+    "dormitorio": "dormitorio",
+    "dormitorios": "dormitorio",
+    "habitacion": "dormitorio",
+    "habitaciones": "dormitorio",
+    "cuarto": "dormitorio",
+    "cuartos": "dormitorio",
+    "recamara": "dormitorio",
+    "recamaras": "dormitorio",
+    "bano": "bano",
+    "banos": "bano",
+    "banio": "bano",
+    "banios": "bano",
+    "aseo": "bano",
+    "aseos": "bano",
+    "pasillo": "pasillo",
+    "pasillos": "pasillo",
+    "vestibulo": "pasillo",
+    "comedor": "comedor",
+    "comedores": "comedor",
+    "terraza": "terraza",
+    "terrazas": "terraza",
+    "garaje": "garaje",
+    "garajes": "garaje",
+    "garage": "garaje",
+    "recibidor": "recibidor",
+    "recibidores": "recibidor",
+    "hall": "recibidor",
+    "entrada": "recibidor",
+    # Italian
+    "soggiorno": "soggiorno",
+    "salotto": "soggiorno",
+    "camera": "camera",
+    "camere": "camera",
+    "stanza": "camera",
+    "stanze": "camera",
+    "bagno": "bagno",
+    "bagni": "bagno",
+    "corridoio": "corridoio",
+    "corridoi": "corridoio",
+    "cucina": "cucina",
+    # Portuguese
+    "quarto": "quarto",
+    "quartos": "quarto",
+    "cozinha": "cozinha",
+    "banheiro": "banheiro",
+    # French
+    "salon": "salon",
+    "sejour": "salon",
+    "chambre": "chambre",
+    "chambres": "chambre",
+    "cuisine": "cuisine",
+    "salle de bain": "salle_de_bain",
+    "salle de bains": "salle_de_bain",
+    "salle d eau": "salle_de_bain",
+}
+
+
+def _contains_word(normalized: str, word: str) -> bool:
+    """Return True if ``word`` appears in ``normalized`` as a whole
+    word or as a stem of a longer inflected form.
+
+    For single-word stems we accept any trailing letters (so
+    ``facturad`` matches ``facturado`` and ``invoice`` matches
+    ``invoices``) but we still require a word boundary on the
+    left so the stem cannot fire in the middle of an unrelated
+    token (e.g. ``expedido`` would not match ``pedido``). For
+    multi-word hints ("low confidence", "purchase order") we use
+    a phrase-level match that requires the hint to start and end
+    at word boundaries.
+    """
+    if " " in word or "-" in word:
+        # Multi-word hints: require the phrase to start at a word
+        # boundary (start of string or preceded by whitespace) and
+        # end at one (end of string or followed by whitespace/punct).
+        pattern = r"(?:^|\s)" + re.escape(word) + r"(?=\s|$|[.,;:?!])"
+        return re.search(pattern, normalized) is not None
+    # ``[\w]*`` after the stem absorbs inflections (``facturado``,
+    # ``invoices``, ``pedidos``) but the leading ``(?<![\w])`` keeps
+    # the stem from firing inside an unrelated token.
+    return re.search(rf"(?<![\w]){re.escape(word)}[\w]*(?![\w])", normalized) is not None
+
+
+def _contains_any(normalized: str, words: Iterable[str]) -> bool:
+    """Return True if any of ``words`` appears in ``normalized`` as a
+    whole word. Replaces naive ``in`` substring checks that used to
+    match "pedido" inside "expedido"."""
+    return any(_contains_word(normalized, word) for word in words)
 
 
 # ---------------------------------------------------------------------------
@@ -112,17 +394,19 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     # If the user mentions a number and references a document concept
     # (presupuesto, pedido, factura, etc.), use the same smart chain.
     if document_number and (
-        "presupuest" in normalized
-        or "pedido" in normalized
-        or "factura" in normalized
+        _contains_any(normalized, _BUDGET_HINTS)
+        or _contains_any(normalized, _ORDER_HINTS)
+        or _contains_any(normalized, _INVOICE_HINTS)
         or "documento" in normalized
+        or "document" in normalized
+        or "commande" in normalized
     ):
         # Prefer presupuesto when the user names it explicitly; otherwise
         # fall back to pedido. This avoids searching by pedido number when
         # the user actually asked about the budget.
-        if "presupuest" in normalized:
+        if _contains_any(normalized, _BUDGET_HINTS):
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
-        elif "pedido" in normalized:
+        elif _contains_any(normalized, _ORDER_HINTS):
             primary = ToolCall("get_order_by_number", {"order_number": document_number})
         else:
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
@@ -133,24 +417,52 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
             ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}),
         ]
 
-    if "presupuest" in normalized and "acept" in normalized and ("sin pedido" in normalized or "no tienen pedido" in normalized):
+    if _contains_any(normalized, _BUDGET_HINTS) and _contains_any(
+        normalized, _ACCEPTED_WITHOUT_ORDER_HINTS
+    ):
         return [ToolCall("get_accepted_budgets_without_order", {})]
-    if "linea" in normalized and "pedido" in normalized:
+    if _contains_word(normalized, "linea") and _contains_any(normalized, _ORDER_HINTS):
         return [ToolCall("get_order_by_number", {"order_number": document_number or ""})]
-    if "ultimo pedido" in normalized or ("pedido" in normalized and document_number):
+    if (
+        "ultimo pedido" in normalized
+        or "ultima pedido" in normalized
+        or "ultimo ordine" in normalized
+        or "latest order" in normalized
+        or "last order" in normalized
+        or "der letzte auftrag" in normalized
+        or "last purchase order" in normalized
+    ) or (_contains_any(normalized, _ORDER_HINTS) and document_number):
         return [ToolCall("get_order_by_number", {"order_number": document_number or ""})]
-    if "duplicad" in normalized:
+    if _contains_any(normalized, _DUPLICATE_HINTS):
         return [ToolCall("get_duplicate_documents", {})]
-    if "baja confianza" in normalized or "error ocr" in normalized or "confianza ocr" in normalized:
+    if _contains_any(normalized, _LOW_OCR_HINTS):
         return [ToolCall("get_ocr_review_documents", {})]
-    if "entidad" in normalized and "referencia" in normalized:
+    if _contains_word(normalized, "entidad") and _contains_word(normalized, "referencia"):
         value = _extract_reference(question)
         return [ToolCall("search_entities", {"entity_type": "reference", "value": value or question})]
-    if ("mide" in normalized or "medida" in normalized or "superficie" in normalized) and (
-        room_name := _extract_room_name(normalized)
+    if (
+        _contains_any(
+            normalized,
+            (
+                "mide", "medida", "medidas", "superficie", "tamano",
+                "how big", "how large", "size", "area", "square",
+                "taille", "dimension", "groesse", "flaeche",
+                "dimensione", "superficie", "tamanho", "surface",
+            ),
+        )
+        and (room_name := _extract_room_name(normalized))
     ):
         return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
-    if "plano" in normalized or "medida" in normalized or "salon" in normalized or "escala" in normalized:
+    if (
+        _contains_any(normalized, _PLAN_HINTS)
+        or _contains_any(
+            normalized,
+            (
+                "medida", "medidas", "mide", "escala", "scale",
+                "mabstab", "scala", "echelle",
+            ),
+        )
+    ):
         return [ToolCall("hybrid_search", {"query": question, "filters": {"document_type": "plano", "limit": 8}})]
 
     # General question: try hybrid_search with re-ranking filters when the
@@ -165,17 +477,14 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
 # ---------------------------------------------------------------------------
 
 
-# Words that signal "the user wants a SQL-style aggregation, not a
-# text match". Order does not matter; the helper uses ``in``.
-_AGGREGATION_HINTS = (
-    "cuanto", "cuanta", "total", "suma", "importe total", "gastado",
-    "facturado", "cobrado", "numero de", "cuantos", "cuantas",
-    "promedio", "media", "top", "mayor", "menor",
-)
-
-
 def _is_aggregation_question(normalized: str) -> bool:
-    return any(h in normalized for h in _AGGREGATION_HINTS)
+    """True when the user is asking for a SQL-style aggregation.
+
+    Replaces the old ``any(h in normalized for h in _AGGREGATION_HINTS)``
+    check (which only worked in Spanish) with a multi-language
+    whole-word scan over :data:`_AGGREGATION_HINTS`.
+    """
+    return _contains_any(normalized, _AGGREGATION_HINTS)
 
 
 def _classify_aggregation(normalized: str) -> tuple[str, str]:
@@ -183,19 +492,53 @@ def _classify_aggregation(normalized: str) -> tuple[str, str]:
 
     - entity: 'budget' | 'order' | 'invoice'
     - kind:   'count' | 'total' | 'top' | 'by_supplier'
+
+    Recognises the entity by whole-word match over the multi-language
+    lexicons so an English "how much did we spend on orders?" gets
+    ``entity='order', kind='total'`` just like the Spanish equivalent.
+    The check is order-sensitive: invoice > order > budget, so an
+    English question that mentions "purchase orders" routes to
+    ``order`` (purchase order is in ``_ORDER_HINTS``) and not
+    ``invoice``.
     """
-    if "factur" in normalized:
+    if _contains_any(normalized, _INVOICE_HINTS):
         entity = "invoice"
-    elif "pedido" in normalized:
+    elif _contains_any(normalized, _ORDER_HINTS):
         entity = "order"
     else:
         entity = "budget"
 
-    if any(w in normalized for w in ("cuanto", "cuanta", "total", "suma", "importe", "gastado", "facturado")):
+    if _contains_any(
+        normalized,
+        (
+            "cuanto", "cuanta", "total", "suma", "importe", "gastado",
+            "facturado", "cobrado", "how much", "amount", "spent",
+            "invoiced", "collected", "combien", "montant", "somme",
+            "wieviel", "gesamt", "summe", "betrag",
+            "quanto", "importo", "fatturato", "soma", "faturado",
+        ),
+    ):
         kind = "total"
-    elif any(w in normalized for w in ("top", "mayor", "mas alto", "mas grande")):
+    elif _contains_any(
+        normalized,
+        (
+            "top", "mayor", "menor", "mas alto", "mas grande",
+            "highest", "largest", "biggest", "lowest", "smallest",
+            "le plus", "le moins", "hoechste", "niedrigste",
+            "piu alto", "piu basso", "mais alto", "mais baixo",
+        ),
+    ):
         kind = "top"
-    elif "por proveedor" in normalized or "por cada proveedor" in normalized:
+    elif (
+        "por proveedor" in normalized
+        or "por cada proveedor" in normalized
+        or "by supplier" in normalized
+        or "per supplier" in normalized
+        or "par fournisseur" in normalized
+        or "pro lieferant" in normalized
+        or "per fornitore" in normalized
+        or "por fornecedor" in normalized
+    ):
         kind = "by_supplier"
     else:
         kind = "count"
@@ -207,13 +550,19 @@ def _maybe_apply_relevance_filter(filters: dict, normalized: str, original_quest
     bounds to the hybrid_search filters when the user hints at them in the
     question. The search service is responsible for actually applying them
     (see search_service.py)."""
-    if "plano" in normalized:
+    # Whole-word match against the multi-language lexicons so we stop
+    # accidentally classifying a "plano" mentioned in passing as the
+    # primary document type when the user is really asking for
+    # something else. The order of the checks matters: "plano" is a
+    # sub-word of "planta" in some Spanish questions so we test
+    # planos/plans before falling back to budgets/orders/invoices.
+    if _contains_any(normalized, _PLAN_HINTS):
         filters["document_type"] = "plano"
-    elif "pedido" in normalized:
+    elif _contains_any(normalized, _ORDER_HINTS):
         filters["document_type"] = "pedido"
-    elif "presupuest" in normalized:
+    elif _contains_any(normalized, _BUDGET_HINTS):
         filters["document_type"] = "presupuesto"
-    elif "factura" in normalized:
+    elif _contains_any(normalized, _INVOICE_HINTS):
         filters["document_type"] = "factura"
 
     money = _money_filters("", original_question)
@@ -281,29 +630,26 @@ def _extract_filenames(text: str) -> list[str]:
 def _extract_room_name(normalized_question: str) -> str | None:
     """Pick up the name of a room the user is asking about.
 
-    The list is intentionally short: it covers the most common
-    Spanish room names. When the question mentions a room that is
-    not in the list, we fall back to a regex that captures the noun
-    after "mide" / "medida" / "superficie".
+    The lexicon (:data:`_ROOM_HINTS`) maps every surface form
+    (Spanish, English, French, Italian, Portuguese) to a single
+    canonical name. The first alias that matches the question
+    wins, so an English "kitchen" returns ``kitchen`` instead of
+    being shadowed by the Spanish entry that also lists
+    ``cocina``. When the question mentions a room that is not in
+    the list, we fall back to a regex that captures the noun
+    after "mide" / "medida" / "superficie" / "size" / "area".
     """
-    known_rooms = [
-        "salon",
-        "cocina",
-        "dormitorio",
-        "habitacion",
-        "bano",
-        "banio",
-        "aseo",
-        "pasillo",
-        "comedor",
-        "terraza",
-        "garaje",
-        "recibidor",
-    ]
-    for room in known_rooms:
-        if room in normalized_question:
-            return "bano" if room == "banio" else room
-    match = re.search(r"(?:mide|medida|superficie)\s+(?:del|de la|de el|el|la)?\s*([a-z0-9 ]{3,30})", normalized_question)
+    for alias, canonical in _ROOM_HINTS.items():
+        if _contains_word(normalized_question, alias):
+            return "bano" if canonical == "bano" else canonical
+    match = re.search(
+        r"(?:mide|medida|medidas|superficie|size|area|square|dimension|"
+        r"taille|groesse|dimensione|superficie|tamanho|"
+        r"tamano|flaeche|flaechen|surface)\s+"
+        r"(?:del|de la|de el|el|la|the|of|de|du|von|di|do)?\s*"
+        r"([a-z0-9 ]{3,30})",
+        normalized_question,
+    )
     if match:
         return match.group(1).strip()
     return None
