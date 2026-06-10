@@ -191,6 +191,25 @@ def embed_text(text: str, dimensions: int | None = None) -> list[float]:
     return embed_many([text], dimensions=dimensions)[0]
 
 
+async def embed_text_async(text: str, dimensions: int | None = None) -> list[float]:
+    """Async wrapper around :func:`embed_text` for FastAPI request handlers.
+
+    The underlying embedding providers are CPU/IO bound but synchronous. We
+    offload the call to a worker thread so the event loop is not blocked while
+    a request is computing an embedding.
+    """
+    return await asyncio.to_thread(embed_text, text, dimensions)
+
+
+async def embed_query_text_async(text: str, dimensions: int | None = None) -> list[float]:
+    """Async wrapper around :func:`embed_query_text`.
+
+    Query embedding is on the critical path of every ``/ai/ask`` request, so
+    we offload the CPU/IO work to a thread and yield to the event loop.
+    """
+    return await asyncio.to_thread(embed_query_text, text, dimensions)
+
+
 def embed_query_text(text: str, dimensions: int | None = None) -> list[float]:
     """Embed a user query with query-side semantics when the provider needs it.
 

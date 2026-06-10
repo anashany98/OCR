@@ -52,7 +52,7 @@ from sqlalchemy.orm import Session
 from app.ai.local_client import LocalOpenAICompatibleClient
 from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, Plan, User
-from app.services.ai_cache import cache_answer, get_cached_answer
+from app.services.ai_cache import cache_answer_async, get_cached_answer_async
 from app.services.tenant_access import (
     AccessScope,
     access_scope_cache_key,
@@ -175,7 +175,7 @@ async def answer_question(
     """
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
-    cached = get_cached_answer(question, user.id, mode, scope_key=scope_key)
+    cached = await get_cached_answer_async(question, user.id, mode, scope_key=scope_key)
     if cached:
         # Return cached answer as AIAnswer object
         question_row = AIQuestion(user_id=user.id, question=question)
@@ -351,7 +351,7 @@ async def answer_question(
     db.refresh(answer_row)
 
     # Cache the answer for future queries
-    cache_answer(
+    await cache_answer_async(
         question=question,
         user_id=user.id,
         answer={

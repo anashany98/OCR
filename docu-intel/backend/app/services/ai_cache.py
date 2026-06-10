@@ -7,6 +7,7 @@ reformulations of the same question also hit the cache.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -185,3 +186,75 @@ def get_cache_stats() -> dict[str, Any]:
             "enabled": False,
             "error": "Unable to connect to cache",
         }
+
+
+# ---------------------------------------------------------------------------
+# Async wrappers
+# ---------------------------------------------------------------------------
+# The synchronous helpers above block the event loop while they do
+# CPU/IO-bound work (Redis round-trips, embedding calls). FastAPI
+# request handlers in ``app.api.routes.ai`` are async, so we expose
+# coroutine versions that off-load the work via ``asyncio.to_thread``.
+# The public sync API is kept untouched for non-endpoint call-sites
+# (Celery tasks, scripts).
+
+
+async def _embed_question_async(question: str) -> list[float] | None:
+    """Async variant of :func:`_embed_question` used by the async cache wrappers.
+
+    The async wrapper for the embedding call delegates to the asyncio-aware
+    helper in :mod:`app.services.embeddings` so we never call a blocking
+    function from a running event loop.
+    """
+    try:
+        from app.services.embeddings import embed_text_async
+        return await embed_text_async(question)
+    except Exception as exc:  # pragma: no cover - same semantics as sync version
+        logger.debug("Embedding service unavailable, skipping semantic cache: %s", exc)
+        return None
+
+
+async def get_cached_answer_async(
+    question: str,
+    user_id: int,
+    mode: str | None = None,
+    scope_key: str | None = None,
+) -> dict[str, Any] | None:
+    """Async variant of :func:`get_cached_answer` for FastAPI handlers.
+
+    Lookup semantics match the sync helper exactly. The function is
+    off-loaded to a worker thread because the underlying Redis client
+    used by :mod:`app.services.cache` is synchronous.
+    """
+    return await asyncio.to_thread(
+        get_cached_answer,
+        question,
+        user_id,
+        mode,
+        scope_key,
+    )
+
+
+async def cache_answer_async(
+    question: str,
+    user_id: int,
+    answer: dict[str, Any],
+    mode: str | None = None,
+    scope_key: str | None = None,
+    ttl: int = AI_CACHE_TTL,
+) -> bool:
+    """Async variant of :func:`cache_answer` for FastAPI handlers.
+
+    Stores both the exact-key entry and the sidecar semantic index in
+    Redis via a worker thread so the event loop stays responsive while
+    the answer is being persisted.
+    """
+    return await asyncio.to_thread(
+        cache_answer,
+        question,
+        user_id,
+        answer,
+        mode,
+        scope_key,
+        ttl,
+    )

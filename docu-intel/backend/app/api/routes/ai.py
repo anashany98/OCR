@@ -239,8 +239,8 @@ async def ask_stream(
         # questions (and exact re-asks) skip the LLM. The cache embeds
         # the question and stores it as a sidecar semantic index.
         try:
-            from app.services.ai_cache import cache_answer as _cache_answer
-            _cache_answer(
+            from app.services.ai_cache import cache_answer_async as _cache_answer_async
+            await _cache_answer_async(
                 question=question,
                 user_id=user.id,
                 answer={
