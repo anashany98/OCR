@@ -325,12 +325,12 @@ class Settings(BaseSettings):
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     auth_login_rate_limit: str = "10/minute"
 
-    max_upload_size_mb: int = 200
+    max_upload_size_mb: int = 500  # Bumped for large architectural plans (up to 300 MB)
     # Max number of file parts in a single multipart upload (python-multipart's
     # default is 1000). Bumped so a folder drag-and-drop or webkitdirectory
     # pick with many files is not rejected before reaching the route.
     max_upload_files: int = 10_000_000
-    max_pdf_pages: int = 500
+    max_pdf_pages: int = 1000  # Bumped for large plan sets
     max_image_megapixels: float = 40.0
     max_excel_rows: int = 100_000
     max_excel_sheets: int = 50

@@ -292,9 +292,16 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
 
     pages: list[ExtractedPage] = []
     output_dir.mkdir(parents=True, exist_ok=True)
+    file_size_mb = path.stat().st_size / (1024 * 1024)
     with fitz.open(path) as pdf:
-        if len(pdf) > settings.max_pdf_pages:
-            raise ValueError(f"max_pdf_pages exceeded: {len(pdf)} > {settings.max_pdf_pages}")
+        page_count = len(pdf)
+        if page_count > settings.max_pdf_pages:
+            raise ValueError(f"max_pdf_pages exceeded: {page_count} > {settings.max_pdf_pages}")
+        if file_size_mb > 100:
+            logger.info(
+                "Processing large PDF: %s (%.1f MB, %d pages)",
+                path.name, file_size_mb, page_count,
+            )
         # O2 — track the language we detected from the first *digital*
         # page so a scan-only page that comes later still gets the
         # right language pack (scans do not have any embedded text to
