@@ -20,12 +20,50 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     rate_limit_storage_uri: str = ""
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    # SEC-TENANT-1 (Sprint 1): deny-by-default multi-tenant isolation.
+    # When True (the new default), the per-role permissive defaults
+    # in ``resolve_user_access_scope`` are skipped: a user with no
+    # AccessGroup membership sees zero documents. To grant access
+    # in deny-by-default mode, create an AccessGroup with explicit
+    # ``hotel_ids`` / ``chain_ids`` and add the user. The migration
+    # ``0028_tenant_default_permissive_group`` backfills a
+    # "default-permissive" group for every existing non-admin user
+    # so deployments upgrading from pre-Sprint-1 do not lose
+    # access unexpectedly. Set to ``False`` to restore the legacy
+    # permissive role defaults (gestor/operario/auditor see
+    # everything by default).
+    tenant_access_deny_by_default: bool = True
+    # SEC-HEADERS-1 (Sprint 1): Content-Security-Policy mode.
+    # ``strict`` = the production profile (no inline scripts, frame-ancestors
+    # none, etc.). ``local_dev`` = adds ``ws://localhost:5173`` and
+    # ``http://localhost:5173`` to ``connect-src`` so the Vite dev
+    # server's HMR keeps working when the operator runs the backend
+    # with ENVIRONMENT=local. ``disabled`` = the middleware still
+    # emits the non-CSP headers (HSTS, Permissions-Policy, etc.) but
+    # omits ``Content-Security-Policy`` entirely (only for debugging).
+    # Auto-set to ``local_dev`` when ENVIRONMENT=local; otherwise
+    # ``strict``.
+    csp_mode: Literal["strict", "local_dev", "disabled"] | None = None
+
+    @field_validator("csp_mode", mode="after")
+    @classmethod
+    def _default_csp_mode(cls, value: str | None, info: ValidationInfo) -> str:
+        if value:
+            return value
+        env = info.data.get("environment", "local")
+        return "local_dev" if env == "local" else "strict"
 
     files_dir: Path = Path("/app/data/files")
     input_dir: Path = Path("/app/data/input")
     scan_interval_seconds: int = 300
     ingestion_stable_seconds: int = 30
     ingestion_max_pending_jobs: int = 200
+    # WATCH-1 (Sprint 2): cap on the file size the watcher will
+    # try to enqueue. Mirrors ``max_upload_size_mb`` so a file
+    # that would be rejected by the HTTP upload endpoint is
+    # also rejected by the watcher. Set to 0 to disable (NOT
+    # recommended; the worker could OOM on a multi-GB PDF).
+    ingestion_max_file_size_mb: int = 500
     allowed_file_extensions: list[str] = Field(
         default_factory=lambda: [
             ".pdf",
@@ -79,6 +117,12 @@ class Settings(BaseSettings):
     ai_retry_base_delay_seconds: float = 0.25
     ai_circuit_breaker_failures: int = 3
     ai_circuit_breaker_reset_seconds: float = 30.0
+    # M11 (Sprint 4): hard token budget for the context sent to the LLM.
+    # The system prompt + user prompt overhead is ~800 tokens; the
+    # remainder is context.  Local 8B models typically have 8K context;
+    # 32B models 32K.  Default 6000 keeps headroom for the question and
+    # the answer.  Set to 0 to disable (no clipping).
+    ai_max_context_tokens: int = 6000
     # Vision LLM (multimodal). When configured, the agent can ask the
     # vision model to describe image documents (jpg/png/tif/webp) so the
     # main LLM has actual visual content, not just bad OCR. Leave empty
@@ -321,6 +365,15 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 12
     auth_cookie_name: str = "docuintel_token"
+    # AUTH-JWT-1 (Sprint 1): per-purpose secrets so a leak in one
+    # surface (e.g. an integration API key) cannot be used to forge
+    # another surface (e.g. a user access token). Empty values
+    # fall back to ``jwt_secret`` at the use site for backward
+    # compatibility; production deployments MUST set distinct
+    # values. Generate each with
+    # ``python -c "import secrets; print(secrets.token_urlsafe(64))"``.
+    integration_jwt_secret: str = ""
+    api_key_hmac_secret: str = ""
     auth_cookie_secure: bool | None = None
     auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     auth_login_rate_limit: str = "10/minute"

@@ -46,6 +46,18 @@ MAX_CONTEXT_ITEMS_FOR_LLM = 8
 # context for 8 sources, well under any local 8B-32B model's limit.
 EXCERPT_PREVIEW_CHARS = 600
 
+# M11 (Sprint 4): Rough token estimate multiplier.  Spanish/English
+# text averages ~1.3 tokens per word (whitespace-split).  This is
+# deliberately conservative (overestimates) so we never exceed the
+# model's real context window.
+_TOKENS_PER_WORD = 1.3
+
+# Overhead for the system prompt + user prompt skeleton (question
+# header, "Contexto documental" label, warnings block).  Measured
+# from the actual prompts below; kept as a constant so the clipping
+# logic does not need to re-render the prompt to guess the budget.
+_PROMPT_OVERHEAD_TOKENS = 800
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -86,11 +98,27 @@ def build_context_text(context_items: list[ContextItem]) -> str:
     tags (when configured). The XML wrap is the second line of
     defence — the first is the system prompt telling the model to
     treat ``<chunk>`` content as DATA, not instructions.
+
+    M11 (Sprint 4): When ``settings.ai_max_context_tokens`` is set
+    (> 0), context items are greedily included by relevance score
+    until the token budget is exhausted.  Each rendered line is
+    estimated at ``len(text.split()) * _TOKENS_PER_WORD`` tokens.
+    The budget accounts for the prompt overhead (system + question +
+    warnings).
     """
-    return "\n".join(
-        _context_line_for_ai(index, item)
-        for index, item in enumerate(context_items[:MAX_CONTEXT_ITEMS_FOR_LLM], start=1)
-    )
+    max_tokens = getattr(settings, "ai_max_context_tokens", 0) or 0
+    budget = max_tokens - _PROMPT_OVERHEAD_TOKENS if max_tokens > 0 else 0
+
+    lines: list[str] = []
+    used_tokens = 0
+    for index, item in enumerate(context_items[:MAX_CONTEXT_ITEMS_FOR_LLM], start=1):
+        line = _context_line_for_ai(index, item)
+        line_tokens = _estimate_tokens(line)
+        if budget > 0 and used_tokens + line_tokens > budget:
+            break
+        lines.append(line)
+        used_tokens += line_tokens
+    return "\n".join(lines)
 
 
 def _context_line_for_ai(index: int, item: ContextItem) -> str:
@@ -123,6 +151,16 @@ def _context_line_for_ai(index: int, item: ContextItem) -> str:
         f"[{index}]{marker} Fuente={_format_source(item)} | Ruta={item.source_path or '-'} | "
         f"Confianza={item.confidence} | ConfianzaOCR={ocr_confidence} | Texto={safe_text}"
     )
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate using word count × multiplier.
+
+    This deliberately overestimates so we never exceed the model's
+    real context window.  For Spanish/English text, 1.3 tokens per
+    whitespace-separated word is a safe upper bound.
+    """
+    return int(len(text.split()) * _TOKENS_PER_WORD)
 
 
 # ---------------------------------------------------------------------------

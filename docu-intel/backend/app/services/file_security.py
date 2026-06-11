@@ -15,10 +15,15 @@ EXECUTABLE_SIGNATURES = {
     b"#!": "script_executable",
 }
 
+# Office formats that are blocked at ingestion. We deliberately
+# **do not** include ``.doc`` or ``.docx`` here because the parser
+# router has dedicated handlers for both (``parse_doc`` / ``parse_docx``)
+# and the original goal of this block list was macro-enabled or
+# otherwise risky Office formats. Keep the list aligned with the
+# router in :mod:`app.parsers.router` — anything here must NOT have
+# a parser, and anything with a parser must NOT be here.
 BLOCKED_OFFICE_EXTENSIONS = {
-    ".doc",
     ".docm",
-    ".docx",
     ".xlsb",
     ".pptm",
     ".accdb",

@@ -69,9 +69,35 @@ celery_app.conf.task_routes = {
 
 @worker_process_init.connect
 def preload_worker_ocr_engine(**_kwargs) -> None:
+    """Preload the OCR engine + force a synthetic compile pass.
+
+    OCR-INIT-1 (Sprint 2): the previous implementation only
+    triggered the lazy ``cached_property`` that loads the model
+    weights. Paddle and Tesseract both do *additional* one-time
+    work on the first real call (Paddle compiles the inference
+    graph for the actual image dimensions, Tesseract allocates
+    its working memory). The new :func:`preload_ocr_engine`
+    helper runs a synthetic-image extraction so those costs are
+    paid during worker boot, not during the first real job.
+
+    Failures are no longer silenced: a missing Paddle install
+    or a broken model download is logged with ``logger.exception``
+    (stack trace included) and emitted as a Prometheus counter
+    so the operator can dashboard it.
+    """
     try:
         from app.ocr.factory import preload_ocr_engine
 
         preload_ocr_engine()
-    except Exception as exc:
-        logger.warning("OCR engine preload failed during worker init: %s", exc)
+    except Exception:
+        # OCR-INIT-1: preserve the full stack trace (no more
+        # ``logger.warning(exc)`` swallowing the chain) and emit
+        # a metric so the failure is visible in the operator
+        # dashboard.
+        logger.exception("OCR engine preload failed during worker init")
+        try:
+            from app.services.metrics import track_worker_init_failure
+
+            track_worker_init_failure(stage="ocr_preload")
+        except Exception:  # pragma: no cover - never let metrics break the worker boot
+            logger.exception("worker_init_failure_metric_emission_failed")

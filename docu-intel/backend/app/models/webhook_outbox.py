@@ -9,7 +9,7 @@ moved to ``dead_letter`` for manual inspection and replay.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone, timezone
 from typing import Any
 
 from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text
@@ -36,7 +36,7 @@ class WebhookOutbox(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
     next_attempt_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -45,7 +45,7 @@ class WebhookOutbox(Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

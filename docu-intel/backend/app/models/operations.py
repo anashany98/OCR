@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone, timezone
 from typing import Any
 
 from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, JSON, String, Text
@@ -20,12 +20,12 @@ class WatchedFile(Base):
     document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
     job_id: Mapped[int | None] = mapped_column(ForeignKey("extraction_jobs.id", ondelete="SET NULL"), index=True)
     error_message: Mapped[str | None] = mapped_column(Text)
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -45,7 +45,7 @@ class IngestionEvent(Base):
     watched_file_id: Mapped[int | None] = mapped_column(ForeignKey("watched_files.id", ondelete="SET NULL"), index=True)
     details_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error_message: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
     document = relationship("Document")
     job = relationship("ExtractionJob")

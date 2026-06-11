@@ -18,6 +18,21 @@ from ._registry import (
     DOCUMENTS_PROCESSED,
     JOBS_PENDING_BY_QUEUE,
     WATCHER_ERRORS,
+    WORKER_INIT_FAILURES,
+)
+
+
+# Allow-list of ``stage`` values for ``track_worker_init_failure``.
+# Anything outside the list is bucketed to ``"other"`` so a
+# buggy caller cannot blow up the Prometheus label cardinality.
+_ALLOWED_INIT_STAGES = frozenset(
+    {
+        "ocr_preload",
+        "yolo_preload",
+        "reranker_preload",
+        "embedding_preload",
+        "other",
+    }
 )
 
 
@@ -40,6 +55,25 @@ def track_watcher_error(count: int = 1) -> None:
     if count <= 0:
         return
     WATCHER_ERRORS.inc(count)
+
+
+def track_worker_init_failure(stage: str, count: int = 1) -> None:
+    """Record a failure in the Celery ``worker_process_init`` hook.
+
+    The ``stage`` label is bucketed: any value outside
+    :data:`_ALLOWED_INIT_STAGES` is mapped to ``"other"`` so the
+    Prometheus series count stays bounded.
+
+    OCR-INIT-1 (Sprint 2): used by the OCR preload hook in
+    ``app.workers.celery_app`` so that a missing Paddle
+    install or a broken model download is visible in the
+    metrics endpoint, not just a log line that the operator
+    might miss.
+    """
+    if count <= 0:
+        return
+    safe_stage = stage if stage in _ALLOWED_INIT_STAGES else "other"
+    WORKER_INIT_FAILURES.labels(stage=safe_stage).inc(count)
 
 
 def update_queue_status_snapshot(snapshot) -> None:

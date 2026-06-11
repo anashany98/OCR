@@ -50,4 +50,10 @@ COPY scripts /app/scripts
 
 USER appuser
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# SEC-RL-1 (Sprint 0): pass --proxy-headers so uvicorn populates
+# ``request.client.host`` from a trusted reverse proxy. The list of
+# trusted proxy IPs is injected via the UVICORN_FORWARDED_ALLOW_IPS
+# env var (set in .env.production). Default "*" is intentionally
+# permissive in local dev; in production the operator MUST pin it to
+# the actual reverse-proxy CIDR (e.g. "10.0.0.0/8").
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='${UVICORN_FORWARDED_ALLOW_IPS:-*}'"]

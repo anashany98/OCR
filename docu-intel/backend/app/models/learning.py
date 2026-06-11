@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
@@ -32,7 +32,7 @@ class ClassificationSuggestion(Base):
     # ``learning_stale_pending_days``. The auto-reject job uses this to skip
     # rows that are still fresh. NULL means "not yet stale".
     stale_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
     document = relationship("Document", foreign_keys=[document_id], back_populates="classification_suggestions")
     target_document = relationship("Document", foreign_keys=[target_document_id])
@@ -56,12 +56,12 @@ class LearnedPattern(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     applied_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     source_suggestion = relationship("ClassificationSuggestion", foreign_keys=[source_suggestion_id])

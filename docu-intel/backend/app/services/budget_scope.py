@@ -10,7 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import _encode_jwt, decode_access_token
+from app.core.security import (
+    BUDGET_SESSION_TYP,
+    _encode_jwt,
+    decode_integration_token,
+)
 from app.models import ApiClientBudgetScope, BudgetScope, Document
 
 
@@ -110,10 +114,14 @@ def create_budget_session_token(
 ) -> str:
     now = int(time.time())
     expires_at = now + settings.integration_session_expire_seconds
+    # AUTH-JWT-1 (Sprint 1): budget session tokens are signed with
+    # the integration JWT secret, NOT the user auth secret. Even if
+    # an attacker exfiltrates the user secret, they cannot forge a
+    # budget session token (and vice versa).
     return _encode_jwt(
         {
             "sub": "integration_budget_session",
-            "typ": "budget_session",
+            "typ": BUDGET_SESSION_TYP,
             "jti": str(uuid4()),
             "client_id": client_id,
             "technician_id": technician_id,
@@ -122,14 +130,22 @@ def create_budget_session_token(
             "can_see_amounts": bool(can_see_amounts),
             "iat": now,
             "exp": expires_at,
-        }
+        },
+        secret=settings.integration_jwt_secret or settings.jwt_secret,
     )
 
 
 def decode_budget_session_token(token: str) -> BudgetSessionClaims:
-    payload = decode_access_token(token)
-    if payload.get("typ") != "budget_session" or payload.get("sub") != "integration_budget_session":
-        raise ValueError("Invalid budget session token")
+    # AUTH-JWT-1 (Sprint 1): use the integration-side decoder so the
+    # signature is verified against the integration JWT secret. A
+    # user access token (signed with ``jwt_secret``) will fail
+    # verification here and raise ``ValueError``.
+    payload = decode_integration_token(token)
+    if payload.get("typ") != BUDGET_SESSION_TYP or payload.get("sub") != "integration_budget_session":
+        raise ValueError(
+            f"Invalid budget session token: typ={payload.get('typ')!r} "
+            f"sub={payload.get('sub')!r}"
+        )
     return BudgetSessionClaims(
         client_id=int(payload["client_id"]),
         technician_id=str(payload["technician_id"]),

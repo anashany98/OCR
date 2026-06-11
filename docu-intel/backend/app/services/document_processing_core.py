@@ -20,6 +20,49 @@ from app.services.plan_extraction import persist_plan_extraction
 from app.services.quality import evaluate_document_quality, update_document_quality
 from app.services.tenant_access import apply_folder_rules_to_document
 from app.services.webhooks import emit_integration_webhook
+from app.workers.learning_tasks import _load_active_learned_rules
+
+# How long the active-rules cache lives inside a single worker
+# process. 60 s is a good trade-off: it absorbs batch backpressure
+# (10+ docs/second peak) and stays well under the latency an
+# operator expects between approving a rule and seeing it applied.
+_LEARNED_RULES_CACHE_TTL = 60.0
+_learned_rules_cache: dict[str, object] = {"expires_at": 0.0, "rules": []}
+
+
+def _get_cached_learned_rules(db: Session) -> list:
+    """Return the active learned rules, cached in-process for 60 s.
+
+    Reloading on every document would add 1 extra query per
+    processed document; under load that adds up. The cache is
+    invalidated automatically by TTL and can be force-flushed by
+    calling :func:`reset_learned_rules_cache` (e.g. from an admin
+    endpoint right after approving a rule).
+    """
+    now = time.monotonic()
+    cached = _learned_rules_cache.get("rules")
+    expires_at = _learned_rules_cache.get("expires_at", 0.0)  # type: ignore[arg-type]
+    if cached is not None and now < float(expires_at):  # type: ignore[arg-type]
+        return list(cached)  # type: ignore[arg-type]
+    try:
+        rules = _load_active_learned_rules(db)
+    except Exception:
+        # If the rules table is missing or the query fails, fall
+        # back to the no-rules path so classification still works.
+        rules = []
+    _learned_rules_cache["rules"] = list(rules)
+    _learned_rules_cache["expires_at"] = now + _LEARNED_RULES_CACHE_TTL
+    return list(rules)
+
+
+def reset_learned_rules_cache() -> None:
+    """Force the next classification call to reload the rules.
+
+    Useful for tests and for the admin endpoint that approves a new
+    rule and wants it applied to the very next document.
+    """
+    _learned_rules_cache["rules"] = []
+    _learned_rules_cache["expires_at"] = 0.0
 
 # This module sits at the centre of the document processing
 # pipeline. It used to import many of its helpers from
@@ -351,6 +394,7 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             for page in extracted.pages
             if page.ocr_confidence is not None and page.ocr_confidence < 0.70
         ],
+        pages=extracted.pages,
     )
     _replace_document_chunks(
         db,
@@ -479,13 +523,25 @@ def _apply_classification_and_extraction(
     text: str,
     page_count: int,
     low_ocr_confidences: list[float],
+    pages: list | None = None,
 ) -> bool:
-    classification = classify_document(document.original_filename, document.source_path, text)
+    # R1 — apply operator-approved learned rules so a pattern like
+    # ``cliente_x → pedido`` overrides the generic filename/folder
+    # heuristics. The rules are loaded once per worker process and
+    # cached for ``_LEARNED_RULES_CACHE_TTL`` seconds so the cost is
+    # amortised across all documents processed in the same batch.
+    learned_rules = _get_cached_learned_rules(db)
+    classification = classify_document(
+        document.original_filename,
+        document.source_path,
+        text,
+        learned_rules=learned_rules,
+    )
     document.document_type = classification.document_type
     document.confidence = classification.confidence
     document.page_count = page_count
 
-    business_result = persist_business_extraction(db, document, text)
+    business_result = persist_business_extraction(db, document, text, pages=pages)
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
     plan_result = persist_plan_extraction(db, document, text)

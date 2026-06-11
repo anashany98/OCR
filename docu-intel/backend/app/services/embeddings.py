@@ -24,7 +24,17 @@ from app.services.metrics import track_embedding_fallback, track_embedding_laten
 if TYPE_CHECKING:
     pass
 
-EMBEDDING_DIMENSIONS = int(settings.embedding_dimensions) if hasattr(settings, 'embedding_dimensions') and settings.embedding_dimensions else 768
+# EMB-DIM-1 (Sprint 2): the previous fallback to ``768`` was a
+# silent dimension mismatch. If the operator's ``.env`` had
+# ``EMBEDDING_DIMENSIONS=`` (empty value) the module would
+# fall back to 768 dims while the pgvector column is hard-
+# coded to 1024. ``coerce_embedding_dimensions`` would then
+# raise, the embedding write would fail, and the operator
+# would see a cryptic error. The new code uses the same
+# default as the pgvector column (``1024``) so a missing
+# config value is consistent with the database, not a
+# silent failure.
+EMBEDDING_DIMENSIONS = int(settings.embedding_dimensions or 1024)
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 EMBEDDING_CACHE_TTL = 3600
 BATCH_SIZE = 32
@@ -516,14 +526,26 @@ _ASYMMETRIC_MODELS: set[str] = {
 def _query_prompt_for(model_name: str) -> str | None:
     """Return the query-side prompt for asymmetric models, or ``None``
     for symmetric models (BGE, E5-base, etc.) which take a single
-    prefix for both sides or no prefix at all."""
-    if model_name in _ASYMMETRIC_MODELS or model_name.startswith("ibm-granite/granite-embedding"):
+    prefix for both sides or no prefix at all.
+
+    EMB-PROV-1 (Sprint 2): the previous implementation also
+    matched any model whose name started with
+    ``"ibm-granite/granite-embedding"`` (a broad ``startswith``
+    fallback). The fallback was a footgun: if a future
+    asymmetric model was published with a name that happened
+    to start with that prefix, it would silently receive the
+    IBM Granite prefix — which might or might not match its
+    own contract. The new code uses the explicit allow-list
+    only; to onboard a new asymmetric model, add its name to
+    :data:`_ASYMMETRIC_MODELS`.
+    """
+    if model_name in _ASYMMETRIC_MODELS:
         return _GRANITE_QUERY_PROMPT
     return None
 
 
 def _passage_prompt_for(model_name: str) -> str | None:
-    if model_name in _ASYMMETRIC_MODELS or model_name.startswith("ibm-granite/granite-embedding"):
+    if model_name in _ASYMMETRIC_MODELS:
         return _GRANITE_PASSAGE_PROMPT
     return None
 

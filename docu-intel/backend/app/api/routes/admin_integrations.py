@@ -138,9 +138,11 @@ def create_integration_client(
     existing = db.scalar(select(IntegrationClient).where(IntegrationClient.name == payload.name))
     if existing:
         raise HTTPException(status_code=409, detail="Integration client name already exists")
-    api_key = _new_api_key()
+    api_key = _new_api_key()  # SEC-APIKEY-1: returns "kid_xxx.<secret>"
+    key_id, _, _secret = api_key.partition(".")
     client = IntegrationClient(
         name=payload.name,
+        key_id=key_id,
         api_key_hash=hash_integration_api_key(api_key),
         scopes_json=_normalize_scopes(payload.scopes),
         is_active=payload.is_active,
@@ -198,7 +200,9 @@ def rotate_integration_client_key(
     user: User = Depends(require_roles("admin")),
 ) -> IntegrationClientSecretRead:
     client = _get_or_404(db, IntegrationClient, client_id, "Integration client not found")
-    api_key = _new_api_key()
+    api_key = _new_api_key()  # SEC-APIKEY-1: "kid_xxx.<secret>"
+    key_id, _, _secret = api_key.partition(".")
+    client.key_id = key_id
     client.api_key_hash = hash_integration_api_key(api_key)
     write_audit(
         db,

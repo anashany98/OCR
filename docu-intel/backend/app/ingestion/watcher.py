@@ -21,6 +21,8 @@ from app.services.ingestion_events import path_metadata, record_ingestion_event,
 from app.services.metrics import track_watcher_error
 from app.services.queue_control import is_ingestion_paused, should_accept_more_jobs
 
+from app.ingestion.stability import is_file_too_large
+
 logger = logging.getLogger("app.ingestion.watcher")
 
 
@@ -90,6 +92,15 @@ def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> di
         _record_path_status(db, path, "missing")
         db.commit()
         return {"status": "missing", "path": str(path)}
+    # WATCH-1 (Sprint 2): reject files that exceed the watcher size
+    # cap BEFORE doing the expensive stability check and SHA256 hash.
+    if is_file_too_large(path):
+        _record_path_status(
+            db, path, "ignored",
+            details={"reason": "file_too_large", "limit_mb": getattr(settings, "ingestion_max_file_size_mb", 500)},
+        )
+        db.commit()
+        return {"status": "ignored", "path": str(path)}
     if not is_file_stable(path, settings.ingestion_stable_seconds):
         _record_path_status(db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds})
         db.commit()
@@ -227,12 +238,54 @@ def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue:
     return counts
 
 
-def enqueue_existing_files(pending: PendingFileRegistry, root: Path) -> int:
+def enqueue_existing_files(
+    pending: PendingFileRegistry,
+    root: Path,
+    *,
+    limit: int = 10_000,
+) -> int:
+    """Walk ``root`` and add every allowed file to ``pending``.
+
+    WATCH-1 (Sprint 2):
+
+    * Files larger than ``ingestion_max_file_size_mb`` are
+      skipped (the OCR worker would time out and the disk
+      would fill up).
+    * The walk stops at ``limit`` files; a deployment with
+      millions of files in the input dir no longer crashes
+      the watcher on the first rescan.
+    """
     added = 0
+    truncated = False
     for path in root.rglob("*"):
-        if path.is_file() and not is_ignored_path(path) and is_allowed_file_path(path):
-            pending.add(path)
-            added += 1
+        if added >= limit:
+            truncated = True
+            break
+        if not path.is_file():
+            continue
+        if is_ignored_path(path) or not is_allowed_file_path(path):
+            continue
+        try:
+            if is_file_too_large(path):
+                # Record the event so the admin can see *why*
+                # the file was not enqueued; do not even add it
+                # to the pending registry (we'd just have to
+                # skip it again on the next tick).
+                logger.info(
+                    "watcher_skipping_oversized path=%s",
+                    path,
+                )
+                continue
+        except OSError:
+            continue
+        pending.add(path)
+        added += 1
+    if truncated:
+        logger.warning(
+            "enqueue_existing_files_truncated limit=%d root=%s",
+            limit,
+            root,
+        )
     return added
 
 

@@ -161,8 +161,13 @@ def _validate_hotel_assignment(db: Session, chain_id: int | None, hotel_id: int 
 
 
 def _new_api_key() -> str:
-    import secrets
-    return f"di_{secrets.token_urlsafe(32)}"
+    # SEC-APIKEY-1 (Sprint 1): the API key format now carries a
+    # ``kid_xxx.<secret>`` prefix so the auth path can do an O(1)
+    # lookup by ``kid_xxx`` without scanning the full table. The
+    # secret portion is the same as before; only the prefix is new.
+    from app.services.integration_security import generate_api_key, generate_key_id
+
+    return f"{generate_key_id()}.{generate_api_key()}"
 
 
 def _normalize_scopes(scopes: list[str]) -> list[str]:

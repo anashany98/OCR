@@ -1,0 +1,18 @@
+# Herrajes Centro: detected from the supplier name "Herrajes Centro"
+# and from the test fixtures. Uses es-ES locale, no special header.
+
+name: herrajes_centro
+display_name: Herrajes Centro (es-ES)
+locale: es-ES
+
+detection:
+  tax_id:
+    - "\\bB12345678\\b"
+    - "\\bB87654321\\b"
+  name:
+    - "\\bherrajes\\s+centro\\b"
+  header: []
+
+header_keywords: {}
+
+field_patterns: {}

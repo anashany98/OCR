@@ -1,0 +1,60 @@
+# Default profile: used when no specific supplier is detected.
+# Acts as a safety net so the extractor never crashes on unknown inputs.
+
+name: generico
+display_name: Genérico (es-ES)
+locale: es-ES
+
+# Detection: this profile is the catch-all, so it does not need
+# any signal. The resolver assigns it whenever no other profile
+# matches.
+detection:
+  tax_id: []   # matches any NIF/CIF
+  name: []     # matches any supplier name
+  header: []   # matches any header
+
+# Extra header keywords recognised in the first row of a table,
+# beyond the defaults in :mod:`app.services.extraction.table_extraction`.
+# The keys are the semantic field names; the values are full-word
+# regexes tested case-insensitively.
+header_keywords:
+  reference:
+    - "\\breferencia\\b"
+    - "\\bc[oó]digo\\b"
+    - "\\bart[ií]culo\\b"
+  description:
+    - "\\bdescripci[oó]n\\b"
+    - "\\bconcepto\\b"
+    - "\\bdetalle\\b"
+  quantity:
+    - "\\bcantidad\\b"
+    - "\\bcant\\.?\\b"
+    - "\\bunidades\\b"
+    - "\\bqty\\b"
+  unit:
+    - "\\bunidad\\b"
+  unit_price:
+    - "\\bprecio\\s+ud\\b"
+    - "\\bprecio\\s+unitario\\b"
+    - "\\bp\\.?\\s*unit\\b"
+    - "\\bprecio\\b"
+  total_price:
+    - "\\bimporte\\b"
+    - "\\btotal\\b"
+    - "\\bsubtotal\\b"
+
+# Field patterns override the regex used by ``_first_match`` /
+# ``_line_value`` for the given document type. Keep them as raw
+# regex strings (the resolver compiles them with re.IGNORECASE).
+field_patterns:
+  budget_number:
+    - "\\bpresupuesto\\s*(?:n[ºo]\\s*)?[:#-]?\\s*([A-Z0-9][A-Z0-9./-]{2,})"
+    - "\\boferta\\s*(?:n[ºo]\\s*)?[:#-]?\\s*([A-Z0-9][A-Z0-9./-]{2,})"
+  order_number:
+    - "\\bpedido\\s*(?:n[ºo]\\s*)?[:#-]?\\s*([A-Z0-9][A-Z0-9./-]{2,})"
+    - "\\borden\\s+de\\s+compra\\s*(?:n[ºo]\\s*)?[:#-]?\\s*([A-Z0-9][A-Z0-9./-]{2,})"
+  invoice_number:
+    - "\\bfactura\\s*(?:n[ºo]\\s*)?[:#-]?\\s*([A-Z0-9][A-Z0-9./-]{1,})"
+  total_label:
+    - "\\btotal\\s+(?:presupuesto|pedido|factura)\\b"
+    - "\\btotal\\b"

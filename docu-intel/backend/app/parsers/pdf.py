@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from typing import Awaitable, TypeVar
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine
@@ -90,6 +92,55 @@ def _table_to_markdown(table: list[list]) -> str:
     for r in body:
         lines.append("| " + " | ".join(esc(c) for c in r) + " |")
     return "\n".join(lines)
+
+
+_T = TypeVar("_T")
+
+
+def _run_coro_sync(coro: Awaitable[_T]) -> _T:
+    """Run an awaitable from a synchronous call site.
+
+    The vision-table fallback used to call
+    ``asyncio.new_event_loop()`` from inside a sync function. That
+    pattern leaks the loop (no ``asyncio.run`` cleanup) and breaks
+    when the caller is already inside a running event loop (Celery
+    workers, FastAPI request handlers). This helper:
+
+    * uses :func:`asyncio.run` when no event loop is running
+      (the Celery worker case), or
+    * off-loads the coroutine to a fresh daemon thread with its
+      own loop and joins the result, when a loop *is* already
+      running on this thread (the FastAPI request case).
+
+    Failures bubble up unchanged; the caller is expected to
+    swallow them in a best-effort fallback.
+    """
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is None:
+        return asyncio.run(coro)
+    # A loop is already running on this thread (FastAPI / async
+    # test). Spin up a worker thread, run the coroutine in its
+    # own loop, and block until it finishes.
+    import threading
+
+    result: list[_T] = []
+    error: list[BaseException] = []
+
+    def _runner() -> None:
+        try:
+            result.append(asyncio.run(coro))
+        except BaseException as exc:  # noqa: BLE001
+            error.append(exc)
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if error:
+        raise error[0]
+    return result[0]
 
 
 # O1 — DPI ladder: when Tier 1 returns very little text on a
@@ -425,15 +476,10 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                 # If the cascade returned nothing useful, try the vision
                 # LLM as a recovery path for tables (best-effort).
                 if not text and settings.vision_table_transcription and settings.vision_model:
-                    import asyncio
                     try:
-                        loop = asyncio.new_event_loop()
-                        try:
-                            vision_md = loop.run_until_complete(
-                                _maybe_vision_table(path, index - 1, output_dir)
-                            )
-                        finally:
-                            loop.close()
+                        vision_md = _run_coro_sync(
+                            _maybe_vision_table(path, index - 1, output_dir)
+                        )
                         if vision_md:
                             text = vision_md
                             ocr_confidence = max(ocr_confidence or 0.0, 0.85)

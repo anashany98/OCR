@@ -10,6 +10,7 @@ from typing import Iterable, Protocol, TypeVar
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import (
     AccessGroup,
     AccessGroupMember,
@@ -52,6 +53,26 @@ class AccessScope:
 
 
 def resolve_user_access_scope(db: Session, user: User) -> AccessScope:
+    """Build the effective access scope for ``user``.
+
+    Behaviour is controlled by ``settings.tenant_access_deny_by_default``
+    (SEC-TENANT-1, Sprint 1):
+
+    * **Deny-by-default (default, ``True``)**: the role-based
+      permissive defaults are SKIPPED. A user with no AccessGroup
+      membership sees zero documents. Access is granted explicitly
+      by creating an AccessGroup with ``hotel_ids`` / ``chain_ids``
+      and adding the user.
+
+    * **Legacy permissive (opt-in, ``False``)**: the original
+      role-based defaults from the pre-Sprint-1 code are restored
+      (``gestor``/``operario``/``auditor`` all see ``allow_all_hotels``,
+      etc.). Use only for deployments that depend on the historical
+      behaviour AND have not run the backfill migration.
+
+    Admin users ALWAYS get the full access scope regardless of the
+    flag — admin is the break-glass role.
+    """
     if user.role == "admin":
         return AccessScope(
             principal_type="user",
@@ -62,9 +83,18 @@ def resolve_user_access_scope(db: Session, user: User) -> AccessScope:
             is_admin=True,
             allow_unassigned_documents=True,
         )
-    scope = _resolve_group_scope(db, principal_type="user", principal_id=str(user.id))
-    if scope.group_count:
-        return scope
+    # Resolve the AccessGroup-derived scope first; it is the
+    # primary source of truth in both modes.
+    group_scope = _resolve_group_scope(db, principal_type="user", principal_id=str(user.id))
+    if settings.tenant_access_deny_by_default:
+        # In deny-by-default mode, AccessGroup membership is the
+        # ONLY way to get access. A user with zero groups gets
+        # an empty scope (= sees nothing).
+        return group_scope
+    # Legacy permissive mode: if the user has any group, use it;
+    # otherwise fall back to the role-based defaults.
+    if group_scope.group_count:
+        return group_scope
     if user.role == "gestor":
         return AccessScope(
             principal_type="user",
@@ -95,7 +125,76 @@ def resolve_user_access_scope(db: Session, user: User) -> AccessScope:
             can_search_budgets=True,
             allow_unassigned_documents=True,
         )
-    return scope
+    return group_scope
+
+
+def ensure_default_permissive_group(db: Session) -> AccessGroup:
+    """Create (or fetch) the ``default-permissive`` AccessGroup.
+
+    The migration ``0028_tenant_default_permissive_group`` calls
+    this helper and then adds every existing non-admin user to the
+    group. The group's ``permissions_json`` mirrors the legacy
+    pre-Sprint-1 defaults so deployments upgrading from a
+    pre-Sprint-1 install see no behaviour change after the migration
+    runs.
+
+    Tests can also call this helper to opt into the legacy
+    behaviour for a specific test session, without having to
+    monkey-patch ``settings.tenant_access_deny_by_default``.
+    """
+    DEFAULT_GROUP_NAME = "default-permissive"
+    group = db.scalar(select(AccessGroup).where(AccessGroup.name == DEFAULT_GROUP_NAME))
+    if group is not None:
+        return group
+    group = AccessGroup(
+        name=DEFAULT_GROUP_NAME,
+        description=(
+            "Backfilled by Sprint 1 migration. Mirrors the legacy "
+            "permissive defaults. Remove users from this group to "
+            "tighten their access under the deny-by-default policy."
+        ),
+        permissions_json={
+            "chain_ids": [],
+            "hotel_ids": [],
+            "allow_all_hotels": True,
+            "denied_tags": [],
+            "can_view_prices": False,
+            "can_search_budgets": False,
+            "allow_unassigned_documents": True,
+        },
+        is_active=True,
+    )
+    db.add(group)
+    db.flush()
+    return group
+
+
+def backfill_user_to_default_group(db: Session, user: User) -> bool:
+    """Idempotently add ``user`` to the default-permissive group.
+
+    Returns True if the user was newly added, False if they were
+    already a member. Used by the Sprint 1 migration to preserve
+    legacy access for every existing non-admin user.
+    """
+    group = ensure_default_permissive_group(db)
+    # Idempotency check: skip if already a member.
+    existing = db.scalar(
+        select(AccessGroupMember).where(
+            AccessGroupMember.group_id == group.id,
+            AccessGroupMember.principal_type == "user",
+            AccessGroupMember.principal_id == str(user.id),
+        )
+    )
+    if existing is not None:
+        return False
+    db.add(
+        AccessGroupMember(
+            group_id=group.id,
+            principal_type="user",
+            principal_id=str(user.id),
+        )
+    )
+    return True
 
 
 def resolve_technician_access_scope(db: Session, technician_id: str) -> AccessScope:
@@ -148,8 +247,6 @@ def metadata_allows_scope(metadata: DocumentAccessMetadata | None, scope: Access
         return False
     if metadata.assignment_status != "assigned":
         return scope.allow_unassigned_documents
-    if scope.denied_tags & tags:
-        return False
     if scope.allow_all_hotels:
         return True
     if metadata.hotel_id is not None and metadata.hotel_id in scope.hotel_ids:

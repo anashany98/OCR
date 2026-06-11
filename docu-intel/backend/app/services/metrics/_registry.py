@@ -168,6 +168,18 @@ WATCHER_ERRORS = Counter(
     "Watcher ingestion errors.",
 )
 
+# OCR-INIT-1 (Sprint 2): tracks failures of the Celery
+# ``worker_process_init`` hook (model preload, GPU init, etc.).
+# The bounded label set is the ``stage`` name passed by the
+# caller (``ocr_preload``, ``yolo_preload``, …); values outside
+# the allow-list are bucketed to ``"other"`` by the ``track_*``
+# helper to keep the cardinality controlled.
+WORKER_INIT_FAILURES = Counter(
+    "docuintel_worker_init_failures_total",
+    "Worker process init failures (e.g. OCR engine preload).",
+    labelnames=("stage",),
+)
+
 # ---------------------------------------------------------------------------
 # RAG / chat metrics (R1, R2, R3, E5)
 # ---------------------------------------------------------------------------

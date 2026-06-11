@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -8,11 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Budget, Document, DocumentPage, Order, Plan
+from app.services.dates import DATE_PATTERN as _DATE_PATTERN
 
 
 LOW_OCR_THRESHOLD = 0.70
 MIN_TEXT_CHARS = 40
-_DATE_PATTERN = re.compile(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")
 
 
 @dataclass(frozen=True)

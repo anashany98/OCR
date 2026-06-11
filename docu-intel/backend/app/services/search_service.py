@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from dataclasses import dataclass, replace
 
@@ -10,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
+
+logger = logging.getLogger(__name__)
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_query_text
 from app.services.metrics import track_search_latency
@@ -166,8 +169,12 @@ def _hyde_embed(query: str) -> list[float]:
             f"La informacion encontrada indica que este asunto "
             f"esta relacionado con los datos del sistema."
         )
-        return embed_query_text(hypetical)
-    except Exception:  # noqa: BLE001
+        return embed_query_text(hypothetical)
+    except Exception as exc:  # noqa: BLE001
+        # Real failure (network, provider down, embedding model error).
+        # Fall back to the raw query so the search still works, but
+        # log the cause so operators can see HyDE silently breaking.
+        logger.warning("HyDE embed failed (%s); falling back to raw query", exc)
         return embed_query_text(query)
 
 
@@ -190,6 +197,145 @@ def _multi_query_reformulations(query: str) -> list[str]:
     return reformulations
 
 
+def _use_multi_query_strategy() -> bool:
+    """Whether the current settings say multi-query reformulation
+    should run. Gated by the same flag as HyDE so an operator can
+    turn both on/off together.
+    """
+    if not settings.search_use_query_transformer:
+        return False
+    return settings.search_query_transform_strategy in ("multi_query", "auto")
+
+
+def _result_key(result: SearchResult) -> tuple[int, int | None, int | None]:
+    """Stable identity for a search hit: same (doc, page, block) means
+    the same chunk, regardless of score or source label."""
+    return (result.document_id, result.page_number, result.block_id)
+
+
+def _merge_reformulation_results(
+    result_lists: list[list[SearchResult]],
+    *,
+    limit: int,
+    k: int = 60,
+) -> list[SearchResult]:
+    """Reciprocal Rank Fusion across multiple reformulation result lists.
+
+    Each reformulation returns its own ranked list. The fused score
+    for an item is ``Σ 1 / (k + rank + 1)`` across lists, with the
+    best score (lowest rank) kept on the merged SearchResult. Items
+    that appear in multiple lists are boosted; items unique to one
+    list keep a non-zero score so they still surface.
+
+    The function is pure (no DB / no cache) so it is easy to test
+    in isolation and cheap to call per query.
+    """
+    scores: dict[tuple[int, int | None, int | None], float] = {}
+    items: dict[tuple[int, int | None, int | None], SearchResult] = {}
+    for result_list in result_lists:
+        for rank, result in enumerate(result_list):
+            key = _result_key(result)
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+            # Keep the first occurrence of the result for the merged
+            # payload (excerpt / filename / type) but use the fused
+            # score in the output.
+            items.setdefault(key, result)
+    ranked = sorted(scores, key=scores.get, reverse=True)[:limit]
+    out: list[SearchResult] = []
+    for key in ranked:
+        original = items[key]
+        out.append(
+            replace(
+                original,
+                score=round(scores[key], 6),
+                source_type="semantic_multi_query",
+            )
+        )
+    return out
+
+
+def _run_semantic_search(
+    db: Session,
+    *,
+    query_embedding: list[float],
+    normalized_query: str,
+    limit: int,
+    filters: dict | None,
+) -> list[SearchResult]:
+    """Execute one semantic-search pass for a single query embedding.
+
+    Extracted from :func:`search_semantic` so the multi-query
+    reformulation path can call it once per reformulation. The
+    behaviour matches the original single-embedding path (Postgres
+    pgvector when available, Python cosine similarity otherwise).
+    """
+    pg = PgvectorStore()
+    if _is_postgres(db):
+        pg_filters = dict(filters) if filters else {}
+        matches = pg.search(
+            db, query_embedding=query_embedding, limit=limit, filters=pg_filters
+        )
+        source_paths: dict[int, str | None] = {}
+        if matches:
+            doc_ids = [m.document_id for m in matches]
+            doc_rows = db.execute(
+                select(Document.id, Document.source_path).where(Document.id.in_(doc_ids))
+            ).all()
+            source_paths = {row[0]: row[1] for row in doc_rows}
+        return [
+            SearchResult(
+                document_id=match.document_id,
+                original_filename=match.original_filename,
+                document_type=match.document_type,
+                status=match.status,
+                page_number=match.page_number,
+                block_id=None,
+                score=match.score,
+                excerpt=_excerpt(match.excerpt, normalized_query),
+                ocr_confidence=None,
+                source_type="semantic_chunk",
+                source_path=source_paths.get(match.document_id),
+            )
+            for match in matches
+        ]
+
+    # SQLite / other: Python cosine similarity
+    stmt = (
+        select(Document, DocumentChunk)
+        .join(DocumentChunk, DocumentChunk.document_id == Document.id)
+        .where(Document.deleted_at.is_(None))
+        .where(DocumentChunk.chunk_text.is_not(None))
+    )
+    stmt = _apply_document_filters(stmt, filters).limit(max(limit * 30, 100))
+    rows = db.execute(stmt).all()
+
+    results: list[SearchResult] = []
+    for document, chunk in rows:
+        embedding = _coerce_embedding(chunk.embedding)
+        if embedding:
+            score = cosine_similarity(query_embedding, embedding)
+        else:
+            score = _lexical_overlap_score(normalized_query, chunk.chunk_text)
+        if score <= 0.02:
+            continue
+        results.append(
+            SearchResult(
+                document_id=document.id,
+                original_filename=document.original_filename,
+                document_type=document.document_type,
+                status=document.status,
+                page_number=chunk.page_number,
+                block_id=None,
+                score=round(float(score), 6),
+                excerpt=_excerpt(chunk.chunk_text, normalized_query),
+                ocr_confidence=None,
+                source_type="semantic_chunk",
+                source_path=document.source_path,
+            )
+        )
+    return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+
+
 def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | None = None) -> list[SearchResult]:
     start = time.perf_counter()
     try:
@@ -208,80 +354,67 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
         # terms*. Falls back to the raw query on any error.
         query_embedding = _hyde_embed(normalized)
 
-        pg = PgvectorStore()
-        if _is_postgres(db):
-            pg_filters = dict(filters) if filters else {}
-            matches = pg.search(db, query_embedding=query_embedding, limit=limit, filters=pg_filters)
-            # Batch-load source_path for the matched documents (one extra query
-            # instead of N+1 per match).
-            source_paths: dict[int, str | None] = {}
-            if matches:
-                doc_ids = [m.document_id for m in matches]
-                doc_rows = db.execute(
-                    select(Document.id, Document.source_path).where(Document.id.in_(doc_ids))
-                ).all()
-                source_paths = {row[0]: row[1] for row in doc_rows}
-            results_sorted = [
-                SearchResult(
-                    document_id=match.document_id,
-                    original_filename=match.original_filename,
-                    document_type=match.document_type,
-                    status=match.status,
-                    page_number=match.page_number,
-                    # chunk_id is NOT a document_blocks.id. Setting it here would
-                    # break the FK on ai_answer_sources.block_id. Drop it; the
-                    # chunk itself is still linked via DocumentChunk.
-                    block_id=None,
-                    score=match.score,
-                    excerpt=_excerpt(match.excerpt, normalized),
-                    ocr_confidence=None,
-                    source_type="semantic_chunk",
-                    source_path=source_paths.get(match.document_id),
+        if _use_multi_query_strategy():
+            # Multi-query: embed the original + reformulations, run a
+            # search per embedding, then merge with RRF. Each per-pass
+            # ``limit`` is the same as the final ``limit`` so the fusion
+            # has enough candidates. Failures on individual
+            # reformulations (e.g. provider outage) degrade gracefully
+            # to a single-query search.
+            reformulations = _multi_query_reformulations(normalized)
+            per_pass_limit = max(limit, 10)
+            per_pass: list[list[SearchResult]] = []
+            for reformulation in reformulations:
+                try:
+                    embedding = _hyde_embed(reformulation)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Multi-query embed failed for one reformulation (%s); skipping it",
+                        exc,
+                    )
+                    continue
+                per_pass.append(
+                    _run_semantic_search(
+                        db,
+                        query_embedding=embedding,
+                        normalized_query=normalized,
+                        limit=per_pass_limit,
+                        filters=filters,
+                    )
                 )
-                for match in matches
-            ]
-            cache_service.set(cache_key, [_search_result_to_dict(r) for r in results_sorted], SEARCH_CACHE_TTL)
+            if not per_pass:
+                # Every reformulation failed; fall back to the primary
+                # single-query search so the user still gets results.
+                results_sorted = _run_semantic_search(
+                    db,
+                    query_embedding=query_embedding,
+                    normalized_query=normalized,
+                    limit=limit,
+                    filters=filters,
+                )
+            else:
+                results_sorted = _merge_reformulation_results(
+                    per_pass, limit=limit
+                )
+            cache_service.set(
+                cache_key,
+                [_search_result_to_dict(r) for r in results_sorted],
+                SEARCH_CACHE_TTL,
+            )
             return results_sorted
 
-        # SQLite / other: fallback to Python cosine similarity
-        stmt = (
-            select(Document, DocumentChunk)
-            .join(DocumentChunk, DocumentChunk.document_id == Document.id)
-            .where(Document.deleted_at.is_(None))
-            .where(DocumentChunk.chunk_text.is_not(None))
+        results_sorted = _run_semantic_search(
+            db,
+            query_embedding=query_embedding,
+            normalized_query=normalized,
+            limit=limit,
+            filters=filters,
         )
-        stmt = _apply_document_filters(stmt, filters).limit(max(limit * 30, 100))
-        rows = db.execute(stmt).all()
-
-        results: list[SearchResult] = []
-        for document, chunk in rows:
-            embedding = _coerce_embedding(chunk.embedding)
-            if embedding:
-                score = cosine_similarity(query_embedding, embedding)
-            else:
-                score = _lexical_overlap_score(normalized, chunk.chunk_text)
-            if score <= 0.02:
-                continue
-            results.append(
-                SearchResult(
-                    document_id=document.id,
-                    original_filename=document.original_filename,
-                    document_type=document.document_type,
-                    status=document.status,
-                    page_number=chunk.page_number,
-                    block_id=None,
-                    score=round(float(score), 6),
-                    excerpt=_excerpt(chunk.chunk_text, normalized),
-                    ocr_confidence=None,
-                    source_type="semantic_chunk",
-                    source_path=document.source_path,
-                )
-            )
-
-        results_sorted = sorted(results, key=lambda item: item.score, reverse=True)[:limit]
-
-        cache_service.set(cache_key, [_search_result_to_dict(r) for r in results_sorted], SEARCH_CACHE_TTL)
-
+        cache_service.set(
+            cache_key,
+            [_search_result_to_dict(r) for r in results_sorted],
+            SEARCH_CACHE_TTL,
+        )
         return results_sorted
     finally:
         track_search_latency(time.perf_counter() - start)

@@ -13,6 +13,7 @@ concurrent workers.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import tempfile
 import threading
@@ -26,6 +27,14 @@ from app.core.config import settings
 from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
+
+logger = __import__("logging").getLogger("app.ocr.paddle")
+
+# H6 (Sprint 2): maximum time (seconds) to wait for PaddleOCR model
+# to load.  If the init does not complete within this window the
+# engine is marked unavailable and subsequent calls raise instead of
+# blocking the worker thread forever.
+_PADDLE_INIT_TIMEOUT_SECONDS: float = 120.0
 
 
 # =============================================================================
@@ -61,17 +70,46 @@ class PaddleOCREngine:
 
     @cached_property
     def _engine(self):
-        with paddleocr_init_lock():
-            from paddleocr import PaddleOCR
+        return self._init_engine_with_timeout()
 
-            kwargs = {
-                "use_textline_orientation": True,
-                "lang": self.lang,
-                "enable_mkldnn": False,
-            }
-            if self.device:
-                kwargs["device"] = self.device
-            return PaddleOCR(**kwargs)
+    def _init_engine_with_timeout(self):
+        """Load the PaddleOCR model with a cross-platform timeout.
+
+        H6 (Sprint 3): the previous ``@cached_property`` blocked
+        indefinitely if the GPU driver or model download hung.  We now
+        run the heavy ``PaddleOCR(...)`` call inside a daemon thread
+        and raise ``RuntimeError`` when it does not complete within
+        ``_PADDLE_INIT_TIMEOUT_SECONDS``.
+        """
+        from paddleocr import PaddleOCR
+
+        kwargs = {
+            "use_textline_orientation": True,
+            "lang": self.lang,
+            "enable_mkldnn": False,
+        }
+        if self.device:
+            kwargs["device"] = self.device
+
+        def _do_init():
+            with paddleocr_init_lock():
+                return PaddleOCR(**kwargs)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_do_init)
+            try:
+                return future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                logger.error(
+                    "PaddleOCR init timed out after %.0fs (lang=%s, device=%s)",
+                    _PADDLE_INIT_TIMEOUT_SECONDS,
+                    self.lang,
+                    self.device,
+                )
+                raise RuntimeError(
+                    f"PaddleOCR model init timed out after "
+                    f"{_PADDLE_INIT_TIMEOUT_SECONDS}s"
+                ) from None
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
@@ -155,22 +193,49 @@ class PaddleOCREngine:
 
 
 def _polygon_to_bbox(polygon: object) -> tuple[float, float, float, float] | None:
+    """Compute the axis-aligned bounding box of a polygon.
+
+    Returns ``(x_min, y_min, x_max, y_max)`` for the given polygon, or
+    ``None`` when the input is not a non-empty list of ``(x, y)`` points
+    that can be coerced to floats.
+
+    The function is intentionally tolerant: any element that cannot be
+    parsed (e.g. a string in a coordinate) causes the function to return
+    ``None`` instead of raising, so the OCR pipeline can keep going with
+    a degraded (bbox-less) block.
+    """
     if not isinstance(polygon, (list, tuple)):
         return None
+    if not polygon:
+        return None
+    try:
+        xs = [float(point[0]) for point in polygon]
+        ys = [float(point[1]) for point in polygon]
+    except (IndexError, TypeError, ValueError):
+        return None
+    return min(xs), min(ys), max(xs), max(ys)
 
 
 def _format_paddle_device(device_id: str | None) -> str | None:
+    """Format a CUDA device id into the string PaddleOCR expects.
+
+    Accepts:
+
+    * ``None`` or empty → returns ``None`` so PaddleOCR falls back to its
+      own default (CPU when CUDA is not available, otherwise GPU 0).
+    * An already-prefixed device like ``"gpu:0"``, ``"cpu"``, ``"xpu:1"``
+      or ``"npu:2"`` → returned as-is.
+    * A bare device index like ``"0"`` → returned as ``"gpu:0"``.
+
+    Note: PaddleOCR 3.x ignores a bare ``"cpu"`` arg silently and still
+    initialises on GPU if CUDA is available. To force CPU the caller
+    must pass ``device=None`` and have no CUDA visible to the process.
+    """
     if not device_id:
         return None
     if device_id.startswith(("gpu", "cpu", "xpu", "npu")):
         return device_id
     return f"gpu:{device_id}"
-    try:
-        xs = [float(point[0]) for point in polygon]
-        ys = [float(point[1]) for point in polygon]
-        return min(xs), min(ys), max(xs), max(ys)
-    except (IndexError, TypeError, ValueError):
-        return None
 
 
 @contextmanager

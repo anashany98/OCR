@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String
@@ -16,7 +16,7 @@ class AuditLog(Base):
     entity_type: Mapped[str | None] = mapped_column(String(120), index=True)
     entity_id: Mapped[int | None] = mapped_column(Integer, index=True)
     details_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="audit_logs", foreign_keys=[user_id])
 

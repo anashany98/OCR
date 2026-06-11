@@ -60,6 +60,7 @@ from .pipeline import (
     track_document_failed,
     track_document_processed,
     track_watcher_error,
+    track_worker_init_failure,
     update_queue_status_snapshot,
 )
 from .rag import (

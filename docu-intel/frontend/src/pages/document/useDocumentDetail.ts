@@ -141,7 +141,7 @@ export function useDocumentDetail(documentId: number) {
     enabled: showGraph && valid,
   })
 
-  const document = docQ.data
+  const doc = docQ.data
   const pages = pagesQ.data ?? []
   const entities = entitiesQ.data ?? []
 
@@ -192,7 +192,7 @@ export function useDocumentDetail(documentId: number) {
 
   return {
     // queries
-    document,
+    document: doc,
     pages,
     blocksQ,
     entities,
@@ -204,8 +204,8 @@ export function useDocumentDetail(documentId: number) {
     // derived
     selectedPage,
     visiblePages,
-    hashShort: shortHash(document?.file_hash),
-    hasThumbnailExt: hasThumbnailExt(document?.extension),
+    hashShort: shortHash(doc?.file_hash),
+    hasThumbnailExt: hasThumbnailExt(doc?.extension),
     // state
     selectedPageNumber, setSelectedPageNumber,
     textQuery, setTextQuery,

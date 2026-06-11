@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text
@@ -13,6 +13,14 @@ class Budget(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False)
     budget_number: Mapped[str | None] = mapped_column(String(120), index=True)
+    # BE-LOOKUP-1 (Sprint 2): pre-normalized form for O(1) fuzzy
+    # lookup. Populated on INSERT/UPDATE so the related-order
+    # resolution can do a single indexed SELECT instead of
+    # loading 500 rows into Python. The normalization strips
+    # whitespace, hyphens, dots, slashes and lower-cases.
+    budget_number_normalized: Mapped[str | None] = mapped_column(
+        String(120), index=True, nullable=True
+    )
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
     date: Mapped[date | None] = mapped_column(Date)
     total_amount: Mapped[float | None] = mapped_column(Float)
@@ -20,7 +28,7 @@ class Budget(Base):
     status: Mapped[str | None] = mapped_column(String(50), index=True)
     accepted_detected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     confidence: Mapped[float | None] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     lines = relationship("BudgetLine", back_populates="budget", cascade="all, delete-orphan")
 
@@ -47,6 +55,11 @@ class Order(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False)
     order_number: Mapped[str | None] = mapped_column(String(120), index=True)
+    # BE-LOOKUP-1 (Sprint 2): pre-normalized form for O(1) fuzzy
+    # lookup. Same normalization as Budget.budget_number_normalized.
+    order_number_normalized: Mapped[str | None] = mapped_column(
+        String(120), index=True, nullable=True
+    )
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
     date: Mapped[date | None] = mapped_column(Date)
@@ -54,7 +67,7 @@ class Order(Base):
     currency: Mapped[str | None] = mapped_column(String(12))
     related_budget_id: Mapped[int | None] = mapped_column(ForeignKey("budgets.id", ondelete="SET NULL"), index=True)
     confidence: Mapped[float | None] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     lines = relationship("OrderLine", back_populates="order", cascade="all, delete-orphan")
 
@@ -94,7 +107,7 @@ class Plan(Base):
     # :func:`app.services.plan_extraction.extract_plan_phase`.
     project_phase: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     revision: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     rooms = relationship("PlanRoom", back_populates="plan", cascade="all, delete-orphan")
     dimensions = relationship("PlanDimension", back_populates="plan", cascade="all, delete-orphan")
@@ -157,7 +170,7 @@ class PlanSymbol(Base):
     bbox_x2: Mapped[float | None] = mapped_column(Float, nullable=True)
     bbox_y2: Mapped[float | None] = mapped_column(Float, nullable=True)
     source_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     plan = relationship("Plan", back_populates="symbols")
 

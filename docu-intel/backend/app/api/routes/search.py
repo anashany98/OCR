@@ -36,8 +36,8 @@ def text_search(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list:
-    results = search_text(db, q, limit=limit if user.role == "admin" else limit * 5)
-    return filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))[:limit]
+    results = search_text(db, q, limit=limit)
+    return filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))
 
 
 @router.get("/exact", response_model=list[SearchResultRead])
@@ -54,19 +54,19 @@ def exact_search(
     normalized = q.strip()
     results: list[SearchResult] = []
     if kind == "budget":
-        budgets = db.scalars(select(Budget).where(Budget.budget_number == normalized).limit(limit * 5)).all()
+        budgets = db.scalars(select(Budget).where(Budget.budget_number == normalized).limit(limit)).all()
         results = [_business_result(db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "exact_budget") for budget in budgets]
     elif kind == "order":
-        orders = db.scalars(select(Order).where(Order.order_number == normalized).limit(limit * 5)).all()
+        orders = db.scalars(select(Order).where(Order.order_number == normalized).limit(limit)).all()
         results = [_business_result(db, order.document_id, f"Pedido {order.order_number}", 1.4, "exact_order") for order in orders]
     elif kind in {"client", "supplier"}:
         budget_rows = []
         order_rows = []
         if kind == "client":
-            budget_rows = list(db.scalars(select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit * 5)).all())
-            order_rows = list(db.scalars(select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit * 5)).all())
+            budget_rows = list(db.scalars(select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
+            order_rows = list(db.scalars(select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
         else:
-            order_rows = list(db.scalars(select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit * 5)).all())
+            order_rows = list(db.scalars(select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)).all())
         results = [_business_result(db, row.document_id, normalized, 1.1, f"{kind}_match") for row in [*budget_rows, *order_rows]]
     else:
         entity_type = "reference" if kind == "reference" else kind
@@ -74,10 +74,10 @@ def exact_search(
             select(DocumentEntity)
             .where(DocumentEntity.entity_type == entity_type)
             .where(DocumentEntity.normalized_value == normalized.lower())
-            .limit(limit * 5)
+            .limit(limit)
         ).all()
         results = [_business_result(db, entity.document_id, entity.entity_value, 1.3, f"exact_{entity_type}") for entity in entities]
-    return filter_search_results_for_scope(db, results, scope)[:limit]
+    return filter_search_results_for_scope(db, results, scope)
 
 
 @router.get("/guided", response_model=list[SearchResultRead])
@@ -93,21 +93,21 @@ def guided_search(
     normalized = q.strip()
     results: list[SearchResult] = []
     if mode == "text":
-        results = search_text(db, normalized, limit=limit if user.role == "admin" else limit * 5)
+        results = search_text(db, normalized, limit=limit)
     elif mode == "budget":
-        budgets = db.scalars(select(Budget).where(Budget.budget_number == normalized).limit(limit * 5)).all()
+        budgets = db.scalars(select(Budget).where(Budget.budget_number == normalized).limit(limit)).all()
         results = [_business_result(db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "guided_budget") for budget in budgets]
     elif mode == "order":
-        orders = db.scalars(select(Order).where(Order.order_number == normalized).limit(limit * 5)).all()
+        orders = db.scalars(select(Order).where(Order.order_number == normalized).limit(limit)).all()
         results = [_business_result(db, order.document_id, f"Pedido {order.order_number}", 1.4, "guided_order") for order in orders]
     elif mode in {"client", "supplier"}:
         budget_rows = []
         order_rows = []
         if mode == "client":
-            budget_rows = list(db.scalars(select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit * 5)).all())
-            order_rows = list(db.scalars(select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit * 5)).all())
+            budget_rows = list(db.scalars(select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
+            order_rows = list(db.scalars(select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
         else:
-            order_rows = list(db.scalars(select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit * 5)).all())
+            order_rows = list(db.scalars(select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)).all())
         results = [_business_result(db, row.document_id, normalized, 1.1, f"guided_{mode}") for row in [*budget_rows, *order_rows]]
     else:
         entity_type = "reference" if mode == "reference" else mode
@@ -115,10 +115,10 @@ def guided_search(
             select(DocumentEntity)
             .where(DocumentEntity.entity_type == entity_type)
             .where(DocumentEntity.normalized_value == normalized.lower())
-            .limit(limit * 5)
+            .limit(limit)
         ).all()
         results = [_business_result(db, entity.document_id, entity.entity_value, 1.3, f"guided_{entity_type}") for entity in entities]
-    return filter_search_results_for_scope(db, results, scope)[:limit]
+    return filter_search_results_for_scope(db, results, scope)
 
 
 @router.post("/semantic", response_model=list[SearchResultRead])
@@ -133,10 +133,10 @@ def semantic_search(
     results = search_semantic(
         db,
         payload.query,
-        limit=payload.limit if user.role == "admin" else payload.limit * 5,
+        limit=payload.limit,
         filters=_filters_with_scope_cache(payload.filters, scope),
     )
-    return filter_search_results_for_scope(db, results, scope)[: payload.limit]
+    return filter_search_results_for_scope(db, results, scope)
 
 
 @router.post("/hybrid", response_model=list[SearchResultRead])
@@ -151,10 +151,10 @@ def hybrid_search_endpoint(
     results = search_hybrid(
         db,
         payload.query,
-        limit=payload.limit if user.role == "admin" else payload.limit * 5,
+        limit=payload.limit,
         filters=_filters_with_scope_cache(payload.filters, scope),
     )
-    return filter_search_results_for_scope(db, results, scope)[: payload.limit]
+    return filter_search_results_for_scope(db, results, scope)
 
 
 @router.get("/export/csv")
@@ -166,8 +166,8 @@ def export_search_csv(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    results = search_text(db, q, limit=limit if user.role == "admin" else limit * 5)
-    results = filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))[:limit]
+    results = search_text(db, q, limit=limit)
+    results = filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -240,8 +240,8 @@ def export_search_json(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    results = search_text(db, q, limit=limit if user.role == "admin" else limit * 5)
-    results = filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))[:limit]
+    results = search_text(db, q, limit=limit)
+    results = filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))
 
     data = [
         {

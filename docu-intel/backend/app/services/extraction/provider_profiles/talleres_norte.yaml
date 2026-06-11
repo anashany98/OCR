@@ -1,0 +1,32 @@
+# Talleres Norte: detected from the supplier name in the test
+# fixtures. Uses en-US locale for amounts (comma as thousands,
+# dot as decimal) — useful to prove the locale path works.
+
+name: talleres_norte
+display_name: Talleres Norte (en-US)
+locale: en-US
+
+detection:
+  tax_id: []
+  name:
+    - "\\btalleres\\s+norte\\b"
+  header: []
+
+# Custom header keywords reflecting the English header used in
+# Talleres Norte's purchase documents.
+header_keywords:
+  reference:
+    - "\\breference\\b"
+    - "\\bref\\.?\\b"
+  description:
+    - "\\bdescription\\b"
+  quantity:
+    - "\\bqty\\b"
+    - "\\bquantity\\b"
+  unit_price:
+    - "\\bunit\\s+price\\b"
+  total_price:
+    - "\\bline\\s+total\\b"
+    - "\\btotal\\b"
+
+field_patterns: {}

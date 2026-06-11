@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -12,7 +12,7 @@ class AIQuestion(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     question: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="questions")
     answers = relationship("AIAnswer", back_populates="question", cascade="all, delete-orphan")
@@ -29,7 +29,7 @@ class AIAnswer(Base):
     # JSON snapshot of the document the agent resolved (entities + relations).
     # Only filled when the user mentions a specific file in the question.
     resolved_document_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     question = relationship("AIQuestion", back_populates="answers")
     sources = relationship("AIAnswerSource", back_populates="answer", cascade="all, delete-orphan")
@@ -87,7 +87,7 @@ class AIAnswerFeedback(Base):
     reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True
     )
 
     answer = relationship("AIAnswer", back_populates="feedbacks")
