@@ -20,4 +20,6 @@ lms_server.log
 lms_server.log.err
 # TypeScript incremental build cache
 *.tsbuildinfo
+# Generated golden fixture PNGs (created at runtime by test fixture builder)
+backend/tests/fixtures/golden/
 
