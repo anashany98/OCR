@@ -21,6 +21,7 @@ from app.models.document import (
 )
 from app.models.integration import AccessPolicy, IntegrationClient, TechnicianAccessProfile
 from app.models.learning import ClassificationSuggestion, LearnedPattern
+from app.models.ocr_cascade import OcrCascadeAttempt
 from app.models.operations import IngestionEvent, WatchedFile
 from app.models.professional import (
     DocumentTimelineEvent,
@@ -76,6 +77,7 @@ __all__ = [
     "LearnedPattern",
     "Invoice",
     "NotificationRule",
+    "OcrCascadeAttempt",
     "OcrRevision",
     "Order",
     "OrderLine",
