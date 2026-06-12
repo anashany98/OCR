@@ -4,6 +4,7 @@ from app.api.routes import (
     admin,
     admin_ocr_stats,
     admin_webhooks,
+    ocr_flow,
     ai,
     auth,
     budgets,
@@ -45,5 +46,6 @@ api_router.include_router(admin.router, tags=["admin"])
 api_router.include_router(professional_admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(admin_webhooks.router, tags=["admin"])
 api_router.include_router(admin_ocr_stats.router, tags=["admin"])
+api_router.include_router(ocr_flow.router, tags=["ocr-flow"])
 api_router.include_router(reconciliation.router, prefix="/reconciliation", tags=["reconciliation"])
 api_router.include_router(integrations.router, prefix="/integrations/v1", tags=["integrations"])
