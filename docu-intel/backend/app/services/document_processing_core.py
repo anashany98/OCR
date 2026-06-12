@@ -359,6 +359,13 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     stored_path = settings.files_dir / document.stored_filename
     page_image_dir = settings.files_dir / document.file_hash[:2] / f"{document.file_hash}_pages"
     ocr_engine = get_ocr_engine_class()()
+    # OCR-FLOW — wire the cascade attempt recorder so the cascade
+    # logs every tier tried per page. The recorder is set on the
+    # engine via setattr because ``BaseOCREngine`` is a Protocol
+    # and the ``CascadingOCREngine``-specific ``attempt_recorder``
+    # is not in the contract; non-cascading engines (single
+    # Tesseract, single PaddleOCR) simply ignore the attribute.
+    _attach_cascade_recorder(ocr_engine, db, document.id)
     extracted = parse_document(stored_path, page_image_dir, ocr_engine)
     for extracted_page in extracted.pages:
         extracted_page.text = sanitize_text_for_database(extracted_page.text)
@@ -587,3 +594,88 @@ def _apply_classification_and_extraction(
     )
     update_document_quality(db, document, quality)
     return quality.needs_review
+
+
+# --------------------------------------------------------------------- #
+# OCR-FLOW: cascade attempt recorder                                    #
+# --------------------------------------------------------------------- #
+
+
+def _attach_cascade_recorder(ocr_engine, db: Session, document_id: int) -> None:
+    """Wire the cascade attempt recorder onto the OCR engine.
+
+    The cascade logs every tier tried per page (OcrCascadeAttempt)
+    so the admin UI can show the full Tesseract->Paddle->PP-Structure
+    trace. We resolve page_id at log-time via a small SQL lookup
+    because the cascade fires **before** the DocumentPage row is
+    created by ``_process_full_parse``.
+
+    Failures are swallowed: a missing or broken recorder must never
+    break OCR.
+    """
+    from app.models.document import DocumentPage
+    from app.models.ocr_cascade import OcrCascadeAttempt
+    from sqlalchemy import select
+
+    def _record(row: dict) -> None:
+        try:
+            document_id_inner = row.get("document_id")
+            page_number = row.get("page_number")
+            if not document_id_inner or page_number is None:
+                return
+            page = db.scalars(
+                select(DocumentPage).where(
+                    DocumentPage.document_id == document_id_inner,
+                    DocumentPage.page_number == page_number,
+                )
+            ).first()
+            if page is None:
+                # Page not yet persisted; we cannot satisfy the FK.
+                # Skip this attempt silently - the page row is created
+                # in the loop that runs after parse_document and
+                # subsequent re-OCR sweeps can backfill.
+                return
+            db.add(
+                OcrCascadeAttempt(
+                    document_id=document_id_inner,
+                    page_id=page.id,
+                    page_number=page_number,
+                    tier=row["tier"],
+                    tier_index=row["tier_index"],
+                    success=row["success"],
+                    duration_ms=row["duration_ms"],
+                    confidence=row.get("confidence"),
+                    chars=row["chars"],
+                    reason=row.get("reason"),
+                    error_message=row.get("error_message"),
+                )
+            )
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            # Logging only - never let a recorder failure break OCR.
+            import logging as _logging
+
+            _logging.getLogger(__name__).exception(
+                "cascade attempt recorder failed"
+            )
+
+    try:
+        setattr(ocr_engine, "current_document_id", document_id)
+        setattr(ocr_engine, "attempt_recorder", _record)
+    except Exception:
+        pass
+            # Logging only � never let a recorder failure break OCR.
+            import logging as _logging
+            _logging.getLogger(__name__).exception(
+                \"cascade attempt recorder failed\"
+            )
+
+    try:
+        setattr(ocr_engine, \"current_document_id\", document_id)
+        setattr(ocr_engine, \"attempt_recorder\", _record)
+    except Exception:
+        pass

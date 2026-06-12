@@ -642,6 +642,28 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
             except Exception:  # pragma: no cover - defensive
                 pass
 
+            # OCR-FLOW — per-page context for the cascade attempt
+            # recorder. Same setattr pattern as ``current_language``
+            # above (works around the Protocol). The caller (the
+            # worker in ``document_processing_core``) is expected
+            # to have set ``attempt_recorder`` on the engine; if it
+            # didn't, the recorder is ``None`` and ``_record_attempt``
+            # is a silent no-op. ``document_id`` is supplied via a
+            # local closure in the worker; here we just forward it.
+            try:
+                setattr(ocr_engine, "current_page_number", index)
+                doc_id = getattr(ocr_engine, "current_document_id", None)
+                if doc_id is None:
+                    # Fall back to the closest ``document_id`` we
+                    # can find in scope. ``parse_pdf`` does not take
+                    # a DB session, so we read it from the engine
+                    # if the caller set it.
+                    doc_id = getattr(ocr_engine, "_ocr_flow_document_id", None)
+                if doc_id is not None:
+                    setattr(ocr_engine, "current_document_id", doc_id)
+            except Exception:  # pragma: no cover - defensive
+                pass
+
             # --- Digital fast path: embedded text is enough ----------
             if len(text) >= 30:
                 table_md = _extract_table_markdown(path, index - 1)

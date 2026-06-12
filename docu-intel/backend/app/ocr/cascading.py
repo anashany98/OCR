@@ -124,6 +124,47 @@ def _should_replace_with_fallback(
     return False, "no_improvement"
 
 
+def _record_attempt(
+    cascade: "CascadingOCREngine",
+    *,
+    tier: str,
+    tier_index: int,
+    success: bool,
+    duration_ms: int,
+    confidence: float | None,
+    text: str | None,
+    reason: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    """Best-effort write of one cascade attempt via the injected recorder.
+
+    No-ops when the parser did not set the per-page context or did
+    not inject a recorder. Never raises into the caller.
+    """
+    recorder = cascade.attempt_recorder
+    if recorder is None:
+        return
+    if cascade.current_document_id is None:
+        return
+    try:
+        recorder(
+            {
+                "document_id": cascade.current_document_id,
+                "page_number": cascade.current_page_number,
+                "tier": tier,
+                "tier_index": tier_index,
+                "success": success,
+                "duration_ms": duration_ms,
+                "confidence": confidence,
+                "chars": len((text or "").strip()),
+                "reason": reason,
+                "error_message": error_message,
+            }
+        )
+    except Exception:  # pragma: no cover - recorder must never break OCR
+        logger.exception("OCR cascade attempt recorder raised")
+
+
 class CascadingOCREngine:
     """Try a cheap primary first, fall back to a heavy secondary on weak results.
 
@@ -159,6 +200,25 @@ class CascadingOCREngine:
         # a fresh cascade per process rely on the parser always
         # setting it before calling.
         self.current_language: str | None = None
+        # OCR-FLOW — per-page document context. The parser sets
+        # ``current_document_id`` and ``current_page_number`` via
+        # setattr (because ``BaseOCREngine`` is a Protocol) before
+        # each ``extract`` call so the cascade can log every tier
+        # attempt to ``OcrCascadeAttempt`` via the optional
+        # ``attempt_recorder`` callback. ``None`` means "no logging
+        # for this call".
+        self.current_document_id: int | None = None
+        self.current_page_number: int | None = None
+        # OCR-FLOW — optional recorder callback. Signature:
+        # ``recorder(dict) -> None``. Receives a dict matching the
+        # ``OcrCascadeAttempt`` columns. We do not import the model
+        # here so this module stays free of SQLAlchemy in unit
+        # tests that don't need persistence. The recorder is
+        # responsible for resolving ``page_id`` from
+        # ``(document_id, page_number)`` if it wants to persist a
+        # FK — see ``parsers/pdf.py`` for the production
+        # implementation.
+        self.attempt_recorder: object | None = None
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
         # value.
@@ -170,8 +230,36 @@ class CascadingOCREngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
-        primary_result = self.primary.extract(image_path)
+        try:
+            primary_result = self.primary.extract(image_path)
+        except Exception as exc:
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            track_ocr_duration(time.perf_counter() - start)
+            _record_attempt(
+                self,
+                tier=self.primary.name,
+                tier_index=1,
+                success=False,
+                duration_ms=duration_ms,
+                confidence=None,
+                text=None,
+                reason="exception",
+                error_message=str(exc),
+            )
+            self._track_fallback_failure(self.primary.name, exc)
+            raise
+        primary_duration_ms = int((time.perf_counter() - start) * 1000)
         track_ocr_duration(time.perf_counter() - start)
+        _record_attempt(
+            self,
+            tier=self.primary.name,
+            tier_index=1,
+            success=True,
+            duration_ms=primary_duration_ms,
+            confidence=primary_result.confidence,
+            text=primary_result.text,
+            reason="ok",
+        )
 
         if self._is_acceptable(primary_result):
             return self._finalize(image_path, self.primary.name, primary_result)
@@ -184,10 +272,33 @@ class CascadingOCREngine:
         try:
             fallback_result = self.fallback.extract(image_path)
         except Exception as exc:
+            duration_ms = int((time.perf_counter() - start) * 1000)
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.fallback.name, exc)
+            _record_attempt(
+                self,
+                tier=self.fallback.name,
+                tier_index=2,
+                success=False,
+                duration_ms=duration_ms,
+                confidence=None,
+                text=None,
+                reason="exception",
+                error_message=str(exc),
+            )
             return self._finalize(image_path, self.primary.name, primary_result)
+        fallback_duration_ms = int((time.perf_counter() - start) * 1000)
         track_ocr_duration(time.perf_counter() - start)
+        _record_attempt(
+            self,
+            tier=self.fallback.name,
+            tier_index=2,
+            success=True,
+            duration_ms=fallback_duration_ms,
+            confidence=fallback_result.confidence,
+            text=fallback_result.text,
+            reason="ok",
+        )
 
         should_replace, reason = _should_replace_with_fallback(primary_result, fallback_result)
         if should_replace:
@@ -245,10 +356,33 @@ class CascadingOCREngine:
         try:
             tier3_result = self.pp_structure.extract(image_path)
         except Exception as exc:
+            duration_ms = int((time.perf_counter() - start) * 1000)
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.pp_structure.name, exc)
+            _record_attempt(
+                self,
+                tier=self.pp_structure.name,
+                tier_index=3,
+                success=False,
+                duration_ms=duration_ms,
+                confidence=None,
+                text=None,
+                reason="exception",
+                error_message=str(exc),
+            )
             return None
+        duration_ms = int((time.perf_counter() - start) * 1000)
         track_ocr_duration(time.perf_counter() - start)
+        _record_attempt(
+            self,
+            tier=self.pp_structure.name,
+            tier_index=3,
+            success=True,
+            duration_ms=duration_ms,
+            confidence=tier3_result.confidence,
+            text=tier3_result.text,
+            reason="ok",
+        )
 
         # PP-Structure is also judged on text length; a run that
         # returned nothing useful should never replace a Tier 2 result.
@@ -276,10 +410,33 @@ class CascadingOCREngine:
         try:
             tier4_result = self.vlm_ocr.extract(image_path)
         except Exception as exc:
+            duration_ms = int((time.perf_counter() - start) * 1000)
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.vlm_ocr.name, exc)
+            _record_attempt(
+                self,
+                tier=self.vlm_ocr.name,
+                tier_index=4,
+                success=False,
+                duration_ms=duration_ms,
+                confidence=None,
+                text=None,
+                reason="exception",
+                error_message=str(exc),
+            )
             return None
+        duration_ms = int((time.perf_counter() - start) * 1000)
         track_ocr_duration(time.perf_counter() - start)
+        _record_attempt(
+            self,
+            tier=self.vlm_ocr.name,
+            tier_index=4,
+            success=True,
+            duration_ms=duration_ms,
+            confidence=tier4_result.confidence,
+            text=tier4_result.text,
+            reason="ok",
+        )
 
         if self._is_better(tier4_result, best_prior):
             return self._record_winner(self.vlm_ocr.name, tier4_result)
@@ -341,4 +498,9 @@ class CascadingOCREngine:
         track_ocr_cascade_fallback(engine_name, reason)
 
 
-__all__ = ["CascadingOCREngine", "_quality", "_should_replace_with_fallback"]
+__all__ = [
+    "CascadingOCREngine",
+    "_quality",
+    "_record_attempt",
+    "_should_replace_with_fallback",
+]
