@@ -1,4 +1,5 @@
 import {
+  Activity,
   Brain,
   KeyRound,
   ScanSearch,
@@ -15,6 +16,7 @@ export const ADMIN_TABS = [
   { id: "acceso", label: "Usuarios y permisos", icon: Users },
   { id: "calidad", label: "Calidad", icon: ScanSearch },
   { id: "aprendizaje", label: "Aprendizaje IA", icon: Brain },
+  { id: "flujo-ocr", label: "Flujo OCR", icon: Activity },
 ] as const satisfies ReadonlyArray<{
   id: string
   label: string

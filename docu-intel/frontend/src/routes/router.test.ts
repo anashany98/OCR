@@ -40,9 +40,17 @@ describe("admin route tree (F4b)", () => {
     expect(adminRoute?.path).toBe("admin")
   })
 
-  it("exposes six lazy sub-routes under /admin", () => {
+  it("exposes seven lazy sub-routes under /admin", () => {
     const subRoutes = (adminRoute?.children ?? []).filter((child) => child.path) as RouteLike[]
-    const expected = ["operativa", "sistema", "integraciones", "acceso", "calidad", "aprendizaje"]
+    const expected = [
+      "operativa",
+      "sistema",
+      "integraciones",
+      "acceso",
+      "calidad",
+      "aprendizaje",
+      "flujo-ocr",
+    ]
     const actual = subRoutes.map((child) => child.path).sort()
     expect(actual).toEqual([...expected].sort())
   })
