@@ -61,7 +61,9 @@ celery_app.conf.task_routes = {
     **celery_app.conf.task_routes,
     "app.workers.learning_tasks.process_approved_suggestions_task": {"queue": "maintenance"},
     "app.workers.learning_tasks.reclassify_document_task": {"queue": "maintenance"},
-    "app.workers.learning_health_tasks.auto_reject_stale_suggestions_task": {"queue": "maintenance"},
+    "app.workers.learning_health_tasks.auto_reject_stale_suggestions_task": {
+        "queue": "maintenance"
+    },
     "app.workers.webhooks_tasks.deliver_pending_webhooks_task": {"queue": "maintenance"},
     "app.workers.embedding_tasks.reembed_pending_documents_task": {"queue": "maintenance"},
 }

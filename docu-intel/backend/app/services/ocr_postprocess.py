@@ -26,6 +26,7 @@ The module never raises on weird input. An empty / non-string
 input returns an empty :class:`PostprocessReport` so callers can
 chain the call without nil-checks.
 """
+
 from __future__ import annotations
 
 import re
@@ -142,10 +143,26 @@ def _iban_country_lengths() -> dict[str, int]:
     most common countries. The full registry has ~80 entries; we
     keep only the ones that appear in Spanish construction docs."""
     return {
-        "ES": 24, "PT": 25, "FR": 27, "DE": 22, "IT": 27,
-        "GB": 22, "NL": 18, "BE": 16, "AT": 20, "CH": 21,
-        "IE": 22, "SE": 24, "NO": 15, "DK": 18, "FI": 18,
-        "PL": 28, "CZ": 24, "RO": 24, "HU": 28, "GR": 27,
+        "ES": 24,
+        "PT": 25,
+        "FR": 27,
+        "DE": 22,
+        "IT": 27,
+        "GB": 22,
+        "NL": 18,
+        "BE": 16,
+        "AT": 20,
+        "CH": 21,
+        "IE": 22,
+        "SE": 24,
+        "NO": 15,
+        "DK": 18,
+        "FI": 18,
+        "PL": 28,
+        "CZ": 24,
+        "RO": 24,
+        "HU": 28,
+        "GR": 27,
     }
 
 
@@ -272,9 +289,7 @@ def _normalise_separators(text: str, *, language: str = "es") -> str:
 # ---------------------------------------------------------------------------
 
 
-_DATE_RE = re.compile(
-    r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b"
-)
+_DATE_RE = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b")
 
 
 def _normalise_dates(text: str, *, language: str = "es") -> str:
@@ -286,6 +301,7 @@ def _normalise_dates(text: str, *, language: str = "es") -> str:
     ``25/03/2026`` → ``2026-03-25`` but ``03/05/2026`` is left
     alone because we don't know if it's March 5 or May 3).
     """
+
     def _replace_date(match: re.Match) -> str:
         d, m, y = match.group(1), match.group(2), match.group(3)
         if len(y) == 2:
@@ -376,7 +392,14 @@ def postprocess_ocr_text(
         candidate = match.group(1)
         valid, normalised = validate_nif(candidate)
         if normalised != candidate:
-            corrections.append(Correction(kind="nif", original=candidate, corrected=normalised, confidence=1.0 if valid else 0.8))
+            corrections.append(
+                Correction(
+                    kind="nif",
+                    original=candidate,
+                    corrected=normalised,
+                    confidence=1.0 if valid else 0.8,
+                )
+            )
             out = out.replace(candidate, normalised, 1)
 
     # 2. CIF validation + correction.
@@ -385,7 +408,14 @@ def postprocess_ocr_text(
         candidate = match.group(1)
         valid, normalised = validate_cif(candidate)
         if normalised != candidate:
-            corrections.append(Correction(kind="cif", original=candidate, corrected=normalised, confidence=1.0 if valid else 0.8))
+            corrections.append(
+                Correction(
+                    kind="cif",
+                    original=candidate,
+                    corrected=normalised,
+                    confidence=1.0 if valid else 0.8,
+                )
+            )
             out = out.replace(candidate, normalised, 1)
 
     # 3. IBAN validation + correction.
@@ -394,7 +424,14 @@ def postprocess_ocr_text(
         candidate = match.group(1)
         valid, normalised = validate_iban(candidate)
         if normalised != candidate:
-            corrections.append(Correction(kind="iban", original=candidate, corrected=normalised, confidence=1.0 if valid else 0.8))
+            corrections.append(
+                Correction(
+                    kind="iban",
+                    original=candidate,
+                    corrected=normalised,
+                    confidence=1.0 if valid else 0.8,
+                )
+            )
             out = out.replace(candidate, normalised, 1)
 
     # 4. Number normalisation (conservative: only in amount-like
@@ -406,7 +443,9 @@ def postprocess_ocr_text(
         candidate = match.group(1)
         normalised = _normalise_number(candidate, language=language)
         if normalised != candidate:
-            corrections.append(Correction(kind="number", original=candidate, corrected=normalised, confidence=0.8))
+            corrections.append(
+                Correction(kind="number", original=candidate, corrected=normalised, confidence=0.8)
+            )
             out = out.replace(candidate, normalised, 1)
 
     # 5. Date normalisation.

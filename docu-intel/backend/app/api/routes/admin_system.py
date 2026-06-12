@@ -35,6 +35,7 @@ router = APIRouter(prefix="/admin")
 
 # ---------- health helpers ----------
 
+
 def _database_health(db: Session) -> dict:
     try:
         db.execute(text("SELECT 1"))
@@ -82,7 +83,11 @@ def _watcher_health(db: Session) -> dict:
 def _queue_health(db: Session) -> dict:
     status = build_queue_control_status(db)
     if status.backpressure_active:
-        return {"status": "warning", "detail": "Backpressure active", "pending_jobs": status.pending_jobs}
+        return {
+            "status": "warning",
+            "detail": "Backpressure active",
+            "pending_jobs": status.pending_jobs,
+        }
     return {
         "status": "ok",
         "ingestion_paused": status.ingestion_paused,
@@ -122,7 +127,12 @@ def _embedding_health() -> dict:
         return {"status": "ok", "enabled": True, "provider": provider, "mode": "deterministic_hash"}
     base_url = settings.embedding_base_url.strip() or settings.ai_base_url.strip()
     if not base_url:
-        return {"status": "warning", "enabled": False, "provider": provider, "detail": "Embedding base URL not configured"}
+        return {
+            "status": "warning",
+            "enabled": False,
+            "provider": provider,
+            "detail": "Embedding base URL not configured",
+        }
     endpoint = f"{base_url.rstrip('/')}/embeddings"
     headers = {"Content-Type": "application/json"}
     api_key = settings.embedding_api_key or settings.ai_api_key
@@ -139,8 +149,18 @@ def _embedding_health() -> dict:
         payload = response.json()
         data = payload.get("data")
         if not isinstance(data, list) or not data:
-            return {"status": "warning", "enabled": True, "endpoint": endpoint, "detail": "No embedding data returned"}
-        return {"status": "ok", "enabled": True, "endpoint": endpoint, "model": settings.embedding_model}
+            return {
+                "status": "warning",
+                "enabled": True,
+                "endpoint": endpoint,
+                "detail": "No embedding data returned",
+            }
+        return {
+            "status": "ok",
+            "enabled": True,
+            "endpoint": endpoint,
+            "model": settings.embedding_model,
+        }
     except Exception as exc:
         return {"status": "warning", "enabled": True, "endpoint": endpoint, "detail": str(exc)}
 
@@ -152,16 +172,26 @@ def _reranker_health() -> dict:
     configured but not reachable, ``"ok"`` with ``enabled=False``
     when no reranker is configured.
     """
-    if not settings.reranker_local_model and not (settings.embedding_base_url or settings.ai_base_url):
+    if not settings.reranker_local_model and not (
+        settings.embedding_base_url or settings.ai_base_url
+    ):
         return {"status": "ok", "enabled": False, "detail": "No reranker configured"}
     try:
         from app.services.search_service import SearchResult
         from app.services.reranker import rerank_sync
 
         candidate = SearchResult(
-            document_id=0, original_filename="healthcheck", document_type="otro",
-            status="processed", page_number=1, block_id=None, score=0.5,
-            excerpt="healthcheck", ocr_confidence=None, source_type="text", source_path=None,
+            document_id=0,
+            original_filename="healthcheck",
+            document_type="otro",
+            status="processed",
+            page_number=1,
+            block_id=None,
+            score=0.5,
+            excerpt="healthcheck",
+            ocr_confidence=None,
+            source_type="text",
+            source_path=None,
         )
         result = rerank_sync("test", [candidate], top_k=1)
         if result:
@@ -173,9 +203,13 @@ def _reranker_health() -> dict:
 
 # ---------- routes ----------
 
+
 @router.get("/stats", response_model=AdminStats)
-def stats(db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))) -> AdminStats:
+def stats(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))
+) -> AdminStats:
     from app.models import Budget, Order, Plan
+
     ordered_budget_ids = select(Order.related_budget_id).where(Order.related_budget_id.is_not(None))
     accepted_without_order = int(
         db.scalar(
@@ -186,7 +220,10 @@ def stats(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"
         )
         or 0
     )
-    plans_without_scale = int(db.scalar(select(func.count()).select_from(Plan).where(Plan.has_valid_scale.is_(False))) or 0)
+    plans_without_scale = int(
+        db.scalar(select(func.count()).select_from(Plan).where(Plan.has_valid_scale.is_(False)))
+        or 0
+    )
     return AdminStats(
         documents_total=count_where(db),
         documents_processed=count_where(db, Document.status == "processed"),
@@ -201,7 +238,9 @@ def stats(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"
 
 
 @router.get("/alerts", response_model=list[AdminAlertRead])
-def alerts(db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))) -> list:
+def alerts(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))
+) -> list:
     return build_admin_alerts(db)
 
 
@@ -296,7 +335,9 @@ def production_checklist(
         ProductionChecklistItem(
             key="backup_runbook",
             title="Backup y restore",
-            status="ok" if Path("scripts/backup.ps1").exists() and Path("scripts/restore.ps1").exists() else "warning",
+            status="ok"
+            if Path("scripts/backup.ps1").exists() and Path("scripts/restore.ps1").exists()
+            else "warning",
             description="Runbooks disponibles para PostgreSQL y /data/files.",
             action_url="/admin",
         ),

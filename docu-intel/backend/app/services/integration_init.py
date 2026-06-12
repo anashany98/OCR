@@ -13,7 +13,9 @@ def create_initial_integration_data(db: Session) -> None:
     ensure_default_access_policies(db)
     _ensure_default_sensitive_tags(db)
     for definition in _parse_integration_clients(settings.integration_clients):
-        existing = db.scalar(select(IntegrationClient).where(IntegrationClient.name == definition["name"]))
+        existing = db.scalar(
+            select(IntegrationClient).where(IntegrationClient.name == definition["name"])
+        )
         if existing:
             existing.scopes_json = definition["scopes"]
             existing.is_active = True
@@ -43,7 +45,9 @@ def _parse_integration_clients(raw_value: str) -> list[dict]:
         name, api_key, scopes_raw = parts
         scopes = [scope.strip() for scope in scopes_raw.split(",") if scope.strip()]
         if name.strip() and api_key:
-            definitions.append({"name": name.strip(), "api_key": api_key, "scopes": scopes or ["read"]})
+            definitions.append(
+                {"name": name.strip(), "api_key": api_key, "scopes": scopes or ["read"]}
+            )
     return definitions
 
 

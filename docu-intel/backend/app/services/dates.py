@@ -30,6 +30,7 @@ dependency) so the behaviour is deterministic and testable. If we
 ever need multilingual support the function can be swapped for a
 library call without touching the callers.
 """
+
 from __future__ import annotations
 
 import re
@@ -51,13 +52,33 @@ _TEXTUAL_DATE_RE = re.compile(
 
 _SPANISH_MONTHS: dict[str, int] = {
     # Full names
-    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
-    "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
-    "septiembre": 9, "setiembre": 9, "octubre": 10,
-    "noviembre": 11, "diciembre": 12,
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
     # Common abbreviations
-    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
-    "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12,
+    "ene": 1,
+    "feb": 2,
+    "mar": 3,
+    "abr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "ago": 8,
+    "sep": 9,
+    "set": 9,
+    "oct": 10,
+    "nov": 11,
+    "dic": 12,
 }
 
 # Re-export the simple "does this text contain any plausible numeric

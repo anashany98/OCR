@@ -24,6 +24,7 @@ about CollectorRegistry plumbing. Tests can still reset the
 counters with ``prometheus_client.REGISTRY.unregister`` if they
 need a clean slate.
 """
+
 from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
@@ -178,6 +179,17 @@ WORKER_INIT_FAILURES = Counter(
     "docuintel_worker_init_failures_total",
     "Worker process init failures (e.g. OCR engine preload).",
     labelnames=("stage",),
+)
+
+# OPS-2: failure counters for the parser fallbacks that used to
+# swallow exceptions silently. Each one has a bounded ``kind``
+# label (table_strategy, vision_image, vision_table, pdfplumber_import)
+# so the operator can see WHICH fallback degraded and how often,
+# not just that "some doc came out without entities".
+PARSER_FALLBACK_FAILURES = Counter(
+    "docuintel_parser_fallback_failures_total",
+    "Failures swallowed by parser fallbacks (vision transcription, table extraction, …).",
+    labelnames=("stage", "kind"),
 )
 
 # ---------------------------------------------------------------------------

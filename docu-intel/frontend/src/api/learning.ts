@@ -20,14 +20,25 @@ export interface LearningHealthSnapshot {
 }
 
 export const learningApi = {
-  classificationSuggestions: (params?: { status?: string; suggestion_type?: string; document_id?: number; limit?: number }) =>
-    request<ClassificationSuggestion[]>("/admin/classification-suggestions" + buildSearchParams(params)),
+  classificationSuggestions: (params?: {
+    status?: string
+    suggestion_type?: string
+    document_id?: number
+    limit?: number
+  }) =>
+    request<ClassificationSuggestion[]>(
+      "/admin/classification-suggestions" + buildSearchParams(params),
+    ),
   classificationSuggestionCounts: () =>
     request<Record<string, number>>("/admin/classification-suggestions/counts"),
   approveSuggestion: (id: number) =>
-    request<ClassificationSuggestion>(`/admin/classification-suggestions/${id}/approve`, { method: "POST" }),
+    request<ClassificationSuggestion>(`/admin/classification-suggestions/${id}/approve`, {
+      method: "POST",
+    }),
   rejectSuggestion: (id: number) =>
-    request<ClassificationSuggestion>(`/admin/classification-suggestions/${id}/reject`, { method: "POST" }),
+    request<ClassificationSuggestion>(`/admin/classification-suggestions/${id}/reject`, {
+      method: "POST",
+    }),
   learnedPatterns: (params?: { status?: string; limit?: number }) =>
     request<LearnedPattern[]>("/admin/learned-patterns" + buildSearchParams(params)),
   disablePattern: (id: number) =>

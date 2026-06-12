@@ -57,13 +57,23 @@ export function ModeSelector({
   return (
     <div className="flex flex-wrap gap-1 rounded-md border bg-muted p-1">
       {SEARCH_MODES.slice(0, 4).map((item) => (
-        <ModeButton key={item.id} active={mode === item.id} onClick={() => setMode(item.id)} title={item.desc}>
+        <ModeButton
+          key={item.id}
+          active={mode === item.id}
+          onClick={() => setMode(item.id)}
+          title={item.desc}
+        >
           {item.label}
         </ModeButton>
       ))}
       <span className="mx-1 w-px bg-[var(--border)]" />
       {SEARCH_MODES.slice(4).map((item) => (
-        <ModeButton key={item.id} active={mode === item.id} onClick={() => setMode(item.id)} title={item.desc}>
+        <ModeButton
+          key={item.id}
+          active={mode === item.id}
+          onClick={() => setMode(item.id)}
+          title={item.desc}
+        >
           {item.label}
         </ModeButton>
       ))}
@@ -226,8 +236,18 @@ export function FilterPanel({
   if (!show) return null
   return (
     <div className="grid gap-2 rounded-md border bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-4">
-      <FilterSelect label="Tipo documental" value={filterType} onChange={setFilterType} options={TYPE_OPTIONS} />
-      <FilterSelect label="Estado" value={filterStatus} onChange={setFilterStatus} options={STATUS_OPTIONS} />
+      <FilterSelect
+        label="Tipo documental"
+        value={filterType}
+        onChange={setFilterType}
+        options={TYPE_OPTIONS}
+      />
+      <FilterSelect
+        label="Estado"
+        value={filterStatus}
+        onChange={setFilterStatus}
+        options={STATUS_OPTIONS}
+      />
       <FilterInput
         label="Proveedor"
         value={filterSupplier}
@@ -282,7 +302,9 @@ function FilterSelect({
 }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">{label}</label>
+      <label className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+        {label}
+      </label>
       <select
         className="h-8 w-full rounded-md border bg-white px-2 text-xs"
         value={value}
@@ -313,7 +335,9 @@ function FilterInput({
 }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">{label}</label>
+      <label className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+        {label}
+      </label>
       <Input
         className="h-8 text-xs"
         type={type}
@@ -469,7 +493,9 @@ export function SearchResultCard({
             </Badge>
             <StatusBadge status={result.status} />
             {result.page_number != null && (
-              <span className="text-[11px] text-[var(--text-muted)]">Pág. {result.page_number}</span>
+              <span className="text-[11px] text-[var(--text-muted)]">
+                Pág. {result.page_number}
+              </span>
             )}
             <ConfidenceBadge value={result.ocr_confidence} showLabel />
           </div>
@@ -577,10 +603,18 @@ export function SearchTipsCard() {
         <CardTitle className="text-[14px] font-semibold">Consejos</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-xs text-[var(--text-secondary)]">
-        <p>· Usa <strong>Híbrida</strong> para búsquedas generales.</p>
-        <p>· Usa <strong>Textual</strong> cuando busques palabras exactas.</p>
-        <p>· Usa <strong>Semántica</strong> para encontrar conceptos similares.</p>
-        <p>· Los modos <strong>Presupuesto/Pedido</strong> buscan por número exacto.</p>
+        <p>
+          · Usa <strong>Híbrida</strong> para búsquedas generales.
+        </p>
+        <p>
+          · Usa <strong>Textual</strong> cuando busques palabras exactas.
+        </p>
+        <p>
+          · Usa <strong>Semántica</strong> para encontrar conceptos similares.
+        </p>
+        <p>
+          · Los modos <strong>Presupuesto/Pedido</strong> buscan por número exacto.
+        </p>
         <p>· Añade filtros para afinar resultados por tipo, estado o confianza.</p>
       </CardContent>
     </Card>

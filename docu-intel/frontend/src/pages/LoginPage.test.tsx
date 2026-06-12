@@ -66,7 +66,9 @@ describe("LoginPage", () => {
     const pendingLogin = new Promise<{ access_token: string; user: User }>((resolve) => {
       resolveLogin = resolve
     })
-    vi.spyOn(api, "login").mockReturnValueOnce(pendingLogin as unknown as ReturnType<typeof api.login>)
+    vi.spyOn(api, "login").mockReturnValueOnce(
+      pendingLogin as unknown as ReturnType<typeof api.login>,
+    )
 
     const user = userEvent.setup()
     renderLogin()

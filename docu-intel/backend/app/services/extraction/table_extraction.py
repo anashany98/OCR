@@ -23,6 +23,7 @@ If any step fails (no header detected, fewer than 2 columns, fewer than
 2 data rows) the function falls back to the regex on plain text so
 the legacy behaviour is preserved.
 """
+
 from __future__ import annotations
 
 import re
@@ -40,7 +41,15 @@ from app.services.business_extraction import ExtractedLine, _extract_lines, _par
 _HEADER_KEYWORDS: dict[str, tuple[str, ...]] = {
     "reference": ("ref", "referencia", "código", "codigo", "art", "artículo", "articulo"),
     "description": ("descripción", "descripcion", "concepto", "detalle"),
-    "unit_price": ("precio ud", "precio unit", "p.unit", "p.unitario", "precio", "importe ud", "tarifa"),
+    "unit_price": (
+        "precio ud",
+        "precio unit",
+        "p.unit",
+        "p.unitario",
+        "precio",
+        "importe ud",
+        "tarifa",
+    ),
     "unit": ("unidad", "uni"),
     "quantity": ("cant", "cantidad", "uds", "unidades", "qty"),
     "total_price": ("total", "importe", "subtotal", "importe total", "total línea", "total linea"),
@@ -54,9 +63,22 @@ _FALLBACK_HEADER: dict[int, str] = {
     # 4 cols: ref, desc, qty, total  OR  ref, desc, unit_price, total
     4: {"col0": "reference", "col1": "description", "col2": "quantity", "col3": "total_price"},
     # 5 cols: ref, desc, qty, unit_price, total
-    5: {"col0": "reference", "col1": "description", "col2": "quantity", "col3": "unit_price", "col4": "total_price"},
+    5: {
+        "col0": "reference",
+        "col1": "description",
+        "col2": "quantity",
+        "col3": "unit_price",
+        "col4": "total_price",
+    },
     # 6 cols: ref, desc, qty, unit, unit_price, total
-    6: {"col0": "reference", "col1": "description", "col2": "quantity", "col3": "unit", "col4": "unit_price", "col5": "total_price"},
+    6: {
+        "col0": "reference",
+        "col1": "description",
+        "col2": "quantity",
+        "col3": "unit",
+        "col4": "unit_price",
+        "col5": "total_price",
+    },
 }
 
 # Minimum requirements for a row to be considered a data row.
@@ -216,12 +238,24 @@ def _row_to_line(
         return None
     avg_conf = sum(confidences) / len(confidences) if confidences else 0.75
     return ExtractedLine(
-        reference=field_values.get("reference") if isinstance(field_values.get("reference"), (str, type(None))) else None,
-        description=field_values.get("description") if isinstance(field_values.get("description"), (str, type(None))) else None,
-        quantity=field_values.get("quantity") if isinstance(field_values.get("quantity"), (int, float, type(None))) else None,
-        unit=field_values.get("unit") if isinstance(field_values.get("unit"), (str, type(None))) else None,
-        unit_price=field_values.get("unit_price") if isinstance(field_values.get("unit_price"), (int, float, type(None))) else None,
-        total_price=field_values.get("total_price") if isinstance(field_values.get("total_price"), (int, float, type(None))) else None,
+        reference=field_values.get("reference")
+        if isinstance(field_values.get("reference"), (str, type(None)))
+        else None,
+        description=field_values.get("description")
+        if isinstance(field_values.get("description"), (str, type(None)))
+        else None,
+        quantity=field_values.get("quantity")
+        if isinstance(field_values.get("quantity"), (int, float, type(None)))
+        else None,
+        unit=field_values.get("unit")
+        if isinstance(field_values.get("unit"), (str, type(None)))
+        else None,
+        unit_price=field_values.get("unit_price")
+        if isinstance(field_values.get("unit_price"), (int, float, type(None)))
+        else None,
+        total_price=field_values.get("total_price")
+        if isinstance(field_values.get("total_price"), (int, float, type(None)))
+        else None,
         confidence=round(min(0.95, max(0.40, avg_conf)), 2),
     )
 
@@ -268,7 +302,7 @@ def _extract_lines_for_page(page: ExtractedPage, *, locale: str) -> list[Extract
             break
     if header_idx is None or column_fields is None:
         return []
-    data_rows = rows[header_idx + 1:]
+    data_rows = rows[header_idx + 1 :]
     if len(data_rows) < _MIN_DATA_ROWS:
         return []
     lines: list[ExtractedLine] = []

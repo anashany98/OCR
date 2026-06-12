@@ -16,6 +16,7 @@ The module is **fail-safe**: on any error (missing image,
 corrupt file, out-of-memory) the function returns ``None`` so
 the viewer shows a placeholder instead of crashing.
 """
+
 from __future__ import annotations
 
 import logging
@@ -102,7 +103,7 @@ def generate_dzi_tiles(
             f'<Image xmlns="http://schemas.microsoft.com/deepzoom/2008"'
             f' Format="jpeg" Overlap="{OVERLAP}" TileSize="{tile_size}">\n'
             f'  <Size Width="{width}" Height="{height}"/>\n'
-            f'</Image>\n'
+            f"</Image>\n"
         )
         dzi_path.write_text(dzi_content, encoding="utf-8")
         return dzi_path

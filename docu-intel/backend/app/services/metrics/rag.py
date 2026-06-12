@@ -1,4 +1,5 @@
 """RAG / chat metrics: query transformer, MMR, prompt-injection, feedback."""
+
 from __future__ import annotations
 
 from ._registry import (
@@ -59,7 +60,9 @@ def track_mmr(outcome: str, *, avg_similarity: float = 0.0) -> None:
         # ``refresh_mmr_avg_similarity_gauge`` call if they keep
         # a more precise running mean themselves.
         current_count = MMR_OUTCOMES.labels(outcome=clean_outcome)._value.get()
-        previous_sum = MMR_AVG_PAIRWISE_SIMILARITY.labels(outcome=clean_outcome)._value.get() * max(current_count - 1, 0)
+        previous_sum = MMR_AVG_PAIRWISE_SIMILARITY.labels(outcome=clean_outcome)._value.get() * max(
+            current_count - 1, 0
+        )
         new_sum = previous_sum + float(avg_similarity)
         MMR_AVG_PAIRWISE_SIMILARITY.labels(outcome=clean_outcome).set(
             new_sum / max(current_count, 1)

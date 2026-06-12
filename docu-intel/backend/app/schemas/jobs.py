@@ -14,4 +14,3 @@ class ExtractionJobRead(BaseModel):
     retries: int
 
     model_config = {"from_attributes": True}
-

@@ -82,10 +82,7 @@ describe("buildUrgentActions", () => {
   })
 
   it("emits a 'Documentos en revisión' action when stats has needs_review", () => {
-    const actions = buildUrgentActions(
-      { documents_needs_review: 5 } as never,
-      [],
-    )
+    const actions = buildUrgentActions({ documents_needs_review: 5 } as never, [])
     expect(actions).toContainEqual(
       expect.objectContaining({ label: "Documentos en revisión", count: 5, tone: "warning" }),
     )

@@ -5,22 +5,20 @@ import json
 import fnmatch
 import re
 from dataclasses import dataclass, field
-from typing import Iterable, Protocol, TypeVar
+from typing import Any, Iterable, Protocol, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import ColumnElement
 
 from app.core.config import settings
 from app.models import (
     AccessGroup,
     AccessGroupMember,
-    Budget,
     Document,
     DocumentAccessMetadata,
     FolderAssignmentRule,
     Hotel,
-    Order,
-    Plan,
     User,
 )
 
@@ -110,7 +108,15 @@ def resolve_user_access_scope(db: Session, user: User) -> AccessScope:
             principal_type="user",
             principal_id=str(user.id),
             allow_all_hotels=True,
-            denied_tags={"contabilidad", "administracion", "rrhh", "direccion", "legal", "precios", "margenes"},
+            denied_tags={
+                "contabilidad",
+                "administracion",
+                "rrhh",
+                "direccion",
+                "legal",
+                "precios",
+                "margenes",
+            },
             can_view_prices=False,
             can_search_budgets=False,
             allow_unassigned_documents=True,
@@ -216,13 +222,17 @@ def _resolve_group_scope(db: Session, *, principal_type: str, principal_id: str)
     for group in groups:
         permissions = group.permissions_json or {}
         scope.allow_all_hotels = scope.allow_all_hotels or bool(permissions.get("allow_all_hotels"))
-        scope.allow_unassigned_documents = scope.allow_unassigned_documents or bool(permissions.get("allow_unassigned_documents"))
+        scope.allow_unassigned_documents = scope.allow_unassigned_documents or bool(
+            permissions.get("allow_unassigned_documents")
+        )
         scope.chain_ids.update(_int_set(permissions.get("chain_ids")))
         scope.hotel_ids.update(_int_set(permissions.get("hotel_ids")))
         scope.denied_tags.update(_tag_set(permissions.get("denied_tags")))
         scope.allowed_document_types.update(_tag_set(permissions.get("allowed_document_types")))
         scope.can_view_prices = scope.can_view_prices or bool(permissions.get("can_view_prices"))
-        scope.can_search_budgets = scope.can_search_budgets or bool(permissions.get("can_search_budgets"))
+        scope.can_search_budgets = scope.can_search_budgets or bool(
+            permissions.get("can_search_budgets")
+        )
     return scope
 
 
@@ -256,7 +266,9 @@ def metadata_allows_scope(metadata: DocumentAccessMetadata | None, scope: Access
     return False
 
 
-def filter_documents_for_scope(db: Session, documents: Iterable[Document], scope: AccessScope) -> list[Document]:
+def filter_documents_for_scope(
+    db: Session, documents: Iterable[Document], scope: AccessScope
+) -> list[Document]:
     if scope.is_admin:
         return [document for document in documents if document.deleted_at is None]
     metadata_by_document = _metadata_by_document(db, [document.id for document in documents])
@@ -269,7 +281,9 @@ def filter_documents_for_scope(db: Session, documents: Iterable[Document], scope
     ]
 
 
-def filter_document_ids_for_scope(db: Session, document_ids: Iterable[int], scope: AccessScope) -> set[int]:
+def filter_document_ids_for_scope(
+    db: Session, document_ids: Iterable[int], scope: AccessScope
+) -> set[int]:
     ids = {int(document_id) for document_id in document_ids if document_id is not None}
     if scope.is_admin:
         return ids
@@ -286,20 +300,28 @@ def filter_document_ids_for_scope(db: Session, document_ids: Iterable[int], scop
     }
 
 
-def filter_records_by_document_scope(db: Session, records: Iterable[T], scope: AccessScope) -> list[T]:
+def filter_records_by_document_scope(
+    db: Session, records: Iterable[T], scope: AccessScope
+) -> list[T]:
     records_list = list(records)
-    allowed_document_ids = filter_document_ids_for_scope(db, [record.document_id for record in records_list], scope)
+    allowed_document_ids = filter_document_ids_for_scope(
+        db, [record.document_id for record in records_list], scope
+    )
     return [record for record in records_list if record.document_id in allowed_document_ids]
 
 
 def filter_search_results_for_scope(db: Session, results: Iterable, scope: AccessScope) -> list:
     results_list = list(results)
-    allowed_document_ids = filter_document_ids_for_scope(db, [result.document_id for result in results_list], scope)
+    allowed_document_ids = filter_document_ids_for_scope(
+        db, [result.document_id for result in results_list], scope
+    )
     return [result for result in results_list if result.document_id in allowed_document_ids]
 
 
 def get_document_access_metadata(db: Session, document_id: int) -> DocumentAccessMetadata | None:
-    return db.scalar(select(DocumentAccessMetadata).where(DocumentAccessMetadata.document_id == document_id))
+    return db.scalar(
+        select(DocumentAccessMetadata).where(DocumentAccessMetadata.document_id == document_id)
+    )
 
 
 def ensure_document_access_metadata(db: Session, document: Document) -> DocumentAccessMetadata:
@@ -317,13 +339,19 @@ def ensure_document_access_metadata(db: Session, document: Document) -> Document
     return metadata
 
 
-def apply_folder_rules_to_document(db: Session, document: Document, *, force: bool = False) -> DocumentAccessMetadata:
+def apply_folder_rules_to_document(
+    db: Session, document: Document, *, force: bool = False
+) -> DocumentAccessMetadata:
     metadata = ensure_document_access_metadata(db, document)
     if metadata.locked_manual and not force:
         return metadata
 
     source = _normalize_path(document.source_path or document.original_filename or "")
-    rules = list(db.scalars(select(FolderAssignmentRule).where(FolderAssignmentRule.is_active.is_(True))).all())
+    rules = list(
+        db.scalars(
+            select(FolderAssignmentRule).where(FolderAssignmentRule.is_active.is_(True))
+        ).all()
+    )
     matches = [rule for rule in rules if _rule_matches(rule, source)]
     if not matches:
         _set_quarantine(metadata, source="none")
@@ -333,7 +361,10 @@ def apply_folder_rules_to_document(db: Session, document: Document, *, force: bo
     max_specificity = max(_specificity(rule) for rule in matches)
     top_matches = [rule for rule in matches if _specificity(rule) == max_specificity]
     first = top_matches[0]
-    if any(_rule_assignment_signature(rule, db) != _rule_assignment_signature(first, db) for rule in top_matches[1:]):
+    if any(
+        _rule_assignment_signature(rule, db) != _rule_assignment_signature(first, db)
+        for rule in top_matches[1:]
+    ):
         _set_quarantine(metadata, source="conflict")
         db.flush()
         return metadata
@@ -342,7 +373,9 @@ def apply_folder_rules_to_document(db: Session, document: Document, *, force: bo
     metadata.chain_id = chain_id
     metadata.hotel_id = hotel_id
     metadata.assignment_status = "assigned" if chain_id or hotel_id else "quarantine"
-    metadata.assignment_source = "folder_rule" if metadata.assignment_status == "assigned" else "none"
+    metadata.assignment_source = (
+        "folder_rule" if metadata.assignment_status == "assigned" else "none"
+    )
     metadata.tags_json = _tags(first.tags_json)
     metadata.locked_manual = False
     db.flush()
@@ -365,7 +398,12 @@ def apply_folder_rules_to_all_documents(db: Session, *, force: bool = False) -> 
         else:
             quarantined += 1
     db.flush()
-    return {"matched": len(documents), "assigned": assigned, "quarantined": quarantined, "skipped": skipped}
+    return {
+        "matched": len(documents),
+        "assigned": assigned,
+        "quarantined": quarantined,
+        "skipped": skipped,
+    }
 
 
 def scope_payload(scope: AccessScope) -> dict:
@@ -403,11 +441,15 @@ def _document_type_allows(document: Document | None, scope: AccessScope) -> bool
     return (document.document_type or "").strip().lower() in scope.allowed_document_types
 
 
-def _metadata_by_document(db: Session, document_ids: Iterable[int]) -> dict[int, DocumentAccessMetadata]:
+def _metadata_by_document(
+    db: Session, document_ids: Iterable[int]
+) -> dict[int, DocumentAccessMetadata]:
     ids = list({int(document_id) for document_id in document_ids if document_id is not None})
     if not ids:
         return {}
-    rows = db.scalars(select(DocumentAccessMetadata).where(DocumentAccessMetadata.document_id.in_(ids))).all()
+    rows = db.scalars(
+        select(DocumentAccessMetadata).where(DocumentAccessMetadata.document_id.in_(ids))
+    ).all()
     return {row.document_id: row for row in rows}
 
 
@@ -429,12 +471,16 @@ def _specificity(rule: FolderAssignmentRule) -> int:
     return len(_normalize_path(rule.pattern))
 
 
-def _rule_assignment_signature(rule: FolderAssignmentRule, db: Session) -> tuple[int | None, int | None, tuple[str, ...]]:
+def _rule_assignment_signature(
+    rule: FolderAssignmentRule, db: Session
+) -> tuple[int | None, int | None, tuple[str, ...]]:
     chain_id, hotel_id = _chain_hotel_from_rule(rule, db)
     return chain_id, hotel_id, tuple(_tags(rule.tags_json))
 
 
-def _chain_hotel_from_rule(rule: FolderAssignmentRule, db: Session) -> tuple[int | None, int | None]:
+def _chain_hotel_from_rule(
+    rule: FolderAssignmentRule, db: Session
+) -> tuple[int | None, int | None]:
     chain_id = rule.chain_id
     hotel_id = rule.hotel_id
     if hotel_id and not chain_id:
@@ -477,3 +523,144 @@ def _tags(value) -> list[str]:
     if not value:
         return []
     return sorted({str(item).strip().lower() for item in value if str(item).strip()})
+
+
+# ---------------------------------------------------------------------------
+# DATA-03: push the access-scope filter into SQL so pagination and totals
+# stay correct for non-admin users.
+#
+# The old helpers (``filter_documents_for_scope``,
+# ``filter_records_by_document_scope``) load a capped candidate set
+# into memory and filter afterwards, which causes:
+#
+#   * short / empty pages when many hidden rows precede visible rows
+#   * wrong totals (``len(visible)`` over 500 candidates, not the real
+#     scoped total)
+#
+# ``apply_access_predicates`` rewrites the WHERE clause so PostgreSQL
+# itself returns only the rows the caller can see. The same predicate
+# can be applied to both the main ``stmt`` and its ``count_stmt`` so
+# pagination stays consistent.
+# ---------------------------------------------------------------------------
+
+
+def _build_access_subquery(scope: AccessScope):
+    """Return a SQLAlchemy subquery selecting ``document_id`` rows that
+    the given ``scope`` is allowed to see.
+
+    The subquery is used by :func:`apply_access_predicates` to
+    restrict a main query (``WHERE document_id IN (subq)``). The
+    subquery covers the *location* part of the scope (chain /
+    hotel / allow_unassigned / admin) and the *document type*
+    allow-list. The *tag deny-list* and ``allowed_document_types``
+    refinement are intentionally left to the in-memory helper
+    :func:`filter_documents_for_scope` because the
+    ``document_access_metadata.tags_json`` column is a JSON array
+    that requires dialect-specific expansion (``json_each`` on
+    SQLite, ``jsonb_array_elements_text`` on PostgreSQL); keeping
+    that out of the SQL keeps this helper portable and the
+    performance win — replacing the candidate-cap post-filter with
+    a real subquery — already covers the pagination bug the audit
+    flagged as DATA-03.
+    """
+    # Admin short-circuit: return a "match anything" subquery. We
+    # do this by selecting from ``documents`` directly and skipping
+    # the metadata join. The caller checks ``scope.is_admin``
+    # before invoking us, so this is only hit by future code that
+    # may want a uniform subquery shape.
+    if scope.is_admin:
+        return select(Document.id)
+
+    # Empty scope: no documents are visible. We still return a
+    # subquery that selects zero rows so the caller can compose
+    # ``WHERE document_id IN (subq)`` without special-casing.
+    if (
+        not scope.allow_all_hotels
+        and not scope.chain_ids
+        and not scope.hotel_ids
+        and not scope.allow_unassigned_documents
+    ):
+        return select(DocumentAccessMetadata.document_id).where(
+            DocumentAccessMetadata.document_id.is_(None)
+        )
+
+    positive_conditions: list[ColumnElement[Any]] = []
+
+    if scope.allow_all_hotels:
+        # ``allow_all_hotels`` covers every chain and hotel. The
+        # ``allow_unassigned_documents`` / ``assignment_status``
+        # branch below then decides whether quarantine documents
+        # are visible.
+        pass
+    else:
+        if scope.chain_ids:
+            positive_conditions.append(DocumentAccessMetadata.chain_id.in_(scope.chain_ids))
+        if scope.hotel_ids:
+            positive_conditions.append(DocumentAccessMetadata.hotel_id.in_(scope.hotel_ids))
+
+        if not positive_conditions and not scope.allow_unassigned_documents:
+            # Scope is empty for location and we are not allowed
+            # to see unassigned documents either: return a
+            # zero-row subquery.
+            return select(DocumentAccessMetadata.document_id).where(
+                DocumentAccessMetadata.document_id.is_(None)
+            )
+
+    if scope.allow_unassigned_documents:
+        positive_conditions.append(DocumentAccessMetadata.assignment_status != "quarantine")
+
+    stmt = select(DocumentAccessMetadata.document_id)
+    if positive_conditions:
+        stmt = stmt.where(or_(*positive_conditions))
+
+    return stmt
+
+
+def apply_access_predicates(
+    stmt: Select,
+    scope: AccessScope,
+    *,
+    document_column=None,
+) -> Select:
+    """Return ``stmt`` with a WHERE clause that restricts rows to the
+    documents the given ``scope`` can see.
+
+    The caller must provide a SELECT whose FROM already includes the
+    ``Document`` table (or, when ``document_column`` is set, the
+    actual column on the joined entity). The function only adds
+    predicates; it never restricts unrelated tables.
+
+    ``document_column`` defaults to ``Document.id`` which is the
+    right choice for queries whose FROM is ``Document``. For
+    queries that select ``Document`` rows through a subquery or
+    join (e.g. ``Budget.document_id``), pass the column that
+    carries the document id — the predicate is
+    ``<column> IN (subquery)``.
+    """
+    if scope is None or scope.is_admin:
+        return stmt
+
+    subq = _build_access_subquery(scope)
+    column = document_column if document_column is not None else Document.id
+    return stmt.where(column.in_(subq))
+
+
+def count_access_predicates(
+    scope: AccessScope,
+    *,
+    count_stmt: Select,
+    document_column=None,
+) -> Select:
+    """Apply the access predicates to a ``COUNT(*)`` statement so the
+    scoped total matches the filtered page size.
+
+    Same call shape as :func:`apply_access_predicates`. Callers
+    should pass a ``count_stmt`` whose FROM mirrors the main query
+    so the predicate can be appended safely.
+    """
+    if scope is None or scope.is_admin:
+        return count_stmt
+
+    subq = _build_access_subquery(scope)
+    column = document_column if document_column is not None else Document.id
+    return count_stmt.where(column.in_(subq))

@@ -6,7 +6,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 import { parseJsonObject } from "./shared"
 
@@ -81,8 +88,16 @@ export function AdminIntegrationsTab({
             if (apiClientName.trim()) createIntegrationClient.mutate()
           }}
         >
-          <Input value={apiClientName} onChange={(event) => setApiClientName(event.target.value)} placeholder="Nombre del cliente" />
-          <Input value={apiClientScopes} onChange={(event) => setApiClientScopes(event.target.value)} placeholder="read,upload,admin" />
+          <Input
+            value={apiClientName}
+            onChange={(event) => setApiClientName(event.target.value)}
+            placeholder="Nombre del cliente"
+          />
+          <Input
+            value={apiClientScopes}
+            onChange={(event) => setApiClientScopes(event.target.value)}
+            placeholder="read,upload,admin"
+          />
           <Button disabled={createIntegrationClient.isPending}>
             <KeyRound data-icon="inline-start" />
             Crear
@@ -91,7 +106,9 @@ export function AdminIntegrationsTab({
         {latestApiKey ? (
           <div className="rounded-md border border-warning/50 bg-warning/10 p-3 text-sm">
             <p className="font-medium">API key generada. Se muestra solo una vez.</p>
-            <code className="mt-2 block break-all rounded bg-background px-2 py-1">{latestApiKey}</code>
+            <code className="mt-2 block break-all rounded bg-background px-2 py-1">
+              {latestApiKey}
+            </code>
           </div>
         ) : null}
         <Table>
@@ -110,16 +127,21 @@ export function AdminIntegrationsTab({
                 <TableCell>{client.name}</TableCell>
                 <TableCell>{client.scopes_json.join(", ")}</TableCell>
                 <TableCell>
-                  <Badge variant={client.is_active ? "success" : "secondary"}>{client.is_active ? "Activo" : "Inactivo"}</Badge>
+                  <Badge variant={client.is_active ? "success" : "secondary"}>
+                    {client.is_active ? "Activo" : "Inactivo"}
+                  </Badge>
                 </TableCell>
-                <TableCell>{client.last_used_at ? new Date(client.last_used_at).toLocaleString() : "-"}</TableCell>
+                <TableCell>
+                  {client.last_used_at ? new Date(client.last_used_at).toLocaleString() : "-"}
+                </TableCell>
                 <TableCell className="text-right">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      if (window.confirm("¿Rotar la API key del cliente \"" + client.name + "\"?")) rotateIntegrationClientKey.mutate(client.id)
+                      if (window.confirm('¿Rotar la API key del cliente "' + client.name + '"?'))
+                        rotateIntegrationClientKey.mutate(client.id)
                     }}
                   >
                     Rotar key
@@ -132,16 +154,23 @@ export function AdminIntegrationsTab({
         <div className="rounded-md border p-3">
           <div className="mb-3">
             <p className="text-sm font-medium">Sandbox de tools</p>
-            <p className="text-xs text-muted-foreground">Ejecuta una tool como la ver&iacute;a la IA externa, con redacciones y fuentes.</p>
+            <p className="text-xs text-muted-foreground">
+              Ejecuta una tool como la ver&iacute;a la IA externa, con redacciones y fuentes.
+            </p>
           </div>
           <form
             className="grid gap-2 lg:grid-cols-[140px_180px_220px_1fr_auto]"
             onSubmit={(event: FormEvent) => {
               event.preventDefault()
-              if (Number(sandboxClientId) > 0 && sandboxTechnicianId.trim() && sandboxTool.trim()) runIntegrationSandbox.mutate()
+              if (Number(sandboxClientId) > 0 && sandboxTechnicianId.trim() && sandboxTool.trim())
+                runIntegrationSandbox.mutate()
             }}
           >
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={sandboxClientId} onChange={(event) => setSandboxClientId(event.target.value)}>
+            <select
+              className="h-9 rounded-md border bg-background px-3 text-sm"
+              value={sandboxClientId}
+              onChange={(event) => setSandboxClientId(event.target.value)}
+            >
               <option value="">Cliente</option>
               {integrationClients.map((client) => (
                 <option key={client.id} value={client.id}>
@@ -149,9 +178,21 @@ export function AdminIntegrationsTab({
                 </option>
               ))}
             </select>
-            <Input value={sandboxTechnicianId} onChange={(event) => setSandboxTechnicianId(event.target.value)} placeholder="T&eacute;cnico" />
-            <Input value={sandboxTool} onChange={(event) => setSandboxTool(event.target.value)} placeholder="Tool" />
-            <Input value={sandboxArguments} onChange={(event) => setSandboxArguments(event.target.value)} placeholder='{"budget_number":"2026/143"}' />
+            <Input
+              value={sandboxTechnicianId}
+              onChange={(event) => setSandboxTechnicianId(event.target.value)}
+              placeholder="T&eacute;cnico"
+            />
+            <Input
+              value={sandboxTool}
+              onChange={(event) => setSandboxTool(event.target.value)}
+              placeholder="Tool"
+            />
+            <Input
+              value={sandboxArguments}
+              onChange={(event) => setSandboxArguments(event.target.value)}
+              placeholder='{"budget_number":"2026/143"}'
+            />
             <Button disabled={runIntegrationSandbox.isPending}>Probar</Button>
           </form>
           <div className="flex items-center gap-3 mt-3">
@@ -167,9 +208,13 @@ export function AdminIntegrationsTab({
             </label>
           </div>
           {runIntegrationSandbox.data ? (
-            <pre className="mt-3 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(runIntegrationSandbox.data, null, 2)}</pre>
+            <pre className="mt-3 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">
+              {JSON.stringify(runIntegrationSandbox.data, null, 2)}
+            </pre>
           ) : null}
-          {runIntegrationSandbox.isError ? <p className="mt-2 text-sm text-destructive">{runIntegrationSandbox.error?.message}</p> : null}
+          {runIntegrationSandbox.isError ? (
+            <p className="mt-2 text-sm text-destructive">{runIntegrationSandbox.error?.message}</p>
+          ) : null}
         </div>
       </CardContent>
     </Card>

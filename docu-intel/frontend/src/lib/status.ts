@@ -1,6 +1,15 @@
 export type StatusTone = "success" | "info" | "warning" | "danger" | "neutral"
 
-const successStates = new Set(["processed", "processed_ok", "completed", "finished", "approved", "ready", "validado", "ok"])
+const successStates = new Set([
+  "processed",
+  "processed_ok",
+  "completed",
+  "finished",
+  "approved",
+  "ready",
+  "validado",
+  "ok",
+])
 const infoStates = new Set(["processing", "running", "in_progress", "queued", "active", "uploaded"])
 const warningStates = new Set([
   "pending",
@@ -33,5 +42,7 @@ export function severityTone(severity: string | null | undefined): StatusTone {
 }
 
 function normalize(value: string | null | undefined) {
-  return String(value ?? "").trim().toLowerCase()
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
 }

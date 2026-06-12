@@ -25,7 +25,12 @@ from app.schemas.jobs import ExtractionJobRead
 from app.services.audit import write_audit
 from app.services.document_service import register_upload, reprocess_document, soft_delete_document
 from app.services.operations import BulkReprocessFilters, bulk_reprocess_documents
-from app.services.tenant_access import can_access_document, filter_documents_for_scope, resolve_user_access_scope
+from app.services.tenant_access import (
+    apply_access_predicates,
+    can_access_document,
+    filter_documents_for_scope,
+    resolve_user_access_scope,
+)
 
 router = APIRouter()
 
@@ -58,7 +63,9 @@ def upload_document(
         if "max_upload_size" in str(exc):
             raise HTTPException(status_code=413, detail=str(exc)) from exc
         raise
-    return UploadResponse(document=DocumentRead.model_validate(document), job_id=job.id if job else None)
+    return UploadResponse(
+        document=DocumentRead.model_validate(document), job_id=job.id if job else None
+    )
 
 
 @router.post("/upload/batch", response_model=BatchUploadResponse)
@@ -112,12 +119,14 @@ def upload_batch(
                     job_id=job.id if job else None,
                 )
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("batch_upload_failed filename=%s", file.filename)
             failed += 1
 
     db.commit()
-    return BatchUploadResponse(uploaded=uploaded, duplicates=duplicates, failed=failed, documents=results)
+    return BatchUploadResponse(
+        uploaded=uploaded, duplicates=duplicates, failed=failed, documents=results
+    )
 
 
 @router.get("", response_model=list[DocumentRead])
@@ -130,7 +139,9 @@ def list_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[Document]:
-    stmt = select(Document).where(Document.deleted_at.is_(None)).order_by(Document.created_at.desc())
+    stmt = (
+        select(Document).where(Document.deleted_at.is_(None)).order_by(Document.created_at.desc())
+    )
     if status:
         stmt = stmt.where(Document.status == status)
     if document_type:
@@ -141,8 +152,15 @@ def list_documents(
     scope = resolve_user_access_scope(db, user)
     if scope.is_admin:
         return list(db.scalars(stmt.offset(offset).limit(limit)).all())
-    candidates = list(db.scalars(stmt.limit(max(limit + offset, 500))).all())
-    return filter_documents_for_scope(db, candidates, scope)[offset : offset + limit]
+    # DATA-03: push the scope into SQL so the page slice and the
+    # total are both correct for non-admin users. We still run the
+    # in-memory ``filter_documents_for_scope`` afterwards because
+    # the ``denied_tags`` and ``allowed_document_types`` parts of
+    # the scope require per-row metadata inspection that is not
+    # worth a dialect-specific JSON expansion in SQL.
+    stmt = apply_access_predicates(stmt, scope)
+    candidates = list(db.scalars(stmt.offset(offset).limit(limit)).all())
+    return filter_documents_for_scope(db, candidates, scope)
 
 
 @router.post("/reprocess-bulk", response_model=BulkReprocessResponse)
@@ -169,7 +187,9 @@ def reprocess_bulk(
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
-def get_document(document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> Document:
+def get_document(
+    document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> Document:
     document = db.get(Document, document_id)
     if not can_access_document(db, document, resolve_user_access_scope(db, user)):
         raise HTTPException(status_code=404, detail="Document not found")
@@ -177,13 +197,23 @@ def get_document(document_id: int, db: Session = Depends(get_db), user: User = D
 
 
 @router.get("/{document_id}/pages", response_model=list[DocumentPageRead])
-def get_document_pages(document_id: int, limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0), db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[DocumentPage]:
+def get_document_pages(
+    document_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[DocumentPage]:
     document = db.get(Document, document_id)
     if not can_access_document(db, document, resolve_user_access_scope(db, user)):
         raise HTTPException(status_code=404, detail="Document not found")
     return list(
         db.scalars(
-            select(DocumentPage).where(DocumentPage.document_id == document_id).order_by(DocumentPage.page_number.asc()).offset(offset).limit(limit)
+            select(DocumentPage)
+            .where(DocumentPage.document_id == document_id)
+            .order_by(DocumentPage.page_number.asc())
+            .offset(offset)
+            .limit(limit)
         ).all()
     )
 
@@ -208,7 +238,17 @@ def get_document_page_image(
     path = _resolve_files_dir_path(page.image_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Page preview not found")
-    return FileResponse(path)
+    # OPS-1: pass ``media_type`` explicitly so the Content-Type
+    # header always matches the bytes on disk, regardless of
+    # whether the renderer produced JPEG (smaller) or fell
+    # back to PNG. The extension on disk and the payload now
+    # agree (the parser writes ``.jpg`` when it encoded JPEG,
+    # ``.png`` when it fell back), so this is belt-and-braces
+    # — the filename inference would also produce the right
+    # value, but pinning it here protects against future
+    # paths that store previews under non-standard names.
+    media_type = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
+    return FileResponse(path, media_type=media_type)
 
 
 @router.get("/{document_id}/blocks", response_model=list[DocumentBlockRead])
@@ -223,7 +263,11 @@ def get_document_blocks(
     document = db.get(Document, document_id)
     if not can_access_document(db, document, resolve_user_access_scope(db, user)):
         raise HTTPException(status_code=404, detail="Document not found")
-    stmt = select(DocumentBlock).where(DocumentBlock.document_id == document_id).order_by(DocumentBlock.page_number.asc())
+    stmt = (
+        select(DocumentBlock)
+        .where(DocumentBlock.document_id == document_id)
+        .order_by(DocumentBlock.page_number.asc())
+    )
     if page_number:
         stmt = stmt.where(DocumentBlock.page_number == page_number)
     return list(db.scalars(stmt.offset(offset).limit(limit)).all())
@@ -242,7 +286,11 @@ def get_document_entities(
         raise HTTPException(status_code=404, detail="Document not found")
     return list(
         db.scalars(
-            select(DocumentEntity).where(DocumentEntity.document_id == document_id).order_by(DocumentEntity.entity_type.asc()).offset(offset).limit(limit)
+            select(DocumentEntity)
+            .where(DocumentEntity.document_id == document_id)
+            .order_by(DocumentEntity.entity_type.asc())
+            .offset(offset)
+            .limit(limit)
         ).all()
     )
 
@@ -250,7 +298,9 @@ def get_document_entities(
 @router.post("/{document_id}/reprocess", response_model=ExtractionJobRead)
 def reprocess(
     document_id: int,
-    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = Query(default="full"),
+    mode: Literal[
+        "full", "ocr", "text", "classification", "entities", "chunks", "embeddings"
+    ] = Query(default="full"),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor")),
 ):
@@ -275,16 +325,27 @@ def delete_document(
 
 
 @router.get("/{document_id}/download")
-def download_document(document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def download_document(
+    document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
     document = db.get(Document, document_id)
-    if not can_access_document(db, document, resolve_user_access_scope(db, user)) or not document.stored_filename:
+    if (
+        not can_access_document(db, document, resolve_user_access_scope(db, user))
+        or not document.stored_filename
+    ):
         raise HTTPException(status_code=404, detail="Document not found")
     path = (settings.files_dir / document.stored_filename).resolve()
     if not path.exists() or settings.files_dir.resolve() not in path.parents:
         raise HTTPException(status_code=404, detail="Stored file not found")
-    write_audit(db, user=user, action="document_downloaded", entity_type="document", entity_id=document.id)
+    write_audit(
+        db, user=user, action="document_downloaded", entity_type="document", entity_id=document.id
+    )
     db.commit()
-    return FileResponse(path, filename=document.original_filename, media_type=document.mime_type or "application/octet-stream")
+    return FileResponse(
+        path,
+        filename=document.original_filename,
+        media_type=document.mime_type or "application/octet-stream",
+    )
 
 
 def _resolve_files_dir_path(stored_path: str) -> Path:

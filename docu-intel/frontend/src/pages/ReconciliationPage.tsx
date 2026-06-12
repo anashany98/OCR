@@ -10,14 +10,25 @@ import { PageHeader } from "@/components/layout/PageHeader"
 import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { formatDate } from "@/lib/utils"
 import { notify } from "@/lib/toast"
 import type { ReconciliationIssue } from "@/types/api"
 
 export function ReconciliationPage() {
   const queryClient = useQueryClient()
-  const issues = useQuery({ queryKey: ["reconciliation-issues"], queryFn: api.reconciliationIssues, refetchInterval: 30000 })
+  const issues = useQuery({
+    queryKey: ["reconciliation-issues"],
+    queryFn: api.reconciliationIssues,
+    refetchInterval: 30000,
+  })
   const generate = useMutation({
     mutationFn: api.generateReconciliationIssues,
     onSuccess: (items) => {
@@ -28,10 +39,18 @@ export function ReconciliationPage() {
   })
   const update = useMutation({
     mutationFn: ({ id, status }: { id: number; status: "reviewed" | "ignored" | "pending" }) =>
-      api.updateReconciliationIssue(id, { status, resolution_notes: status === "reviewed" ? "Revisado desde conciliación" : null }),
+      api.updateReconciliationIssue(id, {
+        status,
+        resolution_notes: status === "reviewed" ? "Revisado desde conciliación" : null,
+      }),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["reconciliation-issues"] })
-      const label = vars.status === "reviewed" ? "marcada como revisada" : vars.status === "ignored" ? "ignorada" : "marcada como pendiente"
+      const label =
+        vars.status === "reviewed"
+          ? "marcada como revisada"
+          : vars.status === "ignored"
+            ? "ignorada"
+            : "marcada como pendiente"
       notify.success(`Incidencia ${label}`)
     },
     onError: (err) => notify.error(err, "No se pudo actualizar la incidencia"),
@@ -39,14 +58,19 @@ export function ReconciliationPage() {
 
   const items = issues.data ?? []
   const pending = items.filter((item) => item.status === "pending").length
-  const critical = items.filter((item) => item.severity === "critical" || item.kind.includes("amount")).length
+  const critical = items.filter(
+    (item) => item.severity === "critical" || item.kind.includes("amount"),
+  ).length
   const reviewed = items.filter((item) => item.status === "reviewed").length
 
   return (
     <>
       <Breadcrumbs items={[{ label: "Incidencias" }]} />
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-        <PageHeader title="Conciliación" description="Cruce operativo entre presupuestos, pedidos y facturas con resolución trazable." />
+        <PageHeader
+          title="Conciliación"
+          description="Cruce operativo entre presupuestos, pedidos y facturas con resolución trazable."
+        />
         <Button onClick={() => generate.mutate()} disabled={generate.isPending}>
           <RefreshCw data-icon="inline-start" />
           Generar incidencias
@@ -54,8 +78,18 @@ export function ReconciliationPage() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <MetricTile title="Pendientes" value={pending} meta="Diferencias por revisar" tone={pending ? "warning" : "success"} />
-        <MetricTile title="Críticas" value={critical} meta="Importes o enlaces sensibles" tone={critical ? "danger" : "neutral"} />
+        <MetricTile
+          title="Pendientes"
+          value={pending}
+          meta="Diferencias por revisar"
+          tone={pending ? "warning" : "success"}
+        />
+        <MetricTile
+          title="Críticas"
+          value={critical}
+          meta="Importes o enlaces sensibles"
+          tone={critical ? "danger" : "neutral"}
+        />
         <MetricTile title="Revisadas" value={reviewed} meta="Cerradas por gestión" tone="success" />
       </div>
 
@@ -85,7 +119,9 @@ export function ReconciliationPage() {
                     </TableCell>
                     <TableCell>
                       <p className="font-medium">{issue.title}</p>
-                      <p className="max-w-[520px] text-xs text-muted-foreground">{issue.description}</p>
+                      <p className="max-w-[520px] text-xs text-muted-foreground">
+                        {issue.description}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">{issue.kind}</p>
                     </TableCell>
                     <TableCell className="text-sm">
@@ -97,7 +133,9 @@ export function ReconciliationPage() {
                       <p>Pedido: {issue.order_id ?? "-"}</p>
                       <p>Factura: {issue.invoice_id ?? "-"}</p>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(issue.created_at)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(issue.created_at)}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         {issue.document_id ? (
@@ -108,10 +146,21 @@ export function ReconciliationPage() {
                             </Link>
                           </Button>
                         ) : null}
-                        <Button variant="outline" size="icon" onClick={() => update.mutate({ id: issue.id, status: "ignored" })} title="Ignorar" aria-label="Ignorar incidencia">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => update.mutate({ id: issue.id, status: "ignored" })}
+                          title="Ignorar"
+                          aria-label="Ignorar incidencia"
+                        >
                           <XCircle aria-hidden="true" />
                         </Button>
-                        <Button size="icon" onClick={() => update.mutate({ id: issue.id, status: "reviewed" })} title="Marcar revisada" aria-label="Marcar como revisada">
+                        <Button
+                          size="icon"
+                          onClick={() => update.mutate({ id: issue.id, status: "reviewed" })}
+                          title="Marcar revisada"
+                          aria-label="Marcar como revisada"
+                        >
                           <CheckCircle2 aria-hidden="true" />
                         </Button>
                       </div>
@@ -136,7 +185,9 @@ export function ReconciliationPage() {
       </Card>
 
       {issues.isError ? <p className="text-sm text-destructive">{issues.error.message}</p> : null}
-      {generate.isError ? <p className="text-sm text-destructive">{generate.error.message}</p> : null}
+      {generate.isError ? (
+        <p className="text-sm text-destructive">{generate.error.message}</p>
+      ) : null}
     </>
   )
 }
@@ -145,7 +196,11 @@ function AmountLine({ label, value }: { label: string; value: number | null }) {
   return (
     <p className="whitespace-nowrap">
       <span className="text-muted-foreground">{label}: </span>
-      <span className="font-medium">{value == null ? "-" : new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(value)}</span>
+      <span className="font-medium">
+        {value == null
+          ? "-"
+          : new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(value)}
+      </span>
     </p>
   )
 }

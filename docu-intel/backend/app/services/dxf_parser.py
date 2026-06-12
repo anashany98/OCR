@@ -20,13 +20,12 @@ DWG support requires the ``ezdxf[draw]`` extra which includes
 the ODA File Converter. DXF is natively supported without any
 extra dependencies.
 """
+
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger("app.services.dxf_parser")
 
@@ -117,7 +116,6 @@ def parse_dxf(path: str | Path, output_dir: Path | None = None) -> DxfExtraction
         elif dxftype == "DIMENSION":
             try:
                 measurement = entity.get_measurement()
-                dim_text = entity.dxf.text if hasattr(entity.dxf, "text") else ""
                 value = float(measurement) if measurement is not None else 0.0
                 unit = "mm"  # DXF default
                 x = getattr(entity.dxf, "defpoint", None)
@@ -175,7 +173,6 @@ def _render_dxf_to_png(doc, output_dir: Path, stem: str) -> str | None:
     drawing. Returns the path to the PNG or ``None`` on
     failure."""
     try:
-        import ezdxf
         from ezdxf.addons.drawing import RenderContext, Frontend
         from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
         import matplotlib.pyplot as plt

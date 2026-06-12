@@ -30,13 +30,13 @@ per page on a modern CPU). When CUDA is available the operator can
 flip ``plan_symbols_device`` to ``"cuda"`` and the model will run
 ~10x faster.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 import threading
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger("app.services.plan_symbols")

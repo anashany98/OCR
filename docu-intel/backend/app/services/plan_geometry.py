@@ -23,13 +23,12 @@ are clearly closed and have a reasonable area. False positives
 The module is **fail-safe**: on any error an empty list is
 returned so the plan processing pipeline continues.
 """
+
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger("app.services.plan_geometry")
 
@@ -92,7 +91,6 @@ def detect_rooms_from_image(
     """
     try:
         import cv2
-        import numpy as np
     except ImportError:
         logger.debug("OpenCV not available, skipping room detection")
         return []
@@ -105,8 +103,12 @@ def detect_rooms_from_image(
         # 1. Binarize with adaptive threshold (handles uneven
         #    lighting in scanned plans).
         binary = cv2.adaptiveThreshold(
-            img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 15, 10,
+            img,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            15,
+            10,
         )
 
         # 2. Morphological close to connect nearby lines.
@@ -115,7 +117,9 @@ def detect_rooms_from_image(
 
         # 3. Find contours.
         contours, _ = cv2.findContours(
-            closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE,
+            closed,
+            cv2.RETR_TREE,
+            cv2.CHAIN_APPROX_SIMPLE,
         )
 
         # 4. Filter and convert to polygons.

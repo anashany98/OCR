@@ -21,6 +21,7 @@ based on what we just answered). Both are pure-Python helpers
 with no LLM call, which is the whole point of having them here:
 they stay cheap and predictable.
 """
+
 from __future__ import annotations
 
 import json
@@ -48,11 +49,33 @@ DetectorFactory.seed = 0
 # only as a fallback for very short or ambiguous text where langdetect
 # has low signal.
 _SPANISH_HINTS = (
-    "ñ", "á", "é", "í", "ó", "ú", "ü", "¿", "¡",
-    " el ", " la ", " los ", " las ", " de ", " que ",
-    " con ", " para ", " por ", " según ", " documento",
-    " presupuesto", " pedido", " proveedor", " importe",
-    " no he ", " no hay ", " he encontrado",
+    "ñ",
+    "á",
+    "é",
+    "í",
+    "ó",
+    "ú",
+    "ü",
+    "¿",
+    "¡",
+    " el ",
+    " la ",
+    " los ",
+    " las ",
+    " de ",
+    " que ",
+    " con ",
+    " para ",
+    " por ",
+    " según ",
+    " documento",
+    " presupuesto",
+    " pedido",
+    " proveedor",
+    " importe",
+    " no he ",
+    " no hay ",
+    " he encontrado",
 )
 
 
@@ -356,11 +379,17 @@ def suggest_followups(
 
     # Detect entity types from the context (no DB needed: we already
     # gathered the items and their summaries carry the relation labels).
-    has_budget = any("presupuesto:" in it.summary.lower() or "presupuest" in it.title.lower() for it in context_items)
-    has_order = any("pedido" in it.summary.lower() or "pedido" in it.title.lower() for it in context_items)
-    has_invoice = any("factura" in it.summary.lower() or "factura" in it.title.lower() for it in context_items)
+    has_budget = any(
+        "presupuesto:" in it.summary.lower() or "presupuest" in it.title.lower()
+        for it in context_items
+    )
+    has_order = any(
+        "pedido" in it.summary.lower() or "pedido" in it.title.lower() for it in context_items
+    )
+    has_invoice = any(
+        "factura" in it.summary.lower() or "factura" in it.title.lower() for it in context_items
+    )
     has_aggregate = any("agregado" in it.title.lower() for it in context_items)
-    relations = [it.summary for it in context_items if " → " in it.summary or "En la misma" in it.summary or "derivado" in it.summary or "paga" in it.summary or "origina" in it.summary]
 
     if resolved_doc_id is not None:
         if has_budget:
@@ -410,10 +439,26 @@ def suggest_followups(
 
 # Heuristics: short follow-up questions that need context from the prior turn.
 _FOLLOWUP_HINTS = (
-    " y ", " y la", " y las", " y los", " y el", " y del", " y de la",
-    "que pasa con", "qué pasa con", "del mismo", "de la misma",
-    "de ese", "de esa", "esos mismos", "esas mismas",
-    "tambien", "también", "ahora dime", "y cuanto", "y cuántos",
+    " y ",
+    " y la",
+    " y las",
+    " y los",
+    " y el",
+    " y del",
+    " y de la",
+    "que pasa con",
+    "qué pasa con",
+    "del mismo",
+    "de la misma",
+    "de ese",
+    "de esa",
+    "esos mismos",
+    "esas mismas",
+    "tambien",
+    "también",
+    "ahora dime",
+    "y cuanto",
+    "y cuántos",
 )
 
 

@@ -26,12 +26,18 @@ export function PageHeader({
 }) {
   if (variant === "plain") {
     return (
-      <div className={cn("flex flex-col gap-3 md:flex-row md:items-end md:justify-between", className)}>
+      <div
+        className={cn("flex flex-col gap-3 md:flex-row md:items-end md:justify-between", className)}
+      >
         <div className="min-w-0 space-y-1">
           <h1 className="font-display text-[26px] font-medium leading-[1.15] tracking-tight text-[var(--text-primary)] md:text-[30px]">
             {title}
           </h1>
-          {description && <div className="text-[13px] text-[var(--text-muted)] leading-relaxed">{description}</div>}
+          {description && (
+            <div className="text-[13px] text-[var(--text-muted)] leading-relaxed">
+              {description}
+            </div>
+          )}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
@@ -41,7 +47,9 @@ export function PageHeader({
   if (variant === "minimal") {
     return (
       <div className={cn("flex items-center justify-between gap-3", className)}>
-        <h1 className="truncate font-display text-[22px] font-medium tracking-tight text-[var(--text-primary)]">{title}</h1>
+        <h1 className="truncate font-display text-[22px] font-medium tracking-tight text-[var(--text-primary)]">
+          {title}
+        </h1>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     )
@@ -59,7 +67,11 @@ export function PageHeader({
           <h1 className="font-display text-[24px] font-medium leading-[1.15] tracking-tight text-[var(--text-primary)] md:text-[28px]">
             {title}
           </h1>
-          {description && <div className="text-[13px] text-[var(--text-muted)] leading-relaxed">{description}</div>}
+          {description && (
+            <div className="text-[13px] text-[var(--text-muted)] leading-relaxed">
+              {description}
+            </div>
+          )}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>

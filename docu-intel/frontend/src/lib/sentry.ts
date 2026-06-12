@@ -16,8 +16,11 @@ import * as Sentry from "@sentry/react"
 
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined
 const SENTRY_TRACES_SAMPLE_RATE = Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? "0.0")
-const SENTRY_PROFILES_SAMPLE_RATE = Number(import.meta.env.VITE_SENTRY_PROFILES_SAMPLE_RATE ?? "0.0")
-const SENTRY_ENVIRONMENT = (import.meta.env.VITE_SENTRY_ENVIRONMENT as string | undefined) ?? import.meta.env.MODE
+const SENTRY_PROFILES_SAMPLE_RATE = Number(
+  import.meta.env.VITE_SENTRY_PROFILES_SAMPLE_RATE ?? "0.0",
+)
+const SENTRY_ENVIRONMENT =
+  (import.meta.env.VITE_SENTRY_ENVIRONMENT as string | undefined) ?? import.meta.env.MODE
 const SENTRY_SEND_PII = import.meta.env.VITE_SENTRY_SEND_PII === "true"
 
 let initialized = false

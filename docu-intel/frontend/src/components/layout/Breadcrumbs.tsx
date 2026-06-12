@@ -30,10 +30,15 @@ export function Breadcrumbs({
   showHome?: boolean
   className?: string
 }) {
-  const all: BreadcrumbItem[] = showHome ? [{ label: "Inicio", to: "/", icon: <Home className="h-3.5 w-3.5" /> }, ...items] : items
+  const all: BreadcrumbItem[] = showHome
+    ? [{ label: "Inicio", to: "/", icon: <Home className="h-3.5 w-3.5" /> }, ...items]
+    : items
 
   return (
-    <nav aria-label="Breadcrumb" className={cn("flex items-center gap-1 text-[12px] text-[var(--text-muted)]", className)}>
+    <nav
+      aria-label="Breadcrumb"
+      className={cn("flex items-center gap-1 text-[12px] text-[var(--text-muted)]", className)}
+    >
       <ol className="flex flex-wrap items-center gap-1">
         {all.map((item, index) => {
           const isLast = index === all.length - 1

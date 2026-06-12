@@ -14,6 +14,7 @@ Runs every ``webhook_outbox_interval_seconds`` (default 30s). Each tick:
    backoff or moves the row to ``status='dead_letter'`` if ``attempts`` has
    reached ``max_attempts``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -78,7 +79,9 @@ def deliver_pending_webhooks_task() -> dict:
                     row.last_error = None
                     delivered += 1
                 else:
-                    row.last_error = response.text[:500] if response.text else f"HTTP {response.status_code}"
+                    row.last_error = (
+                        response.text[:500] if response.text else f"HTTP {response.status_code}"
+                    )
                     _schedule_retry_or_dead_letter(db, row)
                     if row.status == "dead_letter":
                         dead_lettered += 1
@@ -134,7 +137,9 @@ def _schedule_retry_or_dead_letter(db, row: WebhookOutbox) -> None:
         )
     else:
         row.status = "pending"
-        row.next_attempt_at = datetime.now(timezone.utc) + webhooks_service.backoff_for_attempt(row.attempts)
+        row.next_attempt_at = datetime.now(timezone.utc) + webhooks_service.backoff_for_attempt(
+            row.attempts
+        )
         logger.info(
             "webhook_retry_scheduled row_id=%s event=%s attempt=%s next_in=%s",
             row.id,

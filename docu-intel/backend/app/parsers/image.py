@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
+
+logger = logging.getLogger("app.parsers.image")
 
 
 def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
@@ -14,7 +17,9 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extr
         width, height = image.size
     megapixels = (width * height) / 1_000_000
     if megapixels > settings.max_image_megapixels:
-        raise ValueError(f"max_image_megapixels exceeded: {megapixels:.2f} > {settings.max_image_megapixels}")
+        raise ValueError(
+            f"max_image_megapixels exceeded: {megapixels:.2f} > {settings.max_image_megapixels}"
+        )
 
     result = ocr_engine.extract(path)
     # ``result.engine`` reports which engine actually produced the
@@ -56,15 +61,14 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extr
             from app.services.vision_manager import VisionManager
             from app.ai.local_client import LocalVisionClient
             import asyncio
+
             VisionManager.cancel_pending_unload()
             if not VisionManager.is_loaded():
                 VisionManager.ensure_loaded()
             client = LocalVisionClient()
             loop = asyncio.new_event_loop()
             try:
-                vision_text = loop.run_until_complete(
-                    client.transcribe_table(path)
-                )
+                vision_text = loop.run_until_complete(client.transcribe_table(path))
             finally:
                 loop.close()
             if vision_text:
@@ -87,8 +91,27 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extr
                     page.ocr_engine = "vision"
                     page.ocr_confidence = 0.85
             VisionManager.schedule_unload()
-        except Exception:
-            # Vision fallback is best-effort; the OCR result still stands.
-            pass
+        except Exception as exc:
+            # OPS-2: the vision fallback is best-effort, but
+            # silently swallowing the failure used to leave the
+            # operator with no signal that the vision model is
+            # down. We log a warning with the document path and
+            # the exception type so it shows up in the logs, and
+            # we increment a Prometheus counter so the on-call
+            # can spot a sustained outage from /metrics.
+            #
+            # The OCR result still stands: the page block we
+            # already built keeps whatever text the cascade
+            # produced. We do NOT raise — losing one optional
+            # vision transcription must not fail the document.
+            from app.services.metrics import track_parser_fallback_failure
+
+            logger.warning(
+                "vision transcription fallback failed for %s: %s: %s",
+                path,
+                type(exc).__name__,
+                exc,
+            )
+            track_parser_fallback_failure(stage="image_vision_transcribe", kind="exception")
 
     return ExtractedDocument(pages=[page])

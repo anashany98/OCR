@@ -25,6 +25,7 @@ Backwards-compatible convenience functions (``emit_document_needs_review``,
 ``emit_classification_low_confidence``, ``emit_new_pattern_detected``) keep
 their signatures so call sites don't have to change.
 """
+
 from __future__ import annotations
 
 import hmac

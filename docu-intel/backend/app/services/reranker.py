@@ -18,6 +18,7 @@ non-empty string in the environment. Otherwise the HTTP path is used.
 Both paths fall back to the original candidate order on any error, so a
 broken reranker never blocks search.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -163,9 +164,7 @@ async def rerank(
     if settings.reranker_local_model.strip():
         loop = asyncio.get_running_loop()
         try:
-            return await loop.run_in_executor(
-                None, _rerank_local_sync, query, candidates, top_k
-            )
+            return await loop.run_in_executor(None, _rerank_local_sync, query, candidates, top_k)
         except Exception as exc:
             logger.warning("Local reranker failed, falling back: %s", exc)
             return candidates[:top_k]
@@ -211,18 +210,20 @@ async def rerank(
                 seen.add(idx)
                 # Update score with reranker confidence
                 original = candidates[idx]
-                reranked.append(original.__class__(
-                    document_id=original.document_id,
-                    original_filename=original.original_filename,
-                    document_type=original.document_type,
-                    status=original.status,
-                    page_number=original.page_number,
-                    block_id=original.block_id,
-                    score=round(float(score), 6) if score else original.score,
-                    excerpt=original.excerpt,
-                    ocr_confidence=original.ocr_confidence,
-                    source_type=original.source_type,
-                ))
+                reranked.append(
+                    original.__class__(
+                        document_id=original.document_id,
+                        original_filename=original.original_filename,
+                        document_type=original.document_type,
+                        status=original.status,
+                        page_number=original.page_number,
+                        block_id=original.block_id,
+                        score=round(float(score), 6) if score else original.score,
+                        excerpt=original.excerpt,
+                        ocr_confidence=original.ocr_confidence,
+                        source_type=original.source_type,
+                    )
+                )
 
         return reranked[:top_k]
 
@@ -284,8 +285,8 @@ def rerank_sync(
             logger.warning("Local reranker failed, falling back: %s", exc)
             return candidates[:top_k]
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(rerank(query, candidates, top_k))
-    # Already in async context — caller should use rerank() directly
+    # Already in async context — caller should use rerank() directamente
     return candidates[:top_k]

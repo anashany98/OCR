@@ -24,7 +24,11 @@ from app.services.budget_scope import (
     get_client_budget_permission,
 )
 from app.services.document_service import register_upload
-from app.services.integration_security import IntegrationContext, get_integration_context, require_scope
+from app.services.integration_security import (
+    IntegrationContext,
+    get_integration_context,
+    require_scope,
+)
 from app.services.integration_tools import build_manifest, execute_integration_tool
 from app.services.tenant_access import can_access_document, get_document_access_metadata
 from app.services.webhooks import build_webhook_test_payload, emit_integration_webhook
@@ -50,9 +54,14 @@ def create_budget_session(
     scope = get_budget_scope_by_code(db, payload.budget_code)
     if not scope:
         raise HTTPException(status_code=404, detail="Budget scope not found")
-    permission = get_client_budget_permission(db, client_id=context.client.id, budget_scope_id=scope.id)
+    permission = get_client_budget_permission(
+        db, client_id=context.client.id, budget_scope_id=scope.id
+    )
     if not permission or not permission.can_query:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Integration client cannot query this budget scope")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Integration client cannot query this budget scope",
+        )
     can_see_amounts = bool(permission.can_see_amounts)
     token = create_budget_session_token(
         client_id=context.client.id,
@@ -92,9 +101,13 @@ def execute_tool(
     context: IntegrationContext = Depends(get_integration_context),
 ) -> IntegrationToolExecuteResponse:
     require_scope(context, "read")
-    response = execute_integration_tool(db, context=context, tool=payload.tool, arguments=payload.arguments)
+    response = execute_integration_tool(
+        db, context=context, tool=payload.tool, arguments=payload.arguments
+    )
     if payload.sandbox:
-        response.warnings.append("Sandbox activo: resultado de prueba para validar fuentes, scope y redacciones.")
+        response.warnings.append(
+            "Sandbox activo: resultado de prueba para validar fuentes, scope y redacciones."
+        )
     write_audit(
         db,
         user=None,
@@ -132,10 +145,18 @@ def upload_document(
         if not scope:
             raise HTTPException(status_code=404, detail="Budget scope not found")
         if context.budget_session and context.budget_session.budget_scope_id != scope.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Integration session cannot upload to this budget scope")
-        permission = get_client_budget_permission(db, client_id=context.client.id, budget_scope_id=scope.id)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Integration session cannot upload to this budget scope",
+            )
+        permission = get_client_budget_permission(
+            db, client_id=context.client.id, budget_scope_id=scope.id
+        )
         if not permission or not permission.can_query:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Integration client cannot upload to this budget scope")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Integration client cannot upload to this budget scope",
+            )
     try:
         document, job = register_upload(
             db,
@@ -222,11 +243,21 @@ def _safe_arguments(arguments: dict) -> dict:
     return safe
 
 
-def _can_access_integration_document(db: Session, document: Document | None, context: IntegrationContext) -> bool:
+def _can_access_integration_document(
+    db: Session, document: Document | None, context: IntegrationContext
+) -> bool:
     if context.budget_session:
-        if not document or document.deleted_at is not None or document.budget_scope_id != context.budget_session.budget_scope_id:
+        if (
+            not document
+            or document.deleted_at is not None
+            or document.budget_scope_id != context.budget_session.budget_scope_id
+        ):
             return False
         metadata = get_document_access_metadata(db, document.id)
-        tags = {str(tag).strip().lower() for tag in (metadata.tags_json if metadata else []) if str(tag).strip()}
+        tags = {
+            str(tag).strip().lower()
+            for tag in (metadata.tags_json if metadata else [])
+            if str(tag).strip()
+        }
         return not bool(tags & context.access_scope.denied_tags)
     return can_access_document(db, document, context.access_scope)

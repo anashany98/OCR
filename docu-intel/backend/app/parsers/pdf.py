@@ -1,52 +1,153 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Awaitable, TypeVar
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
-from app.services.metrics import track_ocr_dpi_escalation, track_ocr_language_detected, track_ocr_tier_used
+from app.services.metrics import (
+    track_ocr_dpi_escalation,
+    track_ocr_language_detected,
+    track_ocr_tier_used,
+    track_parser_fallback_failure,
+)
 from app.services.ocr_language import (
     LanguageProfile,
     paddle_lang_for,
     tesseract_lang_for,
 )
 
+logger = logging.getLogger("app.parsers.pdf")
 
-def _render_page_to_jpeg(page, image_file: Path, *, dpi: int) -> bool:
-    """Render a PDF page to a JPEG file instead of PNG.
+
+def _render_page_to_image(page, image_file: Path, *, dpi: int) -> str | None:
+    """Render a PDF page and atomically leave the bytes on disk
+    at ``image_file`` with the correct extension for the
+    encoded format (``.jpg`` or ``.png``).
+
+    The caller passes a path with a placeholder suffix (e.g.
+    ``page_1_dpi300.tmp``); the helper replaces the suffix
+    with the actual format and returns the new extension so
+    the caller can update its own ``Path`` reference. The
+    on-disk name and the payload always agree, so the
+    browser infers the right Content-Type (audit OPS-01:
+    the old version always wrote to ``.png`` regardless of
+    format, which made some browsers refuse previews and
+    proxies cache them under the wrong MIME).
 
     Why JPEG over PNG for OCR pre-processing:
-    - A 300 DPI A1 page as PNG is ~50 MB. As JPEG quality 85 it is ~5 MB.
-      PaddleOCR still reads the same characters — text recognition is
-      unaffected by the lossy compression at quality >= 80.
+    - A 300 DPI A1 page as PNG is ~50 MB. As JPEG quality 85 it
+      is ~5 MB. PaddleOCR still reads the same characters —
+      text recognition is unaffected by the lossy compression
+      at quality >= 80.
     - 10x less disk I/O when writing the temp image.
     - 10x less VRAM when PaddleOCR loads the image.
     - 30-40% faster OCR end-to-end on large pages.
 
-    Returns True on success, False on any failure (caller falls back
-    to PNG). Failures are swallowed because OCR is best-effort.
+    Returns ``None`` when both encoders fail; the DPI ladder
+    will try a lower DPI on the next iteration.
     """
     import fitz
+
+    # The two encoders have different APIs: JPEG goes through
+    # ``tobytes()`` + ``Path.write_bytes()`` and PNG goes
+    # through ``Pixmap.save()``. We try JPEG first (much
+    # smaller on disk, identical OCR accuracy) and fall back
+    # to PNG when the encoder crashes (rare) or the JPEG
+    # write fails (e.g. disk full). Both ``encode`` and
+    # ``write`` for JPEG are inside the same ``try`` so a
+    # write failure also triggers the PNG fallback.
+    target_ext: str | None = None
+    payload: tuple[str, object] | None = None
 
     try:
         zoom = max(0.5, float(dpi) / 72.0)
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-        # ``tobytes`` with jpg_quality returns a JPEG-encoded buffer
-        # (PyMuPDF honours the quality arg on JPEG output).
         jpeg_bytes = pix.tobytes("jpeg", jpg_quality=85)
-        image_file.write_bytes(jpeg_bytes)
-        return True
-    except Exception:
-        # Fall back to PNG so the rest of the pipeline still works.
+        # OPS-1: write the JPEG bytes to a sibling file with a
+        # ``.jpg.staging`` suffix and let the trailing rename
+        # step below move them onto the final path. Both the
+        # encode and the write are inside this ``try`` so
+        # either failure triggers the PNG fallback.
+        staging_jpg = image_file.with_suffix(".jpg.staging")
+        staging_jpg.write_bytes(jpeg_bytes)
+        target_ext = ".jpg"
+        payload = ("staging", staging_jpg)
+    except Exception as exc:
+        # OPS-1 / OPS-2: the JPEG encoder in PyMuPDF raises on
+        # a handful of pages (weird CMYK profiles, broken
+        # embedded streams), and a write failure here can
+        # also fire if the disk is full. We fall back to PNG
+        # so the rest of the pipeline still works, but we
+        # used to do it silently — the operator had no way
+        # to know that the fallback was firing on every
+        # page of a given document. Log + counter so the
+        # JPEG/PNG MIME mismatch that ships with the .png
+        # extension (audit OPS-01) becomes visible.
+        logger.debug(
+            "page render to JPEG failed for dpi=%d: %s: %s — falling back to PNG",
+            dpi,
+            type(exc).__name__,
+            exc,
+        )
+        track_parser_fallback_failure(stage="pdf_render_jpeg", kind="exception")
         try:
             zoom = max(0.5, float(dpi) / 72.0)
-            page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).save(image_file)
-            return True
-        except Exception:
-            return False
+            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+            target_ext = ".png"
+            payload = ("pixmap", pix)
+        except Exception as exc:
+            # Both renderers failed: the page cannot be
+            # rasterized at this DPI. The DPI ladder will try
+            # a lower DPI next. Log and counter so a corrupt
+            # PDF shows up in /metrics instead of as a silent
+            # blank page downstream.
+            logger.warning(
+                "page render failed for dpi=%d (both JPEG and PNG): %s: %s",
+                dpi,
+                type(exc).__name__,
+                exc,
+            )
+            track_parser_fallback_failure(stage="pdf_render_png", kind="exception")
+            return None
+
+    if payload is None or target_ext is None:
+        return None
+    kind, blob = payload
+
+    # Move the encoded bytes to the final on-disk path with
+    # the right extension. The bytes already live in a
+    # staging file when we got here through the JPEG
+    # branch (``payload[1]`` is the staging ``Path``); in
+    # the PNG branch ``payload[1]`` is a ``Pixmap`` that
+    # ``save()`` writes itself, with the format inferred
+    # from the suffix.
+    final_path = image_file.with_suffix(target_ext)
+    try:
+        if kind == "staging":
+            staging = blob  # type: ignore[assignment]
+            if final_path.exists():
+                final_path.unlink()
+            staging.rename(final_path)
+        else:
+            pix = blob  # type: ignore[assignment]
+            # ``Pixmap.save()`` infers the format from the
+            # suffix, so we just point it at the final path.
+            pix.save(str(final_path))
+    except Exception as exc:
+        logger.warning(
+            "page render finalise failed at dpi=%d (target=%s): %s: %s",
+            dpi,
+            target_ext,
+            type(exc).__name__,
+            exc,
+        )
+        track_parser_fallback_failure(stage="pdf_render_finalise", kind="exception")
+        return None
+    return target_ext
 
 
 def _table_to_markdown(table: list[list]) -> str:
@@ -59,8 +160,7 @@ def _table_to_markdown(table: list[list]) -> str:
     rows: list[list[str]] = []
     for r in table:
         cleaned = [
-            "" if c is None else str(c).replace("\n", " ").replace("|", "\\|").strip()
-            for c in r
+            "" if c is None else str(c).replace("\n", " ").replace("|", "\\|").strip() for c in r
         ]
         if any(c for c in cleaned):
             rows.append(cleaned)
@@ -79,7 +179,7 @@ def _table_to_markdown(table: list[list]) -> str:
     # table is body-only with a blank header line), synthesise one.
     header = rows[0]
     if sum(1 for c in header if c) < max(1, ncols // 2):
-        header = [f"col{i+1}" for i in range(ncols)]
+        header = [f"col{i + 1}" for i in range(ncols)]
         body = rows
     else:
         header = rows[0]
@@ -174,13 +274,38 @@ def _ocr_with_dpi_ladder(
     prev_dpi = 0
 
     for dpi in _DPI_LADDER:
-        image_file = output_dir / f"page_{page_number}_dpi{dpi}.png"
-        if not _render_page_to_jpeg(page, image_file, dpi=dpi):
+        # OPS-1: ``_render_page_to_image`` returns the on-disk
+        # extension actually used (``.jpg`` or ``.png``). The
+        # file is left with that suffix on disk so the browser
+        # infers the right Content-Type from the filename. We
+        # build the requested path with a placeholder suffix
+        # here and let the helper rewrite it.
+        image_file = output_dir / f"page_{page_number}_dpi{dpi}.tmp"
+        rendered_ext = _render_page_to_image(page, image_file, dpi=dpi)
+        if rendered_ext is None:
             continue
+        image_file = image_file.with_suffix(rendered_ext)
 
         try:
             ocr = ocr_engine.extract(image_file)
-        except Exception:
+        except Exception as exc:
+            # OPS-2: the OCR engine itself can crash on a
+            # particular image (corrupt raster, tesseract
+            # segfault caught by Python, paddle import race).
+            # The DPI ladder just moves on, but if every
+            # ladder step fails the page comes out blank and
+            # nobody knows whether it was a render or an OCR
+            # problem. Count the OCR-side failure so the
+            # operator can see which one is firing.
+            logger.debug(
+                "OCR engine %s crashed on page %d dpi %d: %s: %s",
+                getattr(ocr_engine, "name", "?"),
+                page_number,
+                dpi,
+                type(exc).__name__,
+                exc,
+            )
+            track_parser_fallback_failure(stage="pdf_ocr_extract", kind="exception")
             continue
 
         actual_engine = getattr(ocr, "engine", None) or ocr_engine.name
@@ -203,23 +328,53 @@ def _ocr_with_dpi_ladder(
     # so the viewer always has something to show.
     if best_image is None:
         base_dpi = _DPI_LADDER[0]
-        image_file = output_dir / f"page_{page_number}.png"
-        _render_page_to_jpeg(page, image_file, dpi=base_dpi)
-        best_image = image_file
+        image_file = output_dir / f"page_{page_number}.tmp"
+        rendered_ext = _render_page_to_image(page, image_file, dpi=base_dpi)
+        if rendered_ext is not None:
+            image_file = image_file.with_suffix(rendered_ext)
+            best_image = image_file
+        else:
+            # Both renderers failed even at the base DPI: the page
+            # stays blank. The viewer will show a "no preview"
+            # placeholder rather than a corrupt image.
+            best_image = None
         best_ocr = OCRResult(text="", confidence=0.0, blocks=[], engine="")
         best_engine = ""
 
     # Rename the best image to the canonical name so the viewer
-    # can find it without knowing the DPI.
-    canonical = output_dir / f"page_{page_number}.png"
-    if best_image != canonical:
+    # can find it without knowing the DPI. OPS-1: the canonical
+    # extension follows the actual format on disk — we use
+    # ``.jpg`` when the page was rendered as JPEG, ``.png``
+    # when the renderer fell back. The viewer looks up the
+    # canonical path from ``DocumentPage.image_path`` so it
+    # always sees the right extension.
+    if best_image is not None:
+        canonical_ext = best_image.suffix or ".png"
+        canonical = output_dir / f"page_{page_number}{canonical_ext}"
+    else:
+        canonical = output_dir / f"page_{page_number}.png"
+    if best_image is not None and best_image != canonical:
         try:
             if canonical.exists():
                 canonical.unlink()
             best_image.rename(canonical)
             best_image = canonical
-        except Exception:
-            pass
+        except Exception as exc:
+            # OPS-2: filesystem rename can fail on Windows
+            # (target locked, permission denied, different
+            # volume). The non-canonical filename is still
+            # usable downstream, but the viewer won't find the
+            # preview unless it also looks up the per-DPI
+            # filename. Count so a sudden spike here becomes
+            # visible.
+            logger.debug(
+                "could not rename %s → %s: %s: %s",
+                best_image,
+                canonical,
+                type(exc).__name__,
+                exc,
+            )
+            track_parser_fallback_failure(stage="pdf_rename_canonical", kind="exception")
 
     return best_image, best_ocr, best_engine
 
@@ -248,17 +403,38 @@ def _extract_table_markdown(path: Path, page_index: int) -> str:
     """
     try:
         import pdfplumber
-    except Exception:
+    except Exception as exc:
+        # OPS-2: pdfplumber is an optional dependency; if it's
+        # missing we fall back to OCR-only output. This branch
+        # runs at most once per worker (the import is cached),
+        # so we log it once with a clear marker and bump the
+        # counter so the operator can see the deployment is
+        # missing the package.
+        logger.warning(
+            "pdfplumber import failed at %s: %s: %s — table extraction disabled",
+            path,
+            type(exc).__name__,
+            exc,
+        )
+        track_parser_fallback_failure(stage="pdfplumber_table", kind="import_error")
         return ""
     strategies = [
         # default: pdfplumber decides per page
         {},
         # text/text: better for layouts with no visible lines
-        {"vertical_strategy": "text", "horizontal_strategy": "text",
-         "snap_tolerance": 4, "join_tolerance": 3},
+        {
+            "vertical_strategy": "text",
+            "horizontal_strategy": "text",
+            "snap_tolerance": 4,
+            "join_tolerance": 3,
+        },
         # text/lines: line-based row detection, text-based column
-        {"vertical_strategy": "text", "horizontal_strategy": "lines",
-         "snap_tolerance": 4, "join_tolerance": 3},
+        {
+            "vertical_strategy": "text",
+            "horizontal_strategy": "lines",
+            "snap_tolerance": 4,
+            "join_tolerance": 3,
+        },
     ]
     best_md = ""
     best_score = -1.0
@@ -270,7 +446,20 @@ def _extract_table_markdown(path: Path, page_index: int) -> str:
             for opts in strategies:
                 try:
                     tables = page.extract_tables(opts) or []
-                except Exception:
+                except Exception as exc:
+                    # OPS-2: pdfplumber raises on weird layouts
+                    # (multi-column invoices with overlapping
+                    # text). We try the next strategy, but we
+                    # also log + count so a sustained spike of
+                    # these shows up on /metrics.
+                    logger.debug(
+                        "pdfplumber.extract_tables strategy failed at %s page %d: %s: %s",
+                        path,
+                        page_index,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    track_parser_fallback_failure(stage="pdfplumber_table", kind="exception")
                     continue
                 if not tables:
                     continue
@@ -284,10 +473,7 @@ def _extract_table_markdown(path: Path, page_index: int) -> str:
                     ncols = max((len(r) for r in rows), default=0)
                     if ncols < 2:
                         continue
-                    nonempty = sum(
-                        1 for r in rows for c in r
-                        if c is not None and str(c).strip()
-                    )
+                    nonempty = sum(1 for r in rows for c in r if c is not None and str(c).strip())
                     total_cells = sum(len(r) for r in rows)
                     density = nonempty / total_cells if total_cells else 0
                     # Heavily penalise low density (the address-block
@@ -299,7 +485,19 @@ def _extract_table_markdown(path: Path, page_index: int) -> str:
                         best_md = md
             if best_md:
                 return "\n\n--- Tablas detectadas ---\n\n" + best_md
-    except Exception:
+    except Exception as exc:
+        # OPS-2: outer safety net for unexpected pdfplumber
+        # crashes (corrupt PDF, permission errors, etc.). Log
+        # and bump the counter so a PDF that consistently
+        # blows up here becomes visible in /metrics.
+        logger.warning(
+            "pdfplumber table extraction crashed at %s page %d: %s: %s",
+            path,
+            page_index,
+            type(exc).__name__,
+            exc,
+        )
+        track_parser_fallback_failure(stage="pdfplumber_table", kind="exception")
         return ""
     return ""
 
@@ -308,18 +506,33 @@ async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> 
     """If the vision LLM is configured and the page produced no
     structured text (i.e. it's scanned/photographed), ask the vision
     model to transcribe the table as markdown. Returns empty string on
-    any failure (vision is best-effort)."""
+    any failure (vision is best-effort).
+
+    OPS-2: failures used to be silently swallowed here too. The
+    sync caller (``parse_pdf``) wraps this coroutine with
+    ``_run_coro_sync`` and logs+counts the exception, so this
+    inner ``except`` is a no-op in practice — but if the
+    sync wrapper ever changes, this branch keeps a verbose
+    log so the failure isn't lost.
+    """
     if not settings.vision_table_transcription:
         return ""
     if not settings.vision_base_url or not settings.vision_model:
         return ""
     try:
         from app.ai.local_client import LocalVisionClient
+
         client = LocalVisionClient()
-        return await client.transcribe_table_from_pdf_page(
-            path, page_index, output_dir=output_dir
+        return await client.transcribe_table_from_pdf_page(path, page_index, output_dir=output_dir)
+    except Exception as exc:
+        logger.warning(
+            "vision-table async call failed for %s page %d: %s: %s",
+            path,
+            page_index,
+            type(exc).__name__,
+            exc,
         )
-    except Exception:
+        track_parser_fallback_failure(stage="pdf_vision_table", kind="exception")
         return ""
 
 
@@ -351,7 +564,9 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
         if file_size_mb > 100:
             logger.info(
                 "Processing large PDF: %s (%.1f MB, %d pages)",
-                path.name, file_size_mb, page_count,
+                path.name,
+                file_size_mb,
+                page_count,
             )
         # O2 — track the language we detected from the first *digital*
         # page so a scan-only page that comes later still gets the
@@ -393,9 +608,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                     tesseract_lang=tesseract_lang_for(
                         document_language, default=settings.tesseract_lang
                     ),
-                    paddle_lang=paddle_lang_for(
-                        document_language, default=settings.paddle_lang
-                    ),
+                    paddle_lang=paddle_lang_for(document_language, default=settings.paddle_lang),
                 )
             track_ocr_language_detected(
                 effective_profile.detected or "unknown",
@@ -446,9 +659,15 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                 )
                 # Render a low-res preview so the document viewer has
                 # something to show, but skip the high-res render the
-                # OCR path would do.
-                image_file = output_dir / f"page_{index}.png"
-                _render_page_to_jpeg(page, image_file, dpi=144)
+                # OCR path would do. OPS-1: the filename follows
+                # the actual format on disk so the browser
+                # infers the right MIME from the extension.
+                image_file = output_dir / f"page_{index}.tmp"
+                rendered_ext = _render_page_to_image(page, image_file, dpi=144)
+                if rendered_ext is not None:
+                    image_file = image_file.with_suffix(rendered_ext)
+                else:
+                    image_file = output_dir / f"page_{index}.png"
                 image_path = str(image_file)
                 # Digital extraction has perfect confidence: the text
                 # is straight from the PDF's content stream, not guessed.
@@ -457,7 +676,10 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
             else:
                 # --- Scanned / image page: OCR cascade + O1 DPI ladder
                 image_file, ocr, actual_engine = _ocr_with_dpi_ladder(
-                    page, output_dir, index, ocr_engine,
+                    page,
+                    output_dir,
+                    index,
+                    ocr_engine,
                 )
                 image_path = str(image_file)
                 text = ocr.text or text
@@ -477,9 +699,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                 # LLM as a recovery path for tables (best-effort).
                 if not text and settings.vision_table_transcription and settings.vision_model:
                     try:
-                        vision_md = _run_coro_sync(
-                            _maybe_vision_table(path, index - 1, output_dir)
-                        )
+                        vision_md = _run_coro_sync(_maybe_vision_table(path, index - 1, output_dir))
                         if vision_md:
                             text = vision_md
                             ocr_confidence = max(ocr_confidence or 0.0, 0.85)
@@ -494,8 +714,22 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                                 )
                             ]
                             page_engine = "vision"
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # OPS-2: the vision-table fallback is
+                        # best-effort, but losing it silently used
+                        # to leave operators with no signal that
+                        # the vision model is misbehaving on PDF
+                        # pages. Log with the path + page index
+                        # and bump the counter so a sustained
+                        # outage shows up on /metrics.
+                        logger.warning(
+                            "pdf vision-table fallback failed for %s page %d: %s: %s",
+                            path,
+                            index,
+                            type(exc).__name__,
+                            exc,
+                        )
+                        track_parser_fallback_failure(stage="pdf_vision_table", kind="exception")
                 # Keep the engine label accurate: if the cascade got
                 # text, use the cascade's pick; if the page is still
                 # empty, mark it as "empty" so the admin can spot the
@@ -552,7 +786,13 @@ def _guess_document_type_for_metrics(path: Path) -> str:
         return "presupuesto"
     if "pedido" in name or "pv" in name or "venta" in name:
         return "pedido"
-    if "plano" in name or "escritorio" in name or "medici" in name or "bancada" in name or "dtm" in name:
+    if (
+        "plano" in name
+        or "escritorio" in name
+        or "medici" in name
+        or "bancada" in name
+        or "dtm" in name
+    ):
         return "plano"
     if "factura" in name:
         return "factura"

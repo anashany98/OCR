@@ -23,6 +23,7 @@ header-based IP extraction, the bucket can never be forged by
 injecting a header because the only inputs are the socket address and
 the (hashed) API key.
 """
+
 from __future__ import annotations
 
 import hashlib

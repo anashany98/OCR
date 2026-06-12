@@ -26,13 +26,17 @@ export function EmptyState({
       )}
     >
       {icon && (
-        <div className="flex h-24 w-32 items-center justify-center text-[var(--accent)] opacity-90">{icon}</div>
+        <div className="flex h-24 w-32 items-center justify-center text-[var(--accent)] opacity-90">
+          {icon}
+        </div>
       )}
       <div className="space-y-1.5">
         <h3 className="font-display text-[18px] font-medium leading-tight tracking-tight text-[var(--text-primary)]">
           {title}
         </h3>
-        <p className="mx-auto max-w-md text-[13px] text-[var(--text-muted)] leading-relaxed">{description}</p>
+        <p className="mx-auto max-w-md text-[13px] text-[var(--text-muted)] leading-relaxed">
+          {description}
+        </p>
       </div>
       {action ? (
         <Button className="mt-2" type="button" variant="outline" size="sm" onClick={onAction}>

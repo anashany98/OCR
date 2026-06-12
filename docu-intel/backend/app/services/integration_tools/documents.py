@@ -3,14 +3,12 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models import Document, DocumentBlock
-from app.schemas.integration import IntegrationSource, IntegrationToolExecuteResponse
+from app.schemas.integration import IntegrationToolExecuteResponse
 from app.services.integration_tools.common import (
     DocumentIdArgs,
     _can_access_document_for_context,
     _can_view_prices,
     _document_source,
-    _filter_records_for_context,
-    _model_dict,
     _response,
 )
 from app.services.integration_security import IntegrationContext
@@ -27,8 +25,18 @@ def execute_get_document(
     document = db.get(Document, args.document_id)
     if not _can_access_document_for_context(db, document, context):
         document = None
-    data = _document_payload(document) if document else {"status": "not_found", "document_id": args.document_id}
-    return _response(request_id, "get_document", context, data=data, sources=[] if not document else [_document_source(db, document, context)])
+    data = (
+        _document_payload(document)
+        if document
+        else {"status": "not_found", "document_id": args.document_id}
+    )
+    return _response(
+        request_id,
+        "get_document",
+        context,
+        data=data,
+        sources=[] if not document else [_document_source(db, document, context)],
+    )
 
 
 def execute_get_document_blocks(
@@ -41,7 +49,12 @@ def execute_get_document_blocks(
     if not _can_access_document_for_context(db, document, context):
         return _response(request_id, "get_document_blocks", context, data=[])
     blocks = internal.get_document_blocks(db, args.document_id, args.page_number)
-    return _response(request_id, "get_document_blocks", context, data=[_block_payload(block, context) for block in blocks])
+    return _response(
+        request_id,
+        "get_document_blocks",
+        context,
+        data=[_block_payload(block, context) for block in blocks],
+    )
 
 
 def execute_get_related_documents(
@@ -51,8 +64,17 @@ def execute_get_related_documents(
     request_id: str,
 ) -> IntegrationToolExecuteResponse:
     documents = internal.get_related_documents(db, args.document_id)
-    documents = [document for document in documents if _can_access_document_for_context(db, document, context)]
-    return _response(request_id, "get_related_documents", context, data=[_document_payload(document) for document in documents])
+    documents = [
+        document
+        for document in documents
+        if _can_access_document_for_context(db, document, context)
+    ]
+    return _response(
+        request_id,
+        "get_related_documents",
+        context,
+        data=[_document_payload(document) for document in documents],
+    )
 
 
 def _document_payload(document: Document | None) -> dict:

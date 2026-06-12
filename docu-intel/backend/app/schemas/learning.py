@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class ClassificationSuggestionCreate(BaseModel):
     document_id: int
     integration_client_id: int | None = None
-    suggestion_type: Literal["classification_correction", "entity_link", "classification_rule", "quality_feedback"]
+    suggestion_type: Literal[
+        "classification_correction", "entity_link", "classification_rule", "quality_feedback"
+    ]
     suggested_document_type: str | None = None
     current_document_type: str | None = None
     target_document_id: int | None = None

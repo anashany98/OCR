@@ -207,10 +207,17 @@ export function AdminAccessTab({
                   if (chainName.trim()) createChain.mutate()
                 }}
               >
-                <Input value={chainName} onChange={(event) => setChainName(event.target.value)} placeholder="Nombre de cadena" />
+                <Input
+                  value={chainName}
+                  onChange={(event) => setChainName(event.target.value)}
+                  placeholder="Nombre de cadena"
+                />
                 <Button disabled={createChain.isPending}>Crear</Button>
               </form>
-              <SimpleTable rows={chains.map((chain) => [chain.name, chain.is_active ? "Activa" : "Inactiva"])} headings={["Cadena", "Estado"]} />
+              <SimpleTable
+                rows={chains.map((chain) => [chain.name, chain.is_active ? "Activa" : "Inactiva"])}
+                headings={["Cadena", "Estado"]}
+              />
             </CardContent>
           </Card>
 
@@ -226,7 +233,11 @@ export function AdminAccessTab({
                   if (hotelName.trim() && hotelChainId) createHotel.mutate()
                 }}
               >
-                <select className="h-9 rounded-md border bg-background px-3 text-sm" value={hotelChainId} onChange={(event) => setHotelChainId(event.target.value)}>
+                <select
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  value={hotelChainId}
+                  onChange={(event) => setHotelChainId(event.target.value)}
+                >
                   <option value="">Cadena</option>
                   {chains.map((chain) => (
                     <option key={chain.id} value={chain.id}>
@@ -234,15 +245,24 @@ export function AdminAccessTab({
                     </option>
                   ))}
                 </select>
-                <Input value={hotelName} onChange={(event) => setHotelName(event.target.value)} placeholder="Hotel" />
-                <Input value={hotelCode} onChange={(event) => setHotelCode(event.target.value)} placeholder="C&oacute;digo" />
+                <Input
+                  value={hotelName}
+                  onChange={(event) => setHotelName(event.target.value)}
+                  placeholder="Hotel"
+                />
+                <Input
+                  value={hotelCode}
+                  onChange={(event) => setHotelCode(event.target.value)}
+                  placeholder="C&oacute;digo"
+                />
                 <Button disabled={createHotel.isPending}>Crear</Button>
               </form>
               <SimpleTable
                 headings={["Hotel", "Cadena", "C&oacute;digo"]}
                 rows={hotels.map((hotel) => [
                   hotel.name,
-                  chains.find((chain) => chain.id === hotel.chain_id)?.name ?? String(hotel.chain_id),
+                  chains.find((chain) => chain.id === hotel.chain_id)?.name ??
+                    String(hotel.chain_id),
                   hotel.code ?? "-",
                 ])}
               />
@@ -264,9 +284,21 @@ export function AdminAccessTab({
                 if (rulePattern.trim()) createFolderRule.mutate()
               }}
             >
-              <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} placeholder="Nombre" />
-              <Input value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} placeholder="/presupuestos/cadena/hotel/" />
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={ruleChainId} onChange={(event) => setRuleChainId(event.target.value)}>
+              <Input
+                value={ruleName}
+                onChange={(event) => setRuleName(event.target.value)}
+                placeholder="Nombre"
+              />
+              <Input
+                value={rulePattern}
+                onChange={(event) => setRulePattern(event.target.value)}
+                placeholder="/presupuestos/cadena/hotel/"
+              />
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={ruleChainId}
+                onChange={(event) => setRuleChainId(event.target.value)}
+              >
                 <option value="">Cadena</option>
                 {chains.map((chain) => (
                   <option key={chain.id} value={chain.id}>
@@ -274,7 +306,11 @@ export function AdminAccessTab({
                   </option>
                 ))}
               </select>
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={ruleHotelId} onChange={(event) => setRuleHotelId(event.target.value)}>
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={ruleHotelId}
+                onChange={(event) => setRuleHotelId(event.target.value)}
+              >
                 <option value="">Hotel</option>
                 {hotels.map((hotel) => (
                   <option key={hotel.id} value={hotel.id}>
@@ -282,16 +318,26 @@ export function AdminAccessTab({
                   </option>
                 ))}
               </select>
-              <Input value={ruleTags} onChange={(event) => setRuleTags(event.target.value)} placeholder="tags separados por coma" />
+              <Input
+                value={ruleTags}
+                onChange={(event) => setRuleTags(event.target.value)}
+                placeholder="tags separados por coma"
+              />
               <Button disabled={createFolderRule.isPending}>Crear</Button>
             </form>
-            <Button type="button" variant="outline" onClick={() => applyFolderRules.mutate()} disabled={applyFolderRules.isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => applyFolderRules.mutate()}
+              disabled={applyFolderRules.isPending}
+            >
               <RefreshCw data-icon="inline-start" />
               Reaplicar reglas
             </Button>
             {applyFolderRules.data ? (
               <p className="text-sm text-muted-foreground">
-                Asignados: {applyFolderRules.data.assigned}. Cuarentena: {applyFolderRules.data.quarantined}. Omitidos: {applyFolderRules.data.skipped}.
+                Asignados: {applyFolderRules.data.assigned}. Cuarentena:{" "}
+                {applyFolderRules.data.quarantined}. Omitidos: {applyFolderRules.data.skipped}.
               </p>
             ) : null}
             <SimpleTable
@@ -321,29 +367,57 @@ export function AdminAccessTab({
                 if (groupName.trim()) createAccessGroup.mutate()
               }}
             >
-              <Input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="Nombre del grupo" />
+              <Input
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                placeholder="Nombre del grupo"
+              />
               <div className={tenantAdminEnabled ? "grid gap-2 md:grid-cols-3" : "grid gap-2"}>
                 {tenantAdminEnabled ? (
                   <>
-                    <Input value={groupChainIds} onChange={(event) => setGroupChainIds(event.target.value)} placeholder="IDs cadena: 1,2" />
-                    <Input value={groupHotelIds} onChange={(event) => setGroupHotelIds(event.target.value)} placeholder="IDs hotel: 3,4" />
+                    <Input
+                      value={groupChainIds}
+                      onChange={(event) => setGroupChainIds(event.target.value)}
+                      placeholder="IDs cadena: 1,2"
+                    />
+                    <Input
+                      value={groupHotelIds}
+                      onChange={(event) => setGroupHotelIds(event.target.value)}
+                      placeholder="IDs hotel: 3,4"
+                    />
                   </>
                 ) : null}
-                <Input value={groupDeniedTags} onChange={(event) => setGroupDeniedTags(event.target.value)} placeholder="tags bloqueados" />
+                <Input
+                  value={groupDeniedTags}
+                  onChange={(event) => setGroupDeniedTags(event.target.value)}
+                  placeholder="tags bloqueados"
+                />
               </div>
               <div className="flex flex-wrap gap-3 text-sm">
                 {tenantAdminEnabled ? (
                   <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={groupAllowAll} onChange={(event) => setGroupAllowAll(event.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={groupAllowAll}
+                      onChange={(event) => setGroupAllowAll(event.target.checked)}
+                    />
                     Todos los hoteles
                   </label>
                 ) : null}
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={groupCanPrices} onChange={(event) => setGroupCanPrices(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={groupCanPrices}
+                    onChange={(event) => setGroupCanPrices(event.target.checked)}
+                  />
                   Ver precios
                 </label>
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={groupCanSearchBudgets} onChange={(event) => setGroupCanSearchBudgets(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={groupCanSearchBudgets}
+                    onChange={(event) => setGroupCanSearchBudgets(event.target.checked)}
+                  />
                   Buscar presupuestos
                 </label>
               </div>
@@ -355,9 +429,17 @@ export function AdminAccessTab({
                 group.name,
                 [
                   group.permissions_json.can_view_prices ? "precios" : "sin precios",
-                  group.permissions_json.can_search_budgets ? "busca presupuestos" : "busqueda limitada",
-                  tenantAdminEnabled ? (group.permissions_json.allow_all_hotels ? "todos hoteles" : `hoteles: ${String(group.permissions_json.hotel_ids ?? "[]")}`) : null,
-                ].filter(Boolean).join(" &middot; "),
+                  group.permissions_json.can_search_budgets
+                    ? "busca presupuestos"
+                    : "busqueda limitada",
+                  tenantAdminEnabled
+                    ? group.permissions_json.allow_all_hotels
+                      ? "todos hoteles"
+                      : `hoteles: ${String(group.permissions_json.hotel_ids ?? "[]")}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" &middot; "),
                 String(group.permissions_json.denied_tags ?? "[]"),
               ])}
             />
@@ -376,7 +458,11 @@ export function AdminAccessTab({
                 if (memberGroupId && memberPrincipalId.trim()) upsertMember.mutate()
               }}
             >
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={memberGroupId} onChange={(event) => setMemberGroupId(event.target.value)}>
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={memberGroupId}
+                onChange={(event) => setMemberGroupId(event.target.value)}
+              >
                 <option value="">Grupo</option>
                 {accessGroups.map((group) => (
                   <option key={group.id} value={group.id}>
@@ -384,11 +470,19 @@ export function AdminAccessTab({
                   </option>
                 ))}
               </select>
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={memberType} onChange={(event) => setMemberType(event.target.value as "user" | "technician")}>
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={memberType}
+                onChange={(event) => setMemberType(event.target.value as "user" | "technician")}
+              >
                 <option value="technician">T&eacute;cnico externo</option>
                 <option value="user">Usuario interno</option>
               </select>
-              <Input value={memberPrincipalId} onChange={(event) => setMemberPrincipalId(event.target.value)} placeholder="ID t&eacute;cnico o ID usuario" />
+              <Input
+                value={memberPrincipalId}
+                onChange={(event) => setMemberPrincipalId(event.target.value)}
+                placeholder="ID t&eacute;cnico o ID usuario"
+              />
               <Button disabled={upsertMember.isPending}>Asignar</Button>
             </form>
           </CardContent>
@@ -407,11 +501,26 @@ export function AdminAccessTab({
               if (tagName.trim()) createSensitiveTag.mutate()
             }}
           >
-            <Input value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="contabilidad" />
-            <Input value={tagDescription} onChange={(event) => setTagDescription(event.target.value)} placeholder="Descripci&oacute;n" />
+            <Input
+              value={tagName}
+              onChange={(event) => setTagName(event.target.value)}
+              placeholder="contabilidad"
+            />
+            <Input
+              value={tagDescription}
+              onChange={(event) => setTagDescription(event.target.value)}
+              placeholder="Descripci&oacute;n"
+            />
             <Button disabled={createSensitiveTag.isPending}>Crear tag</Button>
           </form>
-          <SimpleTable headings={["Tag", "Descripci&oacute;n", "Estado"]} rows={sensitiveTags.map((tag) => [tag.name, tag.description ?? "-", tag.is_active ? "Activo" : "Inactivo"])} />
+          <SimpleTable
+            headings={["Tag", "Descripci&oacute;n", "Estado"]}
+            rows={sensitiveTags.map((tag) => [
+              tag.name,
+              tag.description ?? "-",
+              tag.is_active ? "Activo" : "Inactivo",
+            ])}
+          />
         </CardContent>
       </Card>
 
@@ -425,22 +534,39 @@ export function AdminAccessTab({
               className="grid gap-2"
               onSubmit={(event: FormEvent) => {
                 event.preventDefault()
-                if (explainPrincipalId.trim() && Number(explainDocumentId) > 0) explainAccess.mutate()
+                if (explainPrincipalId.trim() && Number(explainDocumentId) > 0)
+                  explainAccess.mutate()
               }}
             >
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={explainPrincipalType} onChange={(event) => setExplainPrincipalType(event.target.value as "user" | "technician")}>
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={explainPrincipalType}
+                onChange={(event) =>
+                  setExplainPrincipalType(event.target.value as "user" | "technician")
+                }
+              >
                 <option value="technician">T&eacute;cnico externo</option>
                 <option value="user">Usuario interno</option>
               </select>
               <div className="grid gap-2 md:grid-cols-[1fr_120px_auto]">
-                <Input value={explainPrincipalId} onChange={(event) => setExplainPrincipalId(event.target.value)} placeholder="ID principal" />
-                <Input value={explainDocumentId} onChange={(event) => setExplainDocumentId(event.target.value)} placeholder="Doc ID" />
+                <Input
+                  value={explainPrincipalId}
+                  onChange={(event) => setExplainPrincipalId(event.target.value)}
+                  placeholder="ID principal"
+                />
+                <Input
+                  value={explainDocumentId}
+                  onChange={(event) => setExplainDocumentId(event.target.value)}
+                  placeholder="Doc ID"
+                />
                 <Button disabled={explainAccess.isPending}>Comprobar</Button>
               </div>
             </form>
             {explainAccess.data ? (
               <div className="rounded-md border p-3 text-sm">
-                <Badge variant={explainAccess.data.allowed ? "success" : "destructive"}>{explainAccess.data.allowed ? "Permitido" : "Denegado"}</Badge>
+                <Badge variant={explainAccess.data.allowed ? "success" : "destructive"}>
+                  {explainAccess.data.allowed ? "Permitido" : "Denegado"}
+                </Badge>
                 <ul className="mt-2 space-y-1 text-muted-foreground">
                   {explainAccess.data.reasons.map((reason: string) => (
                     <li key={reason}>{reason}</li>
@@ -448,7 +574,9 @@ export function AdminAccessTab({
                 </ul>
               </div>
             ) : null}
-            {explainAccess.isError ? <p className="text-sm text-destructive">{explainAccess.error?.message}</p> : null}
+            {explainAccess.isError ? (
+              <p className="text-sm text-destructive">{explainAccess.error?.message}</p>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -464,18 +592,36 @@ export function AdminAccessTab({
                 if (rulePreviewPath.trim() && rulePreviewPattern.trim()) previewRule.mutate()
               }}
             >
-              <Input value={rulePreviewPath} onChange={(event) => setRulePreviewPath(event.target.value)} placeholder="Ruta de archivo" />
-              <Input value={rulePreviewPattern} onChange={(event) => setRulePreviewPattern(event.target.value)} placeholder="/presupuestos/" />
-              <Input value={rulePreviewTags} onChange={(event) => setRulePreviewTags(event.target.value)} placeholder="tags separados por coma" />
+              <Input
+                value={rulePreviewPath}
+                onChange={(event) => setRulePreviewPath(event.target.value)}
+                placeholder="Ruta de archivo"
+              />
+              <Input
+                value={rulePreviewPattern}
+                onChange={(event) => setRulePreviewPattern(event.target.value)}
+                placeholder="/presupuestos/"
+              />
+              <Input
+                value={rulePreviewTags}
+                onChange={(event) => setRulePreviewTags(event.target.value)}
+                placeholder="tags separados por coma"
+              />
               <Button disabled={previewRule.isPending}>Probar regla</Button>
             </form>
             {previewRule.data ? (
               <div className="rounded-md border p-2">
-                <Badge variant={previewRule.data.matches ? "success" : "warning"}>{previewRule.data.matches ? "Coincide" : "No coincide"}</Badge>
-                <p className="mt-2 text-xs text-muted-foreground">{previewRule.data.normalized_path}</p>
+                <Badge variant={previewRule.data.matches ? "success" : "warning"}>
+                  {previewRule.data.matches ? "Coincide" : "No coincide"}
+                </Badge>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {previewRule.data.normalized_path}
+                </p>
               </div>
             ) : null}
-            {previewRule.isError ? <p className="text-sm text-destructive">{previewRule.error?.message}</p> : null}
+            {previewRule.isError ? (
+              <p className="text-sm text-destructive">{previewRule.error?.message}</p>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -491,12 +637,26 @@ export function AdminAccessTab({
                 if (redactionPrincipalId.trim() && redactionText.trim()) previewRedaction.mutate()
               }}
             >
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={redactionPrincipalType} onChange={(event) => setRedactionPrincipalType(event.target.value as "user" | "technician")}>
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={redactionPrincipalType}
+                onChange={(event) =>
+                  setRedactionPrincipalType(event.target.value as "user" | "technician")
+                }
+              >
                 <option value="technician">T&eacute;cnico</option>
                 <option value="user">Usuario</option>
               </select>
-              <Input value={redactionPrincipalId} onChange={(event) => setRedactionPrincipalId(event.target.value)} placeholder="ID principal" />
-              <Input value={redactionText} onChange={(event) => setRedactionText(event.target.value)} placeholder="Texto con importes" />
+              <Input
+                value={redactionPrincipalId}
+                onChange={(event) => setRedactionPrincipalId(event.target.value)}
+                placeholder="ID principal"
+              />
+              <Input
+                value={redactionText}
+                onChange={(event) => setRedactionText(event.target.value)}
+                placeholder="Texto con importes"
+              />
               <Button disabled={previewRedaction.isPending}>Ver redacci&oacute;n</Button>
             </form>
             {previewRedaction.data ? (
@@ -507,7 +667,9 @@ export function AdminAccessTab({
                 <p className="mt-2 text-xs leading-5">{previewRedaction.data.redacted_text}</p>
               </div>
             ) : null}
-            {previewRedaction.isError ? <p className="text-sm text-destructive">{previewRedaction.error?.message}</p> : null}
+            {previewRedaction.isError ? (
+              <p className="text-sm text-destructive">{previewRedaction.error?.message}</p>
+            ) : null}
           </CardContent>
         </Card>
       </div>

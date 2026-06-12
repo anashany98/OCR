@@ -7,7 +7,18 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import require_roles
 from app.core.security import hash_password
 from app.database.session import get_db
-from app.models import Budget, Document, DocumentPage, NotificationRule, Plan, PlanMeasurement, SavedView, User, WorkItem, WorkItemComment
+from app.models import (
+    Budget,
+    Document,
+    DocumentPage,
+    NotificationRule,
+    Plan,
+    PlanMeasurement,
+    SavedView,
+    User,
+    WorkItem,
+    WorkItemComment,
+)
 from app.schemas.professional import (
     AdminUserCreate,
     AdminUserRead,
@@ -33,7 +44,11 @@ def list_work_items(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> list[WorkItem]:
-    stmt = select(WorkItem).options(selectinload(WorkItem.comments)).order_by(WorkItem.created_at.desc())
+    stmt = (
+        select(WorkItem)
+        .options(selectinload(WorkItem.comments))
+        .order_by(WorkItem.created_at.desc())
+    )
     if status:
         stmt = stmt.where(WorkItem.status == status)
     return list(db.scalars(stmt.limit(200)).all())
@@ -48,9 +63,13 @@ def create_work_item(
     item = WorkItem(**payload.model_dump(), created_by_id=user.id)
     db.add(item)
     db.flush()
-    write_audit(db, user=user, action="work_item_created", entity_type="work_item", entity_id=item.id)
+    write_audit(
+        db, user=user, action="work_item_created", entity_type="work_item", entity_id=item.id
+    )
     db.commit()
-    return db.scalar(select(WorkItem).options(selectinload(WorkItem.comments)).where(WorkItem.id == item.id))
+    return db.scalar(
+        select(WorkItem).options(selectinload(WorkItem.comments)).where(WorkItem.id == item.id)
+    )
 
 
 @router.patch("/work-items/{work_item_id}", response_model=WorkItemRead)
@@ -67,9 +86,13 @@ def update_work_item(
         setattr(item, field, value)
     if item.status in {"resolved", "ignored"} and not item.resolved_at:
         item.resolved_at = datetime.utcnow()
-    write_audit(db, user=user, action="work_item_updated", entity_type="work_item", entity_id=item.id)
+    write_audit(
+        db, user=user, action="work_item_updated", entity_type="work_item", entity_id=item.id
+    )
     db.commit()
-    return db.scalar(select(WorkItem).options(selectinload(WorkItem.comments)).where(WorkItem.id == item.id))
+    return db.scalar(
+        select(WorkItem).options(selectinload(WorkItem.comments)).where(WorkItem.id == item.id)
+    )
 
 
 @router.post("/work-items/{work_item_id}/comments", response_model=WorkItemCommentRead)
@@ -83,14 +106,18 @@ def add_work_item_comment(
         raise HTTPException(status_code=404, detail="Work item not found")
     comment = WorkItemComment(work_item_id=work_item_id, user_id=user.id, body=payload.body)
     db.add(comment)
-    write_audit(db, user=user, action="work_item_commented", entity_type="work_item", entity_id=work_item_id)
+    write_audit(
+        db, user=user, action="work_item_commented", entity_type="work_item", entity_id=work_item_id
+    )
     db.commit()
     db.refresh(comment)
     return comment
 
 
 @router.get("/saved-views", response_model=list[SavedViewRead])
-def list_saved_views(db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "gestor", "auditor"))) -> list[SavedView]:
+def list_saved_views(
+    db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "gestor", "auditor"))
+) -> list[SavedView]:
     return list(
         db.scalars(
             select(SavedView)
@@ -101,7 +128,11 @@ def list_saved_views(db: Session = Depends(get_db), user: User = Depends(require
 
 
 @router.post("/saved-views", response_model=SavedViewRead)
-def create_saved_view(payload: SavedViewCreate, db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "gestor", "auditor"))) -> SavedView:
+def create_saved_view(
+    payload: SavedViewCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "gestor", "auditor")),
+) -> SavedView:
     view = SavedView(user_id=user.id, **payload.model_dump())
     db.add(view)
     db.commit()
@@ -110,12 +141,20 @@ def create_saved_view(payload: SavedViewCreate, db: Session = Depends(get_db), u
 
 
 @router.get("/notification-rules", response_model=list[NotificationRuleRead])
-def list_notification_rules(db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))) -> list[NotificationRule]:
-    return list(db.scalars(select(NotificationRule).order_by(NotificationRule.created_at.desc())).all())
+def list_notification_rules(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))
+) -> list[NotificationRule]:
+    return list(
+        db.scalars(select(NotificationRule).order_by(NotificationRule.created_at.desc())).all()
+    )
 
 
 @router.post("/notification-rules", response_model=NotificationRuleRead)
-def create_notification_rule(payload: NotificationRuleCreate, db: Session = Depends(get_db), user: User = Depends(require_roles("admin"))) -> NotificationRule:
+def create_notification_rule(
+    payload: NotificationRuleCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+) -> NotificationRule:
     rule = NotificationRule(**payload.model_dump())
     db.add(rule)
     write_audit(db, user=user, action="notification_rule_created", entity_type="notification_rule")
@@ -125,12 +164,18 @@ def create_notification_rule(payload: NotificationRuleCreate, db: Session = Depe
 
 
 @router.get("/users", response_model=list[AdminUserRead])
-def list_users(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))) -> list[User]:
+def list_users(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))
+) -> list[User]:
     return list(db.scalars(select(User).order_by(User.created_at.desc())).all())
 
 
 @router.post("/users", response_model=AdminUserRead)
-def create_user(payload: AdminUserCreate, db: Session = Depends(get_db), user: User = Depends(require_roles("admin"))) -> User:
+def create_user(
+    payload: AdminUserCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+) -> User:
     existing = db.scalar(select(User).where(User.email == payload.email))
     if existing:
         raise HTTPException(status_code=409, detail="User email already exists")
@@ -150,7 +195,12 @@ def create_user(payload: AdminUserCreate, db: Session = Depends(get_db), user: U
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserRead)
-def update_user(user_id: int, payload: AdminUserUpdate, db: Session = Depends(get_db), user: User = Depends(require_roles("admin"))) -> User:
+def update_user(
+    user_id: int,
+    payload: AdminUserUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+) -> User:
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
@@ -166,7 +216,9 @@ def update_user(user_id: int, payload: AdminUserUpdate, db: Session = Depends(ge
 
 
 @router.post("/demo/seed")
-def seed_demo_data(db: Session = Depends(get_db), user: User = Depends(require_roles("admin"))) -> dict:
+def seed_demo_data(
+    db: Session = Depends(get_db), user: User = Depends(require_roles("admin"))
+) -> dict:
     document = Document(
         original_filename="demo_presupuesto_profesional.pdf",
         stored_filename=None,
@@ -184,7 +236,14 @@ def seed_demo_data(db: Session = Depends(get_db), user: User = Depends(require_r
     )
     db.add(document)
     db.flush()
-    db.add(DocumentPage(document_id=document.id, page_number=1, text="Presupuesto demo aceptado sin pedido. Total 1.245,60 EUR.", ocr_confidence=0.62))
+    db.add(
+        DocumentPage(
+            document_id=document.id,
+            page_number=1,
+            text="Presupuesto demo aceptado sin pedido. Total 1.245,60 EUR.",
+            ocr_confidence=0.62,
+        )
+    )
     budget = Budget(
         document_id=document.id,
         budget_number="DEMO-2026-001",
@@ -196,7 +255,14 @@ def seed_demo_data(db: Session = Depends(get_db), user: User = Depends(require_r
         confidence=0.78,
     )
     db.add(budget)
-    item = WorkItem(kind="missing_fields", title="Demo: revisar presupuesto", description="Documento de ejemplo con campos faltantes.", priority="normal", document_id=document.id, created_by_id=user.id)
+    item = WorkItem(
+        kind="missing_fields",
+        title="Demo: revisar presupuesto",
+        description="Documento de ejemplo con campos faltantes.",
+        priority="normal",
+        document_id=document.id,
+        created_by_id=user.id,
+    )
     db.add(item)
 
     plan_document = Document(
@@ -216,11 +282,36 @@ def seed_demo_data(db: Session = Depends(get_db), user: User = Depends(require_r
     )
     db.add(plan_document)
     db.flush()
-    db.add(DocumentPage(document_id=plan_document.id, page_number=1, text="Plano demo con escala 1:50 y cota 3.20 m.", ocr_confidence=0.74))
-    plan = Plan(document_id=plan_document.id, project_name="Demo reforma habitaciones", scale_text="1:50", scale_ratio=50, scale_confidence=0.9, unit="m", has_valid_scale=True)
+    db.add(
+        DocumentPage(
+            document_id=plan_document.id,
+            page_number=1,
+            text="Plano demo con escala 1:50 y cota 3.20 m.",
+            ocr_confidence=0.74,
+        )
+    )
+    plan = Plan(
+        document_id=plan_document.id,
+        project_name="Demo reforma habitaciones",
+        scale_text="1:50",
+        scale_ratio=50,
+        scale_confidence=0.9,
+        unit="m",
+        has_valid_scale=True,
+    )
     db.add(plan)
     db.flush()
-    db.add(PlanMeasurement(plan_id=plan.id, label="Habitación demo", value_m=3.2, ocr_value_m=3.05, has_discrepancy=True, points_json=[], created_by_id=user.id))
+    db.add(
+        PlanMeasurement(
+            plan_id=plan.id,
+            label="Habitación demo",
+            value_m=3.2,
+            ocr_value_m=3.05,
+            has_discrepancy=True,
+            points_json=[],
+            created_by_id=user.id,
+        )
+    )
     write_audit(db, user=user, action="demo_seeded", entity_type="document", entity_id=document.id)
     db.commit()
     return {"document_id": document.id, "work_item_id": item.id, "plan_id": plan.id}

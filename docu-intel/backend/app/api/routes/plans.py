@@ -38,7 +38,11 @@ logger = logging.getLogger("app.api.routes.plans")
 
 
 @router.get("", response_model=list[PlanRead])
-def list_plans(limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_plans(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     stmt = select(Plan).order_by(Plan.created_at.desc())
     scope = resolve_user_access_scope(db, user)
     if scope.is_admin:
@@ -48,25 +52,37 @@ def list_plans(limit: int = Query(default=50, ge=1, le=200), db: Session = Depen
 
 
 @router.get("/{plan_id}", response_model=PlanRead)
-def get_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> Plan:
+def get_plan(
+    plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> Plan:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     return plan
 
 
 @router.get("/{plan_id}/rooms", response_model=list[PlanRoomRead])
-def get_rooms(plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[PlanRoom]:
+def get_rooms(
+    plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[PlanRoom]:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     return list(db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id)).all())
 
 
 @router.get("/{plan_id}/dimensions", response_model=list[PlanDimensionRead])
-def get_dimensions(plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[PlanDimension]:
+def get_dimensions(
+    plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[PlanDimension]:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     return list(db.scalars(select(PlanDimension).where(PlanDimension.plan_id == plan_id)).all())
 
@@ -83,14 +99,25 @@ def get_dimensions(plan_id: int, db: Session = Depends(get_db), user: User = Dep
 @router.get("/{plan_id}/symbols", response_model=list[PlanSymbolRead])
 def get_plan_symbols(
     plan_id: int,
-    symbol_class: str | None = Query(default=None, description="Filter to a single symbol class (e.g. ``door``)."),
-    min_confidence: float = Query(default=0.0, ge=0.0, le=1.0, description="Drop detections with confidence below this threshold."),
-    page_number: int | None = Query(default=None, ge=1, description="Restrict to a single plan page."),
+    symbol_class: str | None = Query(
+        default=None, description="Filter to a single symbol class (e.g. ``door``)."
+    ),
+    min_confidence: float = Query(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Drop detections with confidence below this threshold.",
+    ),
+    page_number: int | None = Query(
+        default=None, ge=1, description="Restrict to a single plan page."
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PlanSymbol]:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     stmt = select(PlanSymbol).where(PlanSymbol.plan_id == plan_id)
     if symbol_class:
@@ -118,7 +145,9 @@ def get_plan_symbols_summary(
     pipeline.
     """
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     stmt = select(PlanSymbol).where(PlanSymbol.plan_id == plan_id)
     if min_confidence > 0:
@@ -146,7 +175,9 @@ def update_scale(
     user: User = Depends(require_roles("admin", "gestor")),
 ) -> Plan:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(plan, field, value)
@@ -164,7 +195,9 @@ def update_project(
     user: User = Depends(require_roles("admin", "gestor")),
 ) -> Plan:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     name = (payload or {}).get("project_name")
     if name is not None:
@@ -179,6 +212,7 @@ def update_project(
 # Annotation editor endpoints (create / delete + bulk save)
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{plan_id}/rooms", response_model=PlanRoomRead, status_code=201)
 def create_room(
     plan_id: int,
@@ -187,7 +221,9 @@ def create_room(
     user: User = Depends(require_roles("admin", "gestor")),
 ) -> PlanRoom:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     room = PlanRoom(
         plan_id=plan_id,
@@ -201,7 +237,14 @@ def create_room(
         needs_review=bool(payload.needs_review),
     )
     db.add(room)
-    write_audit(db, user=user, action="plan_room_created", entity_type="plan_room", entity_id=plan_id, details={"source": room.source})
+    write_audit(
+        db,
+        user=user,
+        action="plan_room_created",
+        entity_type="plan_room",
+        entity_id=plan_id,
+        details={"source": room.source},
+    )
     db.commit()
     db.refresh(room)
     return room
@@ -218,9 +261,13 @@ def delete_room(
     if not room or room.plan_id != plan_id:
         raise HTTPException(status_code=404, detail="Plan room not found")
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan room not found")
-    write_audit(db, user=user, action="plan_room_deleted", entity_type="plan_room", entity_id=room_id)
+    write_audit(
+        db, user=user, action="plan_room_deleted", entity_type="plan_room", entity_id=room_id
+    )
     db.delete(room)
     db.commit()
     return None
@@ -234,7 +281,9 @@ def create_dimension(
     user: User = Depends(require_roles("admin", "gestor")),
 ) -> PlanDimension:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     # Default value_m: convert value from unit if not provided
     value_m = payload.value_m
@@ -259,7 +308,13 @@ def create_dimension(
         confidence=payload.confidence or 0.9,
     )
     db.add(dim)
-    write_audit(db, user=user, action="plan_dimension_created", entity_type="plan_dimension", entity_id=plan_id)
+    write_audit(
+        db,
+        user=user,
+        action="plan_dimension_created",
+        entity_type="plan_dimension",
+        entity_id=plan_id,
+    )
     db.commit()
     db.refresh(dim)
     return dim
@@ -276,9 +331,17 @@ def delete_dimension(
     if not dim or dim.plan_id != plan_id:
         raise HTTPException(status_code=404, detail="Plan dimension not found")
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan dimension not found")
-    write_audit(db, user=user, action="plan_dimension_deleted", entity_type="plan_dimension", entity_id=dim_id)
+    write_audit(
+        db,
+        user=user,
+        action="plan_dimension_deleted",
+        entity_type="plan_dimension",
+        entity_id=dim_id,
+    )
     db.delete(dim)
     db.commit()
     return None
@@ -299,7 +362,9 @@ def bulk_update(
     on the canvas IS what ends up in the DB.
     """
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     data = payload.model_dump(exclude_unset=True)
     if data.get("rooms") is not None:
@@ -307,17 +372,19 @@ def bulk_update(
         for r in data["rooms"]:
             if not r:
                 continue
-            db.add(PlanRoom(
-                plan_id=plan_id,
-                name=(r.get("name") or "").strip() or None,
-                area_m2=r.get("area_m2"),
-                width_m=r.get("width_m"),
-                length_m=r.get("length_m"),
-                polygon_json=r.get("polygon_json"),
-                confidence=r.get("confidence") or 0.95,
-                source=r.get("source") or "manual",
-                needs_review=bool(r.get("needs_review")),
-            ))
+            db.add(
+                PlanRoom(
+                    plan_id=plan_id,
+                    name=(r.get("name") or "").strip() or None,
+                    area_m2=r.get("area_m2"),
+                    width_m=r.get("width_m"),
+                    length_m=r.get("length_m"),
+                    polygon_json=r.get("polygon_json"),
+                    confidence=r.get("confidence") or 0.95,
+                    source=r.get("source") or "manual",
+                    needs_review=bool(r.get("needs_review")),
+                )
+            )
     if data.get("dimensions") is not None:
         db.execute(delete(PlanDimension).where(PlanDimension.plan_id == plan_id))
         for d in data["dimensions"]:
@@ -332,19 +399,21 @@ def bulk_update(
                     value_m = d["value"] / 1000.0
                 else:
                     value_m = d["value"]
-            db.add(PlanDimension(
-                plan_id=plan_id,
-                raw_text=d.get("raw_text"),
-                value=d.get("value"),
-                unit=d.get("unit"),
-                value_m=value_m,
-                page_number=d.get("page_number"),
-                bbox_x1=d.get("bbox_x1"),
-                bbox_y1=d.get("bbox_y1"),
-                bbox_x2=d.get("bbox_x2"),
-                bbox_y2=d.get("bbox_y2"),
-                confidence=d.get("confidence") or 0.9,
-            ))
+            db.add(
+                PlanDimension(
+                    plan_id=plan_id,
+                    raw_text=d.get("raw_text"),
+                    value=d.get("value"),
+                    unit=d.get("unit"),
+                    value_m=value_m,
+                    page_number=d.get("page_number"),
+                    bbox_x1=d.get("bbox_x1"),
+                    bbox_y1=d.get("bbox_y1"),
+                    bbox_x2=d.get("bbox_x2"),
+                    bbox_y2=d.get("bbox_y2"),
+                    confidence=d.get("confidence") or 0.9,
+                )
+            )
     if data.get("scale_text") is not None:
         plan.scale_text = data["scale_text"]
     if data.get("scale_ratio") is not None:
@@ -355,7 +424,17 @@ def bulk_update(
         plan.has_valid_scale = bool(data["has_valid_scale"])
     if data.get("project_name") is not None:
         plan.project_name = (data["project_name"] or "").strip() or None
-    write_audit(db, user=user, action="plan_bulk_update", entity_type="plan", entity_id=plan_id, details={"rooms": len(data.get("rooms") or []), "dimensions": len(data.get("dimensions") or [])})
+    write_audit(
+        db,
+        user=user,
+        action="plan_bulk_update",
+        entity_type="plan",
+        entity_id=plan_id,
+        details={
+            "rooms": len(data.get("rooms") or []),
+            "dimensions": len(data.get("dimensions") or []),
+        },
+    )
     db.commit()
     db.refresh(plan)
     return plan
@@ -374,7 +453,7 @@ _VISION_PROMPT = (
     '  "scale_text": "escala legible en el plano o null",\n'
     '  "rooms": [\n'
     '    {"name": "Salon", "bbox": [x1, y1, x2, y2], "confidence": 0.85, "rationale": "Visible en la esquina inferior izquierda"},\n'
-    '    ...\n'
+    "    ...\n"
     "  ]\n"
     "}\n\n"
     "Reglas:\n"
@@ -401,16 +480,22 @@ def suggest_rooms(
     import concurrent.futures
 
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     document = db.get(Document, plan.document_id)
     if not document or not document.stored_filename:
-        return PlanVisionSuggestionResponse(rooms=[], model=settings.vision_model_structured or settings.vision_model or None)
+        return PlanVisionSuggestionResponse(
+            rooms=[], model=settings.vision_model_structured or settings.vision_model or None
+        )
     pdf_path = Path(settings.files_dir) / document.stored_filename
     if not pdf_path.exists() and document.source_path:
         pdf_path = Path(document.source_path)
     if not pdf_path.exists():
-        return PlanVisionSuggestionResponse(rooms=[], model=settings.vision_model_structured or settings.vision_model or None)
+        return PlanVisionSuggestionResponse(
+            rooms=[], model=settings.vision_model_structured or settings.vision_model or None
+        )
 
     # Ensure the vision model is loaded (on-demand). For structured-
     # output tasks we use the non-thinking variant (``qwen/qwen3-vl-8b``)
@@ -422,8 +507,8 @@ def suggest_rooms(
     # Make sure the right model is loaded.
     if target_model:
         try:
-            current = None
             from app.services.vision_manager import VisionManager as _VM
+
             if not _VM.is_loaded(target_model):
                 # If a different vision model is loaded, swap by loading
                 # the desired one (lms keeps the previous around for a
@@ -440,9 +525,7 @@ def suggest_rooms(
     # coroutine in a worker thread with a fresh event loop instead.
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            future = ex.submit(
-                _run_plan_vision_sync, client, pdf_path, payload.page_number
-            )
+            future = ex.submit(_run_plan_vision_sync, client, pdf_path, payload.page_number)
             raw = future.result(timeout=settings.vision_timeout_seconds + 30)
     except Exception as exc:
         logger.warning("suggest_rooms vision call failed: %s", exc)
@@ -456,9 +539,9 @@ def suggest_rooms(
     try:
         data = json.loads(raw)
         if isinstance(data, dict):
-            project_name = (data.get("project_name") or None)
-            scale_text = (data.get("scale_text") or None)
-            for r in (data.get("rooms") or []):
+            project_name = data.get("project_name") or None
+            scale_text = data.get("scale_text") or None
+            for r in data.get("rooms") or []:
                 bbox = r.get("bbox") or []
                 if not isinstance(bbox, list) or len(bbox) != 4:
                     continue
@@ -466,12 +549,16 @@ def suggest_rooms(
                 if not name:
                     continue
                 try:
-                    suggestions.append(PlanVisionSuggestion(
-                        name=name[:120],
-                        bbox=[float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])],
-                        confidence=float(r.get("confidence") or 0.6) if r.get("confidence") is not None else 0.6,
-                        rationale=(r.get("rationale") or None),
-                    ))
+                    suggestions.append(
+                        PlanVisionSuggestion(
+                            name=name[:120],
+                            bbox=[float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])],
+                            confidence=float(r.get("confidence") or 0.6)
+                            if r.get("confidence") is not None
+                            else 0.6,
+                            rationale=(r.get("rationale") or None),
+                        )
+                    )
                 except (TypeError, ValueError):
                     continue
     except Exception as exc:
@@ -500,6 +587,7 @@ async def _describe_plan_page(client: LocalVisionClient, pdf_path: Path, page_in
             scale = max_dim / max(pix.width, pix.height)
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom * scale, zoom * scale), alpha=False)
         from tempfile import NamedTemporaryFile
+
         tmp = Path(NamedTemporaryFile(suffix=".png", delete=False).name)
         pix.save(str(tmp))
     try:
@@ -539,11 +627,15 @@ def update_room(
     if not room:
         raise HTTPException(status_code=404, detail="Plan room not found")
     plan = db.get(Plan, room.plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan room not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(room, field, value)
-    write_audit(db, user=user, action="plan_room_updated", entity_type="plan_room", entity_id=room.id)
+    write_audit(
+        db, user=user, action="plan_room_updated", entity_type="plan_room", entity_id=room.id
+    )
     db.commit()
     db.refresh(room)
     return room

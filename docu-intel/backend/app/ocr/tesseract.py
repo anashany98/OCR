@@ -14,6 +14,7 @@ the only engine worth using. PSM=3 ("fully automatic page segmentation")
 is the right default for free-form scans; per-page overrides can be set
 via the ``TESSERACT_PSM`` env var.
 """
+
 from __future__ import annotations
 
 import time
@@ -23,7 +24,7 @@ from typing import ClassVar
 import pytesseract
 from PIL import Image
 
-from app.ocr.base import BaseOCREngine, OCRBlock, OCRResult
+from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.preprocess import preprocess_for_tesseract
 from app.services.metrics import track_ocr_duration
 
@@ -97,9 +98,7 @@ class TesseractOCREngine:
         full_text = "\n".join(b.text for b in blocks if b.text)
         avg_conf = sum(confidences) / len(confidences) if confidences else None
         track_ocr_duration(time.perf_counter() - start)
-        return OCRResult(
-            text=full_text, confidence=avg_conf, blocks=blocks, engine=self.name
-        )
+        return OCRResult(text=full_text, confidence=avg_conf, blocks=blocks, engine=self.name)
 
 
 __all__ = ["TesseractOCREngine"]

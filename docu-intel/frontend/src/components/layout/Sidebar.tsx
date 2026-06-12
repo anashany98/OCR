@@ -57,18 +57,46 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "general",
     label: "General",
     items: [
-      { to: "/", label: "Dashboard", icon: LayoutDashboard, keywords: ["resumen", "inicio", "panel"] },
-      { to: "/work-inbox", label: "Tareas", icon: AlertCircle, badge: true, keywords: ["incidencias", "cola"] },
+      {
+        to: "/",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        keywords: ["resumen", "inicio", "panel"],
+      },
+      {
+        to: "/work-inbox",
+        label: "Tareas",
+        icon: AlertCircle,
+        badge: true,
+        keywords: ["incidencias", "cola"],
+      },
     ],
   },
   {
     id: "documentos",
     label: "Documentos",
     items: [
-      { to: "/documents", label: "Todos los documentos", icon: FileText, keywords: ["listado", "tabla"] },
+      {
+        to: "/documents",
+        label: "Todos los documentos",
+        icon: FileText,
+        keywords: ["listado", "tabla"],
+      },
       { to: "/search", label: "Buscar", icon: Search, keywords: ["encontrar", "consulta"] },
-      { to: "/chat", label: "Preguntar a documentos", icon: BookOpen, keywords: ["ia", "rag", "chat"] },
-      { to: "/plans", label: "Planos", icon: MapIcon, roles: ["admin", "gestor"], beta: true, keywords: ["dwg", "cad"] },
+      {
+        to: "/chat",
+        label: "Preguntar a documentos",
+        icon: BookOpen,
+        keywords: ["ia", "rag", "chat"],
+      },
+      {
+        to: "/plans",
+        label: "Planos",
+        icon: MapIcon,
+        roles: ["admin", "gestor"],
+        beta: true,
+        keywords: ["dwg", "cad"],
+      },
     ],
   },
   {
@@ -78,8 +106,18 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/budgets", label: "Presupuestos", icon: Briefcase, keywords: ["oferta"] },
       { to: "/orders", label: "Pedidos", icon: ClipboardList, keywords: ["orden"] },
       { to: "/invoices", label: "Facturas", icon: Receipt, keywords: ["cobro"] },
-      { to: "/reconciliation", label: "Incidencias", icon: Scale, keywords: ["conciliación", "diferencias"] },
-      { to: "/ocr-review", label: "OCR y calidad", icon: Eye, keywords: ["revisión", "baja confianza"] },
+      {
+        to: "/reconciliation",
+        label: "Incidencias",
+        icon: Scale,
+        keywords: ["conciliación", "diferencias"],
+      },
+      {
+        to: "/ocr-review",
+        label: "OCR y calidad",
+        icon: Eye,
+        keywords: ["revisión", "baja confianza"],
+      },
       { to: "/admin/calidad", label: "Duplicados", icon: FileWarning, keywords: ["duplicado"] },
       {
         to: "/admin/calidad",
@@ -94,11 +132,41 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "sistema",
     label: "Sistema",
     items: [
-      { to: "/jobs", label: "Procesamiento", icon: DatabaseZap, roles: ["admin"], keywords: ["jobs", "celery", "cola"] },
-      { to: "/admin/sistema", label: ADMIN_TAB_LABELS.sistema, icon: Settings, roles: ["admin"], keywords: ["salud", "infraestructura"] },
-      { to: "/admin/acceso", label: ADMIN_TAB_LABELS.acceso, icon: Users, roles: ["admin"], keywords: ["permisos", "rbac"] },
-      { to: "/admin/integraciones", label: ADMIN_TAB_LABELS.integraciones, icon: KeyRound, roles: ["admin"], keywords: ["api", "cliente", "webhook"] },
-      { to: "/admin/aprendizaje", label: ADMIN_TAB_LABELS.aprendizaje, icon: Brain, roles: ["admin"], keywords: ["ia", "patrones"] },
+      {
+        to: "/jobs",
+        label: "Procesamiento",
+        icon: DatabaseZap,
+        roles: ["admin"],
+        keywords: ["jobs", "celery", "cola"],
+      },
+      {
+        to: "/admin/sistema",
+        label: ADMIN_TAB_LABELS.sistema,
+        icon: Settings,
+        roles: ["admin"],
+        keywords: ["salud", "infraestructura"],
+      },
+      {
+        to: "/admin/acceso",
+        label: ADMIN_TAB_LABELS.acceso,
+        icon: Users,
+        roles: ["admin"],
+        keywords: ["permisos", "rbac"],
+      },
+      {
+        to: "/admin/integraciones",
+        label: ADMIN_TAB_LABELS.integraciones,
+        icon: KeyRound,
+        roles: ["admin"],
+        keywords: ["api", "cliente", "webhook"],
+      },
+      {
+        to: "/admin/aprendizaje",
+        label: ADMIN_TAB_LABELS.aprendizaje,
+        icon: Brain,
+        roles: ["admin"],
+        keywords: ["ia", "patrones"],
+      },
     ],
   },
 ]
@@ -111,7 +179,9 @@ function readRecent(userId: string | number | undefined): string[] {
     const raw = window.localStorage.getItem(RECENT_KEY_PREFIX + userId)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string").slice(0, 4) : []
+    return Array.isArray(parsed)
+      ? parsed.filter((x): x is string => typeof x === "string").slice(0, 4)
+      : []
   } catch {
     return []
   }
@@ -130,7 +200,13 @@ function writeRecent(userId: string | number | undefined, paths: string[]) {
 // SidebarNav — shared navigation content used by the persistent desktop
 // sidebar and the mobile drawer.
 // ---------------------------------------------------------------------------
-export function SidebarNav({ embedded = false, onNavigate }: { embedded?: boolean; onNavigate?: () => void }) {
+export function SidebarNav({
+  embedded = false,
+  onNavigate,
+}: {
+  embedded?: boolean
+  onNavigate?: () => void
+}) {
   const { user } = useAuth()
   const location = useLocation()
   const [recentPaths, setRecentPaths] = useState<string[]>(() => readRecent(user?.id))
@@ -230,7 +306,8 @@ export function SidebarNav({ embedded = false, onNavigate }: { embedded?: boolea
             key={group.id}
             className={cn(
               groupSpacing,
-              !embedded && "border-t border-[var(--sidebar-border)]/50 pt-3 first:border-t-0 first:pt-0",
+              !embedded &&
+                "border-t border-[var(--sidebar-border)]/50 pt-3 first:border-t-0 first:pt-0",
             )}
           >
             <SidebarSectionLabel>{group.label}</SidebarSectionLabel>

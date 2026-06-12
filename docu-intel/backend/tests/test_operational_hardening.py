@@ -27,12 +27,15 @@ from app.models import (
     BudgetLine,
     Document,
     DocumentAccessMetadata,
+    DocumentChunk,
     DocumentEntity,
     ExtractionJob,
     Hotel,
     HotelChain,
+    IngestionEvent,
     Order,
     User,
+    WatchedFile,
 )
 
 
@@ -372,3 +375,238 @@ def test_integration_rate_limit_blocks_after_configured_threshold(monkeypatch):
         assert getattr(exc, "status_code", None) == 429
     else:
         raise AssertionError("rate limit should block the third request")
+
+
+# ---------------------------------------------------------------------------
+# SEC-ADMIN-1 — scope the operational admin surfaces that the
+# original audit flagged as leaking filesystem paths and documents
+# outside the caller's access scope. Covers:
+#   * GET /admin/watched-files
+#   * GET /admin/ingestion-events
+#   * GET /admin/documents/needs-re-embedding
+#   * POST /admin/documents/{id}/re-embed
+# ---------------------------------------------------------------------------
+
+
+def _scoped_user_token(db: Session, *, role: str, hotel_ids: list[int] | None = None) -> tuple[str, User]:
+    """Create a non-admin user with a single AccessGroup that grants
+    access to ``hotel_ids`` (or, when omitted, no hotels at all → empty
+    scope). Returns a JWT for the user.
+    """
+    user = User(
+        email=f"{role}@local",
+        name=role.title(),
+        password_hash=hash_password("secret"),
+        role=role,
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+    permissions: dict = {}
+    if hotel_ids:
+        permissions["hotel_ids"] = hotel_ids
+    group = AccessGroup(name=f"{role} group", permissions_json=permissions)
+    db.add(group)
+    db.flush()
+    db.add(
+        AccessGroupMember(
+            group_id=group.id,
+            principal_type="user",
+            principal_id=str(user.id),
+        )
+    )
+    db.flush()
+    return create_access_token(str(user.id)), user
+
+
+def test_admin_watched_files_filters_by_scope_and_redacts_paths():
+    client, sessions = _test_client()
+    with sessions() as db:
+        admin_token = _admin_token(db)
+        scoped_token, _ = _scoped_user_token(db, role="gestor", hotel_ids=None)
+        # Two documents: one with hotel assigned, one without.
+        doc_in_scope = _document(db, "in_scope.pdf")
+        doc_out_of_scope = _document(db, "out_of_scope.pdf")
+        db.add(
+            WatchedFile(
+                path="/data/input/presupuestos/245745/in_scope.pdf",
+                status="processed",
+                document_id=doc_in_scope.id,
+            )
+        )
+        db.add(
+            WatchedFile(
+                path="/data/input/presupuestos/999999/out_of_scope.pdf",
+                status="processed",
+                document_id=doc_out_of_scope.id,
+            )
+        )
+        # Unlinked watched file (no document yet) — must stay visible.
+        db.add(
+            WatchedFile(
+                path="/data/input/_staging/pending.pdf",
+                status="detected",
+                document_id=None,
+            )
+        )
+        db.commit()
+
+    # Admin sees everything with full paths.
+    admin_response = client.get(
+        "/admin/watched-files",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert admin_response.status_code == 200
+    admin_paths = {row["path"] for row in admin_response.json()}
+    assert "/data/input/presupuestos/245745/in_scope.pdf" in admin_paths
+    assert "/data/input/presupuestos/999999/out_of_scope.pdf" in admin_paths
+
+    # Scoped user (no hotel access) sees only the unlinked row, and
+    # the path is redacted to its filename.
+    scoped_response = client.get(
+        "/admin/watched-files",
+        headers={"Authorization": f"Bearer {scoped_token}"},
+    )
+    assert scoped_response.status_code == 200
+    scoped_rows = scoped_response.json()
+    scoped_paths = {row["path"] for row in scoped_rows}
+    assert scoped_paths == {"pending.pdf"}
+    # The two in-scope documents (one assigned to a hotel they cannot
+    # access) must be filtered out entirely.
+    assert all("245745" not in row["path"] for row in scoped_rows)
+    assert all("999999" not in row["path"] for row in scoped_rows)
+
+
+def test_admin_ingestion_events_filters_by_scope_and_redacts_source_paths():
+    client, sessions = _test_client()
+    with sessions() as db:
+        admin_token = _admin_token(db)
+        scoped_token, _ = _scoped_user_token(db, role="auditor", hotel_ids=None)
+        doc_in = _document(db, "event_in.pdf")
+        doc_out = _document(db, "event_out.pdf")
+        db.add(
+            IngestionEvent(
+                event_type="detected",
+                source_path="/data/input/pedidos/245745/event_in.pdf",
+                document_id=doc_in.id,
+            )
+        )
+        db.add(
+            IngestionEvent(
+                event_type="processed",
+                source_path="/data/input/pedidos/999999/event_out.pdf",
+                document_id=doc_out.id,
+            )
+        )
+        db.commit()
+
+    admin_response = client.get(
+        "/admin/ingestion-events",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert admin_response.status_code == 200
+    admin_paths = {row["source_path"] for row in admin_response.json()}
+    assert "/data/input/pedidos/245745/event_in.pdf" in admin_paths
+    assert "/data/input/pedidos/999999/event_out.pdf" in admin_paths
+
+    scoped_response = client.get(
+        "/admin/ingestion-events",
+        headers={"Authorization": f"Bearer {scoped_token}"},
+    )
+    assert scoped_response.status_code == 200
+    scoped_rows = scoped_response.json()
+    # The auditor has no hotel access, so the two linked events are
+    # filtered out entirely. No rows should remain.
+    assert scoped_rows == []
+
+
+def test_admin_needs_reembedding_filters_by_scope():
+    client, sessions = _test_client()
+    with sessions() as db:
+        admin_token = _admin_token(db)
+        scoped_token, _ = _scoped_user_token(db, role="gestor", hotel_ids=None)
+        doc_in = _document(db, "reembed_in.pdf")
+        doc_out = _document(db, "reembed_out.pdf")
+        for document, n_needing in ((doc_in, 2), (doc_out, 3)):
+            for i in range(4):
+                db.add(
+                    DocumentChunk(
+                        document_id=document.id,
+                        page_number=1,
+                        chunk_text=f"chunk {i}",
+                        embedding=None if i < n_needing else [0.0] * 1024,
+                        needs_reembedding=(i < n_needing),
+                        token_count=2,
+                    )
+                )
+        db.commit()
+
+    admin_response = client.get(
+        "/admin/documents/needs-re-embedding",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert admin_response.status_code == 200
+    admin_filenames = {row["original_filename"] for row in admin_response.json()}
+    assert "reembed_in.pdf" in admin_filenames
+    assert "reembed_out.pdf" in admin_filenames
+
+    scoped_response = client.get(
+        "/admin/documents/needs-re-embedding",
+        headers={"Authorization": f"Bearer {scoped_token}"},
+    )
+    assert scoped_response.status_code == 200
+    scoped_filenames = {row["original_filename"] for row in scoped_response.json()}
+    # The scoped gestor cannot see either document, so the list is
+    # empty even though both documents have pending chunks.
+    assert scoped_filenames == set()
+
+
+def test_admin_reembed_endpoint_requires_can_access_document():
+    client, sessions = _test_client()
+    with sessions() as db:
+        admin_token = _admin_token(db)
+        scoped_token, _ = _scoped_user_token(db, role="gestor", hotel_ids=None)
+        doc_in = _document(db, "reembed_target.pdf")
+        # Give the doc at least one chunk so reembed would do
+        # something if the scope check were missing.
+        db.add(
+            DocumentChunk(
+                document_id=doc_in.id,
+                page_number=1,
+                chunk_text="hello",
+                embedding=None,
+                needs_reembedding=True,
+                token_count=1,
+            )
+        )
+        db.commit()
+        doc_id = doc_in.id
+
+    # Admin can re-embed anything.
+    admin_response = client.post(
+        f"/admin/documents/{doc_id}/re-embed",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert admin_response.status_code == 200
+
+    # Scoped gestor cannot re-embed a document outside their scope:
+    # we return 404 (not 403) so we do not leak the existence of the
+    # document.
+    scoped_response = client.post(
+        f"/admin/documents/{doc_id}/re-embed",
+        headers={"Authorization": f"Bearer {scoped_token}"},
+    )
+    assert scoped_response.status_code == 404
+    assert scoped_response.json()["detail"] == "Document not found"
+
+
+def test_admin_reembed_endpoint_returns_404_for_missing_document():
+    client, sessions = _test_client()
+    with sessions() as db:
+        admin_token = _admin_token(db)
+        db.commit()
+    response = client.post(
+        "/admin/documents/9999999/re-embed",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 404

@@ -34,8 +34,12 @@ class PgvectorStore:
     ) -> list[VectorSearchMatch]:
         effective_filters = filters or {}
         if _is_postgres(db):
-            return self._search_postgres(db, query_embedding=query_embedding, limit=limit, filters=effective_filters)
-        return self._search_python_fallback(db, query_embedding=query_embedding, limit=limit, filters=effective_filters)
+            return self._search_postgres(
+                db, query_embedding=query_embedding, limit=limit, filters=effective_filters
+            )
+        return self._search_python_fallback(
+            db, query_embedding=query_embedding, limit=limit, filters=effective_filters
+        )
 
     def _search_postgres(
         self,
@@ -138,7 +142,9 @@ class PgvectorStore:
 
 class QdrantStore:
     def search(self, *args, **kwargs):
-        raise NotImplementedError("QdrantStore is a future adapter; set VECTOR_STORE=pgvector for now")
+        raise NotImplementedError(
+            "QdrantStore is a future adapter; set VECTOR_STORE=pgvector for now"
+        )
 
 
 def _is_postgres(db: Session) -> bool:

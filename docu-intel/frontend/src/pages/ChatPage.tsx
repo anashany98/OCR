@@ -14,11 +14,7 @@ import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
-import {
-  HistoryRow,
-  TypingIndicator,
-  WelcomeCard,
-} from "./chat/components"
+import { HistoryRow, TypingIndicator, WelcomeCard } from "./chat/components"
 import { MessageBubble } from "./chat/MessageBubble"
 import { useChat } from "./chat/useChat"
 
@@ -73,9 +69,7 @@ export function ChatPage() {
               style={{ scrollbarGutter: "stable" }}
             >
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
-                {!hasMessages && chat.hydrated && (
-                  <WelcomeCard onPick={chat.pickQuestion} />
-                )}
+                {!hasMessages && chat.hydrated && <WelcomeCard onPick={chat.pickQuestion} />}
 
                 {chat.messages.map((m) => (
                   <MessageBubble

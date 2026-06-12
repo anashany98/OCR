@@ -1,6 +1,3 @@
-from datetime import datetime
-from typing import Callable
-
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,6 +12,25 @@ from app.schemas.admin import (
     OcrReviewPageRead,
     ProductionChecklistItem,
 )
+from app.services.tenant_access import AccessScope
+
+
+def _redact_path_for_scope(path: str | None, scope: AccessScope | None) -> str | None:
+    """Return a path that hides the directory layout for non-admin users.
+
+    Operational pages surface the absolute path of a watched file or
+    ingestion event for debugging purposes. That leaks the server's
+    filesystem layout (e.g. ``/srv/docuintel/inbox/<budget_code>``) and
+    the budget codes embedded in folder names to users who should not
+    see them. For non-admin scopes we only return the filename.
+    """
+    if not path:
+        return path
+    if scope is None or scope.is_admin:
+        return path
+    from pathlib import Path
+
+    return Path(path).name or path
 
 
 def _get_or_404(db: Session, model, item_id: int, message: str):
@@ -25,14 +41,16 @@ def _get_or_404(db: Session, model, item_id: int, message: str):
 
 
 def count_where(db: Session, *criteria) -> int:
-    stmt = select(func.count()).select_from(Document).where(Document.deleted_at.is_(None), *criteria)
+    stmt = (
+        select(func.count()).select_from(Document).where(Document.deleted_at.is_(None), *criteria)
+    )
     return int(db.scalar(stmt) or 0)
 
 
-def _watched_file_payload(row: WatchedFile) -> dict:
+def _watched_file_payload(row: WatchedFile, scope: AccessScope | None = None) -> dict:
     return {
         "id": row.id,
-        "path": row.path,
+        "path": _redact_path_for_scope(row.path, scope),
         "status": row.status,
         "size_bytes": row.size_bytes,
         "mtime_epoch": row.mtime_epoch,
@@ -64,10 +82,7 @@ def _document_operation_payload(document: Document) -> dict:
 
 def _ocr_review_payload(page: DocumentPage, document: Document) -> OcrReviewPageRead:
     text = page.text or ""
-    blocks = list(
-        db_blocks
-        for db_blocks in page.blocks
-    )
+    blocks = list(db_blocks for db_blocks in page.blocks)
     return OcrReviewPageRead(
         document_id=document.id,
         original_filename=document.original_filename,
@@ -100,16 +115,24 @@ def _ocr_review_payload(page: DocumentPage, document: Document) -> OcrReviewPage
             }
             for block in sorted(blocks, key=lambda item: item.id)
         ],
-        preview_url=f"/documents/{document.id}/pages/{page.page_number}/image" if page.image_path else None,
+        preview_url=f"/documents/{document.id}/pages/{page.page_number}/image"
+        if page.image_path
+        else None,
         created_at=page.created_at,
     )
 
 
-def _checklist_item(key: str, title: str, check: dict, ok_description: str, action_url: str) -> ProductionChecklistItem:
+def _checklist_item(
+    key: str, title: str, check: dict, ok_description: str, action_url: str
+) -> ProductionChecklistItem:
     status = str(check.get("status", "warning"))
     normalized_status = status if status in {"ok", "warning", "error"} else "warning"
     detail = check.get("detail")
-    description = ok_description if normalized_status == "ok" and not detail else str(detail or ok_description)
+    description = (
+        ok_description
+        if normalized_status == "ok" and not detail
+        else str(detail or ok_description)
+    )
     return ProductionChecklistItem(
         key=key,
         title=title,
@@ -121,16 +144,17 @@ def _checklist_item(key: str, title: str, check: dict, ok_description: str, acti
 
 def _normalize_preview_path(value: str) -> str:
     import re
+
     clean = value.replace("\\", "/").strip().lower()
     clean = re.sub(r"/+", "/", clean)
     return clean
 
 
-def _ingestion_event_payload(row: IngestionEvent) -> dict:
+def _ingestion_event_payload(row: IngestionEvent, scope: AccessScope | None = None) -> dict:
     return {
         "id": row.id,
         "event_type": row.event_type,
-        "source_path": row.source_path,
+        "source_path": _redact_path_for_scope(row.source_path, scope),
         "document_id": row.document_id,
         "job_id": row.job_id,
         "watched_file_id": row.watched_file_id,
@@ -152,6 +176,7 @@ def _severity_rank(severity: str) -> int:
 
 def _validate_hotel_assignment(db: Session, chain_id: int | None, hotel_id: int | None) -> None:
     from app.models import Hotel, HotelChain
+
     if chain_id:
         _get_or_404(db, HotelChain, chain_id, "Hotel chain not found")
     if hotel_id:
@@ -173,7 +198,7 @@ def _new_api_key() -> str:
 def _normalize_scopes(scopes: list[str]) -> list[str]:
     allowed = {"read", "upload", "admin"}
     normalized = sorted({scope.strip().lower() for scope in scopes if scope and scope.strip()})
-    invalid = [scope for scope in normalized if scope not in allowed]
+    invalid = [s for s in normalized if s not in allowed]
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid scopes: {', '.join(invalid)}")
     return normalized or ["read"]

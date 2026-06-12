@@ -116,8 +116,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
     typ = payload.get("typ")
     if typ is not None and typ != ACCESS_TOKEN_TYP:
         raise ValueError(
-            f"Wrong token type for access endpoint: {typ!r} "
-            f"(expected {ACCESS_TOKEN_TYP!r})"
+            f"Wrong token type for access endpoint: {typ!r} (expected {ACCESS_TOKEN_TYP!r})"
         )
     return payload
 
@@ -176,4 +175,3 @@ def _b64(value: bytes) -> str:
 def _unb64(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode(value + padding)
-

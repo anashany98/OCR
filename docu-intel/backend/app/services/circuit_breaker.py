@@ -31,6 +31,7 @@ Usage::
 The breaker is *fail-fast only*: it never blocks the call. The wrapped
 function still needs its own timeout (via ``httpx`` or similar).
 """
+
 from __future__ import annotations
 
 import threading

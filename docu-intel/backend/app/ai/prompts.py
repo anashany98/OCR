@@ -19,6 +19,7 @@ local model with the same context. Sharing the message builder
 guarantees the two paths cannot drift apart: a behaviour change
 in the non-streaming path automatically applies to streaming.
 """
+
 from __future__ import annotations
 
 from app.services.prompt_sanitizer import sanitize_text, wrap_in_xml_tags

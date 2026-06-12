@@ -35,14 +35,22 @@ export function LoginPage() {
       {/* Left panel — editorial feature spread */}
       <section className="relative hidden flex-col justify-between overflow-hidden bg-[var(--ink)] p-12 text-[var(--bg-base)] md:flex">
         {/* Subtle paper texture via SVG noise */}
-        <div className="pointer-events-none absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)", backgroundSize: "24px 24px" }} />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
+            backgroundSize: "24px 24px",
+          }}
+        />
 
         <div className="relative flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-lg">
             <FileSearch className="h-5 w-5" />
           </div>
           <div>
-            <p className="font-display text-[18px] font-medium leading-tight tracking-tight">Docu-Intel</p>
+            <p className="font-display text-[18px] font-medium leading-tight tracking-tight">
+              Docu-Intel
+            </p>
             <p className="text-[11px] text-[var(--bg-base)]/60">Puesto de trabajo documental</p>
           </div>
         </div>
@@ -55,13 +63,17 @@ export function LoginPage() {
             Revisión, búsqueda y control documental en un único puesto de trabajo.
           </h1>
           <p className="max-w-md text-[14px] leading-relaxed text-[var(--bg-base)]/70">
-            Procesa presupuestos, pedidos, facturas y planos con extracción OCR inteligente. Todo bajo control, todo accesible.
+            Procesa presupuestos, pedidos, facturas y planos con extracción OCR inteligente. Todo
+            bajo control, todo accesible.
           </p>
 
           {/* Editorial pull-quote */}
           <blockquote className="border-l-2 border-[var(--accent)] pl-5 text-[13px] italic text-[var(--bg-base)]/80">
-            “Lo importante no es la cantidad de papel que entra, sino cuántos documentos se quedan sin revisar.”
-            <footer className="mt-2 not-italic text-[11px] text-[var(--bg-base)]/50">— principio de operación</footer>
+            “Lo importante no es la cantidad de papel que entra, sino cuántos documentos se quedan
+            sin revisar.”
+            <footer className="mt-2 not-italic text-[11px] text-[var(--bg-base)]/50">
+              — principio de operación
+            </footer>
           </blockquote>
         </div>
 
@@ -92,7 +104,10 @@ export function LoginPage() {
             <CardContent className="px-7 pb-7">
               <form className="space-y-4" onSubmit={onSubmit}>
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium text-[var(--text-secondary)]" htmlFor="email">
+                  <label
+                    className="text-[12px] font-medium text-[var(--text-secondary)]"
+                    htmlFor="email"
+                  >
                     Email corporativo
                   </label>
                   <Input
@@ -107,7 +122,10 @@ export function LoginPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium text-[var(--text-secondary)]" htmlFor="password">
+                  <label
+                    className="text-[12px] font-medium text-[var(--text-secondary)]"
+                    htmlFor="password"
+                  >
                     Contraseña
                   </label>
                   <Input

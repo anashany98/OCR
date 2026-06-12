@@ -203,10 +203,12 @@ export function usePlanAnnotation(documentId: number) {
         // Ray cast
         let inside = false
         for (let i = 0, j = r.polygon.length - 1; i < r.polygon.length; j = i++) {
-          const xi = r.polygon[i].x, yi = r.polygon[i].y
-          const xj = r.polygon[j].x, yj = r.polygon[j].y
-          const intersect = (yi > p.y) !== (yj > p.y) &&
-            p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi
+          const xi = r.polygon[i].x,
+            yi = r.polygon[i].y
+          const xj = r.polygon[j].x,
+            yj = r.polygon[j].y
+          const intersect =
+            yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-9) + xi
           if (intersect) inside = !inside
         }
         if (inside) return r
@@ -485,16 +487,22 @@ export function usePlanAnnotation(documentId: number) {
     roomsQuery,
     dimensionsQuery,
     // state
-    page, setPage,
-    rooms, setRooms,
-    dimensions, setDimensions,
-    tool, setTool,
-    selectedId, setSelectedId,
+    page,
+    setPage,
+    rooms,
+    setRooms,
+    dimensions,
+    setDimensions,
+    tool,
+    setTool,
+    selectedId,
+    setSelectedId,
     dirty,
     saving,
     polygonInProgress,
     draftDim,
-    scaleLengthM, setScaleLengthM,
+    scaleLengthM,
+    setScaleLengthM,
     // computed
     selected,
     scaleDimension,

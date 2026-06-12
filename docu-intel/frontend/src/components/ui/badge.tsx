@@ -12,9 +12,11 @@ const badgeVariants = cva(
         secondary: "border-transparent bg-[var(--bg-surface-2)] text-[var(--text-secondary)]",
         destructive: "border-transparent bg-[var(--danger)] text-white",
         outline: "border-[var(--border-2)] bg-transparent text-[var(--text-secondary)]",
-        success: "border-[var(--positive)]/25 bg-[var(--positive-light)] text-[var(--text-on-success)]",
+        success:
+          "border-[var(--positive)]/25 bg-[var(--positive-light)] text-[var(--text-on-success)]",
         info: "border-[var(--info)]/25 bg-[var(--info-light)] text-[var(--text-on-info)]",
-        warning: "border-[var(--warning)]/25 bg-[var(--warning-light)] text-[var(--text-on-warning)]",
+        warning:
+          "border-[var(--warning)]/25 bg-[var(--warning-light)] text-[var(--text-on-warning)]",
         danger: "border-[var(--danger)]/25 bg-[var(--danger-light)] text-[var(--text-on-danger)]",
         neutral: "border-[var(--border-2)] bg-[var(--bg-surface-2)] text-[var(--text-secondary)]",
       },
@@ -25,7 +27,8 @@ const badgeVariants = cva(
   },
 )
 
-export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
 
 function Badge({ className, variant, ...props }: BadgeProps) {
   return <span className={cn(badgeVariants({ variant }), className)} {...props} />

@@ -9,7 +9,15 @@ from typing import Sequence
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Document, DocumentBlock, DocumentPage, Plan, PlanDimension, PlanRoom, PlanSymbol
+from app.models import (
+    Document,
+    DocumentBlock,
+    DocumentPage,
+    Plan,
+    PlanDimension,
+    PlanRoom,
+    PlanSymbol,
+)
 
 logger = logging.getLogger("app.services.plan_extraction")
 
@@ -84,7 +92,18 @@ ROOM_DIMENSION_PAIR_RE = re.compile(
     re.IGNORECASE,
 )
 PLAN_KEYWORDS = {"plano", "planta", "escala", "cota", "cotas", "alzado", "seccion", "m2"}
-NON_ROOM_WORDS = {"escala", "cota", "cotas", "total", "plano", "proyecto", "obra", "planta", "plantas", "nivel"}
+NON_ROOM_WORDS = {
+    "escala",
+    "cota",
+    "cotas",
+    "total",
+    "plano",
+    "proyecto",
+    "obra",
+    "planta",
+    "plantas",
+    "nivel",
+}
 
 
 def extract_plan(
@@ -117,7 +136,9 @@ def extract_plan(
     needs_review = not has_valid_scale or any(room.needs_review for room in rooms)
     if not rooms and not dimensions and not has_valid_scale:
         needs_review = True
-    result = PlanExtractionResult(plan=plan, rooms=rooms, dimensions=dimensions, needs_review=needs_review)
+    result = PlanExtractionResult(
+        plan=plan, rooms=rooms, dimensions=dimensions, needs_review=needs_review
+    )
     # PL1: cross-check the OCR-derived value_m of every dimension
     # against the bbox of its caption, using the page DPI and the
     # declared scale_ratio. Mismatches lower the confidence and force
@@ -304,6 +325,7 @@ def _current_source_model() -> str:
     """
     try:
         from app.core.config import settings
+
         return str(getattr(settings, "plan_symbols_model_path", "yolov8n"))
     except Exception:  # pragma: no cover - defensive
         return "unknown"
@@ -328,14 +350,20 @@ def _load_plan_text_blocks(db: Session, document_id: int) -> list[PlanTextBlock]
     ]
 
 
-def _extract_scale(text: str, document_confidence: float | None) -> tuple[str | None, float | None, float | None]:
+def _extract_scale(
+    text: str, document_confidence: float | None
+) -> tuple[str | None, float | None, float | None]:
     match = SCALE_RE.search(text)
     if not match:
         return None, None, None
     denominator = float(match.group(1))
     if denominator <= 0:
         return None, None, None
-    return f"1:{int(denominator)}", denominator, min(0.98, _confidence(document_confidence, fallback=0.84) + 0.08)
+    return (
+        f"1:{int(denominator)}",
+        denominator,
+        min(0.98, _confidence(document_confidence, fallback=0.84) + 0.08),
+    )
 
 
 def _extract_project_name(text: str) -> str | None:
@@ -391,7 +419,9 @@ def _extract_dimensions(
     text_blocks: Sequence[PlanTextBlock] | None = None,
 ) -> list[ExtractedPlanDimension]:
     dimensions: list[ExtractedPlanDimension] = []
-    seen: set[tuple[str, int | None, tuple[float | None, float | None, float | None, float | None] | None]] = set()
+    seen: set[
+        tuple[str, int | None, tuple[float | None, float | None, float | None, float | None] | None]
+    ] = set()
 
     sources = list(text_blocks or [])
     if not sources:
@@ -406,7 +436,9 @@ def _extract_dimensions(
 
 def _append_dimension_from_match(
     dimensions: list[ExtractedPlanDimension],
-    seen: set[tuple[str, int | None, tuple[float | None, float | None, float | None, float | None] | None]],
+    seen: set[
+        tuple[str, int | None, tuple[float | None, float | None, float | None, float | None] | None]
+    ],
     match: re.Match[str],
     source: PlanTextBlock,
     fallback_confidence: float,
@@ -738,11 +770,16 @@ _PHASE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bplanta\s+segunda\b", re.IGNORECASE), "PLANTA SEGUNDA"),
     (re.compile(r"\bplanta\s+tercera\b", re.IGNORECASE), "PLANTA TERCERA"),
     (re.compile(r"\bplanta\s+(\d+)[ªº]?\b", re.IGNORECASE), None),  # dynamic
-    (re.compile(r"\bplanta\s+(\d+)\b", re.IGNORECASE), None),       # "Planta 3"
+    (re.compile(r"\bplanta\s+(\d+)\b", re.IGNORECASE), None),  # "Planta 3"
     (re.compile(r"\bcubierta\b", re.IGNORECASE), "CUBIERTA"),
     (re.compile(r"\bs[oó]tano\b", re.IGNORECASE), "SÓTANO"),
     (re.compile(r"\bsemi[-\s]?s[oó]tano\b", re.IGNORECASE), "SEMI-SÓTANO"),
-    (re.compile(r"\balzado\s+(norte|sur|este|oeste|principal|posterior|lateral)\b", re.IGNORECASE), None),
+    (
+        re.compile(
+            r"\balzado\s+(norte|sur|este|oeste|principal|posterior|lateral)\b", re.IGNORECASE
+        ),
+        None,
+    ),
     (re.compile(r"\bsecci[oó]n\s+([A-Z])\s*[-–]?\s*([A-Z])?\b", re.IGNORECASE), None),
     (re.compile(r"\bsecci[oó]n\s+([A-Z])\b", re.IGNORECASE), None),
     (re.compile(r"\bdetalle\s+(.+?)\s*$", re.IGNORECASE), None),

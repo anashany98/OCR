@@ -87,14 +87,11 @@ def test_embed_many_uses_configured_local_openai_provider(monkeypatch):
     assert calls == [("http://embedding.local:1234/v1", "bge-m3", "local-key", 4, ["uno", "dos"])]
 
 
-def test_embed_text_keeps_hash_fallback_when_local_provider_is_not_configured(monkeypatch):
+def test_embed_text_fails_fast_when_remote_provider_is_not_configured(monkeypatch):
     monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
     monkeypatch.setattr(settings, "embedding_base_url", "")
     monkeypatch.setattr(settings, "ai_base_url", "")
     monkeypatch.setattr(settings, "embedding_dimensions", EMBEDDING_DIMENSIONS)
 
-    query_vector = embed_text("pedido referencia ABC123")
-    related_vector = embed_text("lineas del pedido con referencia ABC123")
-
-    assert len(query_vector) == EMBEDDING_DIMENSIONS
-    assert embeddings.cosine_similarity(query_vector, related_vector) > 0.2
+    with pytest.raises(EmbeddingProviderError, match="requires EMBEDDING_BASE_URL"):
+        embed_text("pedido referencia ABC123")

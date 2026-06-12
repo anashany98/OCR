@@ -18,4 +18,6 @@ def enforce_integration_rate_limit(*, client_id: int, technician_id: str) -> Non
     except Exception:
         return
     if count > limit:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Integration rate limit exceeded")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Integration rate limit exceeded"
+        )

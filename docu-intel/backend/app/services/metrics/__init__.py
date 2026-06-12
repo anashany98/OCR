@@ -26,6 +26,7 @@ They are re-exported from this ``__init__`` so ``from
 app.services.metrics import track_ocr_duration`` still works
 (legacy import shape).
 """
+
 from __future__ import annotations
 
 # Re-export the public surface. The original ``services/metrics.py``
@@ -59,8 +60,8 @@ from .pipeline import (
     refresh_documents_by_status_gauge,
     track_document_failed,
     track_document_processed,
+    track_parser_fallback_failure,
     track_watcher_error,
-    track_worker_init_failure,
     update_queue_status_snapshot,
 )
 from .rag import (
@@ -132,6 +133,7 @@ __all__ = [
     "track_document_processed",
     "track_document_failed",
     "track_watcher_error",
+    "track_parser_fallback_failure",
     "update_queue_status_snapshot",
     "document_status_counts",
     "refresh_documents_by_status_gauge",

@@ -2,6 +2,7 @@
 
 Uses only stdlib (zipfile + xml.etree) — no external dependencies required.
 """
+
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET

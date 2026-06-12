@@ -112,9 +112,11 @@ def prepare_document_chunks(
             track_embedding_fallback()
 
     chunks: list[DocumentChunk] = []
-    for (page_number, chunk_text, _, token_count, chunk_type), (embedding, provider, fallback) in zip(
-        chunk_payloads, embedding_payloads, strict=True
-    ):
+    for (page_number, chunk_text, _, token_count, chunk_type), (
+        embedding,
+        provider,
+        fallback,
+    ) in zip(chunk_payloads, embedding_payloads, strict=True):
         chunk = DocumentChunk(
             document_id=document_id,
             page_number=page_number,
@@ -229,11 +231,7 @@ def reembed_document(db: Session, document_id: int) -> dict:
     return {
         "document_id": document_id,
         "chunks_updated": updated,
-        "chunks_with_embedding": sum(
-            1 for c in new_chunks if c.embedding is not None
-        ),
-        "chunks_needing_reembedding": sum(
-            1 for c in new_chunks if c.needs_reembedding
-        ),
+        "chunks_with_embedding": sum(1 for c in new_chunks if c.embedding is not None),
+        "chunks_needing_reembedding": sum(1 for c in new_chunks if c.needs_reembedding),
         "provider": provider,
     }

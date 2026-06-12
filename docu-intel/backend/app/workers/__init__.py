@@ -1,2 +1,1 @@
 """Celery worker package."""
-

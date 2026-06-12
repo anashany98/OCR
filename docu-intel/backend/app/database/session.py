@@ -40,7 +40,9 @@ def get_engine() -> Engine:
             if _engine is None or _engine_url != database_url:
                 _engine = _build_engine(database_url)
                 _engine_url = database_url
-                _session_factory = sessionmaker(bind=_engine, autocommit=False, autoflush=False, expire_on_commit=False)
+                _session_factory = sessionmaker(
+                    bind=_engine, autocommit=False, autoflush=False, expire_on_commit=False
+                )
     assert _engine is not None
     return _engine
 
@@ -68,4 +70,3 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-

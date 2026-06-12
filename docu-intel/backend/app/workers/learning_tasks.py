@@ -21,11 +21,7 @@ LOW_CONFIDENCE_THRESHOLD = 0.6
 
 
 def _load_active_learned_rules(db: Session) -> list[LearnedRule]:
-    rows = list(
-        db.scalars(
-            select(LearnedPattern).where(LearnedPattern.status == "active")
-        ).all()
-    )
+    rows = list(db.scalars(select(LearnedPattern).where(LearnedPattern.status == "active")).all())
     return [
         LearnedRule(
             pattern_value=row.pattern_value,
@@ -79,7 +75,12 @@ def process_approved_suggestions() -> dict:
             ).all()
         )
         if not approved:
-            return {"processed": 0, "patterns_created": 0, "reclassified": 0, "cache_invalidated": 0}
+            return {
+                "processed": 0,
+                "patterns_created": 0,
+                "reclassified": 0,
+                "cache_invalidated": 0,
+            }
 
         patterns_created = 0
         reclassified = 0
@@ -90,7 +91,11 @@ def process_approved_suggestions() -> dict:
         for suggestion in approved:
             try:
                 # classification_rule -> crear LearnedPattern
-                if suggestion.suggestion_type == "classification_rule" and suggestion.pattern_value and suggestion.target_class:
+                if (
+                    suggestion.suggestion_type == "classification_rule"
+                    and suggestion.pattern_value
+                    and suggestion.target_class
+                ):
                     existing = db.scalar(
                         select(LearnedPattern).where(
                             LearnedPattern.pattern_type == "keyword",
@@ -120,12 +125,17 @@ def process_approved_suggestions() -> dict:
                     rule_affected_ids.add(suggestion.document_id)
 
                 # classification_correction -> aplicar cambio directo al documento
-                elif suggestion.suggestion_type == "classification_correction" and suggestion.suggested_document_type:
+                elif (
+                    suggestion.suggestion_type == "classification_correction"
+                    and suggestion.suggested_document_type
+                ):
                     document = db.get(Document, suggestion.document_id)
                     if document and not document.deleted_at:
                         if document.document_type != suggestion.suggested_document_type:
                             document.document_type = suggestion.suggested_document_type
-                            document.confidence = max(suggestion.confidence, document.confidence or 0.0)
+                            document.confidence = max(
+                                suggestion.confidence, document.confidence or 0.0
+                            )
                             document.processed_at = datetime.utcnow()
                             directly_corrected_ids.add(document.id)
                             reclassified += 1
@@ -134,7 +144,9 @@ def process_approved_suggestions() -> dict:
                 suggestion.applied_at = datetime.utcnow()
 
             except Exception as exc:
-                logger.exception("learning_loop_suggestion_failed suggestion_id=%s error=%s", suggestion.id, exc)
+                logger.exception(
+                    "learning_loop_suggestion_failed suggestion_id=%s error=%s", suggestion.id, exc
+                )
                 continue
 
         all_affected_ids = directly_corrected_ids | rule_affected_ids
@@ -182,7 +194,11 @@ def process_approved_suggestions() -> dict:
         # Webhook de baja confianza para docs reclasificados con confianza < umbral
         for doc_id in all_affected_ids:
             document = db.get(Document, doc_id)
-            if document and document.confidence is not None and document.confidence < LOW_CONFIDENCE_THRESHOLD:
+            if (
+                document
+                and document.confidence is not None
+                and document.confidence < LOW_CONFIDENCE_THRESHOLD
+            ):
                 try:
                     emit_classification_low_confidence(
                         db,
@@ -194,7 +210,9 @@ def process_approved_suggestions() -> dict:
                         budget_scope_id=document.budget_scope_id,
                     )
                 except Exception as exc:
-                    logger.warning("webhook_low_confidence_failed document_id=%s error=%s", doc_id, exc)
+                    logger.warning(
+                        "webhook_low_confidence_failed document_id=%s error=%s", doc_id, exc
+                    )
 
         # Audit
         write_audit(
@@ -238,7 +256,11 @@ def reclassify_document_task(document_id: int) -> dict:
         learned_rules = _load_active_learned_rules(db)
         changed = _reclassify_document(db, document, learned_rules)
         db.commit()
-        if changed and document.confidence is not None and document.confidence < LOW_CONFIDENCE_THRESHOLD:
+        if (
+            changed
+            and document.confidence is not None
+            and document.confidence < LOW_CONFIDENCE_THRESHOLD
+        ):
             emit_classification_low_confidence(
                 db,
                 document_id=document.id,
@@ -248,6 +270,10 @@ def reclassify_document_task(document_id: int) -> dict:
                 threshold=LOW_CONFIDENCE_THRESHOLD,
                 budget_scope_id=document.budget_scope_id,
             )
-        return {"reclassified": changed, "document_id": document_id, "new_type": document.document_type}
+        return {
+            "reclassified": changed,
+            "document_id": document_id,
+            "new_type": document.document_type,
+        }
     finally:
         db.close()

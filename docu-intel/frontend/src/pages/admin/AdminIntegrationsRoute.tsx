@@ -1,11 +1,11 @@
-import { useOutletContext } from "react-router-dom"
-
 import { AdminIntegrationsTab } from "./AdminIntegrationsTab"
-import type { AdminData } from "./useAdminData"
+import { useAdminIntegrationsData } from "./useAdminIntegrationsData"
 
+/**
+ * F4b - Integrations admin sub-route. Lazy-loaded via the router.
+ */
 export function AdminIntegrationsRoute() {
-  const data = useOutletContext<AdminData>()
-  const { state, queries, mutations } = data
+  const { state, queries, mutations } = useAdminIntegrationsData()
 
   return (
     <AdminIntegrationsTab

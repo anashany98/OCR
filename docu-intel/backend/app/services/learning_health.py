@@ -14,6 +14,7 @@ The circuit breaker itself is *not enforced* here; we surface the metric and
 let the admin endpoint / future per-client lockout decide. Hard enforcement
 would risk blocking legitimate clients during an integration rollout.
 """
+
 from __future__ import annotations
 
 import logging

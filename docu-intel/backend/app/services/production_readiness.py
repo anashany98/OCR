@@ -42,9 +42,15 @@ def storage_integrity(db: Session, *, limit: int = 1000) -> dict:
         path = (root / str(document.stored_filename)).resolve()
         referenced.add(path)
         if not path.is_file():
-            missing.append({"document_id": document.id, "stored_filename": document.stored_filename})
-    physical = {path.resolve() for path in root.rglob("*") if path.is_file()} if root.exists() else set()
-    orphans = sorted(str(path.relative_to(root)) for path in physical - referenced if _safe_relative(path, root))
+            missing.append(
+                {"document_id": document.id, "stored_filename": document.stored_filename}
+            )
+    physical = (
+        {path.resolve() for path in root.rglob("*") if path.is_file()} if root.exists() else set()
+    )
+    orphans = sorted(
+        str(path.relative_to(root)) for path in physical - referenced if _safe_relative(path, root)
+    )
     return {
         "checked_documents": len(documents),
         "missing_files": len(missing),
@@ -72,8 +78,20 @@ def _check_redis() -> dict:
 
 
 def _check_workers(db: Session) -> dict:
-    processing = int(db.scalar(select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "processing")) or 0)
-    pending = int(db.scalar(select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "pending")) or 0)
+    processing = int(
+        db.scalar(
+            select(func.count())
+            .select_from(ExtractionJob)
+            .where(ExtractionJob.status == "processing")
+        )
+        or 0
+    )
+    pending = int(
+        db.scalar(
+            select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "pending")
+        )
+        or 0
+    )
     return {
         "key": "workers",
         "status": "ok",
@@ -82,7 +100,9 @@ def _check_workers(db: Session) -> dict:
 
 
 def _check_watcher(db: Session) -> dict:
-    latest = db.scalar(select(WatchedFile.updated_at).order_by(WatchedFile.updated_at.desc()).limit(1))
+    latest = db.scalar(
+        select(WatchedFile.updated_at).order_by(WatchedFile.updated_at.desc()).limit(1)
+    )
     return {
         "key": "watcher",
         "status": "ok",
@@ -112,7 +132,9 @@ def _check_backups() -> dict:
     return {
         "key": "backups",
         "status": "ok" if has_scripts else "warning",
-        "description": "Scripts de backup y restore disponibles." if has_scripts else "Faltan scripts de backup o restore.",
+        "description": "Scripts de backup y restore disponibles."
+        if has_scripts
+        else "Faltan scripts de backup o restore.",
     }
 
 

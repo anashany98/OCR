@@ -45,11 +45,7 @@ export function ConfidenceBadge({
           "bg-[var(--text-muted)]": level === "unknown",
         })}
       />
-      {showLabel && (
-        <span>
-          {value != null ? `${Math.round(value * 100)}%` : config.label}
-        </span>
-      )}
+      {showLabel && <span>{value != null ? `${Math.round(value * 100)}%` : config.label}</span>}
     </span>
   )
 }

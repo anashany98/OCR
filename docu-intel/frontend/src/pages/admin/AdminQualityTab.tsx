@@ -13,7 +13,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 import { csv, ids, MetricBlock, optionalId } from "./shared"
 
@@ -85,7 +92,13 @@ export function AdminQualityTab({
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3">
           <CardTitle>Calidad de datos</CardTitle>
-          <Button type="button" variant="outline" size="sm" onClick={() => recalculateQuality.mutate()} disabled={recalculateQuality.isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => recalculateQuality.mutate()}
+            disabled={recalculateQuality.isPending}
+          >
             <RefreshCw data-icon="inline-start" />
             Recalcular
           </Button>
@@ -103,10 +116,16 @@ export function AdminQualityTab({
             ))}
           </div>
           <MetricBlock title="Estados de calidad" values={qualitySummary?.by_quality_status} />
-          <p className="text-xs text-muted-foreground">Umbral OCR bajo: {qualityRules?.low_ocr_threshold != null ? Math.round(qualityRules.low_ocr_threshold * 100) + "%" : "-"}</p>
+          <p className="text-xs text-muted-foreground">
+            Umbral OCR bajo:{" "}
+            {qualityRules?.low_ocr_threshold != null
+              ? Math.round(qualityRules.low_ocr_threshold * 100) + "%"
+              : "-"}
+          </p>
           {recalculateQuality.data ? (
             <p className="text-sm text-muted-foreground">
-              Recalculados: {recalculateQuality.data.updated}. En revisi&oacute;n: {recalculateQuality.data.needs_review}.
+              Recalculados: {recalculateQuality.data.updated}. En revisi&oacute;n:{" "}
+              {recalculateQuality.data.needs_review}.
             </p>
           ) : null}
         </CardContent>
@@ -131,10 +150,20 @@ export function AdminQualityTab({
                 {ocrReviewPages.map((page) => (
                   <TableRow key={page.page_id}>
                     <TableCell>{page.page_id}</TableCell>
-                    <TableCell className="max-w-[260px] truncate">{page.original_filename}</TableCell>
+                    <TableCell className="max-w-[260px] truncate">
+                      {page.original_filename}
+                    </TableCell>
                     <TableCell>
-                      <Badge variant={page.ocr_confidence != null && page.ocr_confidence < 0.7 ? "warning" : "outline"}>
-                        {page.ocr_confidence != null ? Math.round(page.ocr_confidence * 100) + "%" : "-"}
+                      <Badge
+                        variant={
+                          page.ocr_confidence != null && page.ocr_confidence < 0.7
+                            ? "warning"
+                            : "outline"
+                        }
+                      >
+                        {page.ocr_confidence != null
+                          ? Math.round(page.ocr_confidence * 100) + "%"
+                          : "-"}
                       </Badge>
                     </TableCell>
                     <TableCell>{page.review_status}</TableCell>
@@ -142,7 +171,9 @@ export function AdminQualityTab({
                 ))}
                 {!ocrReviewPages.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">Sin p&aacute;ginas en revisi&oacute;n.</TableCell>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      Sin p&aacute;ginas en revisi&oacute;n.
+                    </TableCell>
                   </TableRow>
                 ) : null}
               </TableBody>
@@ -170,14 +201,18 @@ export function AdminQualityTab({
                 {duplicates.map((doc) => (
                   <TableRow key={doc.id}>
                     <TableCell>{doc.id}</TableCell>
-                    <TableCell className="max-w-[260px] truncate">{doc.original_filename}</TableCell>
+                    <TableCell className="max-w-[260px] truncate">
+                      {doc.original_filename}
+                    </TableCell>
                     <TableCell>{doc.document_type}</TableCell>
                     <TableCell>{doc.status}</TableCell>
                   </TableRow>
                 ))}
                 {!duplicates.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">Sin duplicados detectados.</TableCell>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      Sin duplicados detectados.
+                    </TableCell>
                   </TableRow>
                 ) : null}
               </TableBody>
@@ -199,8 +234,16 @@ export function AdminQualityTab({
                 if (assignDocumentId) updateDocumentAccess.mutate()
               }}
             >
-              <Input value={assignDocumentId} onChange={(event) => setAssignDocumentId(event.target.value)} placeholder="Doc ID" />
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={assignChainId} onChange={(event) => setAssignChainId(event.target.value)}>
+              <Input
+                value={assignDocumentId}
+                onChange={(event) => setAssignDocumentId(event.target.value)}
+                placeholder="Doc ID"
+              />
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={assignChainId}
+                onChange={(event) => setAssignChainId(event.target.value)}
+              >
                 <option value="">Cadena</option>
                 {chains.map((chain) => (
                   <option key={chain.id} value={chain.id}>
@@ -208,7 +251,11 @@ export function AdminQualityTab({
                   </option>
                 ))}
               </select>
-              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={assignHotelId} onChange={(event) => setAssignHotelId(event.target.value)}>
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={assignHotelId}
+                onChange={(event) => setAssignHotelId(event.target.value)}
+              >
                 <option value="">Hotel</option>
                 {hotels.map((hotel) => (
                   <option key={hotel.id} value={hotel.id}>
@@ -216,7 +263,11 @@ export function AdminQualityTab({
                   </option>
                 ))}
               </select>
-              <Input value={assignTags} onChange={(event) => setAssignTags(event.target.value)} placeholder="tags manuales" />
+              <Input
+                value={assignTags}
+                onChange={(event) => setAssignTags(event.target.value)}
+                placeholder="tags manuales"
+              />
               <Button disabled={updateDocumentAccess.isPending}>Asignar</Button>
             </form>
             <Table>
@@ -234,7 +285,9 @@ export function AdminQualityTab({
                     <TableCell>{document.id}</TableCell>
                     <TableCell>{document.original_filename}</TableCell>
                     <TableCell>{document.document_type}</TableCell>
-                    <TableCell className="max-w-[360px] truncate">{document.source_path ?? "-"}</TableCell>
+                    <TableCell className="max-w-[360px] truncate">
+                      {document.source_path ?? "-"}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -253,19 +306,39 @@ export function AdminQualityTab({
             onSubmit={(event: FormEvent) => {
               event.preventDefault()
               if (ids(bulkTagDocumentIds).length) {
-                if (window.confirm("¿Aplicar tags en lote a " + ids(bulkTagDocumentIds).length + " documentos?")) {
+                if (
+                  window.confirm(
+                    "¿Aplicar tags en lote a " + ids(bulkTagDocumentIds).length + " documentos?",
+                  )
+                ) {
                   applyBulkTags.mutate()
                 }
               }
             }}
           >
-            <Input value={bulkTagDocumentIds} onChange={(event) => setBulkTagDocumentIds(event.target.value)} placeholder="IDs documento: 12,15,18" />
-            <Input value={bulkTagAdd} onChange={(event) => setBulkTagAdd(event.target.value)} placeholder="A&ntilde;adir tags" />
-            <Input value={bulkTagRemove} onChange={(event) => setBulkTagRemove(event.target.value)} placeholder="Quitar tags" />
+            <Input
+              value={bulkTagDocumentIds}
+              onChange={(event) => setBulkTagDocumentIds(event.target.value)}
+              placeholder="IDs documento: 12,15,18"
+            />
+            <Input
+              value={bulkTagAdd}
+              onChange={(event) => setBulkTagAdd(event.target.value)}
+              placeholder="A&ntilde;adir tags"
+            />
+            <Input
+              value={bulkTagRemove}
+              onChange={(event) => setBulkTagRemove(event.target.value)}
+              placeholder="Quitar tags"
+            />
             <Button disabled={applyBulkTags.isPending}>Aplicar tags</Button>
           </form>
-          {applyBulkTags.data ? <p className="text-muted-foreground">Actualizados: {applyBulkTags.data.updated}</p> : null}
-          {applyBulkTags.isError ? <p className="text-sm text-destructive">{applyBulkTags.error?.message}</p> : null}
+          {applyBulkTags.data ? (
+            <p className="text-muted-foreground">Actualizados: {applyBulkTags.data.updated}</p>
+          ) : null}
+          {applyBulkTags.isError ? (
+            <p className="text-sm text-destructive">{applyBulkTags.error?.message}</p>
+          ) : null}
         </CardContent>
       </Card>
     </div>

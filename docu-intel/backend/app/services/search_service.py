@@ -11,12 +11,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
-
-logger = logging.getLogger(__name__)
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_query_text
 from app.services.metrics import track_search_latency
 from app.services.vector_store import PgvectorStore, _is_postgres
+
+logger = logging.getLogger(__name__)
 
 
 SEARCH_CACHE_TTL = 300
@@ -70,7 +70,9 @@ def _escape_ilike_wildcards(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def search_text(db: Session, query: str, limit: int = 20, filters: dict | None = None) -> list[SearchResult]:
+def search_text(
+    db: Session, query: str, limit: int = 20, filters: dict | None = None
+) -> list[SearchResult]:
     start = time.perf_counter()
     try:
         normalized = query.strip()
@@ -272,9 +274,7 @@ def _run_semantic_search(
     pg = PgvectorStore()
     if _is_postgres(db):
         pg_filters = dict(filters) if filters else {}
-        matches = pg.search(
-            db, query_embedding=query_embedding, limit=limit, filters=pg_filters
-        )
+        matches = pg.search(db, query_embedding=query_embedding, limit=limit, filters=pg_filters)
         source_paths: dict[int, str | None] = {}
         if matches:
             doc_ids = [m.document_id for m in matches]
@@ -336,7 +336,9 @@ def _run_semantic_search(
     return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
 
 
-def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | None = None) -> list[SearchResult]:
+def search_semantic(
+    db: Session, query: str, limit: int = 10, filters: dict | None = None
+) -> list[SearchResult]:
     start = time.perf_counter()
     try:
         normalized = query.strip()
@@ -393,9 +395,7 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
                     filters=filters,
                 )
             else:
-                results_sorted = _merge_reformulation_results(
-                    per_pass, limit=limit
-                )
+                results_sorted = _merge_reformulation_results(per_pass, limit=limit)
             cache_service.set(
                 cache_key,
                 [_search_result_to_dict(r) for r in results_sorted],
@@ -420,7 +420,9 @@ def search_semantic(db: Session, query: str, limit: int = 10, filters: dict | No
         track_search_latency(time.perf_counter() - start)
 
 
-def search_hybrid(db: Session, query: str, limit: int = 10, filters: dict | None = None) -> list[SearchResult]:
+def search_hybrid(
+    db: Session, query: str, limit: int = 10, filters: dict | None = None
+) -> list[SearchResult]:
     start = time.perf_counter()
     try:
         cache_key = _make_search_cache_key(query.strip(), limit, filters, "hybrid")
@@ -435,9 +437,7 @@ def search_hybrid(db: Session, query: str, limit: int = 10, filters: dict | None
         semantic_results = search_semantic(db, query, limit=max(limit, 10), filters=filters)
         bm25_results: list[SearchResult] = []
         if settings.search_use_bm25:
-            bm25_results = search_bm25(
-                db, query, limit=max(limit, 10), filters=filters
-            )
+            bm25_results = search_bm25(db, query, limit=max(limit, 10), filters=filters)
         track_search_strategy_used("hybrid", "executed")
 
         # Merge with a larger pool so the reranker has enough
@@ -456,6 +456,7 @@ def search_hybrid(db: Session, query: str, limit: int = 10, filters: dict | None
         # Apply cross-encoder reranker for better precision
         if len(merged) > limit:
             from app.services.reranker import rerank_sync
+
             merged = rerank_sync(query.strip(), merged, top_k=limit)
 
         # E5 — MMR diversity pass. We pull a slightly larger
@@ -525,10 +526,7 @@ def merge_hybrid_results(
             items[key] = item
 
     ranked_keys = sorted(scores, key=scores.get, reverse=True)[:limit]
-    return [
-        replace(items[key], score=scores[key], source_type="hybrid_rrf")
-        for key in ranked_keys
-    ]
+    return [replace(items[key], score=scores[key], source_type="hybrid_rrf") for key in ranked_keys]
 
 
 def _excerpt(text: str, query: str, radius: int = 160) -> str:

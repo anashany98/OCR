@@ -11,15 +11,17 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 export function PlansPage() {
   const { user } = useAuth()
-
-  // Solo admin y gestor pueden acceder
-  if (!user || (user.role !== "admin" && user.role !== "gestor")) {
-    return <Navigate to="/" replace />
-  }
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [scaleText, setScaleText] = useState("")
@@ -60,7 +62,8 @@ export function PlansPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plans"] }),
   })
   const roomMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => api.updatePlanRoom(id, payload),
+    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) =>
+      api.updatePlanRoom(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans", selectedPlan?.id, "rooms"] })
     },
@@ -86,6 +89,17 @@ export function PlansPage() {
     if (selectedPlan) setScaleText(selectedPlan.scale_text ?? "")
   }, [selectedPlan])
 
+  // Solo admin y gestor pueden acceder — early return AFTER
+  // all hooks, never before. The legacy code had the
+  // authorization check before ``useQueryClient`` /
+  // ``useState`` calls, which made every hook below it
+  // conditional on ``user`` — a rules-of-hooks violation that
+  // caused ``selectedPlan`` (and any state derived from
+  // ``plans.data``) to be cleared on every auth re-render.
+  if (!user || (user.role !== "admin" && user.role !== "gestor")) {
+    return <Navigate to="/" replace />
+  }
+
   return (
     <>
       <Breadcrumbs items={[{ label: "Planos" }]} />
@@ -95,13 +109,17 @@ export function PlansPage() {
         <div>
           <p className="text-[13px] font-semibold text-[#92400E]">Funcionalidad en fase Beta</p>
           <p className="mt-0.5 text-[12px] text-[#92400E]/80">
-            La extracción de planos está en desarrollo. Los datos de escala, habitaciones y cotas pueden no ser precisos.
-            Verifica siempre las mediciones manualmente antes de usarlas en producción.
+            La extracción de planos está en desarrollo. Los datos de escala, habitaciones y cotas
+            pueden no ser precisos. Verifica siempre las mediciones manualmente antes de usarlas en
+            producción.
           </p>
         </div>
       </div>
 
-      <PageHeader title="Planos" description="Escalas, habitaciones y cotas extraídas con revisión manual." />
+      <PageHeader
+        title="Planos"
+        description="Escalas, habitaciones y cotas extraídas con revisión manual."
+      />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
         <Card>
           <CardHeader>
@@ -125,9 +143,13 @@ export function PlansPage() {
                     className={selectedPlan?.id === plan.id ? "bg-muted/60" : ""}
                     onClick={() => setSelectedId(plan.id)}
                   >
-                    <TableCell className="font-medium">{plan.project_name ?? `Plano #${plan.id}`}</TableCell>
+                    <TableCell className="font-medium">
+                      {plan.project_name ?? `Plano #${plan.id}`}
+                    </TableCell>
                     <TableCell>{plan.scale_text ?? "-"}</TableCell>
-                    <TableCell>{plan.scale_confidence ? `${Math.round(plan.scale_confidence * 100)}%` : "-"}</TableCell>
+                    <TableCell>
+                      {plan.scale_confidence ? `${Math.round(plan.scale_confidence * 100)}%` : "-"}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={plan.has_valid_scale ? "success" : "warning"}>
                         {plan.has_valid_scale ? "válida" : "revisar"}
@@ -150,7 +172,11 @@ export function PlansPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>{selectedPlan ? selectedPlan.project_name ?? `Plano #${selectedPlan.id}` : "Detalle del plano"}</CardTitle>
+            <CardTitle>
+              {selectedPlan
+                ? (selectedPlan.project_name ?? `Plano #${selectedPlan.id}`)
+                : "Detalle del plano"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {selectedPlan ? (
@@ -158,14 +184,22 @@ export function PlansPage() {
                 <div className="grid gap-2 rounded-md border p-3">
                   <label className="text-xs font-medium text-muted-foreground">Escala manual</label>
                   <div className="flex gap-2">
-                    <Input value={scaleText} onChange={(event) => setScaleText(event.target.value)} placeholder="1:50" />
-                    <Button onClick={() => scaleMutation.mutate()} disabled={scaleMutation.isPending}>
+                    <Input
+                      value={scaleText}
+                      onChange={(event) => setScaleText(event.target.value)}
+                      placeholder="1:50"
+                    />
+                    <Button
+                      onClick={() => scaleMutation.mutate()}
+                      disabled={scaleMutation.isPending}
+                    >
                       <Save data-icon="inline-start" />
                       Guardar
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Sin escala válida no se convierten geometrías de píxeles a metros. Las superficies OCR se conservan como texto fuente.
+                    Sin escala válida no se convierten geometrías de píxeles a metros. Las
+                    superficies OCR se conservan como texto fuente.
                   </p>
                 </div>
 
@@ -190,7 +224,12 @@ export function PlansPage() {
                           <TableCell>
                             <Input
                               defaultValue={room.name ?? ""}
-                              onBlur={(event) => roomMutation.mutate({ id: room.id, payload: { name: event.currentTarget.value || null } })}
+                              onBlur={(event) =>
+                                roomMutation.mutate({
+                                  id: room.id,
+                                  payload: { name: event.currentTarget.value || null },
+                                })
+                              }
                             />
                           </TableCell>
                           <TableCell>
@@ -198,7 +237,12 @@ export function PlansPage() {
                               type="number"
                               step="0.01"
                               defaultValue={room.area_m2 ?? ""}
-                              onBlur={(event) => roomMutation.mutate({ id: room.id, payload: { area_m2: numberOrNull(event.currentTarget.value) } })}
+                              onBlur={(event) =>
+                                roomMutation.mutate({
+                                  id: room.id,
+                                  payload: { area_m2: numberOrNull(event.currentTarget.value) },
+                                })
+                              }
                             />
                           </TableCell>
                           <TableCell>
@@ -206,7 +250,15 @@ export function PlansPage() {
                               type="number"
                               step="0.01"
                               defaultValue={room.width_m ?? ""}
-                              onBlur={(event) => roomMutation.mutate({ id: room.id, payload: { width_m: numberOrNull(event.currentTarget.value), source: "human" } })}
+                              onBlur={(event) =>
+                                roomMutation.mutate({
+                                  id: room.id,
+                                  payload: {
+                                    width_m: numberOrNull(event.currentTarget.value),
+                                    source: "human",
+                                  },
+                                })
+                              }
                             />
                           </TableCell>
                           <TableCell>
@@ -214,14 +266,27 @@ export function PlansPage() {
                               type="number"
                               step="0.01"
                               defaultValue={room.length_m ?? ""}
-                              onBlur={(event) => roomMutation.mutate({ id: room.id, payload: { length_m: numberOrNull(event.currentTarget.value), source: "human" } })}
+                              onBlur={(event) =>
+                                roomMutation.mutate({
+                                  id: room.id,
+                                  payload: {
+                                    length_m: numberOrNull(event.currentTarget.value),
+                                    source: "human",
+                                  },
+                                })
+                              }
                             />
                           </TableCell>
                           <TableCell>
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => roomMutation.mutate({ id: room.id, payload: { needs_review: false, source: room.source ?? "human" } })}
+                              onClick={() =>
+                                roomMutation.mutate({
+                                  id: room.id,
+                                  payload: { needs_review: false, source: room.source ?? "human" },
+                                })
+                              }
                             >
                               {room.needs_review ? "Validar" : "Revisada"}
                             </Button>
@@ -230,7 +295,11 @@ export function PlansPage() {
                       ))}
                     </TableBody>
                   </Table>
-                  {!rooms.data?.length ? <p className="rounded-md border p-3 text-sm text-muted-foreground">Sin habitaciones detectadas.</p> : null}
+                  {!rooms.data?.length ? (
+                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                      Sin habitaciones detectadas.
+                    </p>
+                  ) : null}
                 </section>
 
                 <section className="space-y-2">
@@ -252,12 +321,20 @@ export function PlansPage() {
                             {dimension.value ?? "-"} {dimension.unit ?? ""}
                           </TableCell>
                           <TableCell>{dimension.value_m?.toFixed(3) ?? "-"}</TableCell>
-                          <TableCell>{dimension.confidence ? `${Math.round(dimension.confidence * 100)}%` : "-"}</TableCell>
+                          <TableCell>
+                            {dimension.confidence
+                              ? `${Math.round(dimension.confidence * 100)}%`
+                              : "-"}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
-                  {!dimensions.data?.length ? <p className="rounded-md border p-3 text-sm text-muted-foreground">Sin cotas textuales fiables.</p> : null}
+                  {!dimensions.data?.length ? (
+                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                      Sin cotas textuales fiables.
+                    </p>
+                  ) : null}
                 </section>
 
                 <section className="space-y-2">
@@ -269,9 +346,25 @@ export function PlansPage() {
                       if (measurementLabel.trim()) measurementMutation.mutate()
                     }}
                   >
-                    <Input value={measurementLabel} onChange={(event) => setMeasurementLabel(event.target.value)} placeholder="Etiqueta, habitación o cota" />
-                    <Input type="number" step="0.001" value={measurementValue} onChange={(event) => setMeasurementValue(event.target.value)} placeholder="Manual m" />
-                    <Input type="number" step="0.001" value={measurementOcrValue} onChange={(event) => setMeasurementOcrValue(event.target.value)} placeholder="OCR m" />
+                    <Input
+                      value={measurementLabel}
+                      onChange={(event) => setMeasurementLabel(event.target.value)}
+                      placeholder="Etiqueta, habitación o cota"
+                    />
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={measurementValue}
+                      onChange={(event) => setMeasurementValue(event.target.value)}
+                      placeholder="Manual m"
+                    />
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={measurementOcrValue}
+                      onChange={(event) => setMeasurementOcrValue(event.target.value)}
+                      placeholder="OCR m"
+                    />
                     <Button disabled={measurementMutation.isPending || !measurementLabel.trim()}>
                       <Save data-icon="inline-start" />
                       Guardar
@@ -301,7 +394,11 @@ export function PlansPage() {
                       ))}
                     </TableBody>
                   </Table>
-                  {!measurements.data?.length ? <p className="rounded-md border p-3 text-sm text-muted-foreground">Sin mediciones manuales guardadas.</p> : null}
+                  {!measurements.data?.length ? (
+                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                      Sin mediciones manuales guardadas.
+                    </p>
+                  ) : null}
                 </section>
               </>
             ) : (

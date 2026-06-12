@@ -1,4 +1,12 @@
-import { Brain, KeyRound, ScanSearch, Settings, ShieldCheck, Users, type LucideIcon } from "lucide-react"
+import {
+  Brain,
+  KeyRound,
+  ScanSearch,
+  Settings,
+  ShieldCheck,
+  Users,
+  type LucideIcon,
+} from "lucide-react"
 
 export const ADMIN_TABS = [
   { id: "operativa", label: "Operativa", icon: ShieldCheck },

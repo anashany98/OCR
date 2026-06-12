@@ -13,9 +13,17 @@ router = APIRouter()
 
 
 @router.get("/{plan_id}/measurements", response_model=list[PlanMeasurementRead])
-def list_plan_measurements(plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[PlanMeasurement]:
+def list_plan_measurements(
+    plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[PlanMeasurement]:
     plan = _accessible_plan(db, plan_id, user)
-    return list(db.scalars(select(PlanMeasurement).where(PlanMeasurement.plan_id == plan.id).order_by(PlanMeasurement.created_at.desc())).all())
+    return list(
+        db.scalars(
+            select(PlanMeasurement)
+            .where(PlanMeasurement.plan_id == plan.id)
+            .order_by(PlanMeasurement.created_at.desc())
+        ).all()
+    )
 
 
 @router.post("/{plan_id}/measurements", response_model=PlanMeasurementRead)
@@ -33,7 +41,9 @@ def create_plan_measurement(
         **payload.model_dump(),
     )
     db.add(measurement)
-    write_audit(db, user=user, action="plan_measurement_created", entity_type="plan", entity_id=plan.id)
+    write_audit(
+        db, user=user, action="plan_measurement_created", entity_type="plan", entity_id=plan.id
+    )
     db.commit()
     db.refresh(measurement)
     return measurement
@@ -41,7 +51,9 @@ def create_plan_measurement(
 
 def _accessible_plan(db: Session, plan_id: int, user: User) -> Plan:
     plan = db.get(Plan, plan_id)
-    if not plan or plan not in filter_records_by_document_scope(db, [plan], resolve_user_access_scope(db, user)):
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
         raise HTTPException(status_code=404, detail="Plan not found")
     return plan
 

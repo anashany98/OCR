@@ -166,8 +166,8 @@ class Settings(BaseSettings):
     # Tesseract 5 settings (used as primary in the cascade and as the
     # only engine when ocr_engine == "tesseract").
     tesseract_lang: str = "spa+eng"
-    tesseract_oem: int = 1   # 1 = LSTM only (Tesseract 5 default, fastest, best quality)
-    tesseract_psm: int = 3   # 3 = fully automatic page segmentation
+    tesseract_oem: int = 1  # 1 = LSTM only (Tesseract 5 default, fastest, best quality)
+    tesseract_psm: int = 3  # 3 = fully automatic page segmentation
     # Cascade escalation thresholds. The cascade runs Tesseract first
     # and escalates to PaddleOCR when the primary result is "weak" by
     # these metrics. Easy documents (digital PDFs, clean scans) never
@@ -227,7 +227,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 1024
     embedding_allow_dimension_coercion: bool = False
     embedding_timeout_seconds: float = 30.0
-    embedding_fallback_to_hash: bool = True
+    embedding_fallback_to_hash: bool = False
     # E2 — BM25 (PostgreSQL full-text) hybrid-search knobs. When
     # ``search_use_bm25`` is true (default) ``search_hybrid`` runs
     # the BM25 branch alongside the cosine and ILIKE branches and
@@ -481,12 +481,18 @@ class Settings(BaseSettings):
     @classmethod
     def validate_jwt_secret(cls, value: str, info: ValidationInfo) -> str:
         environment = info.data.get("environment", "local")
-        if value in {"change_me", "CHANGE_ME_GENERATE_SECURE_TOKEN_MIN_64_CHARS", "CHANGE_IN_PRODUCTION_USE_64_CHARS_MIN_SECURE"}:
+        if value in {
+            "change_me",
+            "CHANGE_ME_GENERATE_SECURE_TOKEN_MIN_64_CHARS",
+            "CHANGE_IN_PRODUCTION_USE_64_CHARS_MIN_SECURE",
+        }:
             raise ValueError("JWT_SECRET must be changed from default value for security")
         if environment != "local" and value.startswith("dev_only_"):
             raise ValueError(f"JWT_SECRET must be set explicitly in '{environment}' environment")
         if environment != "local" and len(value) < 64:
-            raise ValueError("JWT_SECRET must be at least 64 characters long in non-local environments")
+            raise ValueError(
+                "JWT_SECRET must be at least 64 characters long in non-local environments"
+            )
         if environment == "local" and len(value) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters long")
         return value
@@ -495,10 +501,16 @@ class Settings(BaseSettings):
     @classmethod
     def validate_admin_password(cls, value: str, info: ValidationInfo) -> str:
         environment = info.data.get("environment", "local")
-        if value in {"admin123", "CHANGE_ME_MIN_16_CHARS_SECURE_PASSWORD", "CHANGE_IN_PRODUCTION_MIN_16_CHARS"}:
+        if value in {
+            "admin123",
+            "CHANGE_ME_MIN_16_CHARS_SECURE_PASSWORD",
+            "CHANGE_IN_PRODUCTION_MIN_16_CHARS",
+        }:
             raise ValueError("ADMIN_PASSWORD must be changed from default value for security")
         if environment != "local" and value.startswith("dev_only_"):
-            raise ValueError(f"ADMIN_PASSWORD must be set explicitly in '{environment}' environment")
+            raise ValueError(
+                f"ADMIN_PASSWORD must be set explicitly in '{environment}' environment"
+            )
         if len(value) < 16:
             raise ValueError("ADMIN_PASSWORD must be at least 16 characters long")
         return value
@@ -509,11 +521,12 @@ class Settings(BaseSettings):
         weak_passwords = {"app", "password", "postgres", "admin", "123456", "changeme", "docuintel"}
         try:
             from urllib.parse import urlparse
+
             parsed = urlparse(value)
             if parsed.password and parsed.password.lower() in weak_passwords:
                 raise ValueError(
-                    f"PostgreSQL password is too weak. "
-                    f"Generate a secure password with: python -c \"import secrets; print(secrets.token_urlsafe(24))\""
+                    "PostgreSQL password is too weak. "
+                    'Generate a secure password with: python -c "import secrets; print(secrets.token_urlsafe(24))"'
                 )
         except ValueError:
             raise

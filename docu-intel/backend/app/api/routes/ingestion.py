@@ -10,6 +10,7 @@ router = APIRouter()
 
 
 @router.post("/scan")
-def scan(db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "gestor"))) -> dict:
+def scan(
+    db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "gestor"))
+) -> dict:
     return scan_input_folders(db, user=user, enqueue=True)
-

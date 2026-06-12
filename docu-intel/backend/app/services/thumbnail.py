@@ -31,7 +31,9 @@ def _font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
+def _wrap_text(
+    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int
+) -> list[str]:
     """Greedy word-wrap that respects ``max_width`` pixels at the given font."""
     if not text:
         return [""]
@@ -124,9 +126,7 @@ def generate_excel_thumbnail(xlsx_path: Path, document_hash: str) -> Path | None
             rows_iter = sheet.iter_rows(min_row=1, max_row=20, max_col=8, values_only=True)
             rows: list[tuple[str, ...]] = []
             for r in rows_iter:
-                rendered = tuple(
-                    ("" if v is None else str(v))[:24] for v in r
-                )
+                rendered = tuple(("" if v is None else str(v))[:24] for v in r)
                 rows.append(rendered)
         finally:
             wb.close()
@@ -145,7 +145,12 @@ def generate_excel_thumbnail(xlsx_path: Path, document_hash: str) -> Path | None
 
         # Sheet name banner
         draw.rectangle((0, 0, W * scale, int(18 * scale)), fill="#1f3a5f")
-        draw.text((int(6 * scale), int(2 * scale)), f"Excel: {sheet_name[:26]}", fill="white", font=header_font)
+        draw.text(
+            (int(6 * scale), int(2 * scale)),
+            f"Excel: {sheet_name[:26]}",
+            fill="white",
+            font=header_font,
+        )
 
         # Column headers (A, B, C, ...)
         col_header_y = int(22 * scale)
@@ -153,9 +158,18 @@ def generate_excel_thumbnail(xlsx_path: Path, document_hash: str) -> Path | None
         row_num_w = int(28 * scale)
         for i in range(len(rows[0])):
             x = row_num_w + i * col_w
-            draw.rectangle((x, col_header_y, x + col_w, col_header_y + int(12 * scale)), fill="#e2e8f0", outline="#cbd5e1")
+            draw.rectangle(
+                (x, col_header_y, x + col_w, col_header_y + int(12 * scale)),
+                fill="#e2e8f0",
+                outline="#cbd5e1",
+            )
             letter = chr(ord("A") + i) if i < 26 else f"C{i + 1}"
-            draw.text((x + int(2 * scale), col_header_y + int(1 * scale)), letter, fill="#475569", font=cell_font)
+            draw.text(
+                (x + int(2 * scale), col_header_y + int(1 * scale)),
+                letter,
+                fill="#475569",
+                font=cell_font,
+            )
 
         # Cells
         row_h = int(11 * scale)
@@ -165,7 +179,9 @@ def generate_excel_thumbnail(xlsx_path: Path, document_hash: str) -> Path | None
                 break
             # Row number
             draw.rectangle((0, y, row_num_w, y + row_h), fill="#f1f5f9", outline="#cbd5e1")
-            draw.text((int(2 * scale), y + int(1 * scale)), str(r_idx + 1), fill="#64748b", font=cell_font)
+            draw.text(
+                (int(2 * scale), y + int(1 * scale)), str(r_idx + 1), fill="#64748b", font=cell_font
+            )
             for c_idx, value in enumerate(row):
                 if c_idx >= len(rows[0]):
                     break
@@ -173,7 +189,9 @@ def generate_excel_thumbnail(xlsx_path: Path, document_hash: str) -> Path | None
                 draw.rectangle((x, y, x + col_w, y + row_h), outline="#e2e8f0", fill="white")
                 # Truncate horizontally to col_w - 4px
                 text = value if len(value) <= 18 else value[:17] + "…"
-                draw.text((x + int(2 * scale), y + int(1 * scale)), text, fill="#1e293b", font=cell_font)
+                draw.text(
+                    (x + int(2 * scale), y + int(1 * scale)), text, fill="#1e293b", font=cell_font
+                )
 
         _save(canvas, thumb_path)
         return thumb_path.relative_to(settings.files_dir)

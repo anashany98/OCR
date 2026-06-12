@@ -16,6 +16,7 @@ every request automatically.
 
 Imported once from ``app.main`` (top of the module, before any router).
 """
+
 from __future__ import annotations
 
 from starlette.requests import Request

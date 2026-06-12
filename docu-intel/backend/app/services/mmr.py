@@ -34,6 +34,7 @@ small (less than ``top_k``) or when the diversity threshold is
 not met, MMR returns the top-k by relevance unchanged. The
 retrieval that depends on it never breaks.
 """
+
 from __future__ import annotations
 
 import logging

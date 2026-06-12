@@ -16,10 +16,7 @@ import {
 import { api, pageImageUrl, thumbnailUrl, downloadUrl } from "@/api/client"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
-import {
-  DocumentProgressBar,
-  StatusBadge,
-} from "@/components/layout/StatusBadge"
+import { DocumentProgressBar, StatusBadge } from "@/components/layout/StatusBadge"
 import { EmptyState } from "@/components/layout/EmptyState"
 import { PermissionGate } from "@/components/layout/PermissionGate"
 import { Badge } from "@/components/ui/badge"
@@ -350,8 +347,7 @@ function OcrPageSection({
           Página {page.page_number}
         </button>
         <span>
-          OCR{" "}
-          {page.ocr_confidence != null ? `${Math.round(page.ocr_confidence * 100)}%` : "—"}
+          OCR {page.ocr_confidence != null ? `${Math.round(page.ocr_confidence * 100)}%` : "—"}
         </span>
       </div>
       <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6">
@@ -381,7 +377,8 @@ function OcrRevisionEditor({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
             d.saveRevision.isPending || !d.editedText.trim() || d.editedText === (page.text ?? "")
           }
         >
-          <Save className="mr-1 h-3 w-3" />Guardar
+          <Save className="mr-1 h-3 w-3" />
+          Guardar
         </Button>
       </div>
       <textarea
@@ -405,7 +402,11 @@ function OcrRevisionEditor({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
 // ---------------------------------------------------------------------------
 // KeyEntitiesCard
 // ---------------------------------------------------------------------------
-function KeyEntitiesCard({ entities }: { entities: ReturnType<typeof useDocumentDetail>["keyEnts"] }) {
+function KeyEntitiesCard({
+  entities,
+}: {
+  entities: ReturnType<typeof useDocumentDetail>["keyEnts"]
+}) {
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -515,9 +516,7 @@ function BelowSection({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
           <p className="text-sm text-[var(--text-muted)]">Cargando grafo...</p>
         )}
         {d.graphQ.data && <DocumentGraphView graph={d.graphQ.data} />}
-        {d.graphQ.isError && (
-          <p className="text-sm text-destructive">{d.graphQ.error?.message}</p>
-        )}
+        {d.graphQ.isError && <p className="text-sm text-destructive">{d.graphQ.error?.message}</p>}
         {!d.graphQ.data && !d.graphQ.isLoading && !d.graphQ.isError && (
           <EmptyState
             title="Sin relaciones"

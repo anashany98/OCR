@@ -315,6 +315,40 @@ def test_answer_question_signature_unchanged():
     assert sig.parameters["mode"].default is None
 
 
+def test_answer_question_does_not_cap_chat_with_wait_for():
+    """A6: ``answer_question`` used to wrap the non-stream
+    ``client.chat()`` call in ``asyncio.wait_for(..., timeout=60)``.
+    That outer cap cut the inner retry chain
+    (``ai_max_retries`` + exponential backoff) short: the
+    inner client had 2 retries with 0.25s / 0.5s backoff,
+    i.e. up to ``0.75 + 3*120s = 360.75s`` of wall-clock, but
+    the ``wait_for(60)`` killed the whole thing at 60s.
+
+    The fix removes the outer cap so the inner timeout /
+    retry chain owns the lifecycle. We assert that the
+    source no longer calls ``asyncio.wait_for`` on the
+    chat path (it can still call it elsewhere — e.g. on
+    the streaming path which never had a cap).
+    """
+    from pathlib import Path
+
+    agent_path = Path("app/ai/agent.py")
+    source = agent_path.read_text(encoding="utf-8")
+    # The legacy wrapper sat inside the non-stream branch
+    # (the ``try: client = ...; answer = await ...`` block
+    # that we tagged with the "first-load time of a 26B
+    # model" comment). The new code has a comment that
+    # explicitly says we removed the cap; assert that the
+    # call is gone.
+    assert "asyncio.wait_for(client.chat" not in source, (
+        "answer_question must not wrap client.chat() in "
+        "asyncio.wait_for — the inner LocalOpenAICompatibleClient "
+        "already enforces a per-request timeout and a "
+        "retry/backoff chain, and an outer cap cuts that "
+        "chain short (audit A6)."
+    )
+
+
 # ---------------------------------------------------------------------------
 # 5) Constants
 # ---------------------------------------------------------------------------

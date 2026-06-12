@@ -15,7 +15,11 @@ export function ThemeToggle() {
       aria-label={isDark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
       title={isDark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
     >
-      {isDark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
+      {isDark ? (
+        <Sun className="h-4 w-4" aria-hidden="true" />
+      ) : (
+        <Moon className="h-4 w-4" aria-hidden="true" />
+      )}
     </Button>
   )
 }

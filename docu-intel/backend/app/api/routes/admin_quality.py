@@ -61,10 +61,16 @@ def quality_recalculate(
         user=user,
         action="quality_recalculated",
         entity_type="document",
-        details={"matched": result.matched, "updated": result.updated, "needs_review": result.needs_review},
+        details={
+            "matched": result.matched,
+            "updated": result.updated,
+            "needs_review": result.needs_review,
+        },
     )
     db.commit()
-    return QualityRecalculateResponse(matched=result.matched, updated=result.updated, needs_review=result.needs_review)
+    return QualityRecalculateResponse(
+        matched=result.matched, updated=result.updated, needs_review=result.needs_review
+    )
 
 
 @router.get("/ocr-review", response_model=list[OcrReviewPageRead])
@@ -160,7 +166,9 @@ def reprocess_ocr_page(
 
 
 @router.get("/ocr-errors", response_model=list[DocumentRead])
-def ocr_errors(db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))) -> list[Document]:
+def ocr_errors(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))
+) -> list[Document]:
     return list(
         db.scalars(
             select(Document)
@@ -173,7 +181,9 @@ def ocr_errors(db: Session = Depends(get_db), _: User = Depends(require_roles("a
 
 
 @router.get("/duplicates", response_model=list[DocumentRead])
-def duplicates(db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))) -> list[Document]:
+def duplicates(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin", "gestor", "auditor"))
+) -> list[Document]:
     return list(
         db.scalars(
             select(Document)
@@ -196,7 +206,10 @@ def quarantine_documents(
             select(Document)
             .outerjoin(DocumentAccessMetadata, DocumentAccessMetadata.document_id == Document.id)
             .where(Document.deleted_at.is_(None))
-            .where((DocumentAccessMetadata.id.is_(None)) | (DocumentAccessMetadata.assignment_status != "assigned"))
+            .where(
+                (DocumentAccessMetadata.id.is_(None))
+                | (DocumentAccessMetadata.assignment_status != "assigned")
+            )
             .order_by(Document.created_at.desc())
             .limit(limit)
         ).all()

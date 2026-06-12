@@ -1,2 +1,1 @@
 """Docu-Intel backend package."""
-

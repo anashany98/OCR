@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Any
 
 import redis
 
@@ -23,13 +20,15 @@ class NotificationService:
         try:
             self.redis.publish(
                 "notifications",
-                __import__("json").dumps({
-                    "type": "job_failed",
-                    "job_id": job_id,
-                    "document_id": document_id,
-                    "error": error[:500],
-                    "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
-                }),
+                __import__("json").dumps(
+                    {
+                        "type": "job_failed",
+                        "job_id": job_id,
+                        "document_id": document_id,
+                        "error": error[:500],
+                        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                ),
             )
             return True
         except Exception:
@@ -39,12 +38,14 @@ class NotificationService:
         try:
             self.redis.publish(
                 "notifications",
-                __import__("json").dumps({
-                    "type": "document_processed",
-                    "document_id": document_id,
-                    "filename": filename,
-                    "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
-                }),
+                __import__("json").dumps(
+                    {
+                        "type": "document_processed",
+                        "document_id": document_id,
+                        "filename": filename,
+                        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+                    }
+                ),
             )
             return True
         except Exception:

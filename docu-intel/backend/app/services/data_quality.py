@@ -30,7 +30,11 @@ class QualityRecalculateResult:
 
 
 def quality_rules_payload(db: Session) -> dict:
-    tags = db.scalars(select(SensitiveTag).where(SensitiveTag.is_active.is_(True)).order_by(SensitiveTag.name.asc())).all()
+    tags = db.scalars(
+        select(SensitiveTag)
+        .where(SensitiveTag.is_active.is_(True))
+        .order_by(SensitiveTag.name.asc())
+    ).all()
     return {
         "low_ocr_threshold": LOW_OCR_THRESHOLD,
         "sensitive_tags": [tag.name for tag in tags],
@@ -40,7 +44,10 @@ def quality_rules_payload(db: Session) -> dict:
 
 
 def quality_summary(db: Session) -> dict:
-    rules = {key: {"count": 0, "description": description} for key, description in RULE_DEFINITIONS.items()}
+    rules = {
+        key: {"count": 0, "description": description}
+        for key, description in RULE_DEFINITIONS.items()
+    }
     rules["ocr_low"]["count"] = int(
         db.scalar(
             select(func.count())
@@ -58,12 +65,21 @@ def quality_summary(db: Session) -> dict:
             .select_from(Document)
             .outerjoin(DocumentPage, DocumentPage.document_id == Document.id)
             .where(Document.deleted_at.is_(None))
-            .where((DocumentPage.id.is_(None)) | (DocumentPage.text.is_(None)) | (DocumentPage.text == ""))
+            .where(
+                (DocumentPage.id.is_(None))
+                | (DocumentPage.text.is_(None))
+                | (DocumentPage.text == "")
+            )
         )
         or 0
     )
     rules["document_type_unknown"]["count"] = int(
-        db.scalar(select(func.count()).select_from(Document).where(Document.deleted_at.is_(None), Document.document_type == "desconocido")) or 0
+        db.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.deleted_at.is_(None), Document.document_type == "desconocido")
+        )
+        or 0
     )
     rules["missing_budget_number"]["count"] = int(
         db.scalar(
@@ -71,7 +87,11 @@ def quality_summary(db: Session) -> dict:
             .select_from(Document)
             .outerjoin(Budget, Budget.document_id == Document.id)
             .where(Document.deleted_at.is_(None), Document.document_type == "presupuesto")
-            .where((Budget.id.is_(None)) | (Budget.budget_number.is_(None)) | (Budget.budget_number == ""))
+            .where(
+                (Budget.id.is_(None))
+                | (Budget.budget_number.is_(None))
+                | (Budget.budget_number == "")
+            )
         )
         or 0
     )
@@ -81,12 +101,19 @@ def quality_summary(db: Session) -> dict:
             .select_from(Document)
             .outerjoin(Order, Order.document_id == Document.id)
             .where(Document.deleted_at.is_(None), Document.document_type == "pedido")
-            .where((Order.id.is_(None)) | (Order.supplier_name.is_(None)) | (Order.supplier_name == ""))
+            .where(
+                (Order.id.is_(None)) | (Order.supplier_name.is_(None)) | (Order.supplier_name == "")
+            )
         )
         or 0
     )
     rules["missing_invoice_date"]["count"] = int(
-        db.scalar(select(func.count()).select_from(Document).where(Document.deleted_at.is_(None), Document.document_type == "factura")) or 0
+        db.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.deleted_at.is_(None), Document.document_type == "factura")
+        )
+        or 0
     )
     rules["plan_without_scale"]["count"] = int(
         db.scalar(
@@ -99,15 +126,27 @@ def quality_summary(db: Session) -> dict:
         or 0
     )
     rules["duplicate_document"]["count"] = int(
-        db.scalar(select(func.count()).select_from(Document).where(Document.deleted_at.is_(None), Document.status == "duplicate")) or 0
+        db.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.deleted_at.is_(None), Document.status == "duplicate")
+        )
+        or 0
     )
     rules["failed_processing"]["count"] = int(
-        db.scalar(select(func.count()).select_from(Document).where(Document.deleted_at.is_(None), Document.status == "failed")) or 0
+        db.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.deleted_at.is_(None), Document.status == "failed")
+        )
+        or 0
     )
     by_status = {
         status: count
         for status, count in db.execute(
-            select(Document.quality_status, func.count()).where(Document.deleted_at.is_(None)).group_by(Document.quality_status)
+            select(Document.quality_status, func.count())
+            .where(Document.deleted_at.is_(None))
+            .group_by(Document.quality_status)
         ).all()
     }
     return {"rules": rules, "by_quality_status": by_status}
@@ -115,7 +154,12 @@ def quality_summary(db: Session) -> dict:
 
 def recalculate_quality(db: Session, *, limit: int = 500) -> QualityRecalculateResult:
     documents = list(
-        db.scalars(select(Document).where(Document.deleted_at.is_(None)).order_by(Document.created_at.desc()).limit(limit)).all()
+        db.scalars(
+            select(Document)
+            .where(Document.deleted_at.is_(None))
+            .order_by(Document.created_at.desc())
+            .limit(limit)
+        ).all()
     )
     updated = 0
     needs_review = 0
@@ -125,4 +169,6 @@ def recalculate_quality(db: Session, *, limit: int = 500) -> QualityRecalculateR
         if result.needs_review:
             needs_review += 1
     db.flush()
-    return QualityRecalculateResult(matched=len(documents), updated=updated, needs_review=needs_review)
+    return QualityRecalculateResult(
+        matched=len(documents), updated=updated, needs_review=needs_review
+    )

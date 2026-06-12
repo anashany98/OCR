@@ -49,7 +49,9 @@ def ensure_default_access_policies(db: Session) -> None:
 
 def resolve_access_policy(db: Session, technician_id: str) -> AccessPolicy:
     profile = db.scalar(
-        select(TechnicianAccessProfile).where(TechnicianAccessProfile.technician_id == technician_id).limit(1)
+        select(TechnicianAccessProfile)
+        .where(TechnicianAccessProfile.technician_id == technician_id)
+        .limit(1)
     )
     if profile and profile.access_policy:
         return profile.access_policy

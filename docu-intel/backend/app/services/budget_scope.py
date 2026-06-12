@@ -54,7 +54,9 @@ def extract_budget_code_from_path(path: str | None) -> str | None:
     return None
 
 
-def ensure_budget_scope(db: Session, budget_code: str, *, source_path: str | None = None) -> BudgetScope:
+def ensure_budget_scope(
+    db: Session, budget_code: str, *, source_path: str | None = None
+) -> BudgetScope:
     clean = _clean_budget_code(budget_code)
     if not clean:
         raise ValueError("Invalid budget code")
@@ -74,7 +76,9 @@ def ensure_budget_scope(db: Session, budget_code: str, *, source_path: str | Non
     return scope
 
 
-def assign_document_budget_scope(db: Session, document: Document, *, budget_code: str | None = None) -> BudgetScope | None:
+def assign_document_budget_scope(
+    db: Session, document: Document, *, budget_code: str | None = None
+) -> BudgetScope | None:
     resolved_code = budget_code or extract_budget_code_from_path(document.source_path)
     if not resolved_code:
         return None
@@ -141,10 +145,12 @@ def decode_budget_session_token(token: str) -> BudgetSessionClaims:
     # user access token (signed with ``jwt_secret``) will fail
     # verification here and raise ``ValueError``.
     payload = decode_integration_token(token)
-    if payload.get("typ") != BUDGET_SESSION_TYP or payload.get("sub") != "integration_budget_session":
+    if (
+        payload.get("typ") != BUDGET_SESSION_TYP
+        or payload.get("sub") != "integration_budget_session"
+    ):
         raise ValueError(
-            f"Invalid budget session token: typ={payload.get('typ')!r} "
-            f"sub={payload.get('sub')!r}"
+            f"Invalid budget session token: typ={payload.get('typ')!r} sub={payload.get('sub')!r}"
         )
     return BudgetSessionClaims(
         client_id=int(payload["client_id"]),

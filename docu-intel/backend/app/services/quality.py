@@ -22,7 +22,12 @@ class QualityResult:
 
     @property
     def needs_review(self) -> bool:
-        return self.status in {"processed_low_quality", "processed_missing_fields", "needs_human_review", "failed"}
+        return self.status in {
+            "processed_low_quality",
+            "processed_missing_fields",
+            "needs_human_review",
+            "failed",
+        }
 
 
 def evaluate_document_quality(
@@ -86,7 +91,9 @@ def evaluate_document_quality(
             flags.add("plan_without_valid_scale")
 
     score = _quality_score(db, document, flags)
-    pages = list(db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all())
+    pages = list(
+        db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all()
+    )
     ocr_values = [page.ocr_confidence for page in pages if page.ocr_confidence is not None]
     min_ocr = min(ocr_values) if ocr_values else 0.0
     classification_conf = document.confidence if document.confidence is not None else 0.0
@@ -101,16 +108,33 @@ def evaluate_document_quality(
         and min_ocr >= settings.auto_approve_min_ocr
         and classification_conf >= settings.auto_approve_min_classification
         and is_classified
-        and (settings.auto_approve_allow_missing_fields or not any(f.endswith("_missing") for f in flags))
+        and (
+            settings.auto_approve_allow_missing_fields
+            or not any(f.endswith("_missing") for f in flags)
+        )
     ):
         status = "processed_ok"
     elif document.status == "failed":
         status = "failed"
     elif "page_failed" in flags:
         status = "needs_human_review"
-    elif "low_ocr_confidence" in flags or "page_without_text" in flags or score < settings.quality_score_threshold:
+    elif (
+        "low_ocr_confidence" in flags
+        or "page_without_text" in flags
+        or score < settings.quality_score_threshold
+    ):
         status = "processed_low_quality"
-    elif any(flag.endswith("_missing") or flag in {"budget_number_missing", "order_number_missing", "supplier_missing", "invoice_date_missing"} for flag in flags):
+    elif any(
+        flag.endswith("_missing")
+        or flag
+        in {
+            "budget_number_missing",
+            "order_number_missing",
+            "supplier_missing",
+            "invoice_date_missing",
+        }
+        for flag in flags
+    ):
         status = "processed_missing_fields"
     elif business_needs_review or plan_needs_review or "document_type_unknown" in flags:
         status = "needs_human_review"
@@ -128,7 +152,11 @@ def update_document_quality(db: Session, document: Document, result: QualityResu
     # quality says processed_ok and the document was sitting in needs_review,
     # promote it. This keeps the document list and the quality dashboard in
     # sync without forcing the user to re-process.
-    if result.status == "processed_ok" and document.status in {"needs_review", "pending", "processing"}:
+    if result.status == "processed_ok" and document.status in {
+        "needs_review",
+        "pending",
+        "processing",
+    }:
         document.status = "processed"
     elif result.status == "failed" and document.status not in {"failed"}:
         document.status = "failed"
@@ -136,16 +164,26 @@ def update_document_quality(db: Session, document: Document, result: QualityResu
 
 
 def refresh_quality_from_existing_pages(db: Session, document: Document) -> QualityResult:
-    pages = list(db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all())
+    pages = list(
+        db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all()
+    )
     text = "\n\n".join(page.text or "" for page in pages)
-    low = [page.ocr_confidence for page in pages if page.ocr_confidence is not None and page.ocr_confidence < LOW_OCR_THRESHOLD]
-    result = evaluate_document_quality(db, document, text=text, page_count=len(pages), low_ocr_confidences=low)
+    low = [
+        page.ocr_confidence
+        for page in pages
+        if page.ocr_confidence is not None and page.ocr_confidence < LOW_OCR_THRESHOLD
+    ]
+    result = evaluate_document_quality(
+        db, document, text=text, page_count=len(pages), low_ocr_confidences=low
+    )
     update_document_quality(db, document, result)
     return result
 
 
 def _quality_score(db: Session, document: Document, flags: set[str]) -> float:
-    pages = list(db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all())
+    pages = list(
+        db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all()
+    )
     ocr_values = [page.ocr_confidence for page in pages if page.ocr_confidence is not None]
     base = document.confidence if document.confidence is not None else 0.80
     if ocr_values:

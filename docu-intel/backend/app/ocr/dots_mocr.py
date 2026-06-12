@@ -33,7 +33,9 @@ class DotsMOCREngine:
             "filename": image_path.name,
             "image_base64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
         }
-        headers = {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else None
+        headers = (
+            {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else None
+        )
         with httpx.Client(timeout=self.config.timeout_seconds) as client:
             response = client.post(self.config.endpoint, json=payload, headers=headers)
             response.raise_for_status()

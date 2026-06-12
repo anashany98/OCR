@@ -1,11 +1,11 @@
-import { useOutletContext } from "react-router-dom"
-
 import { AdminAccessTab } from "./AdminAccessTab"
-import type { AdminData } from "./useAdminData"
+import { useAdminAccessData } from "./useAdminAccessData"
 
+/**
+ * F4b - Access admin sub-route. Lazy-loaded via the router.
+ */
 export function AdminAccessRoute() {
-  const data = useOutletContext<AdminData>()
-  const { state, queries, mutations, tenantAdminEnabled } = data
+  const { state, queries, mutations, tenantAdminEnabled } = useAdminAccessData()
 
   return (
     <AdminAccessTab

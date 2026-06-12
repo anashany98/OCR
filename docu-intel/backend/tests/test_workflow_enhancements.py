@@ -26,6 +26,7 @@ from app.models import (
     Budget,
     BudgetLine,
     Document,
+    DocumentAccessMetadata,
     DocumentBlock,
     DocumentEntity,
     DocumentPage,
@@ -178,6 +179,131 @@ def test_work_inbox_bulk_actions_retry_failed_jobs_and_approve_high_ocr_pages():
     assert approve.json()["updated"] == 1
     with sessions() as db:
         assert db.scalar(select(DocumentPage).where(DocumentPage.ocr_confidence == 0.92)).review_status == "approved"
+
+
+def test_work_inbox_respects_user_document_scope_for_items_and_counts():
+    client, sessions = _test_client()
+    with sessions() as db:
+        user = User(email="gestor-scope@local", name="Gestor", password_hash=hash_password("secret"), role="gestor", is_active=True)
+        db.add(user)
+        chain = HotelChain(name="Cadena Scope", is_active=True)
+        db.add(chain)
+        db.flush()
+        hotel_a = Hotel(chain_id=chain.id, name="Hotel A", code="A", is_active=True)
+        hotel_b = Hotel(chain_id=chain.id, name="Hotel B", code="B", is_active=True)
+        db.add_all([hotel_a, hotel_b])
+        db.flush()
+        group = AccessGroup(
+            name="Gestor solo Hotel A",
+            permissions_json={"hotel_ids": [hotel_a.id], "allow_all_hotels": False, "can_view_prices": False},
+        )
+        db.add(group)
+        db.flush()
+        db.add(AccessGroupMember(group_id=group.id, principal_type="user", principal_id=str(user.id)))
+
+        visible = _document(db, "visible-low-ocr.pdf")
+        hidden_duplicate = _document(db, "hidden-duplicate.pdf", status="duplicate")
+        hidden_failed = _document(db, "hidden-failed.pdf", status="failed")
+        hidden_budget_doc = _document(db, "hidden-budget.pdf")
+        for document, hotel in [
+            (visible, hotel_a),
+            (hidden_duplicate, hotel_b),
+            (hidden_failed, hotel_b),
+            (hidden_budget_doc, hotel_b),
+        ]:
+            db.add(
+                DocumentAccessMetadata(
+                    document_id=document.id,
+                    chain_id=chain.id,
+                    hotel_id=hotel.id,
+                    assignment_status="assigned",
+                    assignment_source="manual",
+                    tags_json=[],
+                )
+            )
+        visible_page = db.scalar(select(DocumentPage).where(DocumentPage.document_id == visible.id))
+        visible_page.ocr_confidence = 0.41
+        db.add(ExtractionJob(document_id=hidden_failed.id, job_type="extract", status="failed", error_message="boom"))
+        db.add(
+            Budget(
+                document_id=hidden_budget_doc.id,
+                budget_number="2026/HIDDEN-WI",
+                client_name="Hotel B",
+                date=date(2026, 5, 16),
+                status="aceptado",
+                accepted_detected=True,
+                confidence=0.8,
+            )
+        )
+        db.commit()
+        token = create_access_token(str(user.id))
+
+    response = client.get("/admin/work-inbox", headers={"Authorization": f"Bearer {token}"})
+    count_response = client.get("/admin/work-inbox/count", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    items = response.json()
+    assert [item["document_id"] for item in items] == [visible.id]
+    assert count_response.status_code == 200
+    assert count_response.json()["count"] == 1
+    assert count_response.json()["by_kind"]["low_ocr"] == 1
+    assert count_response.json()["by_kind"]["duplicate"] == 0
+    assert count_response.json()["by_kind"]["failed_job"] == 0
+    assert count_response.json()["by_kind"]["accepted_budget_without_order"] == 0
+
+
+def test_work_inbox_bulk_actions_only_mutate_documents_in_user_scope():
+    client, sessions = _test_client()
+    with sessions() as db:
+        user = User(email="gestor-bulk@local", name="Gestor Bulk", password_hash=hash_password("secret"), role="gestor", is_active=True)
+        db.add(user)
+        chain = HotelChain(name="Cadena Bulk", is_active=True)
+        db.add(chain)
+        db.flush()
+        hotel_a = Hotel(chain_id=chain.id, name="Hotel A", code="A", is_active=True)
+        hotel_b = Hotel(chain_id=chain.id, name="Hotel B", code="B", is_active=True)
+        db.add_all([hotel_a, hotel_b])
+        db.flush()
+        group = AccessGroup(
+            name="Gestor bulk Hotel A",
+            permissions_json={"hotel_ids": [hotel_a.id], "allow_all_hotels": False, "can_view_prices": False},
+        )
+        db.add(group)
+        db.flush()
+        db.add(AccessGroupMember(group_id=group.id, principal_type="user", principal_id=str(user.id)))
+
+        visible = _document(db, "visible-high-ocr.pdf")
+        hidden = _document(db, "hidden-high-ocr.pdf")
+        for document, hotel in [(visible, hotel_a), (hidden, hotel_b)]:
+            db.add(
+                DocumentAccessMetadata(
+                    document_id=document.id,
+                    chain_id=chain.id,
+                    hotel_id=hotel.id,
+                    assignment_status="assigned",
+                    assignment_source="manual",
+                    tags_json=[],
+                )
+            )
+            page = db.scalar(select(DocumentPage).where(DocumentPage.document_id == document.id))
+            page.ocr_confidence = 0.93
+            page.review_status = "pending"
+        db.commit()
+        token = create_access_token(str(user.id))
+
+    response = client.post(
+        "/admin/work-inbox/actions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"action": "approve_high_confidence_ocr", "min_confidence": 0.85, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated"] == 1
+    with sessions() as db:
+        visible_page = db.scalar(select(DocumentPage).where(DocumentPage.document_id == visible.id))
+        hidden_page = db.scalar(select(DocumentPage).where(DocumentPage.document_id == hidden.id))
+        assert visible_page.review_status == "approved"
+        assert hidden_page.review_status == "pending"
 
 
 def test_production_checklist_reports_operational_items():

@@ -91,7 +91,9 @@ export function CommandPalette() {
               placeholder="Buscar página, acción o ajuste…"
               className="h-12 w-full bg-transparent text-[14px] outline-none placeholder:text-[var(--text-muted)]"
             />
-            <kbd className="hidden rounded border border-[var(--border)] bg-[var(--bg-surface-2)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-muted)] sm:inline">ESC</kbd>
+            <kbd className="hidden rounded border border-[var(--border)] bg-[var(--bg-surface-2)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-muted)] sm:inline">
+              ESC
+            </kbd>
           </div>
           <Command.List className="max-h-[55vh] overflow-y-auto p-2">
             <Command.Empty className="px-3 py-6 text-center text-[13px] text-[var(--text-muted)]">
@@ -101,7 +103,11 @@ export function CommandPalette() {
               const items = visible.filter((cmd) => cmd.group === group)
               if (!items.length) return null
               return (
-                <Command.Group key={group} heading={group} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-[var(--text-muted)]">
+                <Command.Group
+                  key={group}
+                  heading={group}
+                  className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-[var(--text-muted)]"
+                >
                   {items.map((item) => {
                     const Icon = item.icon
                     return (
@@ -140,7 +146,11 @@ export function CommandPalette() {
 function Hint({ keys, children }: { keys: string; children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <kbd className={cn("rounded border border-[var(--border)] bg-white px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]")}>
+      <kbd
+        className={cn(
+          "rounded border border-[var(--border)] bg-white px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]",
+        )}
+      >
         {keys}
       </kbd>
       <span>{children}</span>

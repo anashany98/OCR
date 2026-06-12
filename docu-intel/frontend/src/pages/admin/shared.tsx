@@ -1,7 +1,14 @@
 import type { BadgeProps } from "@/components/ui/badge"
 import { Badge } from "@/components/ui/badge"
 import { HardDrive } from "lucide-react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 export const inputFolders = [
   "/data/input/presupuestos",
@@ -45,7 +52,9 @@ export function MetricBlock({ title, values }: { title: string; values?: Record<
             {key}: {value}
           </Badge>
         ))}
-        {!Object.keys(values ?? {}).length ? <span className="text-muted-foreground">Sin datos</span> : null}
+        {!Object.keys(values ?? {}).length ? (
+          <span className="text-muted-foreground">Sin datos</span>
+        ) : null}
       </div>
     </div>
   )
@@ -60,7 +69,15 @@ export function MetricTile({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function ConfigStatus({ label, value, tone }: { label: string; value: string; tone: BadgeProps["variant"] }) {
+export function ConfigStatus({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: BadgeProps["variant"]
+}) {
   return (
     <div className="rounded-md border p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -71,7 +88,13 @@ export function ConfigStatus({ label, value, tone }: { label: string; value: str
   )
 }
 
-export function DiskLine({ label, usage }: { label: string; usage?: { path: string; total: number; used: number; free: number } }) {
+export function DiskLine({
+  label,
+  usage,
+}: {
+  label: string
+  usage?: { path: string; total: number; used: number; free: number }
+}) {
   const usedPercent = usage?.total ? Math.round((usage.used / usage.total) * 100) : 0
   return (
     <div className="rounded-md border p-2">

@@ -26,6 +26,7 @@ The cascaded :attr:`name` is updated on every call to reflect which
 engine produced the winning result, so the admin UI can break down the
 share of pages that escalated to Paddle / PP-Structure.
 """
+
 from __future__ import annotations
 
 import logging
@@ -195,7 +196,11 @@ class CascadingOCREngine:
             if self.pp_structure is not None and not self._is_acceptable(fallback_result):
                 tier3 = self._try_tier3(image_path, primary_result, fallback_result)
                 if tier3 is not None:
-                    return self._finalize(image_path, self.pp_structure.name if self.pp_structure else self._name, tier3)
+                    return self._finalize(
+                        image_path,
+                        self.pp_structure.name if self.pp_structure else self._name,
+                        tier3,
+                    )
             return self._finalize(image_path, self.fallback.name, fallback_result)
 
         # S0.6 — record why the cascade kept the primary result instead
@@ -250,7 +255,9 @@ class CascadingOCREngine:
         if not tier3_result.text or len(tier3_result.text.strip()) < self.min_chars:
             return None
 
-        best_prior = fallback_result if self._is_better(fallback_result, primary_result) else primary_result
+        best_prior = (
+            fallback_result if self._is_better(fallback_result, primary_result) else primary_result
+        )
         if self._is_better(tier3_result, best_prior):
             return tier3_result
         return None

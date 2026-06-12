@@ -110,8 +110,8 @@ describe("filterTasks", () => {
   })
 
   it("combines filters with AND semantics", () => {
-    expect(
-      filterTasks(tasks, { kind: "ocr_failed", priority: "low" }).map((t) => t.id),
-    ).toEqual(["3"])
+    expect(filterTasks(tasks, { kind: "ocr_failed", priority: "low" }).map((t) => t.id)).toEqual([
+      "3",
+    ])
   })
 })

@@ -77,9 +77,7 @@ export function usePlanSymbols(planId: number | undefined, options: UsePlanSymbo
   // first").
   const allClasses = useMemo(() => {
     if (!summary) return [] as string[]
-    return Object.keys(summary.counts).sort(
-      (a, b) => summary.counts[b] - summary.counts[a],
-    )
+    return Object.keys(summary.counts).sort((a, b) => summary.counts[b] - summary.counts[a])
   }, [summary])
 
   // Symbols filtered by ``activeClasses`` and the current page.
@@ -125,10 +123,7 @@ export function usePlanSymbols(planId: number | undefined, options: UsePlanSymbo
  * plan. This is the same fail-safe policy the rest of the platform
  * applies to optional page metadata.
  */
-export function filterSymbolsByPage(
-  symbols: PlanSymbol[],
-  page: number,
-): PlanSymbol[] {
+export function filterSymbolsByPage(symbols: PlanSymbol[], page: number): PlanSymbol[] {
   if (page < 1) return symbols
   return symbols.filter((s) => s.page_number == null || s.page_number === page)
 }

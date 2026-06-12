@@ -3,6 +3,7 @@
 Converts .doc → .docx using LibreOffice headless, then delegates to the
 .docx parser. Requires `libreoffice` on the system PATH.
 """
+
 from __future__ import annotations
 
 import logging
@@ -61,8 +62,10 @@ def parse_doc(path: Path) -> ExtractedDocument:
                     libreoffice,
                     "--headless",
                     "--norestore",
-                    "--convert-to", "docx",
-                    "--outdir", str(output_dir),
+                    "--convert-to",
+                    "docx",
+                    "--outdir",
+                    str(output_dir),
                     str(source_copy),
                 ],
                 capture_output=True,
@@ -70,15 +73,15 @@ def parse_doc(path: Path) -> ExtractedDocument:
                 timeout=LIBREOFFICE_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError(
-                f"LibreOffice timed out converting .doc file: {path.name}"
-            ) from None
+            raise RuntimeError(f"LibreOffice timed out converting .doc file: {path.name}") from None
 
         if result.returncode != 0:
             stderr = result.stderr.strip() or result.stdout.strip()
             logger.warning(
                 "LibreOffice conversion returned %d for %s: %s",
-                result.returncode, path.name, stderr[:500],
+                result.returncode,
+                path.name,
+                stderr[:500],
             )
 
         # Find the generated .docx

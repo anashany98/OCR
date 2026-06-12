@@ -8,7 +8,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import Document, DocumentBlock, DocumentChunk, DocumentEntity, DocumentPage, ExtractionJob, Plan
+from app.models import (
+    Document,
+    DocumentBlock,
+    DocumentChunk,
+    DocumentEntity,
+    DocumentPage,
+    ExtractionJob,
+    Plan,
+)
 from app.ocr.factory import get_ocr_engine_class
 from app.parsers.router import parse_document
 from app.services.business_extraction import persist_business_extraction
@@ -64,6 +72,7 @@ def reset_learned_rules_cache() -> None:
     _learned_rules_cache["rules"] = []
     _learned_rules_cache["expires_at"] = 0.0
 
+
 # This module sits at the centre of the document processing
 # pipeline. It used to import many of its helpers from
 # ``app.services.document_service`` (a re-export hub) via a
@@ -79,6 +88,11 @@ def reset_learned_rules_cache() -> None:
 # ``app.parsers.router`` are all leaves that do not import
 # anything from this module or from ``document_service``.
 
+# ruff: noqa: E402  (intentional — the original module used
+# a deferred import to break the import cycle with
+# ``document_service``; the helper that lives here is only
+# used during document processing, so the import is safe to
+# resolve at the top of the module).
 from app.services.document_embedding_pipeline import _replace_document_chunks
 
 
@@ -197,7 +211,9 @@ def _emit_document_webhooks(document: Document, job: ExtractionJob) -> None:
     emit_integration_webhook("job.finished", payload)
 
 
-def process_document(db: Session, *, document_id: int, job_id: int, final_failure: bool = True) -> None:
+def process_document(
+    db: Session, *, document_id: int, job_id: int, final_failure: bool = True
+) -> None:
     document = db.get(Document, document_id)
     job = db.get(ExtractionJob, job_id)
     if not document or not job:
@@ -213,7 +229,13 @@ def process_document(db: Session, *, document_id: int, job_id: int, final_failur
     document.error_message = None
     db.commit()
     if document.source_path:
-        watched = upsert_watched_file(db, path=document.source_path, status="processing", document_id=document.id, job_id=job.id)
+        watched = upsert_watched_file(
+            db,
+            path=document.source_path,
+            status="processing",
+            document_id=document.id,
+            job_id=job.id,
+        )
         record_ingestion_event(
             db,
             event_type="processing",
@@ -227,9 +249,13 @@ def process_document(db: Session, *, document_id: int, job_id: int, final_failur
     try:
         if mode == "embeddings":
             _process_embeddings_only(db, document)
-            document.status = previous_status if previous_status in {"processed", "needs_review"} else "processed"
+            document.status = (
+                previous_status if previous_status in {"processed", "needs_review"} else "processed"
+            )
         elif mode == "ocr_page":
-            needs_review = _process_ocr_page_only(db, document, page_number=reprocess_page_number_from_job_type(job.job_type))
+            needs_review = _process_ocr_page_only(
+                db, document, page_number=reprocess_page_number_from_job_type(job.job_type)
+            )
             document.status = "needs_review" if needs_review else "processed"
         elif mode == "classification":
             needs_review = _process_classification_only(db, document)
@@ -263,7 +289,9 @@ def process_document(db: Session, *, document_id: int, job_id: int, final_failur
         db.commit()
         _emit_document_webhooks(document, job)
     except Exception as exc:
-        _handle_process_failure(db, document_id=document_id, job_id=job_id, error=exc, final_failure=final_failure)
+        _handle_process_failure(
+            db, document_id=document_id, job_id=job_id, error=exc, final_failure=final_failure
+        )
         raise
 
 
@@ -443,7 +471,9 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
         raise ValueError(f"Document page not found: {page_number}")
     if not page.image_path:
         page.page_status = "failed"
-        page.error_message = "Page has no image preview for OCR reprocess; run a full OCR reprocess first"
+        page.error_message = (
+            "Page has no image preview for OCR reprocess; run a full OCR reprocess first"
+        )
         page.attempts = (page.attempts or 0) + 1
         db.flush()
         return _process_classification_only(db, document)

@@ -33,6 +33,7 @@ page using the digital text when present; for scans it inherits
 the document's detected language (computed from the first digital
 page, or defaulted to ``settings.tesseract_lang``).
 """
+
 from __future__ import annotations
 
 import logging

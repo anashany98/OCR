@@ -161,7 +161,10 @@ def run_reembed_pending_documents(db: Session) -> dict:
 
         for document, _chunks_needing in candidates:
             try:
-                if _is_low_ocr_confidence(document) and reocr_queued < settings.reembed_reocr_per_tick:
+                if (
+                    _is_low_ocr_confidence(document)
+                    and reocr_queued < settings.reembed_reocr_per_tick
+                ):
                     _enqueue_reocr(db, document)
                     reocr_queued += 1
                 else:
@@ -191,7 +194,12 @@ def run_reembed_pending_documents(db: Session) -> dict:
         }
     except Exception as exc:  # noqa: BLE001 - never let the whole tick die
         logger.exception("Re-embed worker tick crashed: %s", exc)
-        return {"inspected": inspected, "reembedded": reembedded, "reocr_queued": reocr_queued, "errors": errors + 1}
+        return {
+            "inspected": inspected,
+            "reembedded": reembedded,
+            "reocr_queued": reocr_queued,
+            "errors": errors + 1,
+        }
 
 
 # ---------------------------------------------------------------------------

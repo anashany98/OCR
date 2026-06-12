@@ -62,8 +62,10 @@ const statusLabels: Record<string, string> = {
 }
 
 function riskLevel(confidence: number): { level: string; color: string; bg: string } {
-  if (confidence >= 0.85) return { level: "Bajo", color: "text-[#065F46]", bg: "bg-[var(--emerald-light)]" }
-  if (confidence >= 0.70) return { level: "Medio", color: "text-[#92400E]", bg: "bg-[var(--amber-light)]" }
+  if (confidence >= 0.85)
+    return { level: "Bajo", color: "text-[#065F46]", bg: "bg-[var(--emerald-light)]" }
+  if (confidence >= 0.7)
+    return { level: "Medio", color: "text-[#92400E]", bg: "bg-[var(--amber-light)]" }
   return { level: "Alto", color: "text-[#9F1239]", bg: "bg-[var(--rose-light)]" }
 }
 
@@ -88,12 +90,15 @@ export function AdminLearningTab({
   disablePattern,
 }: AdminLearningTabProps) {
   const [filter, setFilter] = useState<"pending" | "approved" | "all">("pending")
-  const [selectedSuggestion, setSelectedSuggestion] = useState<ClassificationSuggestion | null>(null)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<ClassificationSuggestion | null>(
+    null,
+  )
   const [showHistory, setShowHistory] = useState(false)
 
   const filtered = (() => {
     if (filter === "pending") return suggestions.filter((s) => s.status === "pending")
-    if (filter === "approved") return suggestions.filter((s) => s.status === "approved" || s.status === "applied")
+    if (filter === "approved")
+      return suggestions.filter((s) => s.status === "approved" || s.status === "applied")
     return suggestions
   })()
 
@@ -112,7 +117,8 @@ export function AdminLearningTab({
             Bucle de Mejora
           </CardTitle>
           <CardDescription>
-            Sugerencias del agente externo y patrones aprendidos. El sistema Celery aplica las aprobadas automáticamente cada 5 minutos.
+            Sugerencias del agente externo y patrones aprendidos. El sistema Celery aplica las
+            aprobadas automáticamente cada 5 minutos.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -131,8 +137,14 @@ export function AdminLearningTab({
         <SuggestionDetailCard
           suggestion={selectedSuggestion}
           onClose={() => setSelectedSuggestion(null)}
-          onApprove={() => { approveSuggestion.mutate(selectedSuggestion.id); setSelectedSuggestion(null) }}
-          onReject={() => { rejectSuggestion.mutate(selectedSuggestion.id); setSelectedSuggestion(null) }}
+          onApprove={() => {
+            approveSuggestion.mutate(selectedSuggestion.id)
+            setSelectedSuggestion(null)
+          }}
+          onReject={() => {
+            rejectSuggestion.mutate(selectedSuggestion.id)
+            setSelectedSuggestion(null)
+          }}
           isApproving={approveSuggestion.isPending}
           isRejecting={rejectSuggestion.isPending}
         />
@@ -143,11 +155,19 @@ export function AdminLearningTab({
         <CardHeader className="flex-row items-center justify-between gap-3">
           <div>
             <CardTitle className="text-[14px]">Sugerencias de clasificación</CardTitle>
-            <CardDescription>Propuestas por el agente externo para revisar y aprobar.</CardDescription>
+            <CardDescription>
+              Propuestas por el agente externo para revisar y aprobar.
+            </CardDescription>
           </div>
           <div className="flex gap-1">
             {(["pending", "approved", "all"] as const).map((f) => (
-              <Button key={f} size="sm" variant={filter === f ? "default" : "outline"} className="h-7 text-xs" onClick={() => setFilter(f)}>
+              <Button
+                key={f}
+                size="sm"
+                variant={filter === f ? "default" : "outline"}
+                className="h-7 text-xs"
+                onClick={() => setFilter(f)}
+              >
                 {f === "pending" ? "Pendientes" : f === "approved" ? "Aprobadas" : "Todas"}
               </Button>
             ))}
@@ -156,7 +176,9 @@ export function AdminLearningTab({
         <CardContent className="space-y-3">
           {filtered.length === 0 ? (
             <p className="py-4 text-center text-sm text-[var(--text-muted)]">
-              {filter === "pending" ? "Sin sugerencias pendientes de revisión." : "Sin sugerencias registradas."}
+              {filter === "pending"
+                ? "Sin sugerencias pendientes de revisión."
+                : "Sin sugerencias registradas."}
             </p>
           ) : (
             filtered.map((s) => {
@@ -164,7 +186,10 @@ export function AdminLearningTab({
               const impact = estimatedImpact(s)
 
               return (
-                <div key={s.id} className="rounded-lg border border-[var(--border)] bg-white p-4 transition-all hover:border-[var(--border-2)] hover:shadow-sm">
+                <div
+                  key={s.id}
+                  className="rounded-lg border border-[var(--border)] bg-white p-4 transition-all hover:border-[var(--border-2)] hover:shadow-sm"
+                >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1 space-y-2">
                       {/* Header row */}
@@ -174,28 +199,42 @@ export function AdminLearningTab({
                         </Badge>
                         <StatusBadge status={s.status} />
                         <ConfidenceBadge value={s.confidence} />
-                        <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold", risk.bg, risk.color)}>
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                            risk.bg,
+                            risk.color,
+                          )}
+                        >
                           Riesgo {risk.level}
                         </span>
                       </div>
 
                       {/* Reason */}
-                      <p className="text-[13px] text-[var(--text-primary)] leading-relaxed">{s.reason}</p>
+                      <p className="text-[13px] text-[var(--text-primary)] leading-relaxed">
+                        {s.reason}
+                      </p>
 
                       {/* Type change detail */}
                       {s.suggested_document_type && (
                         <div className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-1.5">
                           <span className="text-xs text-[var(--text-muted)]">Tipo actual:</span>
-                          <Badge variant="outline" className="text-[10px]">{s.current_document_type ?? "desconocido"}</Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {s.current_document_type ?? "desconocido"}
+                          </Badge>
                           <ArrowRight className="h-3 w-3 text-[var(--text-muted)]" />
-                          <Badge variant="default" className="text-[10px]">{s.suggested_document_type}</Badge>
+                          <Badge variant="default" className="text-[10px]">
+                            {s.suggested_document_type}
+                          </Badge>
                         </div>
                       )}
 
                       {/* Pattern detail */}
                       {s.pattern_value && (
                         <div className="rounded-md bg-slate-50 px-3 py-1.5">
-                          <code className="text-xs text-[var(--text-secondary)]">Patrón: {s.pattern_value}</code>
+                          <code className="text-xs text-[var(--text-secondary)]">
+                            Patrón: {s.pattern_value}
+                          </code>
                           <span className="mx-2 text-[var(--text-muted)]">→</span>
                           <span className="text-xs font-medium">{s.target_action ?? "?"}</span>
                         </div>
@@ -204,23 +243,43 @@ export function AdminLearningTab({
                       {/* Evidence */}
                       {s.evidence && Object.keys(s.evidence).length > 0 && (
                         <details className="text-xs">
-                          <summary className="cursor-pointer text-[var(--sky)] hover:underline">Ver evidencia</summary>
-                          <pre className="mt-1 max-h-[120px] overflow-auto rounded-md bg-slate-50 p-2 text-[11px]">{JSON.stringify(s.evidence, null, 2)}</pre>
+                          <summary className="cursor-pointer text-[var(--sky)] hover:underline">
+                            Ver evidencia
+                          </summary>
+                          <pre className="mt-1 max-h-[120px] overflow-auto rounded-md bg-slate-50 p-2 text-[11px]">
+                            {JSON.stringify(s.evidence, null, 2)}
+                          </pre>
                         </details>
                       )}
 
                       {/* Meta row */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
                         <span className="inline-flex items-center gap-1">
-                          <Link to={`/documents/${s.document_id}`} className="text-[var(--sky)] hover:underline inline-flex items-center gap-0.5">
+                          <Link
+                            to={`/documents/${s.document_id}`}
+                            className="text-[var(--sky)] hover:underline inline-flex items-center gap-0.5"
+                          >
                             <ExternalLink className="h-3 w-3" />
                             Doc #{s.document_id}
                           </Link>
                         </span>
-                        {s.integration_client_id && <span>Propuesto por cliente #{s.integration_client_id}</span>}
-                        <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{formatDate(s.created_at)}</span>
-                        <span title="Impacto estimado" className="inline-flex items-center gap-1"><TrendingUp className="h-3 w-3" />{impact.label}</span>
-                        <span>· {s.suggestion_type === "classification_rule" ? "Regla futura" : "Corrección puntual"}</span>
+                        {s.integration_client_id && (
+                          <span>Propuesto por cliente #{s.integration_client_id}</span>
+                        )}
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(s.created_at)}
+                        </span>
+                        <span title="Impacto estimado" className="inline-flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3" />
+                          {impact.label}
+                        </span>
+                        <span>
+                          ·{" "}
+                          {s.suggestion_type === "classification_rule"
+                            ? "Regla futura"
+                            : "Corrección puntual"}
+                        </span>
                       </div>
                     </div>
 
@@ -257,7 +316,9 @@ export function AdminLearningTab({
                             }}
                           >
                             <Brain className="mr-1 h-3 w-3" />
-                            {s.suggestion_type === "classification_rule" ? "Aprobar regla" : "Aprobar como regla"}
+                            {s.suggestion_type === "classification_rule"
+                              ? "Aprobar regla"
+                              : "Aprobar como regla"}
                           </Button>
                           <Button
                             variant="outline"
@@ -304,7 +365,11 @@ export function AdminLearningTab({
             <History className="h-4 w-4 text-[var(--text-muted)]" />
             Historial de cambios ({historyItems.length})
           </CardTitle>
-          {showHistory ? <ArrowRight className="h-4 w-4 rotate-90 text-[var(--text-muted)]" /> : <ArrowRight className="h-4 w-4 text-[var(--text-muted)]" />}
+          {showHistory ? (
+            <ArrowRight className="h-4 w-4 rotate-90 text-[var(--text-muted)]" />
+          ) : (
+            <ArrowRight className="h-4 w-4 text-[var(--text-muted)]" />
+          )}
         </button>
         {showHistory && (
           <CardContent className="border-t p-3">
@@ -315,24 +380,41 @@ export function AdminLearningTab({
                 {historyItems.slice(0, 20).map((s) => {
                   const impact = estimatedImpact(s)
                   return (
-                    <div key={s.id} className="flex items-start gap-3 rounded-md border p-3 text-sm">
-                      <div className={cn("mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0",
-                        s.status === "applied" ? "bg-[var(--emerald)]" :
-                        s.status === "approved" ? "bg-[var(--sky)]" : "bg-[var(--rose)]"
-                      )} />
+                    <div
+                      key={s.id}
+                      className="flex items-start gap-3 rounded-md border p-3 text-sm"
+                    >
+                      <div
+                        className={cn(
+                          "mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0",
+                          s.status === "applied"
+                            ? "bg-[var(--emerald)]"
+                            : s.status === "approved"
+                              ? "bg-[var(--sky)]"
+                              : "bg-[var(--rose)]",
+                        )}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="outline" className="text-[10px]">
                             {suggestionLabels[s.suggestion_type] ?? s.suggestion_type}
                           </Badge>
-                          <Badge variant={
-                            s.status === "applied" ? "success" :
-                            s.status === "approved" ? "info" : "danger"
-                          } className="text-[10px]">
+                          <Badge
+                            variant={
+                              s.status === "applied"
+                                ? "success"
+                                : s.status === "approved"
+                                  ? "info"
+                                  : "danger"
+                            }
+                            className="text-[10px]"
+                          >
                             {statusLabels[s.status] ?? s.status}
                           </Badge>
                         </div>
-                        <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">{s.reason}</p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">
+                          {s.reason}
+                        </p>
                         <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-[var(--text-muted)]">
                           <span>Doc #{s.document_id}</span>
                           <span>{impact.label}</span>
@@ -358,35 +440,61 @@ export function AdminLearningTab({
             Patrones aprendidos
           </CardTitle>
           <CardDescription>
-            {activePatterns.length} activos · {disabledPatterns.length} desactivados · {patterns.reduce((sum, p) => sum + p.applied_count, 0)} aplicaciones totales
+            {activePatterns.length} activos · {disabledPatterns.length} desactivados ·{" "}
+            {patterns.reduce((sum, p) => sum + p.applied_count, 0)} aplicaciones totales
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {patterns.length === 0 ? (
-            <p className="text-sm text-[var(--text-muted)]">Sin patrones aprendidos todavía. Aprueba sugerencias como regla para que aparezcan aquí.</p>
+            <p className="text-sm text-[var(--text-muted)]">
+              Sin patrones aprendidos todavía. Aprueba sugerencias como regla para que aparezcan
+              aquí.
+            </p>
           ) : (
             patterns.map((p) => (
-              <div key={p.id} className={cn(
-                "rounded-lg border p-4 transition-all",
-                p.status === "active" ? "border-[var(--emerald-light)] bg-[var(--emerald-light)]/10" : "border-[var(--border)] bg-slate-50/50"
-              )}>
+              <div
+                key={p.id}
+                className={cn(
+                  "rounded-lg border p-4 transition-all",
+                  p.status === "active"
+                    ? "border-[var(--emerald-light)] bg-[var(--emerald-light)]/10"
+                    : "border-[var(--border)] bg-slate-50/50",
+                )}
+              >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] font-mono">#{p.id}</Badge>
-                      <Badge variant="neutral" className="text-[10px]">{p.pattern_type}</Badge>
-                      <Badge variant={p.status === "active" ? "success" : "neutral"} className="text-[10px]">
+                      <Badge variant="outline" className="text-[10px] font-mono">
+                        #{p.id}
+                      </Badge>
+                      <Badge variant="neutral" className="text-[10px]">
+                        {p.pattern_type}
+                      </Badge>
+                      <Badge
+                        variant={p.status === "active" ? "success" : "neutral"}
+                        className="text-[10px]"
+                      >
                         {statusLabels[p.status] ?? p.status}
                       </Badge>
                       <ConfidenceBadge value={p.confidence} />
                     </div>
-                    <code className="text-xs bg-slate-100 rounded px-2 py-0.5 block">{p.pattern_value}</code>
+                    <code className="text-xs bg-slate-100 rounded px-2 py-0.5 block">
+                      {p.pattern_value}
+                    </code>
                     <p className="text-xs text-[var(--text-secondary)]">
                       Acción: <strong>{p.target_action}</strong>
-                      {p.target_class && <> → <strong>{p.target_class}</strong></>}
+                      {p.target_class && (
+                        <>
+                          {" "}
+                          → <strong>{p.target_class}</strong>
+                        </>
+                      )}
                     </p>
                     <div className="flex flex-wrap gap-x-4 text-[11px] text-[var(--text-muted)]">
-                      <span className="inline-flex items-center gap-1"><TrendingUp className="h-3 w-3" />{p.applied_count} aplicaciones</span>
+                      <span className="inline-flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3" />
+                        {p.applied_count} aplicaciones
+                      </span>
                       {p.last_applied_at && <span>Última: {formatDate(p.last_applied_at)}</span>}
                       <span>Creado: {formatDate(p.created_at)}</span>
                     </div>
@@ -407,7 +515,11 @@ export function AdminLearningTab({
                           size="sm"
                           variant="ghost"
                           className="h-7 text-xs text-[var(--text-muted)]"
-                          onClick={() => window.alert("Funcionalidad de rollback pendiente de implementar en backend.")}
+                          onClick={() =>
+                            window.alert(
+                              "Funcionalidad de rollback pendiente de implementar en backend.",
+                            )
+                          }
                         >
                           <RotateCcw className="mr-1 h-3 w-3" /> Rollback
                         </Button>
@@ -437,8 +549,9 @@ export function AdminLearningTab({
           <div>
             <p className="text-[13px] font-semibold text-[#92400E]">Simulador de impacto</p>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              Esta funcionalidad permitirá simular el impacto de aprobar una regla antes de aplicarla, mostrando cuántos documentos se verían afectados.
-              Pendiente de implementar en backend.
+              Esta funcionalidad permitirá simular el impacto de aprobar una regla antes de
+              aplicarla, mostrando cuántos documentos se verían afectados. Pendiente de implementar
+              en backend.
             </p>
           </div>
         </CardContent>
@@ -473,20 +586,50 @@ function SuggestionDetailCard({
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div>
           <CardTitle className="text-[14px]">Detalle de sugerencia #{suggestion.id}</CardTitle>
-          <CardDescription>{suggestionLabels[suggestion.suggestion_type] ?? suggestion.suggestion_type}</CardDescription>
+          <CardDescription>
+            {suggestionLabels[suggestion.suggestion_type] ?? suggestion.suggestion_type}
+          </CardDescription>
         </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><XCircle className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <XCircle className="h-4 w-4" />
+        </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Info grid */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <InfoItem label="Documento afectado" value={<Link to={`/documents/${suggestion.document_id}`} className="text-[var(--sky)] hover:underline">#{suggestion.document_id}</Link>} />
+          <InfoItem
+            label="Documento afectado"
+            value={
+              <Link
+                to={`/documents/${suggestion.document_id}`}
+                className="text-[var(--sky)] hover:underline"
+              >
+                #{suggestion.document_id}
+              </Link>
+            }
+          />
           <InfoItem label="Tipo actual" value={suggestion.current_document_type ?? "—"} />
           <InfoItem label="Tipo sugerido" value={suggestion.suggested_document_type ?? "—"} />
           <InfoItem label="Confianza" value={<ConfidenceBadge value={suggestion.confidence} />} />
-          <InfoItem label="Riesgo" value={<span className={cn("rounded px-1.5 py-0.5 text-xs font-semibold", risk.bg, risk.color)}>{risk.level}</span>} />
+          <InfoItem
+            label="Riesgo"
+            value={
+              <span
+                className={cn("rounded px-1.5 py-0.5 text-xs font-semibold", risk.bg, risk.color)}
+              >
+                {risk.level}
+              </span>
+            }
+          />
           <InfoItem label="Impacto estimado" value={impact.label} />
-          <InfoItem label="Propuesto por" value={suggestion.integration_client_id ? `Cliente #${suggestion.integration_client_id}` : "Sistema"} />
+          <InfoItem
+            label="Propuesto por"
+            value={
+              suggestion.integration_client_id
+                ? `Cliente #${suggestion.integration_client_id}`
+                : "Sistema"
+            }
+          />
           <InfoItem label="Fecha" value={formatDate(suggestion.created_at)} />
         </div>
 
@@ -499,17 +642,27 @@ function SuggestionDetailCard({
         {/* Evidencia */}
         {suggestion.evidence && Object.keys(suggestion.evidence).length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">Evidencia</h4>
-            <pre className="rounded-md bg-slate-50 p-3 text-xs overflow-auto max-h-[200px]">{JSON.stringify(suggestion.evidence, null, 2)}</pre>
+            <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">
+              Evidencia
+            </h4>
+            <pre className="rounded-md bg-slate-50 p-3 text-xs overflow-auto max-h-[200px]">
+              {JSON.stringify(suggestion.evidence, null, 2)}
+            </pre>
           </div>
         )}
 
         {/* Pattern */}
         {suggestion.pattern_value && (
           <div>
-            <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">Patrón detectado</h4>
-            <code className="rounded bg-slate-100 px-2 py-1 text-xs">{suggestion.pattern_value}</code>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">Acción propuesta: {suggestion.target_action ?? "—"}</p>
+            <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">
+              Patrón detectado
+            </h4>
+            <code className="rounded bg-slate-100 px-2 py-1 text-xs">
+              {suggestion.pattern_value}
+            </code>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Acción propuesta: {suggestion.target_action ?? "—"}
+            </p>
           </div>
         )}
 
@@ -518,27 +671,61 @@ function SuggestionDetailCard({
           <div className="flex items-start gap-2 rounded-md border border-[var(--sky-light)] bg-[var(--sky-light)]/10 p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 text-[var(--sky)]" />
             <div>
-              <p className="text-xs font-medium text-[#075985]">Documentos potencialmente afectados</p>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">El sistema buscará documentos con patrones similares al aplicar esta regla. Funcionalidad de simulación pendiente.</p>
+              <p className="text-xs font-medium text-[#075985]">
+                Documentos potencialmente afectados
+              </p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                El sistema buscará documentos con patrones similares al aplicar esta regla.
+                Funcionalidad de simulación pendiente.
+              </p>
             </div>
           </div>
         )}
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2 border-t pt-3">
-          <Button size="sm" className="h-8 text-xs gap-1" disabled={isApproving} onClick={onApprove}>
+          <Button
+            size="sm"
+            className="h-8 text-xs gap-1"
+            disabled={isApproving}
+            onClick={onApprove}
+          >
             <CheckCircle2 className="h-3.5 w-3.5" /> Aprobar solo este documento
           </Button>
-          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={isApproving} onClick={onApprove}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1"
+            disabled={isApproving}
+            onClick={onApprove}
+          >
             <Brain className="h-3.5 w-3.5" /> Aprobar como regla futura
           </Button>
-          <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={isRejecting} onClick={onReject}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1"
+            disabled={isRejecting}
+            onClick={onReject}
+          >
             <XCircle className="h-3.5 w-3.5" /> Rechazar
           </Button>
-          <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 text-[var(--amber)]" onClick={() => window.alert("Editor de reglas pendiente de implementar.")}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs gap-1 text-[var(--amber)]"
+            onClick={() => window.alert("Editor de reglas pendiente de implementar.")}
+          >
             <Edit3 className="h-3.5 w-3.5" /> Editar regla
           </Button>
-          <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 text-[var(--sky)]" onClick={() => window.alert("Simulador de impacto pendiente de implementar en backend.")}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs gap-1 text-[var(--sky)]"
+            onClick={() =>
+              window.alert("Simulador de impacto pendiente de implementar en backend.")
+            }
+          >
             <FlaskConical className="h-3.5 w-3.5" /> Simular impacto
           </Button>
         </div>
@@ -559,7 +746,15 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-function CountBadge({ label, value, variant }: { label: string; value: number; variant: "warning" | "success" | "danger" | "info" | "neutral" }) {
+function CountBadge({
+  label,
+  value,
+  variant,
+}: {
+  label: string
+  value: number
+  variant: "warning" | "success" | "danger" | "info" | "neutral"
+}) {
   const colors = {
     warning: "border-[var(--amber-light)] bg-[var(--amber-light)]/30 text-[#92400E]",
     success: "border-[var(--emerald-light)] bg-[var(--emerald-light)]/30 text-[#065F46]",

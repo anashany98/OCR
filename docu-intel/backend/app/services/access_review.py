@@ -4,9 +4,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AccessGroup, AccessGroupMember, User
-from app.services.access_policy import policy_allows_prices, policy_allows_budget_search, resolve_access_policy
+from app.services.access_policy import (
+    policy_allows_prices,
+    policy_allows_budget_search,
+    resolve_access_policy,
+)
 from app.services.integration_tools import REDACTED_BUDGET_FIELDS
-from app.services.tenant_access import AccessScope, resolve_technician_access_scope, resolve_user_access_scope, scope_payload
+from app.services.tenant_access import (
+    AccessScope,
+    resolve_technician_access_scope,
+    resolve_user_access_scope,
+    scope_payload,
+)
 
 
 def effective_access_payload(db: Session, *, principal_type: str, principal_id: str) -> dict:
@@ -27,7 +36,9 @@ def effective_access_payload(db: Session, *, principal_type: str, principal_id: 
     else:
         raise ValueError("Invalid principal_type")
 
-    allowed_document_types = _allowed_document_types(db, principal_type=principal_type, principal_id=principal_id, scope=scope)
+    allowed_document_types = _allowed_document_types(
+        db, principal_type=principal_type, principal_id=principal_id, scope=scope
+    )
     payload = scope_payload(scope)
     payload.update(
         {
@@ -44,7 +55,9 @@ def effective_access_payload(db: Session, *, principal_type: str, principal_id: 
     return payload
 
 
-def _allowed_document_types(db: Session, *, principal_type: str, principal_id: str, scope: AccessScope) -> list[str]:
+def _allowed_document_types(
+    db: Session, *, principal_type: str, principal_id: str, scope: AccessScope
+) -> list[str]:
     if scope.allowed_document_types:
         return sorted(scope.allowed_document_types)
     groups = db.scalars(

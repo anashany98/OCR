@@ -21,15 +21,15 @@ per page on an RTX 4070.
 
 Install: ``pip install 'paddlex[ocr]==3.5.2'`` (only on the GPU image).
 """
+
 from __future__ import annotations
 
 import os
-import threading
 import time
 from functools import cached_property
 from pathlib import Path
 
-from app.ocr.base import BaseOCREngine, OCRBlock, OCRResult
+from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 

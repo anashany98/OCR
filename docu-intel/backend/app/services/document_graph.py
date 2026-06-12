@@ -22,11 +22,20 @@ def build_document_graph(db: Session, document_id: int, *, limit: int = 50) -> d
             related = db.get(Document, order.document_id)
             if related:
                 documents[related.id] = related
-                edges.append({"from_document_id": document_id, "to_document_id": related.id, "relation": "budget_order", "label": budget.budget_number})
+                edges.append(
+                    {
+                        "from_document_id": document_id,
+                        "to_document_id": related.id,
+                        "relation": "budget_order",
+                        "label": budget.budget_number,
+                    }
+                )
 
     references = {
         entity.normalized_value or entity.entity_value
-        for entity in db.scalars(select(DocumentEntity).where(DocumentEntity.document_id == document_id)).all()
+        for entity in db.scalars(
+            select(DocumentEntity).where(DocumentEntity.document_id == document_id)
+        ).all()
         if entity.normalized_value or entity.entity_value
     }
     if references:
@@ -69,7 +78,12 @@ def _deduplicate_edges(edges: list[dict]) -> list[dict]:
     seen = set()
     unique = []
     for edge in edges:
-        key = (edge["from_document_id"], edge["to_document_id"], edge["relation"], edge.get("label"))
+        key = (
+            edge["from_document_id"],
+            edge["to_document_id"],
+            edge["relation"],
+            edge.get("label"),
+        )
         if key in seen:
             continue
         seen.add(key)

@@ -92,14 +92,22 @@ def _active_job_count(db: Session) -> int:
 
 
 def _count_jobs(db: Session, status: str, *, queue_prefix: str | None = None) -> int:
-    stmt = select(ExtractionJob, Document).join(Document, Document.id == ExtractionJob.document_id).where(ExtractionJob.status == status)
+    stmt = (
+        select(ExtractionJob, Document)
+        .join(Document, Document.id == ExtractionJob.document_id)
+        .where(ExtractionJob.status == status)
+    )
     rows = db.execute(stmt).all()
     if queue_prefix is None:
         return len(rows)
-    return sum(1 for job, document in rows if queue_for_document(document, job.job_type) == queue_prefix)
+    return sum(
+        1 for job, document in rows if queue_for_document(document, job.job_type) == queue_prefix
+    )
 
 
-def _should_restore_document_after_cancel(db: Session, document: Document, job: ExtractionJob) -> bool:
+def _should_restore_document_after_cancel(
+    db: Session, document: Document, job: ExtractionJob
+) -> bool:
     active_jobs = int(
         db.scalar(
             select(func.count())

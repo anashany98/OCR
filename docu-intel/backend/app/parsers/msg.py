@@ -20,6 +20,7 @@ detail-page viewer falls back to the on-demand thumbnail generator
 (``app.services.thumbnail.generate_msg_thumbnail``) which paints a
 compact email-style preview.
 """
+
 from __future__ import annotations
 
 import re
@@ -71,6 +72,7 @@ def _looks_like_mapi_blob(text: str) -> bool:
 # to plain text.
 # ---------------------------------------------------------------------------
 
+
 class _HTMLToMarkdown(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -117,7 +119,7 @@ class _HTMLToMarkdown(HTMLParser):
             self.table_rows = []
             return
         if header is None:
-            header = [f"col{i+1}" for i in range(ncols)]
+            header = [f"col{i + 1}" for i in range(ncols)]
         else:
             header = list(header) + [""] * (ncols - len(header))
         # Pad body rows.
@@ -256,6 +258,7 @@ def parse_msg(path: Path) -> ExtractedDocument:
             if html_body:
                 try:
                     from bs4 import BeautifulSoup
+
                     body_clean = _clean_body(BeautifulSoup(html_body, "html.parser").get_text("\n"))
                 except Exception:
                     body_clean = _html_to_markdown(html_body) or body_clean
@@ -269,17 +272,28 @@ def parse_msg(path: Path) -> ExtractedDocument:
         # Pull HTML tables (if any) so the LLM can see them as proper tables
         # instead of flattened text.
         html_tables_md = _extract_html_tables_markdown(html_body) if html_body else ""
-        if html_tables_md and html_tables_md.strip() and html_tables_md.strip() != body_clean.strip():
+        if (
+            html_tables_md
+            and html_tables_md.strip()
+            and html_tables_md.strip() != body_clean.strip()
+        ):
             body_clean = f"{body_clean}\n\n--- Tablas del email ---\n\n{html_tables_md}"
 
         # Truncate to keep the OCR panel usable.
         if len(body_clean) > _MAX_BODY_CHARS:
-            body_clean = body_clean[:_MAX_BODY_CHARS] + "\n\n[… cuerpo truncado, ver .msg original para el texto completo]"
+            body_clean = (
+                body_clean[:_MAX_BODY_CHARS]
+                + "\n\n[… cuerpo truncado, ver .msg original para el texto completo]"
+            )
 
         attachment_names: list[str] = []
         try:
-            for att in (msg.attachments or []):
-                name = getattr(att, "longFilename", None) or getattr(att, "shortFilename", None) or "(adjunto sin nombre)"
+            for att in msg.attachments or []:
+                name = (
+                    getattr(att, "longFilename", None)
+                    or getattr(att, "shortFilename", None)
+                    or "(adjunto sin nombre)"
+                )
                 attachment_names.append(name)
         except Exception:
             pass

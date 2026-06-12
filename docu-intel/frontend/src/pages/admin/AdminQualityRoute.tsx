@@ -1,11 +1,11 @@
-import { useOutletContext } from "react-router-dom"
-
 import { AdminQualityTab } from "./AdminQualityTab"
-import type { AdminData } from "./useAdminData"
+import { useAdminQualityData } from "./useAdminQualityData"
 
+/**
+ * F4b - Quality admin sub-route. Lazy-loaded via the router.
+ */
 export function AdminQualityRoute() {
-  const data = useOutletContext<AdminData>()
-  const { state, queries, mutations, tenantAdminEnabled } = data
+  const { state, queries, mutations, tenantAdminEnabled } = useAdminQualityData()
 
   return (
     <AdminQualityTab

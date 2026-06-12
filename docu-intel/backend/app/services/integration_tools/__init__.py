@@ -59,11 +59,12 @@ def execute_integration_tool(
     tool: str,
     arguments: dict,
 ):
-    from app.schemas.integration import IntegrationToolExecuteResponse
     from uuid import uuid4
 
     if tool not in TOOL_ARGUMENTS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown integration tool")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown integration tool"
+        )
     parsed = _parse_arguments(tool, arguments)
     request_id = str(uuid4())
 

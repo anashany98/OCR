@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import {
-  colorForSymbolClass,
-  filterSymbolsByPage,
-  humaniseSymbolClass,
-} from "./usePlanSymbols"
+import { colorForSymbolClass, filterSymbolsByPage, humaniseSymbolClass } from "./usePlanSymbols"
 import type { PlanSymbol } from "@/api/plans"
 
 // ---------------------------------------------------------------------------
@@ -38,10 +34,7 @@ describe("filterSymbolsByPage", () => {
   })
 
   it("keeps symbols with null page_number (single-page plans)", () => {
-    const syms = [
-      makeSymbol({ id: 1, page_number: null }),
-      makeSymbol({ id: 2, page_number: 1 }),
-    ]
+    const syms = [makeSymbol({ id: 1, page_number: null }), makeSymbol({ id: 2, page_number: 1 })]
     // Page 1: the null-paged symbol stays (it's the only one without
     // a page) AND the page-1 symbol.
     const out = filterSymbolsByPage(syms, 1).map((s) => s.id)
@@ -50,10 +43,7 @@ describe("filterSymbolsByPage", () => {
   })
 
   it("returns everything when page < 1 (disabled filter)", () => {
-    const syms = [
-      makeSymbol({ id: 1, page_number: 1 }),
-      makeSymbol({ id: 2, page_number: 2 }),
-    ]
+    const syms = [makeSymbol({ id: 1, page_number: 1 }), makeSymbol({ id: 2, page_number: 2 })]
     expect(filterSymbolsByPage(syms, 0).map((s) => s.id)).toEqual([1, 2])
     expect(filterSymbolsByPage(syms, -1).map((s) => s.id)).toEqual([1, 2])
   })

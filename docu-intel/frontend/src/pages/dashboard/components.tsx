@@ -53,8 +53,8 @@ export function DashboardHero({
   stats: AdminStats | undefined
   isLoading: boolean
 }) {
-  const processedCount = useCountUp(isLoading ? 0 : stats?.documents_processed ?? 0, 900)
-  const totalCount = useCountUp(isLoading ? 0 : stats?.documents_total ?? 0, 1100)
+  const processedCount = useCountUp(isLoading ? 0 : (stats?.documents_processed ?? 0), 900)
+  const totalCount = useCountUp(isLoading ? 0 : (stats?.documents_total ?? 0), 1100)
   const today = new Date().toLocaleDateString("es-ES", {
     weekday: "long",
     day: "numeric",
@@ -79,8 +79,8 @@ export function DashboardHero({
             )}
           </h1>
           <p className="max-w-xl text-[14px] leading-relaxed text-[var(--text-secondary)]">
-            Vista general del procesamiento automático, la calidad de extracción y las tareas
-            que necesitan tu atención.
+            Vista general del procesamiento automático, la calidad de extracción y las tareas que
+            necesitan tu atención.
           </p>
         </div>
         <div className="flex items-end gap-6">
@@ -209,7 +209,7 @@ export function MetricStrip({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <MetricTile
           title="Procesados"
-          value={isLoading ? "—" : stats?.documents_processed ?? 0}
+          value={isLoading ? "—" : (stats?.documents_processed ?? 0)}
           meta={`${stats?.documents_total ?? 0} totales`}
           tone="success"
           icon={<CheckCircle2 className="h-4 w-4" />}
@@ -223,14 +223,14 @@ export function MetricStrip({
         />
         <MetricTile
           title="Fallidos"
-          value={isLoading ? "—" : stats?.documents_failed ?? 0}
+          value={isLoading ? "—" : (stats?.documents_failed ?? 0)}
           meta="Requieren atención"
           tone={(stats?.documents_failed ?? 0) > 0 ? "danger" : "success"}
           icon={<AlertTriangle className="h-4 w-4" />}
         />
         <MetricTile
           title="En revisión"
-          value={isLoading ? "—" : stats?.documents_needs_review ?? 0}
+          value={isLoading ? "—" : (stats?.documents_needs_review ?? 0)}
           meta="Sin cola"
           tone={(stats?.documents_needs_review ?? 0) > 0 ? "warning" : "neutral"}
           icon={<FileWarning className="h-4 w-4" />}
@@ -257,7 +257,14 @@ export function MetricStrip({
 // ---------------------------------------------------------------------------
 // PriorityWorkCard
 // ---------------------------------------------------------------------------
-type InboxItem = { kind: string; severity: string; title: string; description: string; action_url: string | null; document_id: number | null }
+type InboxItem = {
+  kind: string
+  severity: string
+  title: string
+  description: string
+  action_url: string | null
+  document_id: number | null
+}
 export function PriorityWorkCard({ inboxItems }: { inboxItems: InboxItem[] }) {
   return (
     <Card>
@@ -270,7 +277,12 @@ export function PriorityWorkCard({ inboxItems }: { inboxItems: InboxItem[] }) {
               : "Bandeja vacía"}
           </p>
         </div>
-        <Button asChild variant="ghost" size="sm" className="text-[12px] text-[var(--accent)] hover:text-[var(--accent-hover)]">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="text-[12px] text-[var(--accent)] hover:text-[var(--accent-hover)]"
+        >
           <Link to="/work-inbox">
             Ver todas <ArrowRight className="ml-1 h-3 w-3" />
           </Link>
@@ -310,8 +322,12 @@ export function PriorityWorkCard({ inboxItems }: { inboxItems: InboxItem[] }) {
                     )}
                   />
                   <div className="min-w-0 flex-1 space-y-0.5">
-                    <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{item.title}</p>
-                    <p className="truncate text-[12px] text-[var(--text-muted)]">{item.description}</p>
+                    <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+                      {item.title}
+                    </p>
+                    <p className="truncate text-[12px] text-[var(--text-muted)]">
+                      {item.description}
+                    </p>
                   </div>
                   <ArrowRight className="mt-2 h-3.5 w-3.5 flex-shrink-0 text-[var(--text-muted)] opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5" />
                 </Link>
@@ -330,11 +346,13 @@ export function PriorityWorkCard({ inboxItems }: { inboxItems: InboxItem[] }) {
 export function DistributionCard({
   metrics,
 }: {
-  metrics: {
-    documents_by_status?: Record<string, number>
-    documents_by_type?: Record<string, number>
-    jobs_by_status?: Record<string, number>
-  } | undefined
+  metrics:
+    | {
+        documents_by_status?: Record<string, number>
+        documents_by_type?: Record<string, number>
+        jobs_by_status?: Record<string, number>
+      }
+    | undefined
 }) {
   return (
     <Card>
@@ -355,13 +373,7 @@ export function DistributionCard({
   )
 }
 
-function DistributionColumn({
-  title,
-  values,
-}: {
-  title: string
-  values?: Record<string, number>
-}) {
+function DistributionColumn({ title, values }: { title: string; values?: Record<string, number> }) {
   const entries = Object.entries(values ?? {}).slice(0, 7)
   const total = entries.reduce((sum, [, n]) => sum + n, 0)
   return (
@@ -391,9 +403,7 @@ function DistributionColumn({
             </div>
           )
         })}
-        {entries.length === 0 && (
-          <p className="text-[12px] text-[var(--text-muted)]">Sin datos</p>
-        )}
+        {entries.length === 0 && <p className="text-[12px] text-[var(--text-muted)]">Sin datos</p>}
       </div>
     </div>
   )
@@ -408,7 +418,12 @@ export function InfrastructureCard({
 }: {
   sh: { checks?: Record<string, { status?: string }> } | undefined
   ov:
-    | { disk?: { input_dir?: { total: number; used: number; free: number }; files_dir?: { total: number; used: number; free: number } } }
+    | {
+        disk?: {
+          input_dir?: { total: number; used: number; free: number }
+          files_dir?: { total: number; used: number; free: number }
+        }
+      }
     | undefined
 }) {
   return (
@@ -480,7 +495,13 @@ function InfraRow({
           }
           className="text-[10px]"
         >
-          {status === "ok" ? "OK" : status === "warning" ? "WARN" : status === "error" ? "FAIL" : "—"}
+          {status === "ok"
+            ? "OK"
+            : status === "warning"
+              ? "WARN"
+              : status === "error"
+                ? "FAIL"
+                : "—"}
         </Badge>
       </div>
     </div>
@@ -490,7 +511,13 @@ function InfraRow({
 // ---------------------------------------------------------------------------
 // AlertsCard
 // ---------------------------------------------------------------------------
-type AlertItem = { key: string; title: string; description: string; severity: string; count: number }
+type AlertItem = {
+  key: string
+  title: string
+  description: string
+  severity: string
+  count: number
+}
 export function AlertsCard({ alertItems }: { alertItems: AlertItem[] }) {
   return (
     <Card>
@@ -500,13 +527,17 @@ export function AlertsCard({ alertItems }: { alertItems: AlertItem[] }) {
       </CardHeader>
       <CardContent className="px-0 py-0">
         {alertItems.length === 0 ? (
-          <p className="py-6 text-center text-[12px] text-[var(--text-muted)]">Sin alertas activas</p>
+          <p className="py-6 text-center text-[12px] text-[var(--text-muted)]">
+            Sin alertas activas
+          </p>
         ) : (
           <ul className="divide-y divide-[var(--border)]">
             {alertItems.slice(0, 4).map((alert) => (
               <li key={alert.key} className="flex items-start justify-between gap-3 px-6 py-3">
                 <div className="min-w-0 space-y-0.5">
-                  <p className="text-[13px] font-medium text-[var(--text-primary)]">{alert.title}</p>
+                  <p className="text-[13px] font-medium text-[var(--text-primary)]">
+                    {alert.title}
+                  </p>
                   <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
                     {alert.description}
                   </p>
@@ -537,10 +568,7 @@ export function AlertsCard({ alertItems }: { alertItems: AlertItem[] }) {
 // ---------------------------------------------------------------------------
 export function ShortcutsCard() {
   return (
-    <ActionPanel
-      title="Atajos"
-      description="Tres accesos rápidos para las tareas más habituales."
-    >
+    <ActionPanel title="Atajos" description="Tres accesos rápidos para las tareas más habituales.">
       <ShortcutLink to="/documents" icon={ScanLine} label="Escanear documentos" />
       <ShortcutLink to="/search" icon={Search} label="Buscar documentos" />
       <ShortcutLink to="/admin" icon={Activity} label="Panel de operación" />
@@ -548,15 +576,7 @@ export function ShortcutsCard() {
   )
 }
 
-function ShortcutLink({
-  to,
-  icon: Icon,
-  label,
-}: {
-  to: string
-  icon: LucideIcon
-  label: string
-}) {
+function ShortcutLink({ to, icon: Icon, label }: { to: string; icon: LucideIcon; label: string }) {
   return (
     <Button asChild variant="ghost" size="sm" className="w-full justify-between text-[13px]">
       <Link to={to}>

@@ -20,6 +20,7 @@ OCR is the largest single source of metrics in the platform
 labels easier to keep in sync and gives reviewers a single file
 to audit when changing the cascade.
 """
+
 from __future__ import annotations
 
 from ._registry import (

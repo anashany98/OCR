@@ -16,6 +16,7 @@ do not have access to:
   per supplier (locale, regexes, column aliases) with a YAML-based
   resolver.
 """
+
 from app.services.extraction.table_extraction import (
     extract_lines_from_pages,
     extract_lines_from_text,

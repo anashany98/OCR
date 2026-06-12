@@ -11,6 +11,7 @@ en X"). Rules are easier to test, easier to extend, and they fail
 loudly when a new question type is not covered (vs. a model that
 silently picks the wrong tool).
 """
+
 from __future__ import annotations
 
 import re
@@ -48,141 +49,321 @@ from app.tools.internal import _money_filters  # noqa: F401
 _BUDGET_HINTS: frozenset[str] = frozenset(
     {
         # Spanish
-        "presupuesto", "presupuestos", "cotizacion", "cotizaciones",
-        "oferta", "ofertas", "estimacion", "estimaciones",
+        "presupuesto",
+        "presupuestos",
+        "cotizacion",
+        "cotizaciones",
+        "oferta",
+        "ofertas",
+        "estimacion",
+        "estimaciones",
         # English
-        "budget", "budgets", "quote", "quotes", "quotation",
-        "quotations", "estimate", "estimates", "bid", "bids",
+        "budget",
+        "budgets",
+        "quote",
+        "quotes",
+        "quotation",
+        "quotations",
+        "estimate",
+        "estimates",
+        "bid",
+        "bids",
         # French
-        "devis", "budget",
+        "devis",
+        "budget",
         # German
-        "angebot", "kostenvoranschlag", "budget",
+        "angebot",
+        "kostenvoranschlag",
+        "budget",
         # Italian
-        "preventivo", "preventivi", "offerta", "offerte", "budget",
+        "preventivo",
+        "preventivi",
+        "offerta",
+        "offerte",
+        "budget",
         # Portuguese
-        "orcamento", "orcamentos", "cotacao", "cotacoes", "proposta",
+        "orcamento",
+        "orcamentos",
+        "cotacao",
+        "cotacoes",
+        "proposta",
     }
 )
 
 _ORDER_HINTS: frozenset[str] = frozenset(
     {
         # Spanish
-        "pedido", "pedidos", "orden de compra", "ordenes de compra",
+        "pedido",
+        "pedidos",
+        "orden de compra",
+        "ordenes de compra",
         # English (the bare ``po`` is intentionally absent because
         # the two-letter token is too short and would match inside
         # unrelated words like ``pour`` / ``polo``.)
-        "order", "orders", "purchase order", "purchase orders",
+        "order",
+        "orders",
+        "purchase order",
+        "purchase orders",
         # French
-        "commande", "commandes", "bon de commande",
+        "commande",
+        "commandes",
+        "bon de commande",
         # German
-        "bestellung", "bestellungen", "auftrag", "auftraege",
+        "bestellung",
+        "bestellungen",
+        "auftrag",
+        "auftraege",
         # Italian
-        "ordine", "ordini", "ordine di acquisto",
+        "ordine",
+        "ordini",
+        "ordine di acquisto",
         # Portuguese
-        "pedido", "pedidos", "ordem de compra", "encomenda", "encomendas",
+        "pedido",
+        "pedidos",
+        "ordem de compra",
+        "encomenda",
+        "encomendas",
     }
 )
 
 _INVOICE_HINTS: frozenset[str] = frozenset(
     {
         # Spanish (lemma + plural + past participle for "facturado")
-        "factura", "facturas", "facturad", "recibo", "recibos",
+        "factura",
+        "facturas",
+        "facturad",
+        "recibo",
+        "recibos",
         # English
-        "invoice", "invoices", "invoiced", "bill", "bills", "receipt", "receipts",
+        "invoice",
+        "invoices",
+        "invoiced",
+        "bill",
+        "bills",
+        "receipt",
+        "receipts",
         # French
-        "facture", "factures", "facturee", "recu", "reception",
+        "facture",
+        "factures",
+        "facturee",
+        "recu",
+        "reception",
         # German
-        "rechnung", "rechnungen", "quittung", "quittungen",
+        "rechnung",
+        "rechnungen",
+        "quittung",
+        "quittungen",
         # Italian
-        "fattura", "fatture", "ricevuta", "ricevute", "fatturat",
+        "fattura",
+        "fatture",
+        "ricevuta",
+        "ricevute",
+        "fatturat",
         # Portuguese
-        "fatura", "faturas", "recibo", "recibos", "conta", "contas",
+        "fatura",
+        "faturas",
+        "recibo",
+        "recibos",
+        "conta",
+        "contas",
     }
 )
 
 _PLAN_HINTS: frozenset[str] = frozenset(
     {
         # Spanish
-        "plano", "planos", "planta", "plantas", "croquis",
+        "plano",
+        "planos",
+        "planta",
+        "plantas",
+        "croquis",
         # English
-        "plan", "plans", "floor plan", "floor plans", "blueprint",
-        "blueprints", "drawing", "drawings", "layout", "layouts",
+        "plan",
+        "plans",
+        "floor plan",
+        "floor plans",
+        "blueprint",
+        "blueprints",
+        "drawing",
+        "drawings",
+        "layout",
+        "layouts",
         # French
-        "plan", "plans",
+        "plan",
+        "plans",
         # German
-        "plan", "plaene", "grundriss", "grundrisse", "zeichnung",
+        "plan",
+        "plaene",
+        "grundriss",
+        "grundrisse",
+        "zeichnung",
         # Italian
-        "pianta", "piante", "disegno", "disegni",
+        "pianta",
+        "piante",
+        "disegno",
+        "disegni",
         # Portuguese
-        "planta", "plantas", "desenho", "desenhos",
+        "planta",
+        "plantas",
+        "desenho",
+        "desenhos",
     }
 )
 
 _AGGREGATION_HINTS: frozenset[str] = frozenset(
     {
         # Spanish (lemma + plural + common variants)
-        "cuanto", "cuanta", "cuantos", "cuantas",
-        "total", "suma", "importe", "gastado", "gastados",
-        "cobrado", "cobrados", "promedio", "media",
+        "cuanto",
+        "cuanta",
+        "cuantos",
+        "cuantas",
+        "total",
+        "suma",
+        "importe",
+        "gastado",
+        "gastados",
+        "cobrado",
+        "cobrados",
+        "promedio",
+        "media",
         # English
-        "how much", "how many", "total", "sum", "amount", "spent",
-        "invoiced", "collected", "average", "avg", "mean", "tally",
+        "how much",
+        "how many",
+        "total",
+        "sum",
+        "amount",
+        "spent",
+        "invoiced",
+        "collected",
+        "average",
+        "avg",
+        "mean",
+        "tally",
         # French
-        "combien", "montant", "somme", "moyenne",
+        "combien",
+        "montant",
+        "somme",
+        "moyenne",
         # German
-        "wieviel", "gesamt", "summe", "betrag", "durchschnitt",
+        "wieviel",
+        "gesamt",
+        "summe",
+        "betrag",
+        "durchschnitt",
         # Italian
-        "quanto", "quanti", "quante", "totale", "somma", "importo", "media",
+        "quanto",
+        "quanti",
+        "quante",
+        "totale",
+        "somma",
+        "importo",
+        "media",
         # Portuguese
-        "quanto", "quantos", "quantas", "soma", "faturado", "media",
+        "quanto",
+        "quantos",
+        "quantas",
+        "soma",
+        "faturado",
+        "media",
         # Ranking hints (cross-language)
-        "top", "mayor", "menor", "mas alto", "mas grande",
-        "highest", "largest", "biggest", "lowest", "smallest",
-        "le plus", "le moins", "hoechste", "niedrigste",
-        "piu alto", "piu basso", "mais alto", "mais baixo",
+        "top",
+        "mayor",
+        "menor",
+        "mas alto",
+        "mas grande",
+        "highest",
+        "largest",
+        "biggest",
+        "lowest",
+        "smallest",
+        "le plus",
+        "le moins",
+        "hoechste",
+        "niedrigste",
+        "piu alto",
+        "piu basso",
+        "mais alto",
+        "mais baixo",
     }
 )
 
 _ACCEPTED_WITHOUT_ORDER_HINTS: frozenset[str] = frozenset(
     {
         # Spanish
-        "aceptados sin pedido", "aceptadas sin pedido",
-        "sin pedido", "no tienen pedido", "sin orden",
+        "aceptados sin pedido",
+        "aceptadas sin pedido",
+        "sin pedido",
+        "no tienen pedido",
+        "sin orden",
         # English
-        "accepted without order", "approved without po",
-        "approved without purchase order", "accepted without purchase order",
-        "without purchase order", "missing purchase order",
-        "missing po", "no order", "no purchase order",
+        "accepted without order",
+        "approved without po",
+        "approved without purchase order",
+        "accepted without purchase order",
+        "without purchase order",
+        "missing purchase order",
+        "missing po",
+        "no order",
+        "no purchase order",
         # French
-        "acceptes sans commande", "sans commande",
+        "acceptes sans commande",
+        "sans commande",
         # German
-        "akzeptiert ohne bestellung", "ohne bestellung",
+        "akzeptiert ohne bestellung",
+        "ohne bestellung",
         # Italian
-        "accettati senza ordine", "senza ordine",
+        "accettati senza ordine",
+        "senza ordine",
         # Portuguese
-        "aceites sem pedido", "sem pedido",
+        "aceites sem pedido",
+        "sem pedido",
     }
 )
 
 _DUPLICATE_HINTS: frozenset[str] = frozenset(
     {
-        "duplicado", "duplicados", "duplicada", "duplicadas",
-        "duplicate", "duplicates", "duplicated",
-        "doublon", "doublons", "doppel", "doppelt",
-        "duplicato", "duplicati", "duplicata",
+        "duplicado",
+        "duplicados",
+        "duplicada",
+        "duplicadas",
+        "duplicate",
+        "duplicates",
+        "duplicated",
+        "doublon",
+        "doublons",
+        "doppel",
+        "doppelt",
+        "duplicato",
+        "duplicati",
+        "duplicata",
     }
 )
 
 _LOW_OCR_HINTS: frozenset[str] = frozenset(
     {
-        "baja confianza", "baja calidad", "error ocr", "errores ocr",
-        "ocr bajo", "confianza ocr", "revisar ocr", "ocr dudoso",
-        "low confidence", "low quality", "ocr error", "ocr errors",
-        "bad ocr", "poor ocr", "review ocr",
-        "faible confiance", "erreur ocr",
-        "niedrige qualitaet", "ocr fehler",
-        "bassa qualita", "errore ocr",
-        "baixa qualidade", "erro ocr",
+        "baja confianza",
+        "baja calidad",
+        "error ocr",
+        "errores ocr",
+        "ocr bajo",
+        "confianza ocr",
+        "revisar ocr",
+        "ocr dudoso",
+        "low confidence",
+        "low quality",
+        "ocr error",
+        "ocr errors",
+        "bad ocr",
+        "poor ocr",
+        "review ocr",
+        "faible confiance",
+        "erreur ocr",
+        "niedrige qualitaet",
+        "ocr fehler",
+        "bassa qualita",
+        "errore ocr",
+        "baixa qualidade",
+        "erro ocr",
     }
 )
 
@@ -263,7 +444,6 @@ _ROOM_HINTS: dict[str, str] = {
     "cozinha": "cozinha",
     "banheiro": "banheiro",
     # French
-    "salon": "salon",
     "sejour": "salon",
     "chambre": "chambre",
     "chambres": "chambre",
@@ -380,8 +560,12 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     if mentioned_filenames:
         tools = [
             ToolCall("find_document_by_filename", {"query": mentioned_filenames[0]}),
-            ToolCall("get_document_full_details", {"document_id": 0}),  # placeholder; replaced after lookup
-            ToolCall("get_related_documents", {"document_id": 0}),  # placeholder; replaced after lookup
+            ToolCall(
+                "get_document_full_details", {"document_id": 0}
+            ),  # placeholder; replaced after lookup
+            ToolCall(
+                "get_related_documents", {"document_id": 0}
+            ),  # placeholder; replaced after lookup
         ]
         # Always run a hybrid search too in case the user asks for content
         # not covered by the entities (e.g. a specific page or paragraph).
@@ -439,31 +623,52 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
         return [ToolCall("get_ocr_review_documents", {})]
     if _contains_word(normalized, "entidad") and _contains_word(normalized, "referencia"):
         value = _extract_reference(question)
-        return [ToolCall("search_entities", {"entity_type": "reference", "value": value or question})]
-    if (
-        _contains_any(
-            normalized,
-            (
-                "mide", "medida", "medidas", "superficie", "tamano",
-                "how big", "how large", "size", "area", "square",
-                "taille", "dimension", "groesse", "flaeche",
-                "dimensione", "superficie", "tamanho", "surface",
-            ),
-        )
-        and (room_name := _extract_room_name(normalized))
-    ):
+        return [
+            ToolCall("search_entities", {"entity_type": "reference", "value": value or question})
+        ]
+    if _contains_any(
+        normalized,
+        (
+            "mide",
+            "medida",
+            "medidas",
+            "superficie",
+            "tamano",
+            "how big",
+            "how large",
+            "size",
+            "area",
+            "square",
+            "taille",
+            "dimension",
+            "groesse",
+            "flaeche",
+            "dimensione",
+            "superficie",
+            "tamanho",
+            "surface",
+        ),
+    ) and (room_name := _extract_room_name(normalized)):
         return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
-    if (
-        _contains_any(normalized, _PLAN_HINTS)
-        or _contains_any(
-            normalized,
-            (
-                "medida", "medidas", "mide", "escala", "scale",
-                "mabstab", "scala", "echelle",
-            ),
-        )
+    if _contains_any(normalized, _PLAN_HINTS) or _contains_any(
+        normalized,
+        (
+            "medida",
+            "medidas",
+            "mide",
+            "escala",
+            "scale",
+            "mabstab",
+            "scala",
+            "echelle",
+        ),
     ):
-        return [ToolCall("hybrid_search", {"query": question, "filters": {"document_type": "plano", "limit": 8}})]
+        return [
+            ToolCall(
+                "hybrid_search",
+                {"query": question, "filters": {"document_type": "plano", "limit": 8}},
+            )
+        ]
 
     # General question: try hybrid_search with re-ranking filters when the
     # user hints at supplier / client / amount.
@@ -511,21 +716,55 @@ def _classify_aggregation(normalized: str) -> tuple[str, str]:
     if _contains_any(
         normalized,
         (
-            "cuanto", "cuanta", "total", "suma", "importe", "gastado",
-            "facturado", "cobrado", "how much", "amount", "spent",
-            "invoiced", "collected", "combien", "montant", "somme",
-            "wieviel", "gesamt", "summe", "betrag",
-            "quanto", "importo", "fatturato", "soma", "faturado",
+            "cuanto",
+            "cuanta",
+            "total",
+            "suma",
+            "importe",
+            "gastado",
+            "facturado",
+            "cobrado",
+            "how much",
+            "amount",
+            "spent",
+            "invoiced",
+            "collected",
+            "combien",
+            "montant",
+            "somme",
+            "wieviel",
+            "gesamt",
+            "summe",
+            "betrag",
+            "quanto",
+            "importo",
+            "fatturato",
+            "soma",
+            "faturado",
         ),
     ):
         kind = "total"
     elif _contains_any(
         normalized,
         (
-            "top", "mayor", "menor", "mas alto", "mas grande",
-            "highest", "largest", "biggest", "lowest", "smallest",
-            "le plus", "le moins", "hoechste", "niedrigste",
-            "piu alto", "piu basso", "mais alto", "mais baixo",
+            "top",
+            "mayor",
+            "menor",
+            "mas alto",
+            "mas grande",
+            "highest",
+            "largest",
+            "biggest",
+            "lowest",
+            "smallest",
+            "le plus",
+            "le moins",
+            "hoechste",
+            "niedrigste",
+            "piu alto",
+            "piu basso",
+            "mais alto",
+            "mais baixo",
         ),
     ):
         kind = "top"

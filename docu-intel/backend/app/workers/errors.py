@@ -30,6 +30,7 @@ The task wrappers (``process_document_task``, etc.) catch
 :func:`mark_job_as_failed` + :func:`notify_failed`, and ``Reject``
 the message so it is not re-queued.
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,9 +40,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import (
-    DataError,
     DisconnectionError,
-    IntegrityError,
     InterfaceError,
     OperationalError,
 )

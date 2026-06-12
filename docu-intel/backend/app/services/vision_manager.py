@@ -19,6 +19,7 @@ The container reaches the host shim at
 points to). On Linux hosts where ``lms`` is a native binary, the
 manager also falls back to invoking it directly via subprocess.
 """
+
 from __future__ import annotations
 
 import logging
@@ -80,7 +81,9 @@ class VisionManager:
         return shutil.which("lms")
 
     @classmethod
-    def _http_call(cls, method: str, path: str, body: dict | None = None, timeout: float = 30.0) -> tuple[bool, dict[str, Any]]:
+    def _http_call(
+        cls, method: str, path: str, body: dict | None = None, timeout: float = 30.0
+    ) -> tuple[bool, dict[str, Any]]:
         url = (cls._shim_url() or "").rstrip("/") + path
         try:
             import json as _json
@@ -101,7 +104,9 @@ class VisionManager:
             return (False, {"ok": False, "error": str(exc)})
 
     @classmethod
-    def _lms_call(cls, verb: str, model: str, timeout: float = 180.0) -> tuple[bool, dict[str, Any]]:
+    def _lms_call(
+        cls, verb: str, model: str, timeout: float = 180.0
+    ) -> tuple[bool, dict[str, Any]]:
         """Try the HTTP shim first, fall back to direct lms subprocess."""
         ok, payload = cls._http_call("POST", f"/{verb}", {"model": model}, timeout=timeout)
         if ok:
@@ -117,12 +122,15 @@ class VisionManager:
                 text=True,
                 timeout=timeout,
             )
-            return (proc.returncode == 0, {
-                "ok": proc.returncode == 0,
-                "returncode": proc.returncode,
-                "stdout": proc.stdout,
-                "stderr": proc.stderr,
-            })
+            return (
+                proc.returncode == 0,
+                {
+                    "ok": proc.returncode == 0,
+                    "returncode": proc.returncode,
+                    "stdout": proc.stdout,
+                    "stderr": proc.stderr,
+                },
+            )
         except subprocess.TimeoutExpired:
             return False, {"ok": False, "error": "timeout"}
         except Exception as exc:
@@ -137,10 +145,7 @@ class VisionManager:
         if not model:
             return False
         now = time.time()
-        if (
-            cls._loaded_cache is not None
-            and (now - cls._loaded_cache_ts) < cls._LOADED_CACHE_TTL
-        ):
+        if cls._loaded_cache is not None and (now - cls._loaded_cache_ts) < cls._LOADED_CACHE_TTL:
             return cls._loaded_cache
         ok, payload = cls._http_call("GET", "/status", timeout=10)
         if not ok:
@@ -162,8 +167,7 @@ class VisionManager:
                 return False
         else:
             loaded = any(
-                m.get("id") == model and m.get("loaded")
-                for m in payload.get("models", [])
+                m.get("id") == model and m.get("loaded") for m in payload.get("models", [])
             )
         cls._loaded_cache = loaded
         cls._loaded_cache_ts = now
@@ -213,6 +217,7 @@ class VisionManager:
 
         def _fire() -> None:
             from app.core.config import settings
+
             model = settings.vision_model
             if not model:
                 return

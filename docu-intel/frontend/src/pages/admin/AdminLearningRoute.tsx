@@ -1,11 +1,11 @@
-import { useOutletContext } from "react-router-dom"
-
 import { AdminLearningTab } from "./AdminLearningTab"
-import type { AdminData } from "./useAdminData"
+import { useAdminLearningData } from "./useAdminLearningData"
 
+/**
+ * F4b - Learning admin sub-route. Lazy-loaded via the router.
+ */
 export function AdminLearningRoute() {
-  const data = useOutletContext<AdminData>()
-  const { queries, mutations } = data
+  const { queries, mutations } = useAdminLearningData()
 
   return (
     <AdminLearningTab

@@ -131,7 +131,9 @@ def extract_budget(
     accepted_detected = status == "aceptado"
     lines = _extract_lines_for_document(text, pages)
 
-    score = _confidence(document_confidence, [budget_number, client_name, parsed_date, total_amount], bool(lines))
+    score = _confidence(
+        document_confidence, [budget_number, client_name, parsed_date, total_amount], bool(lines)
+    )
     return BudgetExtraction(
         document_id=document_id,
         budget_number=budget_number,
@@ -167,12 +169,16 @@ def extract_order(
     client_name = _line_value(text, ["cliente"])
     parsed_date = _date_from_label(text, ["fecha pedido", "fecha"])
     total_amount, currency = _total_amount(text, "pedido")
-    related_budget_number = _line_value(text, ["presupuesto relacionado", "presupuesto ref", "presupuesto"])
+    related_budget_number = _line_value(
+        text, ["presupuesto relacionado", "presupuesto ref", "presupuesto"]
+    )
     if related_budget_number:
         related_budget_number = related_budget_number.split()[0].strip(" .,:;")
     lines = _extract_lines_for_document(text, pages)
 
-    score = _confidence(document_confidence, [order_number, supplier_name, parsed_date, total_amount], bool(lines))
+    score = _confidence(
+        document_confidence, [order_number, supplier_name, parsed_date, total_amount], bool(lines)
+    )
     return OrderExtraction(
         document_id=document_id,
         order_number=order_number,
@@ -187,7 +193,9 @@ def extract_order(
     )
 
 
-def extract_invoice(document_id: int, text: str, document_confidence: float | None) -> InvoiceExtraction | None:
+def extract_invoice(
+    document_id: int, text: str, document_confidence: float | None
+) -> InvoiceExtraction | None:
     if not text.strip():
         return None
 
@@ -198,7 +206,9 @@ def extract_invoice(document_id: int, text: str, document_confidence: float | No
             r"\bn[ºo]\s*factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{1,})",
         ],
     )
-    supplier_name = _line_value(text, ["proveedor", "emisor", "empresa", "razon social", "razón social"])
+    supplier_name = _line_value(
+        text, ["proveedor", "emisor", "empresa", "razon social", "razón social"]
+    )
     supplier_tax_id = _tax_id(text)
     client_name = _line_value(text, ["cliente", "receptor"])
     parsed_date = _date_from_label(text, ["fecha factura", "fecha"])
@@ -212,7 +222,15 @@ def extract_invoice(document_id: int, text: str, document_confidence: float | No
 
     score = _confidence(
         document_confidence,
-        [invoice_number, supplier_name, supplier_tax_id, parsed_date, taxable_base, vat_amount, total_amount],
+        [
+            invoice_number,
+            supplier_name,
+            supplier_tax_id,
+            parsed_date,
+            taxable_base,
+            vat_amount,
+            total_amount,
+        ],
         False,
     )
     return InvoiceExtraction(
@@ -249,7 +267,9 @@ def persist_business_extraction(
         budget = Budget(
             document_id=document.id,
             budget_number=extraction.budget_number,
-            budget_number_normalized=_normalize_doc_number(extraction.budget_number) if extraction.budget_number else None,
+            budget_number_normalized=_normalize_doc_number(extraction.budget_number)
+            if extraction.budget_number
+            else None,
             client_name=extraction.client_name,
             date=extraction.date,
             total_amount=extraction.total_amount,
@@ -300,7 +320,9 @@ def persist_business_extraction(
         order = Order(
             document_id=document.id,
             order_number=extraction.order_number,
-            order_number_normalized=_normalize_doc_number(extraction.order_number) if extraction.order_number else None,
+            order_number_normalized=_normalize_doc_number(extraction.order_number)
+            if extraction.order_number
+            else None,
             supplier_name=extraction.supplier_name,
             client_name=extraction.client_name,
             date=extraction.date,
@@ -371,7 +393,9 @@ def persist_business_extraction(
 def _delete_existing_business_data(db: Session, document_id: int) -> None:
     budget_ids = list(db.scalars(select(Budget.id).where(Budget.document_id == document_id)).all())
     order_ids = list(db.scalars(select(Order.id).where(Order.document_id == document_id)).all())
-    invoice_ids = list(db.scalars(select(Invoice.id).where(Invoice.document_id == document_id)).all())
+    invoice_ids = list(
+        db.scalars(select(Invoice.id).where(Invoice.document_id == document_id)).all()
+    )
     if budget_ids:
         db.execute(delete(BudgetLine).where(BudgetLine.budget_id.in_(budget_ids)))
         db.execute(delete(Order).where(Order.related_budget_id.in_(budget_ids)))
@@ -388,7 +412,13 @@ def _delete_existing_business_data(db: Session, document_id: int) -> None:
 def _add_entities_for_budget(db: Session, document_id: int, extraction: BudgetExtraction) -> None:
     _entity(db, document_id, "budget_number", extraction.budget_number, extraction.confidence)
     _entity(db, document_id, "client_name", extraction.client_name, extraction.confidence)
-    _entity(db, document_id, "total_amount", _amount_text(extraction.total_amount), extraction.confidence)
+    _entity(
+        db,
+        document_id,
+        "total_amount",
+        _amount_text(extraction.total_amount),
+        extraction.confidence,
+    )
     for line in extraction.lines:
         _entity(db, document_id, "reference", line.reference, line.confidence)
 
@@ -397,8 +427,20 @@ def _add_entities_for_order(db: Session, document_id: int, extraction: OrderExtr
     _entity(db, document_id, "order_number", extraction.order_number, extraction.confidence)
     _entity(db, document_id, "supplier_name", extraction.supplier_name, extraction.confidence)
     _entity(db, document_id, "client_name", extraction.client_name, extraction.confidence)
-    _entity(db, document_id, "related_budget_number", extraction.related_budget_number, extraction.confidence)
-    _entity(db, document_id, "total_amount", _amount_text(extraction.total_amount), extraction.confidence)
+    _entity(
+        db,
+        document_id,
+        "related_budget_number",
+        extraction.related_budget_number,
+        extraction.confidence,
+    )
+    _entity(
+        db,
+        document_id,
+        "total_amount",
+        _amount_text(extraction.total_amount),
+        extraction.confidence,
+    )
     for line in extraction.lines:
         _entity(db, document_id, "reference", line.reference, line.confidence)
 
@@ -408,14 +450,42 @@ def _add_entities_for_invoice(db: Session, document_id: int, extraction: Invoice
     _entity(db, document_id, "supplier_name", extraction.supplier_name, extraction.confidence)
     _entity(db, document_id, "supplier_tax_id", extraction.supplier_tax_id, extraction.confidence)
     _entity(db, document_id, "client_name", extraction.client_name, extraction.confidence)
-    _entity(db, document_id, "invoice_date", extraction.date.isoformat() if extraction.date else None, extraction.confidence)
-    _entity(db, document_id, "taxable_base", _amount_text(extraction.taxable_base), extraction.confidence)
-    _entity(db, document_id, "vat_amount", _amount_text(extraction.vat_amount), extraction.confidence)
-    _entity(db, document_id, "total_amount", _amount_text(extraction.total_amount), extraction.confidence)
-    _entity(db, document_id, "related_order_number", extraction.related_order_number, extraction.confidence)
+    _entity(
+        db,
+        document_id,
+        "invoice_date",
+        extraction.date.isoformat() if extraction.date else None,
+        extraction.confidence,
+    )
+    _entity(
+        db,
+        document_id,
+        "taxable_base",
+        _amount_text(extraction.taxable_base),
+        extraction.confidence,
+    )
+    _entity(
+        db, document_id, "vat_amount", _amount_text(extraction.vat_amount), extraction.confidence
+    )
+    _entity(
+        db,
+        document_id,
+        "total_amount",
+        _amount_text(extraction.total_amount),
+        extraction.confidence,
+    )
+    _entity(
+        db,
+        document_id,
+        "related_order_number",
+        extraction.related_order_number,
+        extraction.confidence,
+    )
 
 
-def _entity(db: Session, document_id: int, entity_type: str, value: str | None, confidence: float) -> None:
+def _entity(
+    db: Session, document_id: int, entity_type: str, value: str | None, confidence: float
+) -> None:
     if not value:
         return
     db.add(
@@ -466,15 +536,11 @@ def _find_related_budget_id(db: Session, extraction: OrderExtraction) -> int | N
     if not needle:
         return None
     # 1. Exact match (indexed, O(1)).
-    budget = db.scalar(
-        select(Budget).where(Budget.budget_number == needle_raw).limit(1)
-    )
+    budget = db.scalar(select(Budget).where(Budget.budget_number == needle_raw).limit(1))
     if budget:
         return budget.id
     # 2. Normalized match via the indexed column (O(1)).
-    budget = db.scalar(
-        select(Budget).where(Budget.budget_number_normalized == needle).limit(1)
-    )
+    budget = db.scalar(select(Budget).where(Budget.budget_number_normalized == needle).limit(1))
     if budget:
         return budget.id
     # 3. Fallback: Python loop for pre-migration rows that have
@@ -498,15 +564,11 @@ def _find_related_order_id(db: Session, extraction: InvoiceExtraction) -> int | 
     if not needle:
         return None
     # 1. Exact match (indexed, O(1)).
-    order = db.scalar(
-        select(Order).where(Order.order_number == needle_raw).limit(1)
-    )
+    order = db.scalar(select(Order).where(Order.order_number == needle_raw).limit(1))
     if order:
         return order.id
     # 2. Normalized match via the indexed column (O(1)).
-    order = db.scalar(
-        select(Order).where(Order.order_number_normalized == needle).limit(1)
-    )
+    order = db.scalar(select(Order).where(Order.order_number_normalized == needle).limit(1))
     if order:
         return order.id
     # 3. Fallback: Python loop for pre-migration rows.
@@ -517,13 +579,18 @@ def _find_related_order_id(db: Session, extraction: InvoiceExtraction) -> int | 
 
 
 def _budget_needs_review(extraction: BudgetExtraction) -> bool:
-    return extraction.confidence < 0.65 or not extraction.budget_number or not extraction.total_amount
+    return (
+        extraction.confidence < 0.65 or not extraction.budget_number or not extraction.total_amount
+    )
 
 
 def _order_needs_review(extraction: OrderExtraction, related_budget_id: int | None) -> bool:
     relation_was_expected = bool(extraction.related_budget_number)
-    return extraction.confidence < 0.65 or not extraction.order_number or not extraction.total_amount or (
-        relation_was_expected and related_budget_id is None
+    return (
+        extraction.confidence < 0.65
+        or not extraction.order_number
+        or not extraction.total_amount
+        or (relation_was_expected and related_budget_id is None)
     )
 
 
@@ -546,7 +613,9 @@ def _first_match(text: str, patterns: list[str]) -> str | None:
 
 def _line_value(text: str, labels: list[str]) -> str | None:
     for label in labels:
-        match = re.search(rf"^\s*{re.escape(label)}\s*[:#-]\s*(.+?)\s*$", text, flags=re.IGNORECASE | re.MULTILINE)
+        match = re.search(
+            rf"^\s*{re.escape(label)}\s*[:#-]\s*(.+?)\s*$", text, flags=re.IGNORECASE | re.MULTILINE
+        )
         if match:
             return match.group(1).strip(" .,:;")
     return None
@@ -564,7 +633,9 @@ def _date_from_label(text: str, labels: list[str]) -> date | None:
 
 def _amount_from_label(text: str, labels: list[str]) -> tuple[float | None, str | None]:
     for label in labels:
-        pattern = rf"^\s*{re.escape(label)}(?:\s+\d{{1,2}}%)?\s*[:#-]\s*([0-9][0-9.,]*)\s*(€|eur|euros)?"
+        pattern = (
+            rf"^\s*{re.escape(label)}(?:\s+\d{{1,2}}%)?\s*[:#-]\s*([0-9][0-9.,]*)\s*(€|eur|euros)?"
+        )
         match = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
         if match:
             return _parse_amount(match.group(1)), _currency(match.group(2))
@@ -746,13 +817,9 @@ def _issues_to_reasons(issues: list[ValidationIssue]) -> list[str]:
         if issue.check == "line_qty_price_total":
             out.append(f"coherencia_linea:{issue.detail}")
         elif issue.check == "subtotal_vs_total":
-            out.append(
-                f"coherencia_subtotal:esperado={issue.expected} real={issue.actual}"
-            )
+            out.append(f"coherencia_subtotal:esperado={issue.expected} real={issue.actual}")
         elif issue.check == "base_vat_total":
-            out.append(
-                f"coherencia_iva:base+vat={issue.expected} total={issue.actual}"
-            )
+            out.append(f"coherencia_iva:base+vat={issue.expected} total={issue.actual}")
         elif issue.check == "missing_vat":
             out.append("falta_iva:base_y_total_presentes_sin_importe_iva")
         else:
@@ -869,9 +936,7 @@ def _map_row_to_line(row: list[str], header: list[str]) -> ExtractedLine | None:
             values["reference"] = cell_str
         elif re.search(r"\b(desc|descripci[oó]n|concepto|detalle)\b", label):
             values["description"] = (
-                f"{values['description']} {cell_str}".strip()
-                if values["description"]
-                else cell_str
+                f"{values['description']} {cell_str}".strip() if values["description"] else cell_str
             )
         elif re.search(r"\b(cant|cantidad|qty|unidades)\b", label):
             values["quantity"] = _parse_amount(cell_str)
@@ -883,19 +948,27 @@ def _map_row_to_line(row: list[str], header: list[str]) -> ExtractedLine | None:
             # Unrecognised column — fold it into the description so
             # the LLM still sees the text.
             values["description"] = (
-                f"{values['description']} {cell_str}".strip()
-                if values["description"]
-                else cell_str
+                f"{values['description']} {cell_str}".strip() if values["description"] else cell_str
             )
     if not any(values.values()):
         return None
     return ExtractedLine(
-        reference=values["reference"] if isinstance(values["reference"], (str, type(None))) else None,
-        description=values["description"] if isinstance(values["description"], (str, type(None))) else None,
-        quantity=values["quantity"] if isinstance(values["quantity"], (int, float, type(None))) else None,
+        reference=values["reference"]
+        if isinstance(values["reference"], (str, type(None)))
+        else None,
+        description=values["description"]
+        if isinstance(values["description"], (str, type(None)))
+        else None,
+        quantity=values["quantity"]
+        if isinstance(values["quantity"], (int, float, type(None)))
+        else None,
         unit=values["unit"] if isinstance(values["unit"], (str, type(None))) else None,
-        unit_price=values["unit_price"] if isinstance(values["unit_price"], (int, float, type(None))) else None,
-        total_price=values["total_price"] if isinstance(values["total_price"], (int, float, type(None))) else None,
+        unit_price=values["unit_price"]
+        if isinstance(values["unit_price"], (int, float, type(None)))
+        else None,
+        total_price=values["total_price"]
+        if isinstance(values["total_price"], (int, float, type(None)))
+        else None,
         confidence=0.90,  # structured table → higher than the regex fallback
     )
 
@@ -932,18 +1005,16 @@ def _extract_lines_for_document(
         if table_lines:
             return table_lines
         logger.debug(
-            "Found table blocks but parsing produced no lines; "
-            "falling back to layout-aware path."
+            "Found table blocks but parsing produced no lines; falling back to layout-aware path."
         )
     if pages:
         try:
             from app.services.extraction import extract_lines_from_pages
+
             lines = extract_lines_from_pages(pages)
             if lines:
                 return lines
-            logger.debug(
-                "Layout-aware extraction returned no lines; falling back to regex."
-            )
+            logger.debug("Layout-aware extraction returned no lines; falling back to regex.")
         except Exception as exc:
             logger.warning(
                 "Layout-aware line extraction failed (%s); falling back to regex.",
@@ -1073,4 +1144,3 @@ def _confidence(document_confidence: float | None, fields: list[object], has_lin
 
 def _amount_text(value: float | None) -> str | None:
     return f"{value:.2f}" if value is not None else None
-

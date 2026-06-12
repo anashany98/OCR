@@ -55,10 +55,7 @@ export const TYPE_OPTIONS = [
 export const STATUS_OPTIONS = ["", "processed", "needs_review", "failed", "pending", "duplicate"]
 
 /** Pick the right API method for the selected mode. Pure function. */
-export function runSearch(
-  mode: SearchMode,
-  query: string,
-): Promise<SearchResult[]> {
+export function runSearch(mode: SearchMode, query: string): Promise<SearchResult[]> {
   if (mode === "semantic") return api.semanticSearch(query)
   if (mode === "hybrid") return api.hybridSearch(query)
   if (mode.startsWith("guided:")) return api.guidedSearch(query, mode.replace("guided:", ""))
@@ -107,9 +104,7 @@ export function clientFilter(
   if (filters.status) items = items.filter((r) => r.status === filters.status)
   if (filters.minConfidencePercent) {
     const min = Number(filters.minConfidencePercent) / 100
-    items = items.filter(
-      (r) => r.ocr_confidence != null && r.ocr_confidence >= min,
-    )
+    items = items.filter((r) => r.ocr_confidence != null && r.ocr_confidence >= min)
   }
   return items
 }
@@ -166,16 +161,19 @@ export function useSearchPage() {
     dateFrom: filterDateFrom,
     dateTo: filterDateTo,
   }
-  const activeFilters = useMemo(() => buildActiveFilters(filters), [
-    filterType,
-    filterStatus,
-    filterSupplier,
-    filterClient,
-    filterMinConf,
-    filterSourcePath,
-    filterDateFrom,
-    filterDateTo,
-  ])
+  const activeFilters = useMemo(
+    () => buildActiveFilters(filters),
+    [
+      filterType,
+      filterStatus,
+      filterSupplier,
+      filterClient,
+      filterMinConf,
+      filterSourcePath,
+      filterDateFrom,
+      filterDateTo,
+    ],
+  )
 
   const savedSearches = useQuery({
     queryKey: ["saved-searches"],
@@ -238,27 +236,38 @@ export function useSearchPage() {
   }
 
   function goToChat(result: SearchResult) {
-    const q = encodeURIComponent(
-      `¿Qué dice el documento "${result.original_filename}" sobre esto?`,
-    )
+    const q = encodeURIComponent(`¿Qué dice el documento "${result.original_filename}" sobre esto?`)
     window.open(`/chat?q=${q}`, "_blank")
   }
 
   return {
     // state
-    query, setQuery,
-    submitted, setSubmitted,
-    mode, setMode,
-    savedName, setSavedName,
-    showFilters, setShowFilters,
-    filterType, setFilterType,
-    filterStatus, setFilterStatus,
-    filterSupplier, setFilterSupplier,
-    filterClient, setFilterClient,
-    filterMinConf, setFilterMinConf,
-    filterSourcePath, setFilterSourcePath,
-    filterDateFrom, setFilterDateFrom,
-    filterDateTo, setFilterDateTo,
+    query,
+    setQuery,
+    submitted,
+    setSubmitted,
+    mode,
+    setMode,
+    savedName,
+    setSavedName,
+    showFilters,
+    setShowFilters,
+    filterType,
+    setFilterType,
+    filterStatus,
+    setFilterStatus,
+    filterSupplier,
+    setFilterSupplier,
+    filterClient,
+    setFilterClient,
+    filterMinConf,
+    setFilterMinConf,
+    filterSourcePath,
+    setFilterSourcePath,
+    filterDateFrom,
+    setFilterDateFrom,
+    filterDateTo,
+    setFilterDateTo,
     // queries
     savedSearches,
     results,

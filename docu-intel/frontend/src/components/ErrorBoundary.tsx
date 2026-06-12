@@ -45,9 +45,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 border border-red-200">
             <AlertCircle className="h-8 w-8 text-red-500" />
           </div>
-          <h1 className="mb-2 text-xl font-bold text-[var(--text-primary)]">
-            Algo salió mal
-          </h1>
+          <h1 className="mb-2 text-xl font-bold text-[var(--text-primary)]">Algo salió mal</h1>
           <p className="mb-2 max-w-md text-sm text-[var(--text-muted)]">
             La aplicación encontró un error inesperado. Podés intentar recargar la página.
           </p>
@@ -65,11 +63,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <Button type="button" variant="outline" size="sm" onClick={this.handleReset}>
               Reintentar
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => window.location.reload()}
-            >
+            <Button type="button" size="sm" onClick={() => window.location.reload()}>
               Recargar página
             </Button>
           </div>
