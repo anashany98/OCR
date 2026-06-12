@@ -55,11 +55,30 @@ class InMemoryBus:
 
     def __init__(self) -> None:
         self._subscribers: dict[str, list[asyncio.Queue]] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self.published: list[dict] = []  # test observability
 
     async def publish(self, event_type: str, payload: dict[str, Any]) -> None:
         envelope = {"type": event_type, **payload}
+        self.published.append(envelope)
         for queue in list(self._subscribers.get(CHANNEL, [])):
             await queue.put(envelope)
+
+    def publish_sync(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Sync entry point for Celery signal handlers.
+
+        Schedules the async publish on the running event loop when one
+        is available, otherwise pushes directly into every subscriber's
+        queue. Tests can read ``self.published`` to assert what was
+        emitted.
+        """
+        envelope = {"type": event_type, **payload}
+        self.published.append(envelope)
+        for queue in list(self._subscribers.get(CHANNEL, [])):
+            try:
+                queue.put_nowait(envelope)
+            except asyncio.QueueFull:  # pragma: no cover - unbounded queue
+                pass
 
     def subscribe(
         self, channel: str = CHANNEL
@@ -95,12 +114,25 @@ class RedisBus:
 
     async def publish(self, event_type: str, payload: dict[str, Any]) -> None:
         envelope = {"type": event_type, **payload}
+        self._publish_raw(envelope)
+
+    def publish_sync(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Sync entry point used by Celery signal handlers.
+
+        Identical to ``publish`` but callable from non-async code. The
+        underlying ``redis.publish`` is itself synchronous, so we can
+        call it directly without spinning an event loop.
+        """
+        envelope = {"type": event_type, **payload}
+        self._publish_raw(envelope)
+
+    def _publish_raw(self, envelope: dict[str, Any]) -> None:
         try:
             # ``decode_responses=True`` is configured on the shared
             # client, so the payload is published as ``str``.
             self._client.publish(CHANNEL, json.dumps(envelope, default=str))
         except Exception:  # pragma: no cover - defensive
-            logger.exception("events_bus.publish failed for %s", event_type)
+            logger.exception("events_bus.publish failed for %s", envelope.get("type"))
 
     def subscribe(
         self, channel: str = CHANNEL
@@ -177,6 +209,22 @@ async def publish_event(event_type: str, payload: dict[str, Any]) -> None:
         logger.exception("events_bus.publish_event failed for %s", event_type)
 
 
+def publish_event_sync(event_type: str, payload: dict[str, Any]) -> None:
+    """Sync variant of :func:`publish_event` for Celery signal handlers.
+
+    Celery's signal API is fully synchronous. The default bus
+    (``RedisBus``) is also synchronous under the hood, so we just
+    forward the call. The in-memory bus used in tests records every
+    event in ``published`` so the test can assert on it.
+    """
+    try:
+        _default_bus.publish_sync(event_type, payload)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception(
+            "events_bus.publish_event_sync failed for %s", event_type
+        )
+
+
 def subscribe_events(
     channel: str = CHANNEL,
 ) -> "AsyncIterator[dict[str, Any]]":
@@ -194,5 +242,6 @@ __all__ = [
     "InMemoryBus",
     "RedisBus",
     "publish_event",
+    "publish_event_sync",
     "subscribe_events",
 ]

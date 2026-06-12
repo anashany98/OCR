@@ -74,3 +74,21 @@ def test_multiple_subscribers_each_get_the_event(bus: InMemoryBus):
     a, b = asyncio.run(_go())
     assert a == {"type": "job.finished", "document_id": 7}
     assert b == {"type": "job.finished", "document_id": 7}
+
+
+def test_publish_event_sync_records_event(bus: InMemoryBus):
+    """The sync entry point is used by Celery signal handlers."""
+    events_bus.publish_event_sync("job.queued", {"document_id": 42, "task": "x"})
+    assert bus.published == [
+        {"type": "job.queued", "document_id": 42, "task": "x"}
+    ]
+
+
+def test_publish_event_sync_swallows_errors(monkeypatch):
+    class _Boom:
+        def publish_sync(self, *args, **kwargs):
+            raise RuntimeError("bus down")
+
+    monkeypatch.setattr(events_bus, "_default_bus", _Boom())
+    # Should not raise.
+    events_bus.publish_event_sync("job.failed", {"document_id": 1})
