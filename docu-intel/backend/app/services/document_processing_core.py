@@ -668,14 +668,4 @@ def _attach_cascade_recorder(ocr_engine, db: Session, document_id: int) -> None:
         setattr(ocr_engine, "attempt_recorder", _record)
     except Exception:
         pass
-            # Logging only � never let a recorder failure break OCR.
-            import logging as _logging
-            _logging.getLogger(__name__).exception(
-                \"cascade attempt recorder failed\"
-            )
 
-    try:
-        setattr(ocr_engine, \"current_document_id\", document_id)
-        setattr(ocr_engine, \"attempt_recorder\", _record)
-    except Exception:
-        pass
