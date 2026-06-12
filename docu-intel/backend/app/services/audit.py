@@ -24,4 +24,3 @@ def write_audit(
     db.add(item)
     db.flush()
     return item
-

@@ -13,6 +13,7 @@ tuples in pixel coordinates.
 The module is **fail-safe**: on any error an empty list is
 returned so the plan viewer still works without snapping.
 """
+
 from __future__ import annotations
 
 import logging
@@ -76,8 +77,12 @@ def detect_lines(
 
         # Binarize.
         binary = cv2.adaptiveThreshold(
-            img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 15, 10,
+            img,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            15,
+            10,
         )
 
         # Edge detection.
@@ -98,20 +103,29 @@ def detect_lines(
 
         result: list[DetectedLine] = []
         for line in lines:
-            x1, y1, x2, y2 = float(line[0][0]), float(line[0][1]), float(line[0][2]), float(line[0][3])
+            x1, y1, x2, y2 = (
+                float(line[0][0]),
+                float(line[0][1]),
+                float(line[0][2]),
+                float(line[0][3]),
+            )
             length = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
             import math
+
             angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
             result.append(
                 DetectedLine(
-                    x1=x1, y1=y1, x2=x2, y2=y2,
+                    x1=x1,
+                    y1=y1,
+                    x2=x2,
+                    y2=y2,
                     length_px=round(length, 1),
                     angle_deg=round(angle, 1),
                 )
             )
 
         # Sort by length descending (longest walls first).
-        result.sort(key=lambda l: l.length_px, reverse=True)
+        result.sort(key=lambda line: line.length_px, reverse=True)
         return result
 
     except Exception as exc:

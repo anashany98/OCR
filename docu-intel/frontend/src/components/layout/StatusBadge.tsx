@@ -53,39 +53,244 @@ type StatusConfig = {
 }
 
 const statusRegistry: Record<string, StatusConfig> = {
-  uploaded:         { icon: Upload,          color: "bg-[var(--info)]",     bg: "bg-[var(--info-faint)]",     textColor: "text-[var(--text-on-info)]",    label: "Subido",       action: "Pendiente de procesar" },
-  queued:           { icon: Clock,           color: "bg-[var(--info)]",     bg: "bg-[var(--info-faint)]",     textColor: "text-[var(--text-on-info)]",    label: "En cola",      action: "Esperando worker" },
-  processing:       { icon: Loader2,         color: "bg-[#7C5BC9]",         bg: "bg-[#F1ECFB]",               textColor: "text-[#5A3DA0]",                label: "Procesando",   action: "En curso" },
-  running:          { icon: Loader2,         color: "bg-[#7C5BC9]",         bg: "bg-[#F1ECFB]",               textColor: "text-[#5A3DA0]",                label: "Ejecutando",   action: "En curso" },
-  in_progress:      { icon: Loader2,         color: "bg-[#7C5BC9]",         bg: "bg-[#F1ECFB]",               textColor: "text-[#5A3DA0]",                label: "En progreso",  action: "En curso" },
-  active:           { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "Activo",       action: "Operativo" },
-  processed:        { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "Procesado",    action: "Listo para usar" },
-  processed_ok:     { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "Calidad OK",   action: "Listo para usar" },
-  completed:        { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "Completado",   action: "Finalizado" },
-  finished:         { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "Finalizado",   action: "Finalizado" },
-  approved:         { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "Aprobado",     action: "Validado" },
-  ready:            { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "Listo",        action: "Operativo" },
-  ok:               { icon: CheckCircle2,    color: "bg-[var(--positive)]", bg: "bg-[var(--positive-faint)]", textColor: "text-[var(--text-on-success)]", label: "OK",           action: "Operativo" },
-  processed_low_quality: { icon: FileWarning, color: "bg-[var(--warning)]",  bg: "bg-[var(--warning-faint)]",  textColor: "text-[var(--text-on-warning)]", label: "Baja calidad", action: "Revisar OCR" },
-  processed_missing_fields: { icon: FileWarning, color: "bg-[var(--warning)]", bg: "bg-[var(--warning-faint)]",  textColor: "text-[var(--text-on-warning)]", label: "Campos faltantes", action: "Completar datos" },
-  needs_review:     { icon: FileWarning,     color: "bg-[var(--warning)]",  bg: "bg-[var(--warning-faint)]",  textColor: "text-[var(--text-on-warning)]", label: "Revisión",    action: "Requiere revisión humana" },
-  needs_human_review: { icon: FileWarning,   color: "bg-[var(--warning)]",  bg: "bg-[var(--warning-faint)]",  textColor: "text-[var(--text-on-warning)]", label: "Revisión",    action: "Requiere revisión humana" },
-  warning:          { icon: AlertTriangle,   color: "bg-[var(--warning)]",  bg: "bg-[var(--warning-faint)]",  textColor: "text-[var(--text-on-warning)]", label: "Advertencia", action: "Requiere atención" },
-  degraded:         { icon: AlertTriangle,   color: "bg-[var(--warning)]",  bg: "bg-[var(--warning-faint)]",  textColor: "text-[var(--text-on-warning)]", label: "Degradado",   action: "Rendimiento reducido" },
-  pending:          { icon: Clock,           color: "bg-[var(--warning)]",  bg: "bg-[var(--warning-faint)]",  textColor: "text-[var(--text-on-warning)]", label: "Pendiente",   action: "Esperando" },
-  failed:           { icon: XCircle,         color: "bg-[var(--danger)]",   bg: "bg-[var(--danger-faint)]",   textColor: "text-[var(--text-on-danger)]",  label: "Fallido",     action: "Reprocesar documento" },
-  error:            { icon: XCircle,         color: "bg-[var(--danger)]",   bg: "bg-[var(--danger-faint)]",   textColor: "text-[var(--text-on-danger)]",  label: "Error",       action: "Investigar causa" },
-  rejected:         { icon: XCircle,         color: "bg-[var(--danger)]",   bg: "bg-[var(--danger-faint)]",   textColor: "text-[var(--text-on-danger)]",  label: "Rechazado",   action: "Corregir y reintentar" },
-  critical:         { icon: ShieldAlert,     color: "bg-[var(--danger)]",   bg: "bg-[var(--danger-faint)]",   textColor: "text-[var(--text-on-danger)]",  label: "Crítico",     action: "Atención inmediata" },
-  blocked:          { icon: ShieldAlert,     color: "bg-[var(--danger)]",   bg: "bg-[var(--danger-faint)]",   textColor: "text-[var(--text-on-danger)]",  label: "Bloqueado",   action: "Desbloquear" },
-  quarantined:      { icon: ShieldAlert,     color: "bg-[var(--danger)]",   bg: "bg-[var(--danger-faint)]",   textColor: "text-[var(--text-on-danger)]",  label: "Cuarentena",  action: "Revisar seguridad" },
-  quarantine:       { icon: ShieldAlert,     color: "bg-[var(--danger)]",   bg: "bg-[var(--danger-faint)]",   textColor: "text-[var(--text-on-danger)]",  label: "Cuarentena",  action: "Revisar seguridad" },
-  duplicate:        { icon: Copy,            color: "bg-[var(--text-muted)]", bg: "bg-[var(--bg-surface-2)]", textColor: "text-[var(--text-secondary)]", label: "Duplicado", action: "Marcar como original" },
-  archived:         { icon: Archive,         color: "bg-[var(--text-muted)]", bg: "bg-[var(--bg-surface-2)]", textColor: "text-[var(--text-secondary)]", label: "Archivado", action: "Fuera de circuito activo" },
+  uploaded: {
+    icon: Upload,
+    color: "bg-[var(--info)]",
+    bg: "bg-[var(--info-faint)]",
+    textColor: "text-[var(--text-on-info)]",
+    label: "Subido",
+    action: "Pendiente de procesar",
+  },
+  queued: {
+    icon: Clock,
+    color: "bg-[var(--info)]",
+    bg: "bg-[var(--info-faint)]",
+    textColor: "text-[var(--text-on-info)]",
+    label: "En cola",
+    action: "Esperando worker",
+  },
+  processing: {
+    icon: Loader2,
+    color: "bg-[#7C5BC9]",
+    bg: "bg-[#F1ECFB]",
+    textColor: "text-[#5A3DA0]",
+    label: "Procesando",
+    action: "En curso",
+  },
+  running: {
+    icon: Loader2,
+    color: "bg-[#7C5BC9]",
+    bg: "bg-[#F1ECFB]",
+    textColor: "text-[#5A3DA0]",
+    label: "Ejecutando",
+    action: "En curso",
+  },
+  in_progress: {
+    icon: Loader2,
+    color: "bg-[#7C5BC9]",
+    bg: "bg-[#F1ECFB]",
+    textColor: "text-[#5A3DA0]",
+    label: "En progreso",
+    action: "En curso",
+  },
+  active: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Activo",
+    action: "Operativo",
+  },
+  processed: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Procesado",
+    action: "Listo para usar",
+  },
+  processed_ok: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Calidad OK",
+    action: "Listo para usar",
+  },
+  completed: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Completado",
+    action: "Finalizado",
+  },
+  finished: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Finalizado",
+    action: "Finalizado",
+  },
+  approved: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Aprobado",
+    action: "Validado",
+  },
+  ready: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Listo",
+    action: "Operativo",
+  },
+  ok: {
+    icon: CheckCircle2,
+    color: "bg-[var(--positive)]",
+    bg: "bg-[var(--positive-faint)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "OK",
+    action: "Operativo",
+  },
+  processed_low_quality: {
+    icon: FileWarning,
+    color: "bg-[var(--warning)]",
+    bg: "bg-[var(--warning-faint)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Baja calidad",
+    action: "Revisar OCR",
+  },
+  processed_missing_fields: {
+    icon: FileWarning,
+    color: "bg-[var(--warning)]",
+    bg: "bg-[var(--warning-faint)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Campos faltantes",
+    action: "Completar datos",
+  },
+  needs_review: {
+    icon: FileWarning,
+    color: "bg-[var(--warning)]",
+    bg: "bg-[var(--warning-faint)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Revisión",
+    action: "Requiere revisión humana",
+  },
+  needs_human_review: {
+    icon: FileWarning,
+    color: "bg-[var(--warning)]",
+    bg: "bg-[var(--warning-faint)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Revisión",
+    action: "Requiere revisión humana",
+  },
+  warning: {
+    icon: AlertTriangle,
+    color: "bg-[var(--warning)]",
+    bg: "bg-[var(--warning-faint)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Advertencia",
+    action: "Requiere atención",
+  },
+  degraded: {
+    icon: AlertTriangle,
+    color: "bg-[var(--warning)]",
+    bg: "bg-[var(--warning-faint)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Degradado",
+    action: "Rendimiento reducido",
+  },
+  pending: {
+    icon: Clock,
+    color: "bg-[var(--warning)]",
+    bg: "bg-[var(--warning-faint)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Pendiente",
+    action: "Esperando",
+  },
+  failed: {
+    icon: XCircle,
+    color: "bg-[var(--danger)]",
+    bg: "bg-[var(--danger-faint)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Fallido",
+    action: "Reprocesar documento",
+  },
+  error: {
+    icon: XCircle,
+    color: "bg-[var(--danger)]",
+    bg: "bg-[var(--danger-faint)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Error",
+    action: "Investigar causa",
+  },
+  rejected: {
+    icon: XCircle,
+    color: "bg-[var(--danger)]",
+    bg: "bg-[var(--danger-faint)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Rechazado",
+    action: "Corregir y reintentar",
+  },
+  critical: {
+    icon: ShieldAlert,
+    color: "bg-[var(--danger)]",
+    bg: "bg-[var(--danger-faint)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Crítico",
+    action: "Atención inmediata",
+  },
+  blocked: {
+    icon: ShieldAlert,
+    color: "bg-[var(--danger)]",
+    bg: "bg-[var(--danger-faint)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Bloqueado",
+    action: "Desbloquear",
+  },
+  quarantined: {
+    icon: ShieldAlert,
+    color: "bg-[var(--danger)]",
+    bg: "bg-[var(--danger-faint)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Cuarentena",
+    action: "Revisar seguridad",
+  },
+  quarantine: {
+    icon: ShieldAlert,
+    color: "bg-[var(--danger)]",
+    bg: "bg-[var(--danger-faint)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Cuarentena",
+    action: "Revisar seguridad",
+  },
+  duplicate: {
+    icon: Copy,
+    color: "bg-[var(--text-muted)]",
+    bg: "bg-[var(--bg-surface-2)]",
+    textColor: "text-[var(--text-secondary)]",
+    label: "Duplicado",
+    action: "Marcar como original",
+  },
+  archived: {
+    icon: Archive,
+    color: "bg-[var(--text-muted)]",
+    bg: "bg-[var(--bg-surface-2)]",
+    textColor: "text-[var(--text-secondary)]",
+    label: "Archivado",
+    action: "Fuera de circuito activo",
+  },
 }
 
 function getStatusConfig(status: string | null | undefined): StatusConfig {
-  const normalized = String(status ?? "").trim().toLowerCase()
+  const normalized = String(status ?? "")
+    .trim()
+    .toLowerCase()
   return (
     statusRegistry[normalized] ?? {
       icon: Clock,
@@ -150,11 +355,19 @@ export function DocumentProgressBar({ status }: { status: string }) {
   ]
 
   const currentIdx = (() => {
-    const norm = String(status ?? "").trim().toLowerCase()
+    const norm = String(status ?? "")
+      .trim()
+      .toLowerCase()
     if (norm === "uploaded") return 0
     if (norm === "queued") return 1
     if (norm === "processing" || norm === "running") return 2
-    if (norm === "processed" || norm === "processed_ok" || norm === "completed" || norm === "finished") return 3
+    if (
+      norm === "processed" ||
+      norm === "processed_ok" ||
+      norm === "completed" ||
+      norm === "finished"
+    )
+      return 3
     if (norm === "failed" || norm === "error") return -1
     return -1
   })()
@@ -196,7 +409,12 @@ export function DocumentProgressBar({ status }: { status: string }) {
               {stage.label}
             </div>
             {idx < stages.length - 1 && (
-              <div className={cn("h-px w-3", isDone && idx < currentIdx ? "bg-[var(--positive)]" : "bg-[var(--border)]")} />
+              <div
+                className={cn(
+                  "h-px w-3",
+                  isDone && idx < currentIdx ? "bg-[var(--positive)]" : "bg-[var(--border)]",
+                )}
+              />
             )}
           </div>
         )

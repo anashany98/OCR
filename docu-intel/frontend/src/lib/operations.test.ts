@@ -17,8 +17,22 @@ describe("buildTodaySnapshot", () => {
       plans_without_valid_scale: 6,
     } satisfies AdminStats
     const alerts = [
-      { key: "jobs", title: "Jobs fallidos", description: "", severity: "critical", count: 3, action_url: "/jobs" },
-      { key: "plans", title: "Planos", description: "", severity: "warning", count: 6, action_url: "/plans" },
+      {
+        key: "jobs",
+        title: "Jobs fallidos",
+        description: "",
+        severity: "critical",
+        count: 3,
+        action_url: "/jobs",
+      },
+      {
+        key: "plans",
+        title: "Planos",
+        description: "",
+        severity: "warning",
+        count: 6,
+        action_url: "/plans",
+      },
     ] satisfies AdminAlert[]
     const inbox = [
       item("failed_job", "error"),
@@ -61,13 +75,21 @@ describe("buildTodaySnapshot", () => {
 
 describe("workInboxTarget", () => {
   it("routes OCR items to review and document items to the document workspace", () => {
-    expect(workInboxTarget(item("low_ocr", "warning", { page_id: 10, document_id: 4 }))).toBe("/ocr-review")
+    expect(workInboxTarget(item("low_ocr", "warning", { page_id: 10, document_id: 4 }))).toBe(
+      "/ocr-review",
+    )
     expect(workInboxTarget(item("failed_job", "error", { job_id: 8 }))).toBe("/jobs")
-    expect(workInboxTarget(item("missing_fields", "warning", { document_id: 11 }))).toBe("/documents/11")
+    expect(workInboxTarget(item("missing_fields", "warning", { document_id: 11 }))).toBe(
+      "/documents/11",
+    )
   })
 })
 
-function item(kind: string, severity: string, overrides: Partial<WorkInboxItem> = {}): WorkInboxItem {
+function item(
+  kind: string,
+  severity: string,
+  overrides: Partial<WorkInboxItem> = {},
+): WorkInboxItem {
   return {
     kind,
     severity,

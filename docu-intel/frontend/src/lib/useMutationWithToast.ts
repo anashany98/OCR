@@ -27,7 +27,12 @@ type Options<TData, TError, TVariables, TContext> = Omit<
  * (e.g. "Documento #123 reprocesado"). If `silent: true`, only errors are
  * toasted (good for fast operations that already show inline feedback).
  */
-export function useMutationWithToast<TData = unknown, TError = unknown, TVariables = void, TContext = unknown>(
+export function useMutationWithToast<
+  TData = unknown,
+  TError = unknown,
+  TVariables = void,
+  TContext = unknown,
+>(
   options: Options<TData, TError, TVariables, TContext>,
 ): UseMutationResult<TData, TError, TVariables, TContext> {
   const { toast, onSuccess, onError, ...rest } = options
@@ -36,7 +41,8 @@ export function useMutationWithToast<TData = unknown, TError = unknown, TVariabl
     ...rest,
     onSuccess: (data, variables, context) => {
       if (toast && !toast.silent) {
-        const message = typeof toast.success === "function" ? toast.success(data, variables) : toast.success
+        const message =
+          typeof toast.success === "function" ? toast.success(data, variables) : toast.success
         if (message) notify.success(message)
       }
       onSuccess?.(data, variables, context)
@@ -50,4 +56,3 @@ export function useMutationWithToast<TData = unknown, TError = unknown, TVariabl
     },
   })
 }
-

@@ -170,6 +170,7 @@ class PlanRoomCreate(BaseModel):
     """Payload for ``POST /plans/{id}/rooms``. The polygon is the user-drawn
     closed shape on top of the rendered page; the rest are derived or
     manually entered."""
+
     name: str | None = None
     area_m2: float | None = None
     width_m: float | None = None
@@ -198,6 +199,7 @@ class PlanBulkUpdate(BaseModel):
     """Single save action: replace the working set of rooms and/or
     dimensions for a plan, and optionally update its scale + project
     metadata. Used by the annotation editor's "Save" button."""
+
     rooms: list[PlanRoomCreate] | None = None
     dimensions: list[PlanDimensionCreate] | None = None
     scale_text: str | None = None
@@ -213,6 +215,7 @@ class PlanVisionSuggestionRequest(BaseModel):
 
 class PlanVisionSuggestion(BaseModel):
     """One room the vision LLM thinks it sees on the plano page."""
+
     name: str
     bbox: list[float]  # [x1, y1, x2, y2] in image pixels
     confidence: float | None = None

@@ -21,20 +21,19 @@ The detection is **pure** (no ML, no GPU) and adds ~5ms per
 page. The re-ordering is a simple sort on the x-coordinate of
 each text block.
 """
+
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
-from typing import Any
 
 logger = logging.getLogger("app.services.layout_parser")
 
 
 # Thresholds for multi-column detection.
 _COLUMN_RATIO_THRESHOLD = 0.40  # ≥40% of blocks in the right half
-_GAP_MIN_RATIO = 0.08           # vertical gap ≥8% of page width
-_MIN_BLOCKS_FOR_DETECTION = 6   # need at least 6 blocks to detect
+_GAP_MIN_RATIO = 0.08  # vertical gap ≥8% of page width
+_MIN_BLOCKS_FOR_DETECTION = 6  # need at least 6 blocks to detect
 
 
 @dataclass(frozen=True)
@@ -130,9 +129,7 @@ def _extract_blocks(page) -> list[TextBlock]:
             continue
         lines_text = []
         for line in block.get("lines", []):
-            spans_text = " ".join(
-                span.get("text", "") for span in line.get("spans", [])
-            )
+            spans_text = " ".join(span.get("text", "") for span in line.get("spans", []))
             if spans_text.strip():
                 lines_text.append(spans_text.strip())
         if not lines_text:
@@ -150,9 +147,7 @@ def _extract_blocks(page) -> list[TextBlock]:
     return blocks
 
 
-def _detect_multicolumn(
-    page, blocks: list[TextBlock]
-) -> tuple[bool, int, float]:
+def _detect_multicolumn(page, blocks: list[TextBlock]) -> tuple[bool, int, float]:
     """Detect whether the page has a multi-column layout.
 
     Returns ``(is_multicolumn, column_count, gap_x)`` where
@@ -164,7 +159,6 @@ def _detect_multicolumn(
         return False, 1, 0.0
 
     mid_x = page_width / 2.0
-    left_count = sum(1 for b in blocks if b.x1 < mid_x)
     right_count = sum(1 for b in blocks if b.x0 >= mid_x)
     total = len(blocks)
 
@@ -185,9 +179,7 @@ def _detect_multicolumn(
     return True, 2, gap_x
 
 
-def _find_vertical_gap(
-    blocks: list[TextBlock], page_width: float
-) -> float | None:
+def _find_vertical_gap(blocks: list[TextBlock], page_width: float) -> float | None:
     """Find the x-coordinate of a vertical gap in the middle of
     the page. A gap is a region where no text block overlaps
     horizontally and the gap is at least ``_GAP_MIN_RATIO`` of
@@ -238,9 +230,7 @@ def _find_vertical_gap(
     return None
 
 
-def _reorder_by_columns(
-    blocks: list[TextBlock], gap_x: float
-) -> list[TextBlock]:
+def _reorder_by_columns(blocks: list[TextBlock], gap_x: float) -> list[TextBlock]:
     """Re-order blocks by column (left first, then right) and
     within each column by y-position (top to bottom)."""
     left = sorted(

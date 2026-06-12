@@ -14,7 +14,11 @@ from app.database.session import get_db
 from app.models import Budget, Document, DocumentEntity, DocumentPage, Order, User
 from app.schemas.search import HybridSearchRequest, SearchResultRead, SemanticSearchRequest
 from app.services.search_service import SearchResult, search_hybrid, search_semantic, search_text
-from app.services.tenant_access import access_scope_cache_key, filter_search_results_for_scope, resolve_user_access_scope
+from app.services.tenant_access import (
+    access_scope_cache_key,
+    filter_search_results_for_scope,
+    resolve_user_access_scope,
+)
 
 router = APIRouter()
 
@@ -45,7 +49,10 @@ def text_search(
 def exact_search(
     request: Request,
     q: str = Query(min_length=1),
-    kind: str = Query(default="reference", pattern="^(budget|order|invoice|delivery_note|reference|client|supplier)$"),
+    kind: str = Query(
+        default="reference",
+        pattern="^(budget|order|invoice|delivery_note|reference|client|supplier)$",
+    ),
     limit: int = Query(default=20, ge=1, le=50),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -54,20 +61,49 @@ def exact_search(
     normalized = q.strip()
     results: list[SearchResult] = []
     if kind == "budget":
-        budgets = db.scalars(select(Budget).where(Budget.budget_number == normalized).limit(limit)).all()
-        results = [_business_result(db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "exact_budget") for budget in budgets]
+        budgets = db.scalars(
+            select(Budget).where(Budget.budget_number == normalized).limit(limit)
+        ).all()
+        results = [
+            _business_result(
+                db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "exact_budget"
+            )
+            for budget in budgets
+        ]
     elif kind == "order":
-        orders = db.scalars(select(Order).where(Order.order_number == normalized).limit(limit)).all()
-        results = [_business_result(db, order.document_id, f"Pedido {order.order_number}", 1.4, "exact_order") for order in orders]
+        orders = db.scalars(
+            select(Order).where(Order.order_number == normalized).limit(limit)
+        ).all()
+        results = [
+            _business_result(
+                db, order.document_id, f"Pedido {order.order_number}", 1.4, "exact_order"
+            )
+            for order in orders
+        ]
     elif kind in {"client", "supplier"}:
         budget_rows = []
         order_rows = []
         if kind == "client":
-            budget_rows = list(db.scalars(select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
-            order_rows = list(db.scalars(select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
+            budget_rows = list(
+                db.scalars(
+                    select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)
+                ).all()
+            )
+            order_rows = list(
+                db.scalars(
+                    select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)
+                ).all()
+            )
         else:
-            order_rows = list(db.scalars(select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)).all())
-        results = [_business_result(db, row.document_id, normalized, 1.1, f"{kind}_match") for row in [*budget_rows, *order_rows]]
+            order_rows = list(
+                db.scalars(
+                    select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)
+                ).all()
+            )
+        results = [
+            _business_result(db, row.document_id, normalized, 1.1, f"{kind}_match")
+            for row in [*budget_rows, *order_rows]
+        ]
     else:
         entity_type = "reference" if kind == "reference" else kind
         entities = db.scalars(
@@ -76,7 +112,12 @@ def exact_search(
             .where(DocumentEntity.normalized_value == normalized.lower())
             .limit(limit)
         ).all()
-        results = [_business_result(db, entity.document_id, entity.entity_value, 1.3, f"exact_{entity_type}") for entity in entities]
+        results = [
+            _business_result(
+                db, entity.document_id, entity.entity_value, 1.3, f"exact_{entity_type}"
+            )
+            for entity in entities
+        ]
     return filter_search_results_for_scope(db, results, scope)
 
 
@@ -84,7 +125,10 @@ def exact_search(
 def guided_search(
     request: Request,
     q: str = Query(min_length=1),
-    mode: str = Query(default="text", pattern="^(budget|order|invoice|delivery_note|reference|client|supplier|text)$"),
+    mode: str = Query(
+        default="text",
+        pattern="^(budget|order|invoice|delivery_note|reference|client|supplier|text)$",
+    ),
     limit: int = Query(default=20, ge=1, le=50),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -95,20 +139,49 @@ def guided_search(
     if mode == "text":
         results = search_text(db, normalized, limit=limit)
     elif mode == "budget":
-        budgets = db.scalars(select(Budget).where(Budget.budget_number == normalized).limit(limit)).all()
-        results = [_business_result(db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "guided_budget") for budget in budgets]
+        budgets = db.scalars(
+            select(Budget).where(Budget.budget_number == normalized).limit(limit)
+        ).all()
+        results = [
+            _business_result(
+                db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "guided_budget"
+            )
+            for budget in budgets
+        ]
     elif mode == "order":
-        orders = db.scalars(select(Order).where(Order.order_number == normalized).limit(limit)).all()
-        results = [_business_result(db, order.document_id, f"Pedido {order.order_number}", 1.4, "guided_order") for order in orders]
+        orders = db.scalars(
+            select(Order).where(Order.order_number == normalized).limit(limit)
+        ).all()
+        results = [
+            _business_result(
+                db, order.document_id, f"Pedido {order.order_number}", 1.4, "guided_order"
+            )
+            for order in orders
+        ]
     elif mode in {"client", "supplier"}:
         budget_rows = []
         order_rows = []
         if mode == "client":
-            budget_rows = list(db.scalars(select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
-            order_rows = list(db.scalars(select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)).all())
+            budget_rows = list(
+                db.scalars(
+                    select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)
+                ).all()
+            )
+            order_rows = list(
+                db.scalars(
+                    select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)
+                ).all()
+            )
         else:
-            order_rows = list(db.scalars(select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)).all())
-        results = [_business_result(db, row.document_id, normalized, 1.1, f"guided_{mode}") for row in [*budget_rows, *order_rows]]
+            order_rows = list(
+                db.scalars(
+                    select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)
+                ).all()
+            )
+        results = [
+            _business_result(db, row.document_id, normalized, 1.1, f"guided_{mode}")
+            for row in [*budget_rows, *order_rows]
+        ]
     else:
         entity_type = "reference" if mode == "reference" else mode
         entities = db.scalars(
@@ -117,7 +190,12 @@ def guided_search(
             .where(DocumentEntity.normalized_value == normalized.lower())
             .limit(limit)
         ).all()
-        results = [_business_result(db, entity.document_id, entity.entity_value, 1.3, f"guided_{entity_type}") for entity in entities]
+        results = [
+            _business_result(
+                db, entity.document_id, entity.entity_value, 1.3, f"guided_{entity_type}"
+            )
+            for entity in entities
+        ]
     return filter_search_results_for_scope(db, results, scope)
 
 
@@ -194,7 +272,9 @@ def export_search_csv(
     )
 
 
-def _business_result(db: Session, document_id: int, excerpt: str | None, score: float, source_type: str) -> SearchResult:
+def _business_result(
+    db: Session, document_id: int, excerpt: str | None, score: float, source_type: str
+) -> SearchResult:
     document = db.get(Document, document_id)
     if not document:
         return SearchResult(
@@ -209,7 +289,12 @@ def _business_result(db: Session, document_id: int, excerpt: str | None, score: 
             ocr_confidence=None,
             source_type=source_type,
         )
-    page = db.scalar(select(DocumentPage).where(DocumentPage.document_id == document.id).order_by(DocumentPage.page_number.asc()).limit(1))
+    page = db.scalar(
+        select(DocumentPage)
+        .where(DocumentPage.document_id == document.id)
+        .order_by(DocumentPage.page_number.asc())
+        .limit(1)
+    )
     return SearchResult(
         document_id=document.id,
         original_filename=document.original_filename,

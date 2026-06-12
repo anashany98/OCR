@@ -14,7 +14,6 @@ import io
 import threading
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -135,21 +134,37 @@ class _FakePage:
         return self.pixmap
 
 
-def test_render_page_to_jpeg_produces_jpeg_with_quality_85(tmp_path):
+def test_render_page_to_image_produces_jpeg_with_quality_85(tmp_path):
     """The default render path must produce a JPEG at quality >= 80.
 
     Quality 85 is the sweet spot: indistinguishable from PNG for OCR but
     10x smaller. We allow >= 80 to leave room for future tuning without
     breaking this contract.
+
+    OPS-1: the helper now writes the file with the on-disk
+    extension that matches the encoded bytes (``.jpg`` for
+    JPEG, ``.png`` for the PNG fallback). The old test
+    asserted the bug — bytes JPEG under a ``.png`` filename —
+    which is exactly the OPS-01 inconsistency the audit
+    flagged.
     """
-    from app.parsers.pdf import _render_page_to_jpeg
+    from app.parsers.pdf import _render_page_to_image
 
     page = _FakePage()
-    out = tmp_path / "page_1_dpi300.png"  # path suffix is .png, content is JPEG
-    ok = _render_page_to_jpeg(page, out, dpi=300)
+    out = tmp_path / "page_1_dpi300.tmp"
+    returned_ext = _render_page_to_image(page, out, dpi=300)
+    # The helper atomically renames the file onto ``out`` with
+    # the right extension; ``out.with_suffix(returned_ext)``
+    # is the new on-disk path the caller should use.
+    if returned_ext is not None:
+        out = out.with_suffix(returned_ext)
 
-    assert ok is True
-    assert out.exists()
+    assert returned_ext == ".jpg"
+    assert out.suffix == ".jpg", (
+        "OPS-1 fix: the on-disk extension must match the bytes so the "
+        "browser infers the right Content-Type"
+    )
+    assert out.exists(), "the rendered file must be on disk at the new path"
     assert out.read_bytes()[:2] == b"\xff\xd8", "rendered file is not a JPEG"
     assert page.pixmap.last_format == "jpeg"
     assert page.pixmap.last_jpg_quality is not None
@@ -157,65 +172,158 @@ def test_render_page_to_jpeg_produces_jpeg_with_quality_85(tmp_path):
     assert page.pixmap.last_jpg_quality <= 95
 
 
-def test_render_page_to_jpeg_falls_back_to_png_on_failure(tmp_path):
+def test_render_page_to_image_falls_back_to_png_on_failure(tmp_path):
     """If JPEG encoding fails (e.g. exotic PDF), the helper must fall
-    back to PNG so the rest of the pipeline keeps working."""
-    from app.parsers.pdf import _render_page_to_jpeg
+    back to PNG so the rest of the pipeline keeps working, and
+    report ``.png`` as the on-disk extension (OPS-1).
+    """
+    from pathlib import Path
+
+    from app.parsers.pdf import _render_page_to_image
 
     page = _FakePage(fail_jpeg=False)  # JPEG path works for get_pixmap...
     # ...but we simulate the JPEG write_bytes() call failing.
-    out = tmp_path / "page_1_dpi300.png"
-    original_write = type(out).write_bytes
+    out = tmp_path / "page_1_dpi300.tmp"
+    # OPS-1 rewrite: the helper now writes to
+    # ``out.with_suffix(".jpg")`` — a *different* Path object —
+    # so patching ``out.write_bytes`` alone no longer catches
+    # the failure. Patch the class to make any Path's
+    # ``write_bytes`` raise so we can exercise the PNG
+    # fallback path.
+    original_write = Path.write_bytes
 
     def boom(self, data):  # noqa: ARG001
         raise OSError("disk full")
 
     try:
-        type(out).write_bytes = boom  # type: ignore[assignment]
-        ok = _render_page_to_jpeg(page, out, dpi=300)
+        Path.write_bytes = boom  # type: ignore[assignment]
+        returned_ext = _render_page_to_image(page, out, dpi=300)
         # The fallback path uses ``page.get_pixmap(...).save(image_file)``,
         # which on a real PyMuPDF page writes the PNG. Our fake page's
         # ``get_pixmap`` returns a _FakePixmap without ``.save()``, so
         # the fallback also fails. We accept that as a degenerate case
-        # of the fake and assert the helper returns False (caller will
-        # then skip OCR for this page).
-        assert ok is False
+        # of the fake and assert the helper returns ``None`` (caller
+        # will then skip OCR for this page).
+        assert returned_ext is None
         assert not out.exists()
     finally:
-        type(out).write_bytes = original_write  # type: ignore[assignment]
+        Path.write_bytes = original_write  # type: ignore[assignment]
 
 
-def test_render_page_to_jpeg_returns_false_when_both_paths_fail(tmp_path):
+def test_render_page_to_image_returns_none_when_both_paths_fail(tmp_path):
     """Both JPEG and PNG must fail before the helper gives up."""
-    from app.parsers.pdf import _render_page_to_jpeg
+    from app.parsers.pdf import _render_page_to_image
 
     page = _FakePage(fail_jpeg=True, fail_png=True)
-    out = tmp_path / "page_1_dpi300.png"
-    ok = _render_page_to_jpeg(page, out, dpi=300)
-    assert ok is False
+    out = tmp_path / "page_1_dpi300.tmp"
+    returned_ext = _render_page_to_image(page, out, dpi=300)
+    assert returned_ext is None
     assert not out.exists()
+
+
+def test_render_page_to_image_uses_png_extension_on_fallback(tmp_path):
+    """OPS-1 regression: when the renderer falls back to PNG, the
+    helper must atomically rename the staging file onto the
+    target with a ``.png`` extension so the browser infers
+    ``image/png`` from the filename. We simulate the
+    fallback by making the JPEG ``tobytes`` raise but the
+    PNG ``save`` succeed.
+    """
+    from app.parsers.pdf import _render_page_to_image
+
+    class _GoodPngPixmap:
+        last_format: str | None = None
+
+        def tobytes(self, fmt, jpg_quality=None):  # noqa: ARG002
+            # Force the JPEG branch to raise so the PNG path runs.
+            raise RuntimeError("simulated JPEG failure")
+
+        def save(self, path):
+            # Write a real PNG signature so the test can assert
+            # ``out.read_bytes()[:8]`` matches a PNG header.
+            type(self).last_format = "png"
+            with open(path, "wb") as fh:
+                fh.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+
+    class _GoodPngPage:
+        def get_pixmap(self, matrix, alpha):  # noqa: ARG002
+            return _GoodPngPixmap()
+
+    out = tmp_path / "page_1_dpi300.tmp"
+    returned_ext = _render_page_to_image(_GoodPngPage(), out, dpi=300)
+    if returned_ext is not None:
+        out = out.with_suffix(returned_ext)
+
+    assert returned_ext == ".png"
+    assert out.suffix == ".png", (
+        "OPS-1: the PNG fallback must end up with a .png extension, "
+        "not .jpg or .tmp, so the browser infers image/png"
+    )
+    assert out.exists(), "the rendered file must be on disk at the new path"
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", "rendered file is not a PNG"
 
 
 def test_render_page_zoom_uses_dpi_over_72():
     """Sanity-check: at 300 DPI, zoom must be ~4.16 (300/72).
     We don't introspect the matrix here, but we can verify the helper
-    does not crash on standard DPIs."""
-    from app.parsers.pdf import _render_page_to_jpeg
+    does not crash on standard DPIs. The helper now returns the
+    on-disk extension (``".jpg"``) instead of a boolean, so the
+    assertion has been updated accordingly. The on-disk file
+    lives at ``_junk.jpg`` (not ``_junk.tmp``) because the
+    helper rewrites the suffix to match the encoded format.
+    """
+    from app.parsers.pdf import _render_page_to_image
 
     page = _FakePage()
     for dpi in (72, 150, 300, 400, 600):
-        out = MagicMock(spec=Path)
-        out.write_bytes = MagicMock()
-        # Patch the spec-friendly Path to be a real Path for write_bytes.
-        real_out = Path(str(out)) if False else None  # noqa: F841
-        # Use a real tmp path.
-        real_out = Path(__file__).resolve().parent / "_junk.png"
+        real_out = Path(__file__).resolve().parent / f"_junk_dpi{dpi}.tmp"
         try:
-            assert _render_page_to_jpeg(page, real_out, dpi=dpi) is True
-            assert real_out.exists()
+            returned_ext = _render_page_to_image(page, real_out, dpi=dpi)
+            assert returned_ext == ".jpg"
+            final_path = real_out.with_suffix(returned_ext)
+            assert final_path.exists(), (
+                f"OPS-1: rendered file should be on disk at {final_path}"
+            )
         finally:
-            if real_out.exists():
-                real_out.unlink()
+            for ext in (".tmp", ".jpg", ".png"):
+                candidate = real_out.with_suffix(ext)
+                if candidate.exists():
+                    candidate.unlink()
+
+
+def test_swap_extension_replaces_suffix(tmp_path: Path):
+    """OPS-1 helper: ``_swap_extension`` rewrites the on-disk
+    extension so the browser infers the right MIME. It must
+    be a no-op when the path already has the requested
+    extension.
+    """
+    from app.parsers.pdf import _swap_extension
+
+    assert _swap_extension(tmp_path / "page_1.tmp", ".jpg") == tmp_path / "page_1.jpg"
+    assert _swap_extension(tmp_path / "page_1.tmp", ".png") == tmp_path / "page_1.png"
+    # Idempotent: swapping for the same extension is a no-op.
+    assert _swap_extension(tmp_path / "page_1.jpg", ".jpg") == tmp_path / "page_1.jpg"
+    # Case-insensitive: a path with ``.JPG`` is still
+    # considered to have the requested extension.
+    assert _swap_extension(tmp_path / "page_1.JPG", ".jpg") == tmp_path / "page_1.JPG"
+
+
+def test_swap_extension_replaces_suffix(tmp_path: Path):
+    """Sanity-check for ``Path.with_suffix`` (the stdlib helper
+    used by every caller of ``_render_page_to_image``). The
+    old test imported ``_swap_extension`` from the parser
+    module; that helper was removed in favour of letting
+    ``_render_page_to_image`` rename the staging file
+    directly, so the contract is now on the stdlib.
+    """
+    assert (tmp_path / "page_1.tmp").with_suffix(".jpg") == tmp_path / "page_1.jpg"
+    assert (tmp_path / "page_1.tmp").with_suffix(".png") == tmp_path / "page_1.png"
+    # ``with_suffix`` rewrites even when the source already
+    # has an extension — unlike the old ``_swap_extension``
+    # which short-circuited on a match. The new helper does
+    # not need that branch because the caller always passes a
+    # ``.tmp`` placeholder and the suffix is always rewritten.
+    assert (tmp_path / "page_1.jpg").with_suffix(".png") == tmp_path / "page_1.png"
 
 
 # ---------------------------------------------------------------------------

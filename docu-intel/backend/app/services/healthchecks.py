@@ -26,12 +26,12 @@ The module is **fail-safe**: every check is wrapped in a
 caller can continue with the remaining checks. A failed check
 never raises to the caller.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
 
 from app.core.config import settings
 
@@ -84,7 +84,9 @@ def check_lm_studio() -> DependencyStatus:
     name = "lm_studio"
     base_url = (settings.ai_base_url or "").strip().rstrip("/")
     if not base_url:
-        return DependencyStatus(name=name, status="down", latency_ms=0, detail="AI_BASE_URL not configured")
+        return DependencyStatus(
+            name=name, status="down", latency_ms=0, detail="AI_BASE_URL not configured"
+        )
 
     # LM Studio exposes /v1/models; some servers expose /models.
     start = _now_ms()
@@ -102,14 +104,24 @@ def check_lm_studio() -> DependencyStatus:
                         latency = _now_ms() - start
                         model_names = [m.get("id", "?") for m in models[:5]] if models else []
                         status = "ok" if latency < _DEGRADED_LATENCY_MS else "degraded"
-                        detail = f"models: {', '.join(model_names)}" if model_names else "no models loaded"
-                        return DependencyStatus(name=name, status=status, latency_ms=latency, detail=detail)
+                        detail = (
+                            f"models: {', '.join(model_names)}"
+                            if model_names
+                            else "no models loaded"
+                        )
+                        return DependencyStatus(
+                            name=name, status=status, latency_ms=latency, detail=detail
+                        )
                 except Exception:
                     continue
     except Exception as exc:
-        return DependencyStatus(name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200])
+        return DependencyStatus(
+            name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200]
+        )
 
-    return DependencyStatus(name=name, status="down", latency_ms=_now_ms() - start, detail="server not reachable")
+    return DependencyStatus(
+        name=name, status="down", latency_ms=_now_ms() - start, detail="server not reachable"
+    )
 
 
 def check_embeddings() -> DependencyStatus:
@@ -119,7 +131,9 @@ def check_embeddings() -> DependencyStatus:
     """
     name = "embeddings"
     if not settings.embedding_provider:
-        return DependencyStatus(name=name, status="down", latency_ms=0, detail="EMBEDDING_PROVIDER not configured")
+        return DependencyStatus(
+            name=name, status="down", latency_ms=0, detail="EMBEDDING_PROVIDER not configured"
+        )
 
     start = _now_ms()
     try:
@@ -129,12 +143,20 @@ def check_embeddings() -> DependencyStatus:
         latency = _now_ms() - start
         if vec and len(vec) > 0:
             status = "ok" if latency < _DEGRADED_LATENCY_MS else "degraded"
-            return DependencyStatus(name=name, status=status, latency_ms=latency, detail=f"dim={len(vec)}")
-        return DependencyStatus(name=name, status="down", latency_ms=latency, detail="empty vector returned")
+            return DependencyStatus(
+                name=name, status=status, latency_ms=latency, detail=f"dim={len(vec)}"
+            )
+        return DependencyStatus(
+            name=name, status="down", latency_ms=latency, detail="empty vector returned"
+        )
     except EmbeddingProviderError as exc:
-        return DependencyStatus(name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200])
+        return DependencyStatus(
+            name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200]
+        )
     except Exception as exc:
-        return DependencyStatus(name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200])
+        return DependencyStatus(
+            name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200]
+        )
 
 
 def check_reranker() -> DependencyStatus:
@@ -143,8 +165,12 @@ def check_reranker() -> DependencyStatus:
     not.
     """
     name = "reranker"
-    if not settings.reranker_local_model and not (settings.embedding_base_url or settings.ai_base_url):
-        return DependencyStatus(name=name, status="down", latency_ms=0, detail="no reranker configured")
+    if not settings.reranker_local_model and not (
+        settings.embedding_base_url or settings.ai_base_url
+    ):
+        return DependencyStatus(
+            name=name, status="down", latency_ms=0, detail="no reranker configured"
+        )
 
     start = _now_ms()
     try:
@@ -168,10 +194,14 @@ def check_reranker() -> DependencyStatus:
         latency = _now_ms() - start
         if result:
             status = "ok" if latency < _DEGRADED_LATENCY_MS else "degraded"
-            return DependencyStatus(name=name, status=status, latency_ms=latency, detail=f"score={result[0].score:.3f}")
+            return DependencyStatus(
+                name=name, status=status, latency_ms=latency, detail=f"score={result[0].score:.3f}"
+            )
         return DependencyStatus(name=name, status="down", latency_ms=latency, detail="empty result")
     except Exception as exc:
-        return DependencyStatus(name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200])
+        return DependencyStatus(
+            name=name, status="down", latency_ms=_now_ms() - start, detail=str(exc)[:200]
+        )
 
 
 # ---------------------------------------------------------------------------

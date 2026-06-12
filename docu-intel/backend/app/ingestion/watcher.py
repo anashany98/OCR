@@ -49,7 +49,9 @@ class PendingFileRegistry:
         self._retry_counts[path] = self._retry_counts.get(path, 0) + 1
         return self._retry_counts[path] >= self.MAX_RETRIES
 
-    def ready_paths(self, *, now: float | None = None, settle_seconds: float = 5.0, limit: int = 10) -> list[Path]:
+    def ready_paths(
+        self, *, now: float | None = None, settle_seconds: float = 5.0, limit: int = 10
+    ) -> list[Path]:
         current_time = time.monotonic() if now is None else now
         ready = [
             path
@@ -68,7 +70,9 @@ class PendingFileRegistry:
         for path, _ in sorted_entries[:evict_count]:
             self._paths.pop(path, None)
             self._retry_counts.pop(path, None)
-        logger.warning("pending_registry_evicted count=%d remaining=%d", evict_count, len(self._paths))
+        logger.warning(
+            "pending_registry_evicted count=%d remaining=%d", evict_count, len(self._paths)
+        )
 
 
 def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> dict:
@@ -85,7 +89,12 @@ def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> di
         db.commit()
         return {"status": "paused", "path": str(path)}
     if not should_accept_more_jobs(db):
-        _record_path_status(db, path, "backpressure", details={"max_pending_jobs": settings.ingestion_max_pending_jobs})
+        _record_path_status(
+            db,
+            path,
+            "backpressure",
+            details={"max_pending_jobs": settings.ingestion_max_pending_jobs},
+        )
         db.commit()
         return {"status": "backpressure", "path": str(path)}
     if not path.exists() or not path.is_file():
@@ -96,18 +105,30 @@ def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> di
     # cap BEFORE doing the expensive stability check and SHA256 hash.
     if is_file_too_large(path):
         _record_path_status(
-            db, path, "ignored",
-            details={"reason": "file_too_large", "limit_mb": getattr(settings, "ingestion_max_file_size_mb", 500)},
+            db,
+            path,
+            "ignored",
+            details={
+                "reason": "file_too_large",
+                "limit_mb": getattr(settings, "ingestion_max_file_size_mb", 500),
+            },
         )
         db.commit()
         return {"status": "ignored", "path": str(path)}
     if not is_file_stable(path, settings.ingestion_stable_seconds):
-        _record_path_status(db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds})
+        _record_path_status(
+            db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds}
+        )
         db.commit()
         return {"status": "unstable", "path": str(path)}
 
     source_path = str(path)
-    existing_document = db.scalar(select(Document).where(Document.source_path == source_path).order_by(Document.id.desc()).limit(1))
+    existing_document = db.scalar(
+        select(Document)
+        .where(Document.source_path == source_path)
+        .order_by(Document.id.desc())
+        .limit(1)
+    )
     if existing_document:
         current_hash = calculate_sha256(path)
         if existing_document.file_hash == current_hash:
@@ -166,7 +187,7 @@ def _record_path_status(
         job_id=job_id,
         error_message=error_message,
     )
-    if status == 'failed':
+    if status == "failed":
         track_watcher_error()
     record_ingestion_event(
         db,
@@ -180,7 +201,9 @@ def _record_path_status(
     )
 
 
-def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue: bool = True) -> dict:
+def process_pending_paths(
+    db: Session, pending: PendingFileRegistry, *, enqueue: bool = True
+) -> dict:
     counts = {
         "processed": 0,
         "duplicates": 0,
@@ -216,7 +239,11 @@ def process_pending_paths(db: Session, pending: PendingFileRegistry, *, enqueue:
                 logger.exception("failed_to_ingest path=%s max_retries_exceeded", path)
             else:
                 pending.add(path)
-                logger.warning("failed_to_ingest path=%s retry=%d, will re-queue after settle period", path, pending._retry_counts.get(path, 0))
+                logger.warning(
+                    "failed_to_ingest path=%s retry=%d, will re-queue after settle period",
+                    path,
+                    pending._retry_counts.get(path, 0),
+                )
             continue
 
         status = result["status"]
@@ -329,7 +356,11 @@ def run_watch_loop() -> None:
     initial_count = enqueue_existing_files(pending, settings.input_dir)
     logger.info("watcher_initial_pending count=%s input_dir=%s", initial_count, settings.input_dir)
 
-    observer.schedule(_WatchdogEventHandler(pending).handler, str(settings.input_dir), recursive=settings.watcher_recursive)
+    observer.schedule(
+        _WatchdogEventHandler(pending).handler,
+        str(settings.input_dir),
+        recursive=settings.watcher_recursive,
+    )
     observer.start()
 
     stop_requested = False

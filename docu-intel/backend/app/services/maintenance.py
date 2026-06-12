@@ -25,7 +25,12 @@ def build_operations_status(db: Session) -> dict:
 
 def build_operations_overview(db: Session) -> dict:
     total_bytes = int(
-        db.scalar(select(func.coalesce(func.sum(Document.file_size), 0)).where(Document.deleted_at.is_(None))) or 0
+        db.scalar(
+            select(func.coalesce(func.sum(Document.file_size), 0)).where(
+                Document.deleted_at.is_(None)
+            )
+        )
+        or 0
     )
     pending_or_processing = int(
         db.scalar(
@@ -36,7 +41,12 @@ def build_operations_overview(db: Session) -> dict:
         or 0
     )
     processed_jobs = int(
-        db.scalar(select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "processed")) or 0
+        db.scalar(
+            select(func.count())
+            .select_from(ExtractionJob)
+            .where(ExtractionJob.status == "processed")
+        )
+        or 0
     )
     finished_jobs = list(
         db.scalars(
@@ -55,8 +65,14 @@ def build_operations_overview(db: Session) -> dict:
     ]
     avg_seconds = sum(durations) / len(durations) if durations else 0.0
     last_sources = [
-        {"source_path": row.path, "updated_at": row.updated_at.isoformat() if row.updated_at else None, "status": row.status}
-        for row in db.scalars(select(WatchedFile).order_by(WatchedFile.updated_at.desc()).limit(10)).all()
+        {
+            "source_path": row.path,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "status": row.status,
+        }
+        for row in db.scalars(
+            select(WatchedFile).order_by(WatchedFile.updated_at.desc()).limit(10)
+        ).all()
     ]
     low_ocr_pages = int(
         db.scalar(
@@ -83,7 +99,9 @@ def build_operations_overview(db: Session) -> dict:
             "pending_or_processing": pending_or_processing,
             "processed_total": processed_jobs,
             "avg_processing_seconds": round(avg_seconds, 2),
-            "estimated_remaining_seconds": round(avg_seconds * pending_or_processing, 2) if avg_seconds else None,
+            "estimated_remaining_seconds": round(avg_seconds * pending_or_processing, 2)
+            if avg_seconds
+            else None,
         },
         "watcher": {
             "by_status": _group_count(db, WatchedFile.status, WatchedFile),
@@ -98,12 +116,30 @@ def build_operations_overview(db: Session) -> dict:
 
 
 def build_maintenance_report(db: Session) -> dict:
-    failed_jobs = int(db.scalar(select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "failed")) or 0)
-    watched_failed = int(db.scalar(select(func.count()).select_from(WatchedFile).where(WatchedFile.status == "failed")) or 0)
+    failed_jobs = int(
+        db.scalar(
+            select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "failed")
+        )
+        or 0
+    )
+    watched_failed = int(
+        db.scalar(
+            select(func.count()).select_from(WatchedFile).where(WatchedFile.status == "failed")
+        )
+        or 0
+    )
     return {
         "checks": [
-            {"key": "failed_jobs", "status": "warning" if failed_jobs else "ok", "count": failed_jobs},
-            {"key": "failed_watched_files", "status": "warning" if watched_failed else "ok", "count": watched_failed},
+            {
+                "key": "failed_jobs",
+                "status": "warning" if failed_jobs else "ok",
+                "count": failed_jobs,
+            },
+            {
+                "key": "failed_watched_files",
+                "status": "warning" if watched_failed else "ok",
+                "count": watched_failed,
+            },
         ],
         "disk": {
             "input_dir": _disk_usage(settings.input_dir),
@@ -113,7 +149,12 @@ def build_maintenance_report(db: Session) -> dict:
 
 
 def _group_count(db: Session, column, model) -> dict[str, int]:
-    return {str(key or "unknown"): int(count) for key, count in db.execute(select(column, func.count()).select_from(model).group_by(column)).all()}
+    return {
+        str(key or "unknown"): int(count)
+        for key, count in db.execute(
+            select(column, func.count()).select_from(model).group_by(column)
+        ).all()
+    }
 
 
 def _disk_usage(path: Path) -> dict:

@@ -88,8 +88,8 @@ export function WelcomeCard({ onPick }: { onPick: (q: string) => void }) {
         </h2>
         <p className="mx-auto max-w-lg text-[13px] text-[var(--text-muted)]">
           Preguntame lo que quieras sobre los documentos del proyecto. Te respondo en lenguaje
-          natural, entiendo PDFs, emails, planos e imagenes, y cito siempre la fuente para
-          que puedas comprobarlo.
+          natural, entiendo PDFs, emails, planos e imagenes, y cito siempre la fuente para que
+          puedas comprobarlo.
         </p>
       </div>
       <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2">
@@ -240,8 +240,9 @@ export function DocumentPreview({
         target="_blank"
         rel="noreferrer"
       >
-        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+        {/* The image is a visual preview of a chat-cited document; the surrounding link's ``title`` attribute and the citation text already carry the accessible name. ``alt=""`` marks the image as decorative so screen readers skip it. */}
         <img
+          alt=""
           src={previewSrc}
           loading="lazy"
           className="block h-20 w-16 object-cover"
@@ -291,8 +292,12 @@ export function EntityRow({
   if (e.accepted === false) facts.push({ k: "", v: "no aceptado" })
   if (e.project_name) facts.push({ k: "Proyecto", v: String(e.project_name) })
   if (e.scale_text)
-    facts.push({ k: "Escala", v: `${e.scale_text}${e.has_valid_scale === false ? " (no válida)" : ""}` })
-  if (e.related_budget_id) facts.push({ k: "", v: `vinculado a presupuesto #${e.related_budget_id}` })
+    facts.push({
+      k: "Escala",
+      v: `${e.scale_text}${e.has_valid_scale === false ? " (no válida)" : ""}`,
+    })
+  if (e.related_budget_id)
+    facts.push({ k: "", v: `vinculado a presupuesto #${e.related_budget_id}` })
   if (e.related_order_id) facts.push({ k: "", v: `vinculado a pedido #${e.related_order_id}` })
   if (typeof e.line_count === "number" && e.line_count > 0)
     facts.push({ k: "Líneas", v: String(e.line_count) })
@@ -335,7 +340,8 @@ export function ResolvedDocumentCard({ resolved }: { resolved: ResolvedDocument 
     if (entities.budget.total_amount == null) missing.push("importe del presupuesto")
   }
   if (entities.order && !entities.order.supplier) missing.push("proveedor del pedido")
-  if (entities.invoice && entities.invoice.total_amount == null) missing.push("importe de la factura")
+  if (entities.invoice && entities.invoice.total_amount == null)
+    missing.push("importe de la factura")
 
   return (
     <div className="mb-3 space-y-2 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-faint)]/60 p-3 text-[12.5px]">
@@ -380,10 +386,26 @@ export function ResolvedDocumentCard({ resolved }: { resolved: ResolvedDocument 
         </div>
       </div>
 
-      {entities.budget && <EntityRow icon={<FileText className="h-3.5 w-3.5" />} label="Presupuesto" e={entities.budget} />}
-      {entities.order && <EntityRow icon={<Receipt className="h-3.5 w-3.5" />} label="Pedido" e={entities.order} />}
-      {entities.invoice && <EntityRow icon={<Receipt className="h-3.5 w-3.5" />} label="Factura" e={entities.invoice} />}
-      {entities.plan && <EntityRow icon={<MapIcon className="h-3.5 w-3.5" />} label="Plano" e={entities.plan} />}
+      {entities.budget && (
+        <EntityRow
+          icon={<FileText className="h-3.5 w-3.5" />}
+          label="Presupuesto"
+          e={entities.budget}
+        />
+      )}
+      {entities.order && (
+        <EntityRow icon={<Receipt className="h-3.5 w-3.5" />} label="Pedido" e={entities.order} />
+      )}
+      {entities.invoice && (
+        <EntityRow
+          icon={<Receipt className="h-3.5 w-3.5" />}
+          label="Factura"
+          e={entities.invoice}
+        />
+      )}
+      {entities.plan && (
+        <EntityRow icon={<MapIcon className="h-3.5 w-3.5" />} label="Plano" e={entities.plan} />
+      )}
 
       {doc.vision?.description && (
         <div className="mt-2 rounded-lg border border-[var(--info)]/30 bg-[var(--info-faint)]/60 p-2.5">

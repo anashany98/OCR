@@ -8,7 +8,15 @@ describe("polygonAreaM2", () => {
   })
 
   it("returns 0 for a polygon with fewer than 3 points", () => {
-    expect(polygonAreaM2([{ x: 0, y: 0 }, { x: 10, y: 0 }], 0.01)).toBe(0)
+    expect(
+      polygonAreaM2(
+        [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+        ],
+        0.01,
+      ),
+    ).toBe(0)
   })
 
   it("computes the area of a 100x100 px square at 1:100 scale (1px=1m)", () => {

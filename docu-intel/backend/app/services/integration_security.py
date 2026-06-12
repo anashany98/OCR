@@ -39,6 +39,7 @@ The public surface for callers is unchanged: ``get_integration_context``
 still returns an :class:`IntegrationContext`. The only thing that
 moves is how the client is identified.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -52,7 +53,6 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.database.session import get_db
 from app.models import AccessPolicy, IntegrationClient
 from app.services.access_policy import resolve_access_policy
@@ -87,6 +87,7 @@ def hash_integration_api_key(api_key: str) -> str:
     # to forge or brute-force API key hashes. Falls back to
     # ``jwt_secret`` for backward compatibility.
     from app.core.security import _api_key_hmac_secret  # local import: avoids circular
+
     digest = hmac.new(
         _api_key_hmac_secret().encode("utf-8"),
         api_key.encode("utf-8"),
@@ -107,6 +108,7 @@ def generate_api_key() -> str:
     stored.
     """
     import secrets
+
     return secrets.token_urlsafe(32)
 
 
@@ -118,6 +120,7 @@ def generate_key_id() -> str:
     secret.
     """
     import secrets
+
     return "kid_" + secrets.token_hex(8)
 
 
@@ -175,9 +178,7 @@ def authenticate_integration_client_by_key_id(
     return client
 
 
-def authenticate_integration_client_legacy(
-    db: Session, api_key: str
-) -> IntegrationClient | None:
+def authenticate_integration_client_legacy(db: Session, api_key: str) -> IntegrationClient | None:
     """Backward-compat path: legacy clients that still send the full
     key in ``X-DocuIntel-API-Key``.
 
@@ -198,16 +199,16 @@ def authenticate_integration_client_legacy(
     return None
 
 
-def authenticate_integration_client(
-    db: Session, api_key: str
-) -> IntegrationClient | None:
+def authenticate_integration_client(db: Session, api_key: str) -> IntegrationClient | None:
     """Deprecated: kept as a thin shim for the old call signature."""
     return authenticate_integration_client_legacy(db, api_key)
 
 
 def require_scope(context: IntegrationContext, scope: str) -> None:
     if scope not in (context.client.scopes_json or []):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Integration client lacks {scope} scope")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=f"Integration client lacks {scope} scope"
+        )
 
 
 def get_integration_context(
@@ -226,9 +227,7 @@ def get_integration_context(
 
     # New path: X-DocuIntel-Key-Id + X-DocuIntel-Key-Secret.
     if api_key_id and api_key_secret:
-        client = authenticate_integration_client_by_key_id(
-            db, api_key_id, api_key_secret
-        )
+        client = authenticate_integration_client_by_key_id(db, api_key_id, api_key_secret)
     elif api_key:
         # Legacy path: X-DocuIntel-API-Key=<secret>.
         client = authenticate_integration_client_legacy(db, api_key)
@@ -239,7 +238,9 @@ def get_integration_context(
         )
 
     if not client:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid integration API key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid integration API key"
+        )
 
     enforce_integration_rate_limit(client_id=client.id, technician_id=technician_id)
     policy = resolve_access_policy(db, technician_id)
@@ -269,13 +270,21 @@ def _decode_optional_budget_session(
         return None
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid integration session authorization")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid integration session authorization",
+        )
     try:
         claims = decode_budget_session_token(token)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid integration session token") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid integration session token"
+        ) from exc
     if claims.client_id != client_id or claims.technician_id != technician_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Integration session does not match caller")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Integration session does not match caller",
+        )
     return claims
 
 

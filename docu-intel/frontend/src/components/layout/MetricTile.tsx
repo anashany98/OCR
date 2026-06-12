@@ -5,7 +5,15 @@ import type { StatusTone } from "@/lib/status"
 
 const toneConfig: Record<
   StatusTone,
-  { bg: string; border: string; dot: string; label: string; value: string; meta: string; icon?: string }
+  {
+    bg: string
+    border: string
+    dot: string
+    label: string
+    value: string
+    meta: string
+    icon?: string
+  }
 > = {
   success: {
     bg: "bg-[var(--positive-light)]",
@@ -78,11 +86,22 @@ export function MetricTile({
       <span className={cn("status-dot absolute right-5 top-5 opacity-50", cfg.dot)} />
 
       <div className="flex items-start justify-between gap-4">
-        <p className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", cfg.label)}>{title}</p>
-        {icon && <div className={cn("opacity-70 transition-opacity group-hover:opacity-100", cfg.label)}>{icon}</div>}
+        <p className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", cfg.label)}>
+          {title}
+        </p>
+        {icon && (
+          <div className={cn("opacity-70 transition-opacity group-hover:opacity-100", cfg.label)}>
+            {icon}
+          </div>
+        )}
       </div>
 
-      <div className={cn("mt-3 font-display text-[32px] font-medium leading-none tracking-tight tabular-nums", cfg.value)}>
+      <div
+        className={cn(
+          "mt-3 font-display text-[32px] font-medium leading-none tracking-tight tabular-nums",
+          cfg.value,
+        )}
+      >
         {value}
       </div>
 

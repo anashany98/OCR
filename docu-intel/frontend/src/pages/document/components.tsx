@@ -176,7 +176,9 @@ export function DocumentGraphView({ graph }: { graph: DocumentGraph }) {
 // ---------------------------------------------------------------------------
 // UnsupportedPreviewCard — fallback for file types without a thumbnail
 // ---------------------------------------------------------------------------
-function previewKind(extension: string | null | undefined): "page" | "image" | "excel" | "email" | "other" {
+function previewKind(
+  extension: string | null | undefined,
+): "page" | "image" | "excel" | "email" | "other" {
   const ext = (extension ?? "").toLowerCase()
   if (ext === ".pdf") return "page"
   if ([".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"].includes(ext)) return "image"
@@ -386,9 +388,7 @@ export function OtherEntitiesTable({ entities }: { entities: DocumentEntity[] })
         <tbody>
           {entities.slice(0, 30).map((e) => (
             <tr key={e.id} className="border-b last:border-0 hover:bg-slate-50">
-              <td className="px-3 py-1.5 text-xs capitalize">
-                {e.entity_type.replace(/_/g, " ")}
-              </td>
+              <td className="px-3 py-1.5 text-xs capitalize">{e.entity_type.replace(/_/g, " ")}</td>
               <td className="max-w-[300px] truncate px-3 py-1.5 text-xs">{e.entity_value}</td>
               <td className="px-3 py-1.5 text-right text-xs text-[var(--text-muted)]">
                 {e.confidence != null ? `${Math.round(e.confidence * 100)}%` : "—"}

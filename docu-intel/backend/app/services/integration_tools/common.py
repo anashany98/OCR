@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from uuid import uuid4
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Budget, BudgetLine, Document, DocumentBlock, DocumentPage, Order
+from app.models import Budget, Document, DocumentPage
 from app.schemas.integration import (
     IntegrationManifest,
     IntegrationSource,
@@ -199,7 +198,9 @@ def _parse_arguments(tool: str, arguments: dict) -> BaseModel:
             return model()
         return model.model_validate(arguments)
     except ValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()) from None
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.errors()
+        ) from None
 
 
 def _response(
@@ -232,12 +233,17 @@ def _redactions_for_policy(context: IntegrationContext) -> list[str]:
 
 def _can_view_prices(context: IntegrationContext) -> bool:
     if context.budget_session:
-        return bool(context.budget_session.can_see_amounts and (policy_allows_prices(context.policy) or context.access_scope.can_view_prices))
+        return bool(
+            context.budget_session.can_see_amounts
+            and (policy_allows_prices(context.policy) or context.access_scope.can_view_prices)
+        )
     return bool(policy_allows_prices(context.policy) or context.access_scope.can_view_prices)
 
 
 def _allows_budget_search(context: IntegrationContext) -> bool:
-    return bool(policy_allows_budget_search(context.policy) or context.access_scope.can_search_budgets)
+    return bool(
+        policy_allows_budget_search(context.policy) or context.access_scope.can_search_budgets
+    )
 
 
 def _average(values: list[float | None]) -> float | None:
@@ -262,7 +268,12 @@ def _document_source(
     *,
     confidence: float | None = None,
 ) -> IntegrationSource:
-    page = db.scalar(select(DocumentPage).where(DocumentPage.document_id == document.id).order_by(DocumentPage.page_number.asc()).limit(1))
+    page = db.scalar(
+        select(DocumentPage)
+        .where(DocumentPage.document_id == document.id)
+        .order_by(DocumentPage.page_number.asc())
+        .limit(1)
+    )
     excerpt = page.text[:500] if page and page.text else ""
     if not _can_view_prices(context):
         excerpt = redact_sensitive_text(excerpt)
@@ -294,6 +305,7 @@ def _scope_payload(context: IntegrationContext) -> dict:
 # Context-aware filtering helpers
 # ---------------------------------------------------------------------------
 
+
 def _filter_budgets_for_context(db: Session, budgets, context: IntegrationContext) -> list[Budget]:
     return _filter_records_for_context(db, budgets, context)
 
@@ -302,7 +314,9 @@ def _filter_records_for_context(db: Session, records, context: IntegrationContex
     records_list = list(records)
     if not context.budget_session:
         return filter_records_by_document_scope(db, records_list, context.access_scope)
-    allowed_document_ids = _filter_document_ids_for_context(db, [record.document_id for record in records_list], context)
+    allowed_document_ids = _filter_document_ids_for_context(
+        db, [record.document_id for record in records_list], context
+    )
     return [record for record in records_list if record.document_id in allowed_document_ids]
 
 
@@ -310,7 +324,9 @@ def _filter_search_results_for_context(db: Session, results, context: Integratio
     results_list = list(results)
     if not context.budget_session:
         return filter_search_results_for_scope(db, results_list, context.access_scope)
-    allowed_document_ids = _filter_document_ids_for_context(db, [result.document_id for result in results_list], context)
+    allowed_document_ids = _filter_document_ids_for_context(
+        db, [result.document_id for result in results_list], context
+    )
     return [result for result in results_list if result.document_id in allowed_document_ids]
 
 
@@ -318,11 +334,15 @@ def _search_filters_for_context(context: IntegrationContext, filters: dict | Non
     scoped_filters = dict(filters or {})
     if context.budget_session:
         scoped_filters["budget_scope_id"] = context.budget_session.budget_scope_id
-        scoped_filters["_cache_scope"] = f"budget:{context.budget_session.budget_scope_id}:client:{context.client.id}"
+        scoped_filters["_cache_scope"] = (
+            f"budget:{context.budget_session.budget_scope_id}:client:{context.client.id}"
+        )
     return scoped_filters
 
 
-def _filter_document_ids_for_context(db: Session, document_ids, context: IntegrationContext) -> set[int]:
+def _filter_document_ids_for_context(
+    db: Session, document_ids, context: IntegrationContext
+) -> set[int]:
     if not context.budget_session:
         return filter_document_ids_for_scope(db, document_ids, context.access_scope)
     ids = {int(document_id) for document_id in document_ids if document_id is not None}
@@ -340,19 +360,27 @@ def _filter_document_ids_for_context(db: Session, document_ids, context: Integra
     filtered: set[int] = set()
     for document_id in allowed:
         metadata = get_document_access_metadata(db, document_id)
-        tags = {str(tag).strip().lower() for tag in (metadata.tags_json if metadata else []) if str(tag).strip()}
+        tags = {
+            str(tag).strip().lower()
+            for tag in (metadata.tags_json if metadata else [])
+            if str(tag).strip()
+        }
         if not (tags & context.access_scope.denied_tags):
             filtered.add(document_id)
     return filtered
 
 
-def _document_id_allowed_for_context(db: Session, document_id: int | None, context: IntegrationContext) -> bool:
+def _document_id_allowed_for_context(
+    db: Session, document_id: int | None, context: IntegrationContext
+) -> bool:
     if document_id is None:
         return False
     return int(document_id) in _filter_document_ids_for_context(db, [document_id], context)
 
 
-def _can_access_document_for_context(db: Session, document: Document | None, context: IntegrationContext) -> bool:
+def _can_access_document_for_context(
+    db: Session, document: Document | None, context: IntegrationContext
+) -> bool:
     if not context.budget_session:
         return can_access_document(db, document, context.access_scope)
     if not document or document.deleted_at is not None:

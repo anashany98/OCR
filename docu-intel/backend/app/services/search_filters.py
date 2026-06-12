@@ -39,6 +39,7 @@ The existing filters (``budget_scope_id``, ``document_type``,
 supported; the helpers keep their public names for backward
 compatibility.
 """
+
 from __future__ import annotations
 
 import logging
@@ -221,14 +222,12 @@ def apply_document_filters(
         # portable across PG 12+ and avoids needing a separate
         # junction table.
         json_ors = [
-            func.jsonb_exists(Document.quality_flags_json, flag)
-            for flag in f["quality_flags_any"]
+            func.jsonb_exists(Document.quality_flags_json, flag) for flag in f["quality_flags_any"]
         ]
         stmt = stmt.where(or_(*json_ors))
     if f.get("quality_flags_all"):
         json_ands = [
-            func.jsonb_exists(Document.quality_flags_json, flag)
-            for flag in f["quality_flags_all"]
+            func.jsonb_exists(Document.quality_flags_json, flag) for flag in f["quality_flags_all"]
         ]
         stmt = stmt.where(and_(*json_ands))
     return stmt

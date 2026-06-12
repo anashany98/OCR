@@ -2,6 +2,7 @@
 
 Mounted at ``/admin/ocr-stats`` so it's discoverable in the OpenAPI spec.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -33,7 +34,9 @@ def ocr_stats(
     too aggressive.
     """
     rows = db.execute(
-        select(DocumentPage.ocr_engine, func.count(DocumentPage.id)).group_by(DocumentPage.ocr_engine)
+        select(DocumentPage.ocr_engine, func.count(DocumentPage.id)).group_by(
+            DocumentPage.ocr_engine
+        )
     ).all()
     counts: dict[str, int] = {}
     for engine, count in rows:

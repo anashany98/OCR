@@ -22,7 +22,7 @@ from app.schemas.admin import (
     IntegrationSandboxExecuteRequest,
 )
 from app.services.audit import write_audit
-from app.services.access_policy import resolve_access_policy, policy_allows_prices
+from app.services.access_policy import resolve_access_policy
 from app.services.budget_scope import ensure_budget_scope
 from app.services.integration_security import IntegrationContext, hash_integration_api_key
 from app.services.integration_tools import execute_integration_tool
@@ -35,6 +35,7 @@ router = APIRouter(prefix="/admin")
 
 # ---------- budget scopes ----------
 
+
 @router.get("/budget-scopes", response_model=list[BudgetScopeRead])
 def list_budget_scopes(
     q: str | None = None,
@@ -45,7 +46,9 @@ def list_budget_scopes(
     stmt = select(BudgetScope).order_by(BudgetScope.created_at.desc())
     if q:
         pattern = f"%{q}%"
-        stmt = stmt.where((BudgetScope.budget_code.ilike(pattern)) | (BudgetScope.display_name.ilike(pattern)))
+        stmt = stmt.where(
+            (BudgetScope.budget_code.ilike(pattern)) | (BudgetScope.display_name.ilike(pattern))
+        )
     stmt = stmt.limit(limit)
     return list(db.scalars(stmt).all())
 
@@ -60,13 +63,21 @@ def create_budget_scope(
     scope.local_path = payload.local_path
     scope.display_name = payload.display_name or scope.display_name
     scope.status = payload.status
-    write_audit(db, user=user, action="budget_scope_upserted", entity_type="budget_scope", entity_id=scope.id)
+    write_audit(
+        db,
+        user=user,
+        action="budget_scope_upserted",
+        entity_type="budget_scope",
+        entity_id=scope.id,
+    )
     db.commit()
     db.refresh(scope)
     return scope
 
 
-@router.get("/budget-scopes/{scope_id}/client-permissions", response_model=list[ApiClientBudgetScopeRead])
+@router.get(
+    "/budget-scopes/{scope_id}/client-permissions", response_model=list[ApiClientBudgetScopeRead]
+)
 def list_budget_scope_client_permissions(
     scope_id: int,
     db: Session = Depends(get_db),
@@ -82,7 +93,9 @@ def list_budget_scope_client_permissions(
     )
 
 
-@router.post("/budget-scopes/{scope_id}/client-permissions", response_model=ApiClientBudgetScopeRead)
+@router.post(
+    "/budget-scopes/{scope_id}/client-permissions", response_model=ApiClientBudgetScopeRead
+)
 def upsert_budget_scope_client_permission(
     scope_id: int,
     payload: ApiClientBudgetScopeUpsert,
@@ -120,6 +133,7 @@ def upsert_budget_scope_client_permission(
 
 
 # ---------- integration clients ----------
+
 
 @router.get("/integration-clients", response_model=list[IntegrationClientRead])
 def list_integration_clients(
@@ -159,7 +173,9 @@ def create_integration_client(
     )
     db.commit()
     db.refresh(client)
-    return IntegrationClientSecretRead.model_validate(client, from_attributes=True).model_copy(update={"api_key": api_key})
+    return IntegrationClientSecretRead.model_validate(client, from_attributes=True).model_copy(
+        update={"api_key": api_key}
+    )
 
 
 @router.patch("/integration-clients/{client_id}", response_model=IntegrationClientRead)
@@ -172,7 +188,9 @@ def update_integration_client(
     client = _get_or_404(db, IntegrationClient, client_id, "Integration client not found")
     data = payload.model_dump(exclude_unset=True)
     if "name" in data and data["name"] != client.name:
-        existing = db.scalar(select(IntegrationClient).where(IntegrationClient.name == data["name"]))
+        existing = db.scalar(
+            select(IntegrationClient).where(IntegrationClient.name == data["name"])
+        )
         if existing:
             raise HTTPException(status_code=409, detail="Integration client name already exists")
         client.name = data["name"]
@@ -193,7 +211,9 @@ def update_integration_client(
     return client
 
 
-@router.post("/integration-clients/{client_id}/rotate-key", response_model=IntegrationClientSecretRead)
+@router.post(
+    "/integration-clients/{client_id}/rotate-key", response_model=IntegrationClientSecretRead
+)
 def rotate_integration_client_key(
     client_id: int,
     db: Session = Depends(get_db),
@@ -214,10 +234,13 @@ def rotate_integration_client_key(
     )
     db.commit()
     db.refresh(client)
-    return IntegrationClientSecretRead.model_validate(client, from_attributes=True).model_copy(update={"api_key": api_key})
+    return IntegrationClientSecretRead.model_validate(client, from_attributes=True).model_copy(
+        update={"api_key": api_key}
+    )
 
 
 # ---------- sandbox ----------
+
 
 @router.post("/integration-sandbox/execute")
 def integration_sandbox_execute(
@@ -239,8 +262,12 @@ def integration_sandbox_execute(
         access_scope=access_scope,
         budget_session=None,
     )
-    response = execute_integration_tool(db, context=context, tool=payload.tool, arguments=payload.arguments)
-    response.warnings.append("Sandbox: respuesta de prueba generada desde administracion, sin afectar produccion.")
+    response = execute_integration_tool(
+        db, context=context, tool=payload.tool, arguments=payload.arguments
+    )
+    response.warnings.append(
+        "Sandbox: respuesta de prueba generada desde administracion, sin afectar produccion."
+    )
     write_audit(
         db,
         user=user,

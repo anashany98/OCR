@@ -52,7 +52,9 @@ def cancel_job(
         cancel_pending_job(db, job)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    write_audit(db, user=user, action="job_cancelled", entity_type="extraction_job", entity_id=job.id)
+    write_audit(
+        db, user=user, action="job_cancelled", entity_type="extraction_job", entity_id=job.id
+    )
     db.commit()
     db.refresh(job)
     return job
@@ -113,7 +115,9 @@ def audit_logs_export_csv(
     rows = db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "created_at", "user_id", "action", "entity_type", "entity_id", "details_json"])
+    writer.writerow(
+        ["id", "created_at", "user_id", "action", "entity_type", "entity_id", "details_json"]
+    )
     for row in rows:
         writer.writerow(
             [

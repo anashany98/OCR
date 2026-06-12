@@ -35,7 +35,14 @@ function buildLockReason(roles: string[], custom?: string) {
   return `Requiere rol de ${formatted}`
 }
 
-export function PermissionGate({ children, roles, mode = "hide", fallback, lockReason, className }: PermissionGateProps) {
+export function PermissionGate({
+  children,
+  roles,
+  mode = "hide",
+  fallback,
+  lockReason,
+  className,
+}: PermissionGateProps) {
   const { user } = useAuth()
 
   if (!roles?.length) return <>{children}</>

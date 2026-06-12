@@ -30,6 +30,7 @@ A run produces a `RagEvalReport` with per-question and aggregate
 metrics. The CLI (`scripts/eval_rag.py`) prints a table; the test
 (`tests/test_rag_eval.py`) gates the build on minimum thresholds.
 """
+
 from __future__ import annotations
 
 import json
@@ -107,9 +108,7 @@ def load_golden_qa(path: str | Path) -> list[GoldenQA]:
             try:
                 data = json.loads(stripped)
             except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"Invalid JSON in {path}:{line_number}: {exc}"
-                ) from exc
+                raise ValueError(f"Invalid JSON in {path}:{line_number}: {exc}") from exc
             rows.append(GoldenQA.from_dict(data))
     return rows
 
@@ -360,7 +359,9 @@ def evaluate_retrieval(
         detail = ""
         if not passed:
             missed = [d for d in q.expected_document_ids if d not in retrieved_doc_ids]
-            detail = f"context_recall={cr:.2f} < gate {q.min_context_recall:.2f} (missed docs: {missed})"
+            detail = (
+                f"context_recall={cr:.2f} < gate {q.min_context_recall:.2f} (missed docs: {missed})"
+            )
 
         results.append(
             QuestionResult(

@@ -29,7 +29,9 @@ VALID_SUGGESTION_TYPES = Literal[
 def list_classification_suggestions(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin", "gestor", "auditor")),
-    status_filter: Literal["pending", "approved", "rejected", "applied"] | None = Query(default=None, alias="status"),
+    status_filter: Literal["pending", "approved", "rejected", "applied"] | None = Query(
+        default=None, alias="status"
+    ),
     suggestion_type: VALID_SUGGESTION_TYPES | None = Query(default=None),
     document_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
@@ -51,13 +53,17 @@ def classification_suggestion_counts(
     _: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> dict:
     rows = db.execute(
-        select(ClassificationSuggestion.status, func.count(ClassificationSuggestion.id))
-        .group_by(ClassificationSuggestion.status)
+        select(ClassificationSuggestion.status, func.count(ClassificationSuggestion.id)).group_by(
+            ClassificationSuggestion.status
+        )
     ).all()
     return {status_value: count for status_value, count in rows}
 
 
-@router.post("/admin/classification-suggestions/{suggestion_id}/approve", response_model=ClassificationSuggestionRead)
+@router.post(
+    "/admin/classification-suggestions/{suggestion_id}/approve",
+    response_model=ClassificationSuggestionRead,
+)
 def approve_classification_suggestion(
     suggestion_id: int,
     db: Session = Depends(get_db),
@@ -80,14 +86,20 @@ def approve_classification_suggestion(
         action="classification_suggestion_approved",
         entity_type="classification_suggestion",
         entity_id=suggestion.id,
-        details={"document_id": suggestion.document_id, "suggestion_type": suggestion.suggestion_type},
+        details={
+            "document_id": suggestion.document_id,
+            "suggestion_type": suggestion.suggestion_type,
+        },
     )
     db.commit()
     db.refresh(suggestion)
     return suggestion
 
 
-@router.post("/admin/classification-suggestions/{suggestion_id}/reject", response_model=ClassificationSuggestionRead)
+@router.post(
+    "/admin/classification-suggestions/{suggestion_id}/reject",
+    response_model=ClassificationSuggestionRead,
+)
 def reject_classification_suggestion(
     suggestion_id: int,
     db: Session = Depends(get_db),
@@ -110,7 +122,10 @@ def reject_classification_suggestion(
         action="classification_suggestion_rejected",
         entity_type="classification_suggestion",
         entity_id=suggestion.id,
-        details={"document_id": suggestion.document_id, "suggestion_type": suggestion.suggestion_type},
+        details={
+            "document_id": suggestion.document_id,
+            "suggestion_type": suggestion.suggestion_type,
+        },
     )
     db.commit()
     db.refresh(suggestion)
@@ -121,10 +136,14 @@ def reject_classification_suggestion(
 def list_learned_patterns(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin", "gestor", "auditor")),
-    status_filter: Literal["active", "disabled", "pending"] | None = Query(default=None, alias="status"),
+    status_filter: Literal["active", "disabled", "pending"] | None = Query(
+        default=None, alias="status"
+    ),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[LearnedPattern]:
-    stmt = select(LearnedPattern).order_by(LearnedPattern.applied_count.desc(), LearnedPattern.created_at.desc())
+    stmt = select(LearnedPattern).order_by(
+        LearnedPattern.applied_count.desc(), LearnedPattern.created_at.desc()
+    )
     if status_filter:
         stmt = stmt.where(LearnedPattern.status == status_filter)
     stmt = stmt.limit(limit)

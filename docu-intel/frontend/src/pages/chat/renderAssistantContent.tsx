@@ -120,7 +120,9 @@ export function renderAssistantContent(text: string) {
               className="border-l-2 border-[var(--accent)] bg-[var(--accent-faint)]/60 px-3 py-2 italic text-[var(--text-secondary)]"
             >
               {b.lines.map((line, j) => (
-                <p key={j} className={j === 0 ? "" : "mt-1"}>{renderInline(line)}</p>
+                <p key={j} className={j === 0 ? "" : "mt-1"}>
+                  {renderInline(line)}
+                </p>
               ))}
             </blockquote>
           )

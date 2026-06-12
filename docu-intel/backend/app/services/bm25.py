@@ -33,17 +33,16 @@ database — a user-typed query is wrapped in a safe
 ``plainto_tsquery`` call that PG tokenises the same way it
 tokenises the stored ``tsv``.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from typing import Any
 
-from sqlalchemy import bindparam, func, select, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.models import Document, DocumentChunk
 from app.services.search_service import SearchResult
 from app.services.metrics import track_search_strategy_used
 
@@ -153,7 +152,6 @@ def search_bm25(
         return []
 
     effective_limit = max(1, int(limit))
-    tsquery = func.plainto_tsquery("simple", normalised)
 
     # The GIN-indexed ``@@`` operator is what makes the search fast;
     # ``ts_rank_cd`` is the cover density ranking function (BM25-ish).
@@ -181,9 +179,7 @@ def search_bm25(
     )
 
     filter_clauses, params = _build_filter_clauses(filters)
-    sql = text(
-        sql.text.replace("{filter_clauses}", filter_clauses)
-    )
+    sql = text(sql.text.replace("{filter_clauses}", filter_clauses))
 
     params = {
         **params,
@@ -200,7 +196,9 @@ def search_bm25(
         # (e.g. an unprintable character class). The retrieval is
         # best-effort: log and return an empty list so the rest of
         # the hybrid still works.
-        logger.warning("BM25 search failed for query %r: %s", _sanitise_query_for_logging(normalised), exc)
+        logger.warning(
+            "BM25 search failed for query %r: %s", _sanitise_query_for_logging(normalised), exc
+        )
         track_search_strategy_used("bm25", "failed")
         return []
 
@@ -373,7 +371,6 @@ def _post_filter_chunk_clauses(
     starving the top-k result.
     """
     from app.services.search_filters import (
-        build_chunk_filter_clause,
         normalise_filters,
     )
 

@@ -109,7 +109,10 @@ def register_existing_file(
                     source_path=source_path,
                     document_id=existing.id,
                     watched_file=watched,
-                    details={"reason": "sha_dedup_existing_processed", "existing_document_id": existing.id},
+                    details={
+                        "reason": "sha_dedup_existing_processed",
+                        "existing_document_id": existing.id,
+                    },
                 )
                 db.commit()
             return existing, None
@@ -139,10 +142,16 @@ def register_existing_file(
         file_size=source.stat().st_size,
         document_type=_type_from_extension(extension),
         status=status,
-        quality_status="needs_human_review" if status == "needs_review" else ("duplicate" if status == "duplicate" else "pending"),
+        quality_status="needs_human_review"
+        if status == "needs_review"
+        else ("duplicate" if status == "duplicate" else "pending"),
         quality_score=0.0 if status == "needs_review" else None,
-        quality_flags_json=[f"security:{security_result.reason}"] if not security_result.allowed else [],
-        error_message=f"File quarantined: {security_result.reason}" if not security_result.allowed else None,
+        quality_flags_json=[f"security:{security_result.reason}"]
+        if not security_result.allowed
+        else [],
+        error_message=f"File quarantined: {security_result.reason}"
+        if not security_result.allowed
+        else None,
         duplicate_of_document_id=duplicate_of_document_id,
     )
     db.add(document)
@@ -169,7 +178,9 @@ def register_existing_file(
         watched = upsert_watched_file(
             db,
             path=source_path,
-            status="duplicate" if status == "duplicate" else ("quarantined" if status == "needs_review" else "registered"),
+            status="duplicate"
+            if status == "duplicate"
+            else ("quarantined" if status == "needs_review" else "registered"),
             size_bytes=size_bytes,
             mtime_epoch=mtime_epoch,
             document_id=document.id,
@@ -177,7 +188,9 @@ def register_existing_file(
         )
         record_ingestion_event(
             db,
-            event_type="duplicate" if status == "duplicate" else ("quarantined" if status == "needs_review" else "registered"),
+            event_type="duplicate"
+            if status == "duplicate"
+            else ("quarantined" if status == "needs_review" else "registered"),
             source_path=source_path,
             document_id=document.id,
             job_id=job.id if job else None,

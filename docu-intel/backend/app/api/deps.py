@@ -29,11 +29,15 @@ def get_current_user(
         user_id = int(payload["sub"])
     except Exception as exc:
         logger.warning("auth_token_invalid error=%s", str(exc))
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        ) from None
 
     user = db.get(User, user_id)
     if not user or not user.is_active:
-        logger.warning("auth_user_not_found user_id=%s active=%s", user_id, user.is_active if user else False)
+        logger.warning(
+            "auth_user_not_found user_id=%s active=%s", user_id, user.is_active if user else False
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
     return user
 
@@ -41,8 +45,9 @@ def get_current_user(
 def require_roles(*roles: str):
     def dependency(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            )
         return user
 
     return dependency
-

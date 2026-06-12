@@ -58,15 +58,12 @@ export function useZoomPan({
   )
 
   // Mouse drag pan
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent, tool: string) => {
-      if (tool === "select") {
-        isPanning.current = true
-        lastMouse.current = { x: e.clientX, y: e.clientY }
-      }
-    },
-    [],
-  )
+  const handleMouseDown = useCallback((e: React.MouseEvent, tool: string) => {
+    if (tool === "select") {
+      isPanning.current = true
+      lastMouse.current = { x: e.clientX, y: e.clientY }
+    }
+  }, [])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning.current) return

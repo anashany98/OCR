@@ -1,4 +1,5 @@
 """Search metrics: per-strategy latency, strategy/outcome, cache."""
+
 from __future__ import annotations
 
 from ._registry import (

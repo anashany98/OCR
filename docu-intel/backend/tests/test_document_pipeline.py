@@ -286,7 +286,7 @@ def test_reprocess_regenerates_chunks(tmp_path, monkeypatch):
     assert chunks[0].chunk_text.startswith("Texto reprocesado")
 
 
-def test_embedding_provider_failure_falls_back_to_hash_without_blocking(tmp_path, monkeypatch):
+def test_embedding_provider_failure_stores_unembedded_without_hash_fallback(tmp_path, monkeypatch):
     input_dir, _ = _configure_pipeline(monkeypatch, tmp_path, create_embeddings=True)
     monkeypatch.setattr(settings, "embedding_provider", "openai_compatible")
     monkeypatch.setattr(settings, "embedding_base_url", "http://127.0.0.1:9")
@@ -294,18 +294,19 @@ def test_embedding_provider_failure_falls_back_to_hash_without_blocking(tmp_path
     monkeypatch.setattr(settings, "embedding_dimensions", 1024)
     source = input_dir / "embeddings.txt"
     source.parent.mkdir(parents=True)
-    source.write_text("Texto con embeddings que deben caer a hash local", encoding="utf-8")
+    source.write_text("Texto con embeddings que no debe caer a hash local", encoding="utf-8")
 
     sessions = _session_factory()
     with sessions() as db:
         document, job = _register_and_process(db, source)
         chunk = db.scalar(select(DocumentChunk).where(DocumentChunk.document_id == document.id))
 
-    assert document.status == "processed"
+    assert document.status in {"processed", "needs_review"}
     assert job.status == "processed"
-    assert chunk.embedding is not None
-    assert len(chunk.embedding) > 0
-    assert chunk.embedding_provider_used == "openai_compatible"
+    assert chunk.embedding is None
+    assert chunk.embedding_provider_used == "failed"
+    assert chunk.embedding_fallback is True
+    assert chunk.needs_reembedding is True
 
 
 def test_invalid_file_is_quarantined_without_job(tmp_path, monkeypatch):

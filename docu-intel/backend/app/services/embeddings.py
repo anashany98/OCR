@@ -19,7 +19,7 @@ from app.services.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerOpen,
 )
-from app.services.metrics import track_embedding_fallback, track_embedding_latency, track_cache_hit, track_cache_miss
+from app.services.metrics import track_embedding_latency, track_cache_hit, track_cache_miss
 
 if TYPE_CHECKING:
     pass
@@ -109,9 +109,7 @@ class OpenAICompatibleEmbeddingClient:
             # through the breaker and the breaker would not see it as a
             # failure (it only counts ``RuntimeError``-like signals by
             # accident — better to be explicit).
-            raise EmbeddingProviderError(
-                f"Embedding endpoint request failed: {exc}"
-            ) from exc
+            raise EmbeddingProviderError(f"Embedding endpoint request failed: {exc}") from exc
         return response.json()
 
     def _parse_payload(self, payload: dict, texts: list[str]) -> list[list[float]]:
@@ -146,9 +144,7 @@ class OpenAICompatibleEmbeddingClient:
         except CircuitBreakerOpen:
             # Service is known-down; surface as a provider error so the
             # caller's existing fallback-to-hash path handles it.
-            raise EmbeddingProviderError(
-                f"Embedding circuit '{breaker.name}' is OPEN"
-            )
+            raise EmbeddingProviderError(f"Embedding circuit '{breaker.name}' is OPEN")
         return self._parse_payload(response_payload, texts)
 
     async def embed_many_async(self, texts: list[str]) -> list[list[float]]:
@@ -176,9 +172,7 @@ class OpenAICompatibleEmbeddingClient:
             # worker thread keeps the event loop responsive.
             response_payload = await asyncio.to_thread(breaker.call, _call)
         except CircuitBreakerOpen:
-            raise EmbeddingProviderError(
-                f"Embedding circuit '{breaker.name}' is OPEN"
-            )
+            raise EmbeddingProviderError(f"Embedding circuit '{breaker.name}' is OPEN")
         return self._parse_payload(response_payload, texts)
 
 
@@ -245,12 +239,9 @@ def embed_query_text(text: str, dimensions: int | None = None) -> list[float]:
             vector_dimensions,
         )
     except Exception as exc:
-        if not settings.embedding_fallback_to_hash:
-            raise EmbeddingProviderError(
-                f"Local sentence-transformers query embedding failed: {exc}"
-            ) from exc
-        track_embedding_fallback()
-        vector = embed_text_hash(text, vector_dimensions)
+        raise EmbeddingProviderError(
+            f"Local sentence-transformers query embedding failed: {exc}"
+        ) from exc
 
     cache_service.set(cache_key, vector, EMBEDDING_CACHE_TTL)
     return vector
@@ -283,9 +274,7 @@ def embed_many(texts: Iterable[str], dimensions: int | None = None) -> list[list
             track_cache_miss()
 
     if uncached_texts:
-        embeddings = _generate_embeddings_batch(
-            uncached_texts, provider, vector_dimensions
-        )
+        embeddings = _generate_embeddings_batch(uncached_texts, provider, vector_dimensions)
         start = time.perf_counter()
         for idx, emb in zip(uncached_indices, embeddings):
             cached[idx] = emb
@@ -296,7 +285,9 @@ def embed_many(texts: Iterable[str], dimensions: int | None = None) -> list[list
     return cached
 
 
-async def embed_many_async(texts: Iterable[str], dimensions: int | None = None) -> list[list[float]]:
+async def embed_many_async(
+    texts: Iterable[str], dimensions: int | None = None
+) -> list[list[float]]:
     """Async embedding generation with batch processing and concurrent requests."""
     text_list = list(texts)
     if not text_list:
@@ -358,20 +349,19 @@ def _generate_embeddings_batch(
                 # Process in batches
                 all_embeddings = []
                 for i in range(0, len(texts), BATCH_SIZE):
-                    batch = texts[i:i + BATCH_SIZE]
+                    batch = texts[i : i + BATCH_SIZE]
                     batch_embeddings = client.embed_many(batch)
                     all_embeddings.extend(batch_embeddings)
 
                 return all_embeddings
             except Exception as exc:
-                if not settings.embedding_fallback_to_hash:
-                    raise EmbeddingProviderError(
-                        f"Embedding provider failed at {base_url}: {exc}"
-                    ) from exc
-                track_embedding_fallback()
-                return [embed_text_hash(t, dimensions) for t in texts]
+                raise EmbeddingProviderError(
+                    f"Embedding provider failed at {base_url}: {exc}"
+                ) from exc
         else:
-            return [embed_text_hash(t, dimensions) for t in texts]
+            raise EmbeddingProviderError(
+                "Embedding provider requires EMBEDDING_BASE_URL or AI_BASE_URL"
+            )
     if provider == "local_sentence_transformers":
         try:
             client = get_local_embedding_client()
@@ -380,14 +370,12 @@ def _generate_embeddings_batch(
                 for vector in client.embed_many(texts)
             ]
         except Exception as exc:
-            if not settings.embedding_fallback_to_hash:
-                raise EmbeddingProviderError(
-                    f"Local sentence-transformers embedding failed: {exc}"
-                ) from exc
-            track_embedding_fallback()
-            return [embed_text_hash(t, dimensions) for t in texts]
-    else:
+            raise EmbeddingProviderError(
+                f"Local sentence-transformers embedding failed: {exc}"
+            ) from exc
+    if provider in {"local", "local_hash"}:
         return [embed_text_hash(t, dimensions) for t in texts]
+    raise EmbeddingProviderError(f"Unsupported embedding provider: {provider}")
 
 
 async def _generate_embeddings_batch_async(
@@ -407,43 +395,36 @@ async def _generate_embeddings_batch_async(
                     dimensions=dimensions,
                     timeout_seconds=settings.embedding_timeout_seconds,
                 )
-                
+
                 # Process batches concurrently
-                batches = [texts[i:i + BATCH_SIZE] for i in range(0, len(texts), BATCH_SIZE)]
-                
+                batches = [texts[i : i + BATCH_SIZE] for i in range(0, len(texts), BATCH_SIZE)]
+
                 # Limit concurrent requests
                 semaphore = asyncio.Semaphore(MAX_CONCURRENT_BATCHES)
-                
+
                 async def process_batch(batch: list[str]) -> list[list[float]]:
                     async with semaphore:
                         return await client.embed_many_async(batch)
-                
+
                 tasks = [process_batch(batch) for batch in batches]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                
+
                 all_embeddings = []
                 for result in results:
                     if isinstance(result, Exception):
-                        if not settings.embedding_fallback_to_hash:
-                            raise result
-                        # Fallback for failed batch
-                        batch_idx = len(all_embeddings) // BATCH_SIZE
-                        start = batch_idx * BATCH_SIZE
-                        batch_texts = texts[start:start + BATCH_SIZE]
-                        all_embeddings.extend([embed_text_hash(t, dimensions) for t in batch_texts])
+                        raise result
                     else:
                         all_embeddings.extend(result)
-                
+
                 return all_embeddings
             except Exception as exc:
-                if not settings.embedding_fallback_to_hash:
-                    raise EmbeddingProviderError(
-                        f"Embedding async provider failed at {base_url}: {exc}"
-                    ) from exc
-                track_embedding_fallback()
-                return [embed_text_hash(t, dimensions) for t in texts]
+                raise EmbeddingProviderError(
+                    f"Embedding async provider failed at {base_url}: {exc}"
+                ) from exc
         else:
-            return [embed_text_hash(t, dimensions) for t in texts]
+            raise EmbeddingProviderError(
+                "Embedding provider requires EMBEDDING_BASE_URL or AI_BASE_URL"
+            )
     if provider == "local_sentence_transformers":
         # The local path is CPU-bound during encode (PyTorch releases the
         # GIL inside the kernel), so we run it in the default executor
@@ -453,19 +434,14 @@ async def _generate_embeddings_batch_async(
             vectors = await loop.run_in_executor(
                 None, get_local_embedding_client().embed_many, texts
             )
-            return [
-                coerce_embedding_dimensions(vector, dimensions)
-                for vector in vectors
-            ]
+            return [coerce_embedding_dimensions(vector, dimensions) for vector in vectors]
         except Exception as exc:
-            if not settings.embedding_fallback_to_hash:
-                raise EmbeddingProviderError(
-                    f"Local sentence-transformers embedding failed: {exc}"
-                ) from exc
-            track_embedding_fallback()
-            return [embed_text_hash(t, dimensions) for t in texts]
-    else:
+            raise EmbeddingProviderError(
+                f"Local sentence-transformers embedding failed: {exc}"
+            ) from exc
+    if provider in {"local", "local_hash"}:
         return [embed_text_hash(t, dimensions) for t in texts]
+    raise EmbeddingProviderError(f"Unsupported embedding provider: {provider}")
 
 
 def embed_text_hash(text: str, dimensions: int = EMBEDDING_DIMENSIONS) -> list[float]:
@@ -627,7 +603,11 @@ class LocalSentenceTransformerEmbeddingClient:
         if not texts:
             return []
         model = self._ensure_loaded()
-        prompt = _query_prompt_for(self.model_name) if role == "query" else _passage_prompt_for(self.model_name)
+        prompt = (
+            _query_prompt_for(self.model_name)
+            if role == "query"
+            else _passage_prompt_for(self.model_name)
+        )
         # sentence-transformers' encode handles ``prompt`` for asymmetric
         # models; for symmetric models it should be ``None`` to avoid
         # adding an unwanted prefix.
@@ -696,7 +676,7 @@ def _tokenize(text: str) -> list[str]:
 def _char_ngrams(token: str) -> list[str]:
     if len(token) <= 3:
         return [f"ng:{token}"]
-    return [f"ng:{token[index:index + 3]}" for index in range(len(token) - 2)]
+    return [f"ng:{token[index : index + 3]}" for index in range(len(token) - 2)]
 
 
 def _add_feature(vector: list[float], feature: str, weight: float) -> None:

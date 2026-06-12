@@ -11,6 +11,7 @@ Why an abstraction:
   ``monkeypatch.setattr(document_service, "get_ocr_engine_class", ...)``.
 * We can swap OCR backends without touching the parsers or the worker code.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

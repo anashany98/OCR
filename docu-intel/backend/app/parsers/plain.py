@@ -24,4 +24,3 @@ def parse_plain_text(path: Path) -> ExtractedDocument:
             )
         ]
     )
-

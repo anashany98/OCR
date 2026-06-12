@@ -10,7 +10,6 @@ from app.services.integration_tools.common import (
     _can_view_prices,
     _document_id_allowed_for_context,
     _filter_records_for_context,
-    _model_dict,
     _response,
 )
 from app.services.integration_security import IntegrationContext
@@ -23,8 +22,15 @@ def execute_search_orders(
     args: QueryArgs,
     request_id: str,
 ) -> IntegrationToolExecuteResponse:
-    orders = _filter_records_for_context(db, internal.search_orders(db, args.query), context)[: args.limit]
-    return _response(request_id, "search_orders", context, data=[_order_payload(order, context) for order in orders])
+    orders = _filter_records_for_context(db, internal.search_orders(db, args.query), context)[
+        : args.limit
+    ]
+    return _response(
+        request_id,
+        "search_orders",
+        context,
+        data=[_order_payload(order, context) for order in orders],
+    )
 
 
 def execute_get_order_by_number(
@@ -36,7 +42,11 @@ def execute_get_order_by_number(
     order = internal.get_order_by_number(db, args.order_number)
     if order and not _document_id_allowed_for_context(db, order.document_id, context):
         order = None
-    data = _order_payload(order, context) if order else {"status": "not_found", "order_number": args.order_number}
+    data = (
+        _order_payload(order, context)
+        if order
+        else {"status": "not_found", "order_number": args.order_number}
+    )
     return _response(request_id, "get_order_by_number", context, data=data)
 
 

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 def _redis_client():
     try:
         from redis import Redis
+
         return Redis.from_url(settings.redis_url, socket_timeout=2)
     except Exception:
         return None
@@ -61,7 +62,7 @@ def health_disk(_: User = Depends(get_current_user)):
     for name, path in paths.items():
         try:
             usage = shutil.disk_usage(str(path))
-            free_gb = usage.free / (1024 ** 3)
+            free_gb = usage.free / (1024**3)
             result[name] = {
                 "path": path,
                 "free_gb": round(free_gb, 1),

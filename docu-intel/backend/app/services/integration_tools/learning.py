@@ -368,7 +368,9 @@ def execute_get_improvement_candidates(
         if is_low_confidence or is_review_needed:
             reason_parts = []
             if is_low_confidence:
-                reason_parts.append(f"confianza baja ({doc.confidence:.2f} < {args.min_confidence})")
+                reason_parts.append(
+                    f"confianza baja ({doc.confidence:.2f} < {args.min_confidence})"
+                )
             if is_review_needed:
                 reason_parts.append(f"estado de calidad: {doc.quality_status}")
 

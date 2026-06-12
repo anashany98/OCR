@@ -32,8 +32,8 @@ export function OnboardingCallout({ force = false }: { force?: boolean }) {
               Hola, {user.name.split(" ")[0]}. Configuremos tu puesto de trabajo.
             </h2>
             <p className="max-w-xl text-[13px] text-[var(--text-secondary)]">
-              Docu-Intel procesa automáticamente presupuestos, pedidos y facturas.
-              Sigue estos pasos para empezar a trabajar con tus documentos.
+              Docu-Intel procesa automáticamente presupuestos, pedidos y facturas. Sigue estos pasos
+              para empezar a trabajar con tus documentos.
             </p>
           </div>
           <Button
@@ -102,7 +102,12 @@ function Step({
       </div>
       <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">{title}</h3>
       <p className="flex-1 text-[12px] text-[var(--text-muted)]">{description}</p>
-      <Button asChild variant="link" size="sm" className="h-auto justify-start gap-1 p-0 text-[12px] text-[var(--primary)]">
+      <Button
+        asChild
+        variant="link"
+        size="sm"
+        className="h-auto justify-start gap-1 p-0 text-[12px] text-[var(--primary)]"
+      >
         <Link to={to}>
           {cta}
           <ArrowRight className="h-3 w-3" />

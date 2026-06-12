@@ -7,6 +7,7 @@ Mounted by the admin router. Exposes:
 * ``POST /admin/webhooks/dead-letter/{id}/retry`` - re-queue a dead-letter row
 * ``GET /admin/webhooks/outbox/stats``      - counts by status
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -47,7 +48,9 @@ class WebhookOutboxRow(BaseModel):
 def list_outbox(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin", "gestor", "auditor")),
-    status_filter: Literal["pending", "sending", "delivered", "dead_letter"] | None = Query(default=None, alias="status"),
+    status_filter: Literal["pending", "sending", "delivered", "dead_letter"] | None = Query(
+        default=None, alias="status"
+    ),
     event_type: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> list[WebhookOutbox]:
@@ -88,7 +91,9 @@ def retry_dead_letter(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not row:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook outbox row not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook outbox row not found"
+        )
     return row
 
 
@@ -100,7 +105,9 @@ def outbox_stats(
     """Counts of outbox rows grouped by status, plus oldest pending age."""
     counts = dict(
         db.execute(
-            select(WebhookOutbox.status, func.count(WebhookOutbox.id)).group_by(WebhookOutbox.status)
+            select(WebhookOutbox.status, func.count(WebhookOutbox.id)).group_by(
+                WebhookOutbox.status
+            )
         ).all()
     )
     oldest_pending = db.scalar(
@@ -110,7 +117,10 @@ def outbox_stats(
         .limit(1)
     )
     return {
-        "counts": {status_name: counts.get(status_name, 0) for status_name in ("pending", "sending", "delivered", "dead_letter")},
+        "counts": {
+            status_name: counts.get(status_name, 0)
+            for status_name in ("pending", "sending", "delivered", "dead_letter")
+        },
         "oldest_pending_age_seconds": (
             (datetime.now(timezone.utc) - oldest_pending).total_seconds()
             if oldest_pending

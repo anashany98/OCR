@@ -16,15 +16,15 @@ class IntegrationClient(Base):
     # Lookups are O(1) via the ``ix_integration_clients_key_id``
     # unique index. Legacy clients (created before the migration)
     # had no ``key_id``; the migration backfills the column.
-    key_id: Mapped[str | None] = mapped_column(
-        String(32), unique=True, index=True, nullable=True
-    )
+    key_id: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
     # HMAC of the integration secret. The full secret never leaves
     # the client; we verify by recomputing the HMAC and comparing.
     api_key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     scopes_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -36,7 +36,9 @@ class AccessPolicy(Base):
     description: Mapped[str | None] = mapped_column(Text)
     permissions_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
 
     technician_profiles = relationship("TechnicianAccessProfile", back_populates="access_policy")
 
@@ -47,8 +49,12 @@ class TechnicianAccessProfile(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     technician_id: Mapped[str] = mapped_column(String(180), unique=True, index=True, nullable=False)
     technician_name: Mapped[str | None] = mapped_column(String(255))
-    access_policy_id: Mapped[int] = mapped_column(ForeignKey("access_policies.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    access_policy_id: Mapped[int] = mapped_column(
+        ForeignKey("access_policies.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

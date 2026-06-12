@@ -34,11 +34,15 @@ def list_jobs(
 
 
 @router.get("/{job_id}", response_model=ExtractionJobRead)
-def get_job(job_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> ExtractionJob:
+def get_job(
+    job_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> ExtractionJob:
     job = db.get(ExtractionJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    allowed = filter_document_ids_for_scope(db, [job.document_id], resolve_user_access_scope(db, user))
+    allowed = filter_document_ids_for_scope(
+        db, [job.document_id], resolve_user_access_scope(db, user)
+    )
     if job.document_id not in allowed:
         raise HTTPException(status_code=404, detail="Job not found")
     return job

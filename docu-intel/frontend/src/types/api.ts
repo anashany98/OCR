@@ -467,7 +467,12 @@ export type AccessExplain = {
 
 export type DocumentGraph = {
   nodes: { document_id: number; filename: string; document_type: string; status: string }[]
-  edges: { from_document_id: number; to_document_id: number; relation: string; label?: string | null }[]
+  edges: {
+    from_document_id: number
+    to_document_id: number
+    relation: string
+    label?: string | null
+  }[]
 }
 
 export type AuditLog = {
@@ -552,7 +557,12 @@ export type ResolvedDocument = {
       order?: ResolvedDocumentEntity
       invoice?: ResolvedDocumentEntity
       plan?: ResolvedDocumentEntity
-      generic?: Array<{ type: string; value: string; page?: number | null; confidence?: number | null }>
+      generic?: Array<{
+        type: string
+        value: string
+        page?: number | null
+        confidence?: number | null
+      }>
     }
     vision?: ResolvedDocumentVision
   }

@@ -4,9 +4,9 @@ import { composeQuestion } from "./composeQuestion"
 
 describe("composeQuestion", () => {
   it("returns the question verbatim when no filters are set", () => {
-    expect(composeQuestion("¿Cuánto factura proveedor X?", { supplier: "", documentType: "" })).toBe(
-      "¿Cuánto factura proveedor X?",
-    )
+    expect(
+      composeQuestion("¿Cuánto factura proveedor X?", { supplier: "", documentType: "" }),
+    ).toBe("¿Cuánto factura proveedor X?")
   })
 
   it("ignores whitespace-only filter values", () => {

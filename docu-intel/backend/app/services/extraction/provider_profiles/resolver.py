@@ -17,6 +17,7 @@ Profiles are YAML files in this directory. Each one describes:
 
 The :func:`resolve_profile` function is the public entry point.
 """
+
 from __future__ import annotations
 
 import re

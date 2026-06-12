@@ -35,10 +35,7 @@ type TaskKind =
   | "plan_without_scale"
   | string
 
-const taskKindConfig: Record<
-  string,
-  { label: string; icon: string; tone: string }
-> = {
+const taskKindConfig: Record<string, { label: string; icon: string; tone: string }> = {
   ocr_failed: { label: "OCR fallido", icon: "ShieldAlert", tone: "danger" },
   low_ocr: { label: "OCR de baja confianza", icon: "FileWarning", tone: "warning" },
   unknown_type: { label: "Clasificación dudosa", icon: "FileSearch", tone: "warning" },
@@ -67,7 +64,9 @@ const taskKindConfig: Record<
 }
 
 export function getKindConfig(kind: string): { label: string; icon: string; tone: string } {
-  return taskKindConfig[kind] ?? { label: kind.replace(/_/g, " "), icon: "FileSearch", tone: "neutral" }
+  return (
+    taskKindConfig[kind] ?? { label: kind.replace(/_/g, " "), icon: "FileSearch", tone: "neutral" }
+  )
 }
 
 export const PRIORITY_ORDER: Record<string, number> = {
@@ -263,7 +262,11 @@ export function useWorkInbox() {
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["work-items"] })
       const label =
-        vars.status === "resolved" ? "resuelta" : vars.status === "ignored" ? "ignorada" : "actualizada"
+        vars.status === "resolved"
+          ? "resuelta"
+          : vars.status === "ignored"
+            ? "ignorada"
+            : "actualizada"
       notify.success(`Tarea ${label}`)
     },
     onError: (err) => notify.error(err, "No se pudo actualizar la tarea"),
@@ -291,9 +294,7 @@ export function useWorkInbox() {
     search: searchTerm,
   })
   const grouped = groupByPriority(filteredTasks)
-  const priorityKeys = Object.keys(PRIORITY_ORDER).filter(
-    (key) => grouped[key]?.length > 0,
-  )
+  const priorityKeys = Object.keys(PRIORITY_ORDER).filter((key) => grouped[key]?.length > 0)
   const availableKinds = Array.from(new Set(allTasks.map((t) => t.kind))).sort()
 
   const counts = {
@@ -323,13 +324,20 @@ export function useWorkInbox() {
     inbox,
     persisted,
     // state
-    kindFilter, setKindFilter,
-    priorityFilter, setPriorityFilter,
-    searchTerm, setSearchTerm,
-    newTaskTitle, setNewTaskTitle,
-    newTaskPriority, setNewTaskPriority,
-    commentText, setCommentText,
-    expandedGroups, toggleGroup,
+    kindFilter,
+    setKindFilter,
+    priorityFilter,
+    setPriorityFilter,
+    searchTerm,
+    setSearchTerm,
+    newTaskTitle,
+    setNewTaskTitle,
+    newTaskPriority,
+    setNewTaskPriority,
+    commentText,
+    setCommentText,
+    expandedGroups,
+    toggleGroup,
     // derived
     autoTasks,
     persistedTasks,

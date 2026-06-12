@@ -76,6 +76,7 @@ router = APIRouter(prefix="/admin")
 
 # ---------- access explain ----------
 
+
 @router.get("/access/effective", response_model=EffectiveAccessRead)
 def effective_access(
     principal_type: str = Query(pattern="^(user|technician)$"),
@@ -84,7 +85,9 @@ def effective_access(
     _: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> dict:
     try:
-        return effective_access_payload(db, principal_type=principal_type, principal_id=principal_id)
+        return effective_access_payload(
+            db, principal_type=principal_type, principal_id=principal_id
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -111,6 +114,7 @@ def access_explain(
 
 # ---------- redaction preview ----------
 
+
 @router.post("/security/redaction-preview", response_model=RedactionPreviewResponse)
 def redaction_preview(
     payload: RedactionPreviewRequest,
@@ -118,7 +122,9 @@ def redaction_preview(
     _: User = Depends(require_roles("admin", "gestor")),
 ) -> RedactionPreviewResponse:
     if payload.principal_type == "user":
-        principal = db.get(User, int(payload.principal_id)) if payload.principal_id.isdigit() else None
+        principal = (
+            db.get(User, int(payload.principal_id)) if payload.principal_id.isdigit() else None
+        )
         if not principal:
             raise HTTPException(status_code=404, detail="User not found")
         scope = resolve_user_access_scope(db, principal)
@@ -141,9 +147,12 @@ def redaction_preview(
 
 # ---------- sensitive tags ----------
 
+
 @router.get("/sensitive-tags", response_model=list[SensitiveTagRead])
 @router.get("/security/tags", response_model=list[SensitiveTagRead])
-def list_sensitive_tags(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))) -> list[SensitiveTag]:
+def list_sensitive_tags(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))
+) -> list[SensitiveTag]:
     return list(db.scalars(select(SensitiveTag).order_by(SensitiveTag.name.asc())).all())
 
 
@@ -157,7 +166,9 @@ def create_sensitive_tag(
     tag = SensitiveTag(**payload.model_dump())
     db.add(tag)
     db.flush()
-    write_audit(db, user=user, action="sensitive_tag_created", entity_type="sensitive_tag", entity_id=tag.id)
+    write_audit(
+        db, user=user, action="sensitive_tag_created", entity_type="sensitive_tag", entity_id=tag.id
+    )
     db.commit()
     db.refresh(tag)
     return tag
@@ -173,13 +184,16 @@ def update_sensitive_tag(
     tag = _get_or_404(db, SensitiveTag, tag_id, "Sensitive tag not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(tag, field, value)
-    write_audit(db, user=user, action="sensitive_tag_updated", entity_type="sensitive_tag", entity_id=tag.id)
+    write_audit(
+        db, user=user, action="sensitive_tag_updated", entity_type="sensitive_tag", entity_id=tag.id
+    )
     db.commit()
     db.refresh(tag)
     return tag
 
 
 # ---------- rules preview ----------
+
 
 @router.post("/rules/preview", response_model=RulePreviewResponse)
 def preview_rule(
@@ -209,9 +223,14 @@ def preview_rule(
 
 # ---------- folder rules ----------
 
+
 @router.get("/folder-rules", response_model=list[FolderRuleRead])
-def list_folder_rules(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))) -> list[FolderAssignmentRule]:
-    return list(db.scalars(select(FolderAssignmentRule).order_by(FolderAssignmentRule.id.desc())).all())
+def list_folder_rules(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))
+) -> list[FolderAssignmentRule]:
+    return list(
+        db.scalars(select(FolderAssignmentRule).order_by(FolderAssignmentRule.id.desc())).all()
+    )
 
 
 @router.post("/folder-rules", response_model=FolderRuleRead)
@@ -224,7 +243,13 @@ def create_folder_rule(
     rule = FolderAssignmentRule(**payload.model_dump())
     db.add(rule)
     db.flush()
-    write_audit(db, user=user, action="folder_rule_created", entity_type="folder_assignment_rule", entity_id=rule.id)
+    write_audit(
+        db,
+        user=user,
+        action="folder_rule_created",
+        entity_type="folder_assignment_rule",
+        entity_id=rule.id,
+    )
     db.commit()
     cache_service.invalidate_search_cache()
     db.refresh(rule)
@@ -240,10 +265,18 @@ def update_folder_rule(
 ) -> FolderAssignmentRule:
     rule = _get_or_404(db, FolderAssignmentRule, rule_id, "Folder rule not found")
     data = payload.model_dump(exclude_unset=True)
-    _validate_hotel_assignment(db, data.get("chain_id", rule.chain_id), data.get("hotel_id", rule.hotel_id))
+    _validate_hotel_assignment(
+        db, data.get("chain_id", rule.chain_id), data.get("hotel_id", rule.hotel_id)
+    )
     for field, value in data.items():
         setattr(rule, field, value)
-    write_audit(db, user=user, action="folder_rule_updated", entity_type="folder_assignment_rule", entity_id=rule.id)
+    write_audit(
+        db,
+        user=user,
+        action="folder_rule_updated",
+        entity_type="folder_assignment_rule",
+        entity_id=rule.id,
+    )
     db.commit()
     cache_service.invalidate_search_cache()
     db.refresh(rule)
@@ -256,14 +289,23 @@ def apply_folder_rules(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin")),
 ) -> dict:
-    result = apply_folder_rules_to_all_documents(db, force=bool(payload.force if payload else False))
-    write_audit(db, user=user, action="folder_rules_applied", entity_type="folder_assignment_rule", details=result)
+    result = apply_folder_rules_to_all_documents(
+        db, force=bool(payload.force if payload else False)
+    )
+    write_audit(
+        db,
+        user=user,
+        action="folder_rules_applied",
+        entity_type="folder_assignment_rule",
+        details=result,
+    )
     db.commit()
     cache_service.invalidate_search_cache()
     return result
 
 
 # ---------- document access ----------
+
 
 @router.get("/document-access/{document_id}", response_model=DocumentAccessRead)
 def get_document_access(
@@ -285,12 +327,23 @@ def update_document_access(
     document = _get_or_404(db, Document, document_id, "Document not found")
     metadata = ensure_document_access_metadata(db, document)
     data = payload.model_dump(exclude_unset=True)
-    _validate_hotel_assignment(db, data.get("chain_id", metadata.chain_id), data.get("hotel_id", metadata.hotel_id))
+    _validate_hotel_assignment(
+        db, data.get("chain_id", metadata.chain_id), data.get("hotel_id", metadata.hotel_id)
+    )
     for field, value in data.items():
         setattr(metadata, field, value)
     if metadata.assignment_status is None:
-        metadata.assignment_status = "assigned" if metadata.chain_id or metadata.hotel_id else "quarantine"
-    write_audit(db, user=user, action="document_access_updated", entity_type="document", entity_id=document.id, details=data)
+        metadata.assignment_status = (
+            "assigned" if metadata.chain_id or metadata.hotel_id else "quarantine"
+        )
+    write_audit(
+        db,
+        user=user,
+        action="document_access_updated",
+        entity_type="document",
+        entity_id=document.id,
+        details=data,
+    )
     db.commit()
     cache_service.invalidate_search_cache()
     db.refresh(metadata)
@@ -298,6 +351,7 @@ def update_document_access(
 
 
 # ---------- documents bulk tags / graph ----------
+
 
 @router.post("/documents/bulk-tags", response_model=BulkTagsResponse)
 def bulk_document_tags(
@@ -356,8 +410,11 @@ def document_graph(
 
 # ---------- access groups ----------
 
+
 @router.get("/access-groups", response_model=list[AccessGroupRead])
-def list_access_groups(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))) -> list[AccessGroup]:
+def list_access_groups(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))
+) -> list[AccessGroup]:
     return list(db.scalars(select(AccessGroup).order_by(AccessGroup.name.asc())).all())
 
 
@@ -370,7 +427,9 @@ def create_access_group(
     group = AccessGroup(**payload.model_dump())
     db.add(group)
     db.flush()
-    write_audit(db, user=user, action="access_group_created", entity_type="access_group", entity_id=group.id)
+    write_audit(
+        db, user=user, action="access_group_created", entity_type="access_group", entity_id=group.id
+    )
     db.commit()
     cache_service.invalidate_search_cache()
     db.refresh(group)
@@ -387,7 +446,9 @@ def update_access_group(
     group = _get_or_404(db, AccessGroup, group_id, "Access group not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(group, field, value)
-    write_audit(db, user=user, action="access_group_updated", entity_type="access_group", entity_id=group.id)
+    write_audit(
+        db, user=user, action="access_group_updated", entity_type="access_group", entity_id=group.id
+    )
     db.commit()
     cache_service.invalidate_search_cache()
     db.refresh(group)
@@ -413,7 +474,13 @@ def upsert_access_group_member(
         member = AccessGroupMember(group_id=group_id, **payload.model_dump())
         db.add(member)
         db.flush()
-    write_audit(db, user=user, action="access_group_member_upserted", entity_type="access_group", entity_id=group_id)
+    write_audit(
+        db,
+        user=user,
+        action="access_group_member_upserted",
+        entity_type="access_group",
+        entity_id=group_id,
+    )
     db.commit()
     cache_service.invalidate_search_cache()
     db.refresh(member)
@@ -422,8 +489,11 @@ def upsert_access_group_member(
 
 # ---------- hotel chains ----------
 
+
 @router.get("/hotel-chains", response_model=list[HotelChainRead])
-def list_hotel_chains(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))) -> list[HotelChain]:
+def list_hotel_chains(
+    db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))
+) -> list[HotelChain]:
     return list(db.scalars(select(HotelChain).order_by(HotelChain.name.asc())).all())
 
 
@@ -436,7 +506,9 @@ def create_hotel_chain(
     chain = HotelChain(**payload.model_dump())
     db.add(chain)
     db.flush()
-    write_audit(db, user=user, action="hotel_chain_created", entity_type="hotel_chain", entity_id=chain.id)
+    write_audit(
+        db, user=user, action="hotel_chain_created", entity_type="hotel_chain", entity_id=chain.id
+    )
     db.commit()
     db.refresh(chain)
     return chain
@@ -452,13 +524,16 @@ def update_hotel_chain(
     chain = _get_or_404(db, HotelChain, chain_id, "Hotel chain not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(chain, field, value)
-    write_audit(db, user=user, action="hotel_chain_updated", entity_type="hotel_chain", entity_id=chain.id)
+    write_audit(
+        db, user=user, action="hotel_chain_updated", entity_type="hotel_chain", entity_id=chain.id
+    )
     db.commit()
     db.refresh(chain)
     return chain
 
 
 # ---------- hotels ----------
+
 
 @router.get("/hotels", response_model=list[HotelRead])
 def list_hotels(
@@ -473,7 +548,11 @@ def list_hotels(
 
 
 @router.post("/hotels", response_model=HotelRead)
-def create_hotel(payload: HotelCreate, db: Session = Depends(get_db), user: User = Depends(require_roles("admin"))) -> Hotel:
+def create_hotel(
+    payload: HotelCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+) -> Hotel:
     _get_or_404(db, HotelChain, payload.chain_id, "Hotel chain not found")
     hotel = Hotel(**payload.model_dump())
     db.add(hotel)

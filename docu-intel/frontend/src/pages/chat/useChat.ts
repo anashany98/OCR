@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react"
 
 import { api } from "@/api/client"
 import { useAiHistory } from "@/hooks/useAiHistory"
@@ -293,9 +301,7 @@ export function useChat() {
       const respuestaMatch = message.answer.answer.match(
         /\*\*Respuesta:\*\*\s*([\s\S]*?)(?=\n\n\*\*|$)/,
       )
-      const respuestaProse = (
-        respuestaMatch ? respuestaMatch[1] : message.answer.answer
-      ).trim()
+      const respuestaProse = (respuestaMatch ? respuestaMatch[1] : message.answer.answer).trim()
       const truncatedProse =
         respuestaProse.length > 500 ? respuestaProse.slice(0, 500) + "…" : respuestaProse
       api

@@ -97,4 +97,68 @@ def test_prometheus_text_is_valid_openmetrics():
     assert "docuintel_ocr_tier_used_total{" in text
     # The payload contains the standard prometheus_client
     # "# HELP <name> <desc>" / "# TYPE <name> counter" preamble.
+
+
+# ---------------------------------------------------------------------------
+# OPS-2: the parser-fallback failure counter.
+#
+# The original parsers used to ``except Exception: pass`` on the
+# vision / pdfplumber / render fallbacks, which made degradation
+# invisible. The new counter records each swallowed failure with
+# a bounded ``(stage, kind)`` label so the operator can see WHICH
+# fallback degraded and how often. These tests pin the
+# counter's shape and its safety guarantees (label bucketing,
+# negative / zero guards).
+# ---------------------------------------------------------------------------
+
+
+def _parser_fallback_count(stage: str, kind: str) -> float:
+    from app.services.metrics import _registry
+
+    child = _registry.PARSER_FALLBACK_FAILURES._metrics.get((stage, kind))
+    return child._value.get() if child is not None else 0.0
+
+
+def test_track_parser_fallback_failure_increments_labelled_counter():
+    from app.services.metrics import track_parser_fallback_failure
+
+    baseline = _parser_fallback_count("pdfplumber_table", "exception")
+    track_parser_fallback_failure(stage="pdfplumber_table", kind="exception")
+    assert _parser_fallback_count("pdfplumber_table", "exception") - baseline == 1
+
+
+def test_track_parser_fallback_failure_buckets_unknown_labels():
+    """A typo or new label value must not create a fresh Prometheus
+    series; the allow-list maps anything outside it to ``"other"``.
+    """
+    from app.services.metrics import track_parser_fallback_failure
+
+    baseline_other = _parser_fallback_count("other", "other")
+    track_parser_fallback_failure(stage="not-a-real-stage", kind="not-a-real-kind")
+    assert _parser_fallback_count("other", "other") - baseline_other == 1
+    # The typo'd series must not exist on its own.
+    assert _parser_fallback_count("not-a-real-stage", "not-a-real-kind") == 0
+
+
+def test_track_parser_fallback_failure_ignores_zero_and_negative_counts():
+    from app.services.metrics import track_parser_fallback_failure
+
+    baseline = _parser_fallback_count("image_vision_transcribe", "exception")
+    track_parser_fallback_failure(stage="image_vision_transcribe", kind="exception", count=0)
+    track_parser_fallback_failure(stage="image_vision_transcribe", kind="exception", count=-5)
+    assert _parser_fallback_count("image_vision_transcribe", "exception") == baseline
+
+
+def test_parser_fallback_failure_appears_in_prometheus_output():
+    """The counter must show up in ``/metrics`` so the on-call can
+    alert on a sustained spike. We rely on the existing render
+    path used by ``test_prometheus_text_is_valid_openmetrics``.
+    """
+    from app.services.metrics import get_prometheus_text, track_parser_fallback_failure
+
+    track_parser_fallback_failure(stage="pdf_vision_table", kind="exception")
+    text = get_prometheus_text().decode("utf-8")
+    assert "docuintel_parser_fallback_failures_total{" in text
+    # At least one row for the stage we just incremented.
+    assert 'stage="pdf_vision_table"' in text
     assert "# HELP docuintel_ocr_tier" in text

@@ -35,4 +35,3 @@ class ExtractedDocument:
     @property
     def text(self) -> str:
         return "\n\n".join(page.text for page in self.pages if page.text)
-

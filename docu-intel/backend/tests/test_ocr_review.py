@@ -130,6 +130,54 @@ def test_document_page_image_endpoint_serves_page_preview_from_files_dir(tmp_pat
     assert response.headers["content-type"] == "image/png"
 
 
+def test_document_page_image_endpoint_serves_jpeg_with_correct_content_type(tmp_path: Path, monkeypatch):
+    """OPS-1: when the page preview was rendered as JPEG, the
+    endpoint must advertise ``image/jpeg`` and not
+    ``image/png`` (which was the historical bug — the bytes
+    were JPEG but the filename was ``.png`` so the browser
+    inferred the wrong MIME).
+    """
+    from sqlalchemy import select
+
+    from app.models import DocumentPage
+
+    client, sessions = _test_client()
+    monkeypatch.setattr(settings, "files_dir", tmp_path)
+    page_dir = tmp_path / "pages"
+    page_dir.mkdir(parents=True)
+    # Fake JPEG SOI marker so the helper at least has a
+    # consistent on-disk format. The test only cares that the
+    # route advertises ``image/jpeg`` when the suffix is
+    # ``.jpg``.
+    (page_dir / "page-1.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 32)
+
+    with sessions() as db:
+        token = _seed_admin(db)
+        document = _seed_document_with_pages(db)
+        # The seed helper hard-codes ``image_path`` to
+        # ``pages/page-1.png``; switch it to ``.jpg`` so the
+        # endpoint sees a JPEG-named file and must serve it
+        # with the matching Content-Type.
+        page_one = db.scalar(
+            select(DocumentPage).where(DocumentPage.document_id == document.id).where(DocumentPage.page_number == 1)
+        )
+        page_one.image_path = "pages/page-1.jpg"
+        db.commit()
+
+    response = client.get(f"/documents/{document.id}/pages/1/image", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    # The endpoint must serve the bytes with the matching
+    # Content-Type so the browser actually renders the
+    # preview (some refuse to display ``image/png`` bytes
+    # served as ``image/jpeg`` and vice versa).
+    assert response.headers["content-type"] == "image/jpeg", (
+        "OPS-1: pages rendered as JPEG must be served with "
+        "Content-Type: image/jpeg, not inferred from a stale "
+        ".png suffix"
+    )
+
+
 def test_admin_can_approve_low_confidence_page_and_it_leaves_review_queue():
     client, sessions = _test_client()
     with sessions() as db:

@@ -54,7 +54,9 @@ export function LearningHealthCard() {
           <CardTitle className="flex items-center gap-2">
             <Brain className="h-4 w-4" /> Salud del Learning Loop
           </CardTitle>
-          <CardDescription className="text-red-500">No se pudo cargar la salud del bucle.</CardDescription>
+          <CardDescription className="text-red-500">
+            No se pudo cargar la salud del bucle.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Button variant="outline" size="sm" onClick={() => void refetch()}>

@@ -144,9 +144,7 @@ export const plansApi = {
     return request<PlanSymbol[]>(`/plans/${id}/symbols${q}`)
   },
   getSymbolsSummary: (id: number, min_confidence = 0) =>
-    request<PlanSymbolSummary>(
-      `/plans/${id}/symbols/summary?min_confidence=${min_confidence}`,
-    ),
+    request<PlanSymbolSummary>(`/plans/${id}/symbols/summary?min_confidence=${min_confidence}`),
   deleteRoom: (planId: number, roomId: number) =>
     request<void>(`/plans/${planId}/rooms/${roomId}`, { method: "DELETE" }),
   deleteDimension: (planId: number, dimId: number) =>

@@ -6,7 +6,14 @@ import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { formatDate, formatMoney } from "@/lib/utils"
 
 export function OrdersPage() {
@@ -22,7 +29,10 @@ export function OrdersPage() {
   return (
     <>
       <Breadcrumbs items={[{ label: "Pedidos" }]} />
-      <PageHeader title="Pedidos" description="Extracción básica de proveedor, cliente, relación con presupuesto y líneas." />
+      <PageHeader
+        title="Pedidos"
+        description="Extracción básica de proveedor, cliente, relación con presupuesto y líneas."
+      />
       <Card>
         <CardHeader>
           <CardTitle>Pedidos detectados</CardTitle>
@@ -42,7 +52,10 @@ export function OrdersPage() {
             </TableHeader>
             <TableBody>
               {(data ?? []).map((order) => (
-                <TableRow key={order.id} className={order.id === activeId ? "bg-muted/60" : undefined}>
+                <TableRow
+                  key={order.id}
+                  className={order.id === activeId ? "bg-muted/60" : undefined}
+                >
                   <TableCell>{order.order_number ?? "-"}</TableCell>
                   <TableCell>{order.supplier_name ?? "-"}</TableCell>
                   <TableCell>{order.client_name ?? "-"}</TableCell>
@@ -77,7 +90,7 @@ export function OrdersPage() {
                 <TableHead>Confianza</TableHead>
               </TableRow>
             </TableHeader>
-              <TableBody>
+            <TableBody>
               {(lines.data ?? []).map((line) => (
                 <TableRow key={line.id}>
                   <TableCell>{line.reference ?? "-"}</TableCell>
@@ -86,7 +99,9 @@ export function OrdersPage() {
                   <TableCell>{line.unit ?? "-"}</TableCell>
                   <TableCell>{formatMoney(line.unit_price)}</TableCell>
                   <TableCell>{formatMoney(line.total_price)}</TableCell>
-                  <TableCell>{line.confidence ? `${Math.round(line.confidence * 100)}%` : "-"}</TableCell>
+                  <TableCell>
+                    {line.confidence ? `${Math.round(line.confidence * 100)}%` : "-"}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

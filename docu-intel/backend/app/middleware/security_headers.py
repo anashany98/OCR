@@ -37,9 +37,9 @@ third-party content the operator cannot control:
   who want CSP on docs can put the docs behind a separate path.
 * ``/openapi.json`` — JSON content; CSP is meaningless.
 """
+
 from __future__ import annotations
 
-from typing import Iterable
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -108,7 +108,9 @@ def _build_csp(mode: str) -> str:
         # Add the Vite dev server. The exact port comes from the
         # CORS config; we hard-code 5173 + 5174 because those are
         # the ports the project's README documents.
-        directives[5] = "connect-src 'self' ws://localhost:5173 ws://localhost:5174 http://localhost:5173 http://localhost:5174"
+        directives[5] = (
+            "connect-src 'self' ws://localhost:5173 ws://localhost:5174 http://localhost:5173 http://localhost:5174"
+        )
     if mode != "disabled":
         # The strict and local_dev profiles both upgrade
         # mixed-content requests. We can't always do this

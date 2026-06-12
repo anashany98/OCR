@@ -29,7 +29,6 @@ def _frame_to_markdown(frame, sheet_name: str) -> str:
     - Drops rows that are completely empty.
     - Falls back to "row | col | value" when no real table structure is
       found (e.g. only one non-empty cell per row)."""
-    import pandas as pd
 
     if frame.empty:
         return f"### Hoja: {sheet_name}\n\n*(Hoja vacia)*"
@@ -45,11 +44,10 @@ def _frame_to_markdown(frame, sheet_name: str) -> str:
     if header_idx is not None:
         # Promote the chosen row to header; drop everything above.
         frame.columns = [str(c).strip() for c in frame.iloc[header_idx]]
-        frame = frame.iloc[header_idx + 1:].reset_index(drop=True)
+        frame = frame.iloc[header_idx + 1 :].reset_index(drop=True)
         # Drop columns whose header ended up empty/duplicated.
         keep = [
-            i for i, c in enumerate(frame.columns)
-            if c and c.strip() and c.strip().lower() != "nan"
+            i for i, c in enumerate(frame.columns) if c and c.strip() and c.strip().lower() != "nan"
         ]
         frame = frame.iloc[:, keep]
         frame.columns = [c.strip() for c in frame.columns]
@@ -85,9 +83,7 @@ def _frame_to_markdown(frame, sheet_name: str) -> str:
     sep = "| " + " | ".join("---" for _ in frame.columns) + " |"
     body_lines = []
     for _, row in frame.iterrows():
-        body_lines.append(
-            "| " + " | ".join(_escape_md(row[c]) for c in frame.columns) + " |"
-        )
+        body_lines.append("| " + " | ".join(_escape_md(row[c]) for c in frame.columns) + " |")
     return "\n".join([f"### Hoja: {sheet_name}", "", header, sep, *body_lines])
 
 

@@ -103,13 +103,13 @@ export function MessageBubble({
             <TypingIndicatorInline />
           ) : message.pending ? (
             <div className="text-[14.5px] leading-relaxed text-[var(--text-primary)]">
-              {message.content || (
-                <span className="text-[var(--text-muted)]">…</span>
-              )}
+              {message.content || <span className="text-[var(--text-muted)]">…</span>}
             </div>
           ) : (
             <>
-              {renderAssistantContent(showFullAnswer ? message.content : truncateAnswer(message.content))}
+              {renderAssistantContent(
+                showFullAnswer ? message.content : truncateAnswer(message.content),
+              )}
               {message.content.length > 600 && (
                 <button
                   type="button"
@@ -171,10 +171,18 @@ export function MessageBubble({
             <ActionButton onClick={onExport} title="Exportar a CSV" ariaLabel="Exportar a CSV">
               <FileSpreadsheet className="h-3.5 w-3.5" />
             </ActionButton>
-            <ActionButton onClick={onTask} title="Crear tarea de revisión" ariaLabel="Crear tarea de revisión">
+            <ActionButton
+              onClick={onTask}
+              title="Crear tarea de revisión"
+              ariaLabel="Crear tarea de revisión"
+            >
               <AlertTriangle className="h-3.5 w-3.5" />
             </ActionButton>
-            <ActionButton onClick={onRegenerate} title="Regenerar respuesta" ariaLabel="Regenerar respuesta">
+            <ActionButton
+              onClick={onRegenerate}
+              title="Regenerar respuesta"
+              ariaLabel="Regenerar respuesta"
+            >
               <RefreshCw className="h-3.5 w-3.5" />
             </ActionButton>
             <ActionButton

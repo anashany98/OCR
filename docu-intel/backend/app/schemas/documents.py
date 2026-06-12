@@ -90,7 +90,9 @@ class BulkReprocessRequest(BaseModel):
     source_path_contains: str | None = None
     ids: list[int] | None = None
     limit: int = Field(default=100, ge=1, le=1000)
-    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = "full"
+    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = (
+        "full"
+    )
 
 
 class BulkReprocessResponse(BaseModel):

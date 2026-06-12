@@ -30,6 +30,7 @@ app. The test harness passes in pre-computed OCR results as
 scoring code be reused both in CI (with golden results baked into the
 repo) and locally (with the live engine).
 """
+
 from __future__ import annotations
 
 import difflib
@@ -276,9 +277,9 @@ class FixtureScore:
 # parameters on ``score_fixture`` so tests can pass tighter or looser
 # thresholds per fixture.
 DEFAULT_GATES = {
-    "max_text_cer": 0.10,             # <= 10 % character error rate
-    "min_text_recall": 0.80,          # >= 80 % of GT words present
-    "min_keyword_recall": 1.0,        # every expected keyword must appear
+    "max_text_cer": 0.10,  # <= 10 % character error rate
+    "min_text_recall": 0.80,  # >= 80 % of GT words present
+    "min_keyword_recall": 1.0,  # every expected keyword must appear
 }
 
 
@@ -352,9 +353,13 @@ def score_fixture(
         cer = character_error_rate(page_gt.text, hyp)
         wr = word_recall(page_gt.text, hyp)
         passed = cer <= max_text_cer and wr >= min_text_recall
-        detail = "" if passed else (
-            f"CER={cer:.3f} (gate {max_text_cer:.3f}); "
-            f"recall={wr:.3f} (gate {min_text_recall:.3f})"
+        detail = (
+            ""
+            if passed
+            else (
+                f"CER={cer:.3f} (gate {max_text_cer:.3f}); "
+                f"recall={wr:.3f} (gate {min_text_recall:.3f})"
+            )
         )
         page_scores.append(
             PageScore(
@@ -396,8 +401,12 @@ def score_fixture(
         detail = "; ".join(reasons)
 
     if pages_with_gt:
-        mean_cer = sum(p.text_cer for p, gt in zip(page_scores, fixture.pages) if gt.text.strip()) / len(pages_with_gt)
-        mean_recall = sum(p.text_recall for p, gt in zip(page_scores, fixture.pages) if gt.text.strip()) / len(pages_with_gt)
+        mean_cer = sum(
+            p.text_cer for p, gt in zip(page_scores, fixture.pages) if gt.text.strip()
+        ) / len(pages_with_gt)
+        mean_recall = sum(
+            p.text_recall for p, gt in zip(page_scores, fixture.pages) if gt.text.strip()
+        ) / len(pages_with_gt)
     else:
         # No per-page GT at all; we are scoring on keywords only.
         mean_cer = 0.0

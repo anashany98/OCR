@@ -6,6 +6,7 @@ fallback counter; the cache hit-rate gauge lives in
 ``search.py`` (the cache layer is shared between embedding and
 search callers).
 """
+
 from __future__ import annotations
 
 from ._registry import EMBEDDING_DURATION, EMBEDDING_FALLBACKS

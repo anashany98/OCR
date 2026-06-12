@@ -10,8 +10,11 @@ const priorityConfig: Record<PriorityLevel, { color: string; textColor: string; 
 }
 
 function normalizePriority(value: string | null | undefined): PriorityLevel {
-  const normalized = String(value ?? "").trim().toLowerCase()
-  if (normalized === "critical" || normalized === "critica" || normalized === "urgent") return "critical"
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+  if (normalized === "critical" || normalized === "critica" || normalized === "urgent")
+    return "critical"
   if (normalized === "high" || normalized === "alta" || normalized === "urgente") return "high"
   if (normalized === "normal" || normalized === "media") return "normal"
   if (normalized === "low" || normalized === "baja") return "low"

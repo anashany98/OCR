@@ -15,10 +15,10 @@ converting DWG to DXF via ODA File Converter.
 The parser is **fail-safe**: on any error it returns an
 empty ExtractedDocument so the ingestion pipeline continues.
 """
+
 from __future__ import annotations
 
 import logging
-import math
 from pathlib import Path
 
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
@@ -57,26 +57,30 @@ def parse_dxf(path: Path, output_dir: Path) -> ExtractedDocument:
                 text = entity.dxf.text.strip()
                 if text:
                     texts.append(text)
-                    blocks.append(ExtractedBlock(
-                        block_type="text",
-                        text=text,
-                        page_number=1,
-                        bbox=_get_bbox(entity),
-                        confidence=1.0,
-                        source_engine="dxf_parser",
-                    ))
+                    blocks.append(
+                        ExtractedBlock(
+                            block_type="text",
+                            text=text,
+                            page_number=1,
+                            bbox=_get_bbox(entity),
+                            confidence=1.0,
+                            source_engine="dxf_parser",
+                        )
+                    )
             elif dxftype == "MTEXT":
                 text = entity.plain_text().strip()
                 if text:
                     texts.append(text)
-                    blocks.append(ExtractedBlock(
-                        block_type="text",
-                        text=text,
-                        page_number=1,
-                        bbox=_get_bbox(entity),
-                        confidence=1.0,
-                        source_engine="dxf_parser",
-                    ))
+                    blocks.append(
+                        ExtractedBlock(
+                            block_type="text",
+                            text=text,
+                            page_number=1,
+                            bbox=_get_bbox(entity),
+                            confidence=1.0,
+                            source_engine="dxf_parser",
+                        )
+                    )
             elif dxftype == "INSERT":
                 # Block reference with attributes
                 attribs = entity.attribs
@@ -84,14 +88,16 @@ def parse_dxf(path: Path, output_dir: Path) -> ExtractedDocument:
                     text = attrib.dxf.text.strip()
                     if text:
                         texts.append(text)
-                        blocks.append(ExtractedBlock(
-                            block_type="attribute",
-                            text=text,
-                            page_number=1,
-                            bbox=_get_bbox(attrib),
-                            confidence=1.0,
-                            source_engine="dxf_parser",
-                        ))
+                        blocks.append(
+                            ExtractedBlock(
+                                block_type="attribute",
+                                text=text,
+                                page_number=1,
+                                bbox=_get_bbox(attrib),
+                                confidence=1.0,
+                                source_engine="dxf_parser",
+                            )
+                        )
 
         # Extract layer names as metadata
         layer_names = [layer.dxf.name for layer in doc.layers]
@@ -115,7 +121,9 @@ def parse_dxf(path: Path, output_dir: Path) -> ExtractedDocument:
             blocks=blocks,
         )
 
-        logger.info("DXF parsed: %s — %d text entities, %d blocks", path.name, len(texts), len(blocks))
+        logger.info(
+            "DXF parsed: %s — %d text entities, %d blocks", path.name, len(texts), len(blocks)
+        )
         return ExtractedDocument(pages=[page])
 
     except Exception as exc:

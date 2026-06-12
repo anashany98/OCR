@@ -37,6 +37,7 @@ that depends on it still works — the cosine branch uses the
 original query embedding, just with less recall than it would
 have had with HyDE.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,7 +45,6 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Iterable
 
 from app.core.config import settings
 from app.services.metrics import track_query_transform
@@ -197,7 +197,7 @@ def _parse_hyde_response(text: str) -> str:
     lowered = cleaned.lower()
     for prefix in candidates:
         if lowered.startswith(prefix.lower()):
-            cleaned = cleaned[len(prefix):].lstrip(" :.-")
+            cleaned = cleaned[len(prefix) :].lstrip(" :.-")
             break
     return cleaned.strip()
 
@@ -219,8 +219,7 @@ _HYDE_SYSTEM_PROMPT = (
 )
 
 _HYDE_USER_TEMPLATE = (
-    "Pregunta del usuario: {query}\n\n"
-    "Parrafo hipotetico del documento (maximo 120 palabras):"
+    "Pregunta del usuario: {query}\n\nParrafo hipotetico del documento (maximo 120 palabras):"
 )
 
 _MULTI_QUERY_SYSTEM_PROMPT = (
@@ -233,10 +232,7 @@ _MULTI_QUERY_SYSTEM_PROMPT = (
     "incluyas la pregunta original."
 )
 
-_MULTI_QUERY_USER_TEMPLATE = (
-    "Pregunta original: {query}\n\n"
-    "Reformulaciones ({n} lineas):"
-)
+_MULTI_QUERY_USER_TEMPLATE = "Pregunta original: {query}\n\nReformulaciones ({n} lineas):"
 
 
 async def _call_llm_for_hyde(query: str) -> str | None:
@@ -366,9 +362,7 @@ def transform_query(
             )
 
         # multi_query
-        reformulations = asyncio.run(
-            _call_llm_for_multi_query(normalised, cap)
-        )
+        reformulations = asyncio.run(_call_llm_for_multi_query(normalised, cap))
         latency_ms = int((time.perf_counter() - start) * 1000)
         if not reformulations:
             track_query_transform("multi_query", "fallback", latency_ms=latency_ms)

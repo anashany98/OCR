@@ -27,7 +27,9 @@ export function buildTodaySnapshot({
     processedDocuments: stats?.documents_processed ?? 0,
     pendingDocuments: stats?.documents_pending ?? 0,
     reviewDocuments: stats?.documents_needs_review ?? 0,
-    criticalAlerts: (alerts ?? []).filter((alert) => alert.severity === "critical" || alert.severity === "error").length,
+    criticalAlerts: (alerts ?? []).filter(
+      (alert) => alert.severity === "critical" || alert.severity === "error",
+    ).length,
     openWorkItems: inbox?.length ?? 0,
     pendingJobs: overview?.jobs.pending_or_processing ?? 0,
     lowOcrPages: overview?.documents.low_ocr_pages ?? 0,

@@ -1,4 +1,5 @@
 """Celery tasks that maintain the health of the learning loop."""
+
 from __future__ import annotations
 
 import logging

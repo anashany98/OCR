@@ -77,7 +77,9 @@ def inspect_file_for_ingestion(path: Path) -> FileSecurityResult:
             return FileSecurityResult(allowed=False, quarantined=True, reason=reason)
 
     expected_signatures = MAGIC_SIGNATURES.get(suffix)
-    if expected_signatures and not any(header.startswith(signature) for signature, _ in expected_signatures):
+    if expected_signatures and not any(
+        header.startswith(signature) for signature, _ in expected_signatures
+    ):
         return FileSecurityResult(allowed=False, quarantined=True, reason=expected_signatures[0][1])
 
     if suffix == ".webp" and len(header) >= 12 and header[8:12] != b"WEBP":

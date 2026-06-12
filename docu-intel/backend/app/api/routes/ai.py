@@ -30,7 +30,6 @@ from app.services.ai_cache import get_cache_stats, invalidate_all_ai_cache
 from app.services.tenant_access import (
     access_scope_cache_key,
     filter_documents_for_scope,
-    filter_search_results_for_scope,
     resolve_user_access_scope,
 )
 
@@ -52,6 +51,7 @@ async def ask(
     # Compute follow-ups from the same context the streaming endpoint
     # would have, so the two responses are consistent.
     from app.ai.agent import _suggest_followups  # local import
+
     tools = select_tools_for_question(payload.question)
     access_scope = resolve_user_access_scope(db, user)
     context_items, _, _ = collect_context(db, tools, payload.question, access_scope=access_scope)
@@ -95,6 +95,7 @@ async def ask_stream(
     memory_block = _build_memory_block(db, user, question)
     if memory_block:
         from app.ai.agent import ContextItem  # local import to avoid cycle at module load
+
         context_items.insert(
             0,
             ContextItem(
@@ -118,6 +119,7 @@ async def ask_stream(
 
     # 3) serialise sources (deduped) for the end event.
     from app.ai.agent import _dedupe_sources  # local import
+
     sources_payload = []
     for source in _dedupe_sources(context_items):
         sources_payload.append(
@@ -135,12 +137,14 @@ async def ask_stream(
     resolved_json: dict | None = None
     if resolved_doc_id is not None:
         from app.tools import internal
+
         details = internal.get_document_full_details(db, resolved_doc_id)
         related = internal.get_related_documents(db, resolved_doc_id, hops=2)
         if details is not None:
             if access_scope is not None:
                 related = [
-                    r for r in related
+                    r
+                    for r in related
                     if filter_documents_for_scope(db, [r["document"]], access_scope)
                 ]
             related_payload = []
@@ -169,9 +173,11 @@ async def ask_stream(
 
     async def event_stream() -> AsyncIterator[bytes]:
         # start event: announce the model + that the LLM is running
-        yield b"event: start\ndata: " + json.dumps(
-            {"model": settings.ai_model or "backend_grounded_fallback"}
-        ).encode() + b"\n\n"
+        yield (
+            b"event: start\ndata: "
+            + json.dumps({"model": settings.ai_model or "backend_grounded_fallback"}).encode()
+            + b"\n\n"
+        )
 
         full_text = ""
         model_name = "backend_grounded_fallback"
@@ -180,9 +186,7 @@ async def ask_stream(
 
         if context_items and settings.ai_base_url and settings.ai_model:
             try:
-                async for chunk in _stream_local_ai_answer(
-                    question, context_items, warnings
-                ):
+                async for chunk in _stream_local_ai_answer(question, context_items, warnings):
                     if isinstance(chunk, StreamOutcome):
                         if chunk.ok:
                             full_text = chunk.text
@@ -194,7 +198,11 @@ async def ask_stream(
                     # reasoning. Surface them as a separate SSE event so
                     # the UI can show a "razonando..." indicator.
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "thinking":
-                        yield b"event: thinking\ndata: " + json.dumps({"text": chunk[1]}).encode() + b"\n\n"
+                        yield (
+                            b"event: thinking\ndata: "
+                            + json.dumps({"text": chunk[1]}).encode()
+                            + b"\n\n"
+                        )
                         continue
                     full_text += chunk
                     yield b"event: delta\ndata: " + json.dumps({"text": chunk}).encode() + b"\n\n"
@@ -207,6 +215,7 @@ async def ask_stream(
 
         # Build the suggested follow-ups (best-effort, fast heuristic).
         from app.ai.agent import _suggest_followups
+
         followups = _suggest_followups(question, resolved_doc_id, context_items)
 
         # Persist the final answer to the DB so /ai/history and the work
@@ -219,7 +228,9 @@ async def ask_stream(
             answer=full_text,
             confidence=confidence,
             model_name=model_name,
-            resolved_document_json=json.dumps(resolved_json, default=str, ensure_ascii=False) if resolved_json else None,
+            resolved_document_json=json.dumps(resolved_json, default=str, ensure_ascii=False)
+            if resolved_json
+            else None,
         )
         db.add(answer_row)
         db.flush()
@@ -240,6 +251,7 @@ async def ask_stream(
         # the question and stores it as a sidecar semantic index.
         try:
             from app.services.ai_cache import cache_answer_async as _cache_answer_async
+
             await _cache_answer_async(
                 question=question,
                 user_id=user.id,
@@ -287,12 +299,23 @@ async def ask_stream(
 
 
 @router.get("/history", response_model=list[AIQuestionRead])
-def history(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[AIQuestion]:
-    return list(db.scalars(select(AIQuestion).where(AIQuestion.user_id == user.id).order_by(AIQuestion.id.desc()).limit(50)).all())
+def history(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[AIQuestion]:
+    return list(
+        db.scalars(
+            select(AIQuestion)
+            .where(AIQuestion.user_id == user.id)
+            .order_by(AIQuestion.id.desc())
+            .limit(50)
+        ).all()
+    )
 
 
 @router.get("/answers/{answer_id}", response_model=AIAnswerRead)
-def answer(answer_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> AIAnswer:
+def answer(
+    answer_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> AIAnswer:
     item = db.get(AIAnswer, answer_id)
     if not item:
         raise HTTPException(status_code=404, detail="Answer not found")
@@ -317,7 +340,7 @@ def clear_cache(user: User = Depends(get_current_user)) -> dict:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admins can clear the cache")
     deleted = invalidate_all_ai_cache()
-    return {"message": f"Cache cleared", "entries_deleted": deleted}
+    return {"message": "Cache cleared", "entries_deleted": deleted}
 
 
 # ---------------------------------------------------------------------------

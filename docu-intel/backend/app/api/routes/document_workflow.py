@@ -15,7 +15,9 @@ router = APIRouter()
 
 
 @router.get("/{document_id}/timeline", response_model=list[DocumentTimelineEventRead])
-def document_timeline(document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[DocumentTimelineEvent]:
+def document_timeline(
+    document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[DocumentTimelineEvent]:
     document = db.get(Document, document_id)
     if not can_access_document(db, document, resolve_user_access_scope(db, user)):
         raise HTTPException(status_code=404, detail="Document not found")
@@ -63,18 +65,28 @@ def create_ocr_revision(
             created_at=datetime.utcnow(),
         )
     )
-    write_audit(db, user=user, action="ocr_revision_created", entity_type="document_page", entity_id=page.id)
+    write_audit(
+        db, user=user, action="ocr_revision_created", entity_type="document_page", entity_id=page.id
+    )
     db.commit()
     db.refresh(revision)
     return revision
 
 
 @router.get("/pages/{page_id}/ocr-revisions", response_model=list[OcrRevisionRead])
-def list_ocr_revisions(page_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[OcrRevision]:
+def list_ocr_revisions(
+    page_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[OcrRevision]:
     page = db.get(DocumentPage, page_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     document = db.get(Document, page.document_id)
     if not can_access_document(db, document, resolve_user_access_scope(db, user)):
         raise HTTPException(status_code=404, detail="Page not found")
-    return list(db.scalars(select(OcrRevision).where(OcrRevision.page_id == page_id).order_by(OcrRevision.created_at.desc())).all())
+    return list(
+        db.scalars(
+            select(OcrRevision)
+            .where(OcrRevision.page_id == page_id)
+            .order_by(OcrRevision.created_at.desc())
+        ).all()
+    )

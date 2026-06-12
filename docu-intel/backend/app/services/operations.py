@@ -21,7 +21,9 @@ class BulkReprocessFilters:
     source_path_contains: str | None = None
     ids: list[int] | None = None
     limit: int = 100
-    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = "full"
+    mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = (
+        "full"
+    )
 
 
 @dataclass(frozen=True)
@@ -129,7 +131,14 @@ def normalize_bulk_reprocess_filters(filters: BulkReprocessFilters) -> BulkRepro
         ids=[int(item) for item in filters.ids or []] or None,
         limit=limit,
     )
-    if not any([normalized.status, normalized.document_type, normalized.source_path_contains, normalized.ids]):
+    if not any(
+        [
+            normalized.status,
+            normalized.document_type,
+            normalized.source_path_contains,
+            normalized.ids,
+        ]
+    ):
         raise ValueError("Bulk reprocess requires at least one selector")
     return normalized
 
@@ -223,7 +232,10 @@ def build_admin_alerts(db: Session) -> list[AdminAlert]:
     counts = {
         "accepted_budgets_without_order": _count_accepted_budgets_without_order(db),
         "orders_without_budget": int(
-            db.scalar(select(func.count()).select_from(Order).where(Order.related_budget_id.is_(None))) or 0
+            db.scalar(
+                select(func.count()).select_from(Order).where(Order.related_budget_id.is_(None))
+            )
+            or 0
         ),
         "ocr_review_documents": int(
             db.scalar(
@@ -235,7 +247,8 @@ def build_admin_alerts(db: Session) -> list[AdminAlert]:
             or 0
         ),
         "plans_without_valid_scale": int(
-            db.scalar(select(func.count()).select_from(Plan).where(Plan.has_valid_scale.is_(False))) or 0
+            db.scalar(select(func.count()).select_from(Plan).where(Plan.has_valid_scale.is_(False)))
+            or 0
         ),
         "duplicate_documents": int(
             db.scalar(
@@ -247,14 +260,23 @@ def build_admin_alerts(db: Session) -> list[AdminAlert]:
             or 0
         ),
         "failed_jobs": int(
-            db.scalar(select(func.count()).select_from(ExtractionJob).where(ExtractionJob.status == "failed")) or 0
+            db.scalar(
+                select(func.count())
+                .select_from(ExtractionJob)
+                .where(ExtractionJob.status == "failed")
+            )
+            or 0
         ),
         "low_quality_documents": int(
             db.scalar(
                 select(func.count())
                 .select_from(Document)
                 .where(Document.deleted_at.is_(None))
-                .where(Document.quality_status.in_(["processed_low_quality", "processed_missing_fields", "needs_human_review"]))
+                .where(
+                    Document.quality_status.in_(
+                        ["processed_low_quality", "processed_missing_fields", "needs_human_review"]
+                    )
+                )
             )
             or 0
         ),
@@ -281,8 +303,12 @@ def build_admin_alerts(db: Session) -> list[AdminAlert]:
 
 def build_processing_metrics(db: Session) -> dict:
     return {
-        "documents_by_status": _group_count(db, Document.status, Document, Document.deleted_at.is_(None)),
-        "documents_by_type": _group_count(db, Document.document_type, Document, Document.deleted_at.is_(None)),
+        "documents_by_status": _group_count(
+            db, Document.status, Document, Document.deleted_at.is_(None)
+        ),
+        "documents_by_type": _group_count(
+            db, Document.document_type, Document, Document.deleted_at.is_(None)
+        ),
         "jobs_by_status": _group_count(db, ExtractionJob.status, ExtractionJob),
         "audit_events_total": int(db.scalar(select(func.count()).select_from(AuditLog)) or 0),
     }

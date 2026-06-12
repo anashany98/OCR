@@ -13,7 +13,10 @@ export class ApiError extends Error {
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}` + path, {
     credentials: "include",
-    headers: options.body instanceof FormData ? options.headers : { "Content-Type": "application/json", ...options.headers },
+    headers:
+      options.body instanceof FormData
+        ? options.headers
+        : { "Content-Type": "application/json", ...options.headers },
     ...options,
   })
   if (!response.ok) {
@@ -22,6 +25,11 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       const payload = await response.json()
       message = payload.detail || message
     } catch {
+      // Body was empty or not JSON: fall back to the status
+      // text. The empty catch is intentional — we have nothing
+      // meaningful to do with the parse error here, and the
+      // fallback below (the status text) is already good
+      // enough for the user.
     }
     throw new ApiError(message, response.status)
   }
@@ -33,7 +41,12 @@ export interface BatchUploadResult {
   uploaded: number
   duplicates: number
   failed: number
-  documents: { document_id: number; original_filename: string; status: string; job_id: number | null }[]
+  documents: {
+    document_id: number
+    original_filename: string
+    status: string
+    job_id: number | null
+  }[]
 }
 
 export function thumbnailUrl(documentId: number) {

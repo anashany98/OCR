@@ -11,12 +11,12 @@ Paddle picks it up automatically. The cross-process init lock in
 :pydata:`paddleocr_init_lock` keeps the first call from racing across
 concurrent workers.
 """
+
 from __future__ import annotations
 
 import concurrent.futures
 import os
 import tempfile
-import threading
 import time
 from contextlib import contextmanager, nullcontext
 from functools import cached_property
@@ -107,8 +107,7 @@ class PaddleOCREngine:
                     self.device,
                 )
                 raise RuntimeError(
-                    f"PaddleOCR model init timed out after "
-                    f"{_PADDLE_INIT_TIMEOUT_SECONDS}s"
+                    f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
                 ) from None
 
     def extract(self, image_path: Path) -> OCRResult:
@@ -139,13 +138,15 @@ class PaddleOCREngine:
                     bbox = None
                     if i < len(dt_polys):
                         poly = dt_polys[i]
-                        bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, 'tolist') else poly)
+                        bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
 
-                    blocks.append(OCRBlock(
-                        text=text or "",
-                        confidence=float(score) if score is not None else None,
-                        bbox=bbox,
-                    ))
+                    blocks.append(
+                        OCRBlock(
+                            text=text or "",
+                            confidence=float(score) if score is not None else None,
+                            bbox=bbox,
+                        )
+                    )
                     if score is not None:
                         confidences.append(float(score))
                 continue
@@ -166,7 +167,9 @@ class PaddleOCREngine:
         track_ocr_duration(time.perf_counter() - start)
         return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
 
-    def _parse_ocr_line(self, line: object) -> tuple[str, float, tuple[float, float, float, float] | None] | None:
+    def _parse_ocr_line(
+        self, line: object
+    ) -> tuple[str, float, tuple[float, float, float, float] | None] | None:
         """Parse a single OCR line, handling both 2.x and 3.x formats."""
         if isinstance(line, (list, tuple)) and len(line) >= 2:
             polygon = line[0]

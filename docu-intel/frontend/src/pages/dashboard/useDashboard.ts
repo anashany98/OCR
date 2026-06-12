@@ -60,9 +60,7 @@ export function formatDiskSpace(
 /** Compute the dashboard's "urgent actions" list. Pure function. */
 export function buildUrgentActions(
   stats: AdminStats | undefined,
-  inbox:
-    | { kind: string; severity: string; document_id: number | null }[]
-    | undefined,
+  inbox: { kind: string; severity: string; document_id: number | null }[] | undefined,
 ): UrgentAction[] {
   const actions: UrgentAction[] = []
   const failed = inbox?.filter((i) => i.kind === "failed_job").length ?? 0

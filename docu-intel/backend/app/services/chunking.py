@@ -33,6 +33,7 @@ and covers the cases the project actually has (Spanish / English
 prose, markdown tables, headings). A future task can swap it for
 chonkie behind the same public API.
 """
+
 from __future__ import annotations
 
 import re
@@ -177,10 +178,7 @@ def _split_oversized_sentence(
     words = sentence.split()
     if len(words) <= max_words:
         return [sentence]
-    return [
-        " ".join(words[start : start + max_words])
-        for start in range(0, len(words), max_words)
-    ]
+    return [" ".join(words[start : start + max_words]) for start in range(0, len(words), max_words)]
 
 
 def _emit_table(
@@ -273,11 +271,7 @@ def _split_into_paragraph_sentences(text: str) -> list[list[str]]:
         clean = " ".join(paragraph.split())
         if not clean:
             continue
-        sentences = [
-            sentence.strip()
-            for sentence in _SENTENCE_RE.split(clean)
-            if sentence.strip()
-        ]
+        sentences = [sentence.strip() for sentence in _SENTENCE_RE.split(clean) if sentence.strip()]
         paragraphs.append(sentences or [clean])
     return paragraphs
 

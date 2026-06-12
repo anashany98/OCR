@@ -25,7 +25,8 @@ init_sentry()
 # Multipart file-part cap: imported for its side effect (patches
 # Starlette's Request._get_form default). Must run before any route
 # resolves its dependencies, hence the top-level import.
-import logging as _logging
+import logging as _logging  # noqa: E402  (intentional — runs after setup_logging)
+
 _logging.getLogger("app.bootstrap").info(
     "multipart max_files patched from %d to %d",
     1000,
@@ -62,7 +63,11 @@ app.add_middleware(SecurityHeadersMiddleware)
 allow_origins = settings.cors_origins
 if settings.environment == "production":
     # In production, ensure only specific domains are allowed
-    allow_origins = [origin.strip() for origin in allow_origins if origin.strip() and not origin.startswith("http://localhost")]
+    allow_origins = [
+        origin.strip()
+        for origin in allow_origins
+        if origin.strip() and not origin.startswith("http://localhost")
+    ]
     if "*" in allow_origins:
         raise ValueError("CORS_ORIGINS must not contain '*' in production environment")
 
@@ -71,7 +76,13 @@ app.add_middleware(
     allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-DocuIntel-API-Key", "X-Technician-Id", "X-Technician-Name"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-DocuIntel-API-Key",
+        "X-Technician-Id",
+        "X-Technician-Name",
+    ],
     max_age=600,  # Cache preflight requests for 10 minutes
 )
 

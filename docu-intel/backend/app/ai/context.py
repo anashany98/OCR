@@ -17,15 +17,16 @@ across a 1500-line file alongside the LLM client and the system
 prompt, which made it impossible to test the rendering in isolation
 without spinning up a full DB session.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Budget, Document, Order, OrderLine
+from app.services.business_redaction import redact_business_payload_for_scope
 from app.services.redaction import redact_sensitive_text
 from app.services.tenant_access import (
     AccessScope,
@@ -185,7 +186,9 @@ def collect_context(
                         f"Si querias otro, dime el nombre exacto."
                     )
             else:
-                warnings.append(f"No he encontrado ningun documento cuyo nombre contenga '{query}'.")
+                warnings.append(
+                    f"No he encontrado ningun documento cuyo nombre contenga '{query}'."
+                )
         elif tool.name == "get_document_full_details":
             if resolved_doc_id is None:
                 # Skip silently if the lookup didn't resolve a document.
@@ -193,6 +196,7 @@ def collect_context(
             details = internal.get_document_full_details(db, resolved_doc_id)
             if details is None:
                 continue
+            details = redact_business_payload_for_scope(details, access_scope)
             summary = render_document_details(details)
             # If the vision model described the image, prepend that
             # description to the summary so the LLM uses the actual visual
@@ -201,8 +205,7 @@ def collect_context(
             if vision and vision.get("description"):
                 summary = (
                     f"Vision aplicada ({vision.get('model', 'vision')}):\n"
-                    f"{vision['description']}\n\n"
-                    + summary
+                    f"{vision['description']}\n\n" + summary
                 )
             context.append(
                 ContextItem(
@@ -223,7 +226,8 @@ def collect_context(
             related = internal.get_related_documents(db, resolved_doc_id, hops=2)
             if access_scope:
                 related = [
-                    r for r in related
+                    r
+                    for r in related
                     if filter_documents_for_scope(db, [r["document"]], access_scope)
                 ]
             for entry in related:
@@ -231,6 +235,8 @@ def collect_context(
                 # Multi-hop: for strong relations (depth 1) include the
                 # related doc's own entities so the LLM has a full picture.
                 detail = internal.get_document_full_details(db, doc.id)
+                if detail is not None:
+                    detail = redact_business_payload_for_scope(detail, access_scope)
                 summary = entry["label"]
                 if detail and entry.get("depth", 1) == 1 and detail.get("entities"):
                     summary = entry["label"] + "\n" + render_document_details(detail)
@@ -259,13 +265,19 @@ def collect_context(
                 continue
             order = internal.get_order_by_number(db, order_number)
             if order and access_scope:
-                order = filter_records_by_document_scope(db, [order], access_scope)[0] if filter_records_by_document_scope(db, [order], access_scope) else None
+                order = (
+                    filter_records_by_document_scope(db, [order], access_scope)[0]
+                    if filter_records_by_document_scope(db, [order], access_scope)
+                    else None
+                )
             if order:
                 context.append(order_context(db, order, include_lines=True))
                 if order.document_id:
                     resolved_doc_id = order.document_id
         elif tool.name == "get_budget_by_number":
-            budget_number = tool.arguments.get("budget_number") or _extract_document_number(question)
+            budget_number = tool.arguments.get("budget_number") or _extract_document_number(
+                question
+            )
             if not budget_number:
                 warnings.append("No se ha detectado un numero de presupuesto en la pregunta.")
                 continue
@@ -285,12 +297,16 @@ def collect_context(
         elif tool.name == "aggregate_business":
             entity = tool.arguments.get("entity") or "order"
             kind = tool.arguments.get("kind") or "count"
-            result = internal.aggregate_business(db, entity=entity, kind=kind, query=question)
+            result = internal.aggregate_business(
+                db, entity=entity, kind=kind, query=question, access_scope=access_scope
+            )
             rows = result.get("rows") or []
             filters = result.get("filters") or {}
             summary_lines = [
                 f"Agregado: {result.get('entity')} / {result.get('kind')}",
             ]
+            if result.get("price_redacted"):
+                summary_lines.append("Importes ocultos por la politica de acceso.")
             if filters:
                 fl = ", ".join(f"{k}={v}" for k, v in filters.items())
                 summary_lines.append(f"Filtros aplicados: {fl}")
@@ -347,12 +363,17 @@ def collect_context(
             documents = internal.get_duplicate_documents(db)
             if access_scope:
                 documents = filter_documents_for_scope(db, documents, access_scope)
-            context.extend(document_context(document, "Documento duplicado") for document in documents)
+            context.extend(
+                document_context(document, "Documento duplicado") for document in documents
+            )
         elif tool.name == "get_ocr_review_documents":
             documents = internal.get_ocr_review_documents(db)
             if access_scope:
                 documents = filter_documents_for_scope(db, documents, access_scope)
-            context.extend(document_context(document, "Documento con error o revision OCR") for document in documents)
+            context.extend(
+                document_context(document, "Documento con error o revision OCR")
+                for document in documents
+            )
         elif tool.name == "search_entities":
             entities = internal.search_entities(
                 db,
@@ -360,7 +381,9 @@ def collect_context(
                 value=tool.arguments.get("value") or question,
             )
             if access_scope:
-                allowed_ids = filter_document_ids_for_scope(db, [entity.document_id for entity in entities], access_scope)
+                allowed_ids = filter_document_ids_for_scope(
+                    db, [entity.document_id for entity in entities], access_scope
+                )
                 entities = [entity for entity in entities if entity.document_id in allowed_ids]
             for entity in entities:
                 document = db.get(Document, entity.document_id)
@@ -380,11 +403,21 @@ def collect_context(
                         )
                     )
         elif tool.name == "search_plan_room_measurements":
-            room_name = tool.arguments.get("room_name") or _extract_room_name(_normalize(question)) or question
+            room_name = (
+                tool.arguments.get("room_name")
+                or _extract_room_name(_normalize(question))
+                or question
+            )
             rows = internal.search_plan_room_measurements(db, room_name)
             if access_scope:
-                allowed_ids = filter_document_ids_for_scope(db, [document.id for _, _, document in rows], access_scope)
-                rows = [(plan, room, document) for plan, room, document in rows if document.id in allowed_ids]
+                allowed_ids = filter_document_ids_for_scope(
+                    db, [document.id for _, _, document in rows], access_scope
+                )
+                rows = [
+                    (plan, room, document)
+                    for plan, room, document in rows
+                    if document.id in allowed_ids
+                ]
             for plan, room, document in rows:
                 measures = []
                 if room.area_m2 is not None:
@@ -400,7 +433,9 @@ def collect_context(
                         f"El plano {document.original_filename} no tiene escala valida; no se deben convertir pixeles a metros."
                     )
                 if room.needs_review:
-                    warnings.append(f"La estancia {room.name or room_name} requiere revision manual.")
+                    warnings.append(
+                        f"La estancia {room.name or room_name} requiere revision manual."
+                    )
                 context.append(
                     ContextItem(
                         title=f"{room.name or room_name} en {document.original_filename}",
@@ -418,12 +453,20 @@ def collect_context(
                     )
                 )
 
-    if not context and any(tool.name == "hybrid_search" and tool.arguments.get("filters", {}).get("document_type") == "plano" for tool in tools):
-        warnings.append("No hay datos de planos suficientes. Si la pregunta requiere convertir medidas, se necesita escala valida o cota fiable.")
+    if not context and any(
+        tool.name == "hybrid_search"
+        and tool.arguments.get("filters", {}).get("document_type") == "plano"
+        for tool in tools
+    ):
+        warnings.append(
+            "No hay datos de planos suficientes. Si la pregunta requiere convertir medidas, se necesita escala valida o cota fiable."
+        )
     if not context and any(tool.name == "search_plan_room_measurements" for tool in tools):
         warnings.append("No hay habitaciones con medidas verificables para esa consulta.")
     if not context and any(tool.name == "get_related_documents" for tool in tools):
-        warnings.append("El documento no tiene vinculos conocidos con otros documentos del proyecto.")
+        warnings.append(
+            "El documento no tiene vinculos conocidos con otros documentos del proyecto."
+        )
     return context[:MAX_CONTEXT_ITEMS], warnings, resolved_doc_id
 
 
@@ -435,14 +478,20 @@ def render_document_details(details: dict) -> str:
 
     if "budget" in entities:
         b = entities["budget"]
-        parts = [p for p in [
-            f"numero {b.get('number')}" if b.get("number") else None,
-            f"cliente {b.get('client')}" if b.get("client") else None,
-            f"importe {b.get('total_amount')} {b.get('currency') or ''}".strip() if b.get("total_amount") is not None else None,
-            f"fecha {b.get('date')}" if b.get("date") else None,
-            f"estado {b.get('status')}" if b.get("status") else None,
-            "aceptado" if b.get("accepted") else "no aceptado",
-        ] if p]
+        parts = [
+            p
+            for p in [
+                f"numero {b.get('number')}" if b.get("number") else None,
+                f"cliente {b.get('client')}" if b.get("client") else None,
+                f"importe {b.get('total_amount')} {b.get('currency') or ''}".strip()
+                if b.get("total_amount") is not None
+                else None,
+                f"fecha {b.get('date')}" if b.get("date") else None,
+                f"estado {b.get('status')}" if b.get("status") else None,
+                "aceptado" if b.get("accepted") else "no aceptado",
+            ]
+            if p
+        ]
         if parts:
             lines.append("Presupuesto: " + " | ".join(parts))
         if b.get("line_count"):
@@ -452,17 +501,25 @@ def render_document_details(details: dict) -> str:
             desc = (ln.get("description") or "").strip()[:80]
             qty = ln.get("quantity")
             tot = ln.get("total_price")
-            lines.append(f"    - {ref} {desc} x{qty if qty is not None else '-'} total {tot if tot is not None else '-'}")
+            lines.append(
+                f"    - {ref} {desc} x{qty if qty is not None else '-'} total {tot if tot is not None else '-'}"
+            )
 
     if "order" in entities:
         o = entities["order"]
-        parts = [p for p in [
-            f"numero {o.get('number')}" if o.get("number") else None,
-            f"proveedor {o.get('supplier')}" if o.get("supplier") else None,
-            f"cliente {o.get('client')}" if o.get("client") else None,
-            f"importe {o.get('total_amount')} {o.get('currency') or ''}".strip() if o.get("total_amount") is not None else None,
-            f"fecha {o.get('date')}" if o.get("date") else None,
-        ] if p]
+        parts = [
+            p
+            for p in [
+                f"numero {o.get('number')}" if o.get("number") else None,
+                f"proveedor {o.get('supplier')}" if o.get("supplier") else None,
+                f"cliente {o.get('client')}" if o.get("client") else None,
+                f"importe {o.get('total_amount')} {o.get('currency') or ''}".strip()
+                if o.get("total_amount") is not None
+                else None,
+                f"fecha {o.get('date')}" if o.get("date") else None,
+            ]
+            if p
+        ]
         if parts:
             lines.append("Pedido: " + " | ".join(parts))
         if o.get("related_budget_id"):
@@ -472,30 +529,41 @@ def render_document_details(details: dict) -> str:
 
     if "invoice" in entities:
         i = entities["invoice"]
-        parts = [p for p in [
-            f"numero {i.get('number')}" if i.get("number") else None,
-            f"proveedor {i.get('supplier')}" if i.get("supplier") else None,
-            f"cliente {i.get('client')}" if i.get("client") else None,
-            f"importe {i.get('total_amount')} {i.get('currency') or ''}".strip() if i.get("total_amount") is not None else None,
-            f"fecha {i.get('date')}" if i.get("date") else None,
-        ] if p]
+        parts = [
+            p
+            for p in [
+                f"numero {i.get('number')}" if i.get("number") else None,
+                f"proveedor {i.get('supplier')}" if i.get("supplier") else None,
+                f"cliente {i.get('client')}" if i.get("client") else None,
+                f"importe {i.get('total_amount')} {i.get('currency') or ''}".strip()
+                if i.get("total_amount") is not None
+                else None,
+                f"fecha {i.get('date')}" if i.get("date") else None,
+            ]
+            if p
+        ]
         if parts:
             lines.append("Factura: " + " | ".join(parts))
 
     if "plan" in entities:
         pl = entities["plan"]
-        parts = [p for p in [
-            f"proyecto {pl.get('project_name')}" if pl.get("project_name") else None,
-            f"escala {pl.get('scale_text')}" if pl.get("scale_text") else None,
-            "escala valida" if pl.get("has_valid_scale") else "escala no valida",
-            f"unidad {pl.get('unit')}" if pl.get("unit") else None,
-        ] if p]
+        parts = [
+            p
+            for p in [
+                f"proyecto {pl.get('project_name')}" if pl.get("project_name") else None,
+                f"escala {pl.get('scale_text')}" if pl.get("scale_text") else None,
+                "escala valida" if pl.get("has_valid_scale") else "escala no valida",
+                f"unidad {pl.get('unit')}" if pl.get("unit") else None,
+            ]
+            if p
+        ]
         if parts:
             lines.append("Plano: " + " | ".join(parts))
         for r in pl.get("rooms_preview") or []:
             lines.append(
-                f"    - estancia {r.get('name') or '-'}: "
-                f"area {r.get('area_m2')} m2" if r.get("area_m2") is not None else f"    - estancia {r.get('name') or '-'}: sin medidas"
+                f"    - estancia {r.get('name') or '-'}: area {r.get('area_m2')} m2"
+                if r.get("area_m2") is not None
+                else f"    - estancia {r.get('name') or '-'}: sin medidas"
             )
 
     if "generic" in entities:
@@ -547,7 +615,11 @@ def build_grounded_response(
     whether the answer was generated by the backend or the model.
     """
     if not context_items:
-        warning_text = "\n".join(f"- {warning}" for warning in warnings) if warnings else "- No hay fuentes documentales recuperadas."
+        warning_text = (
+            "\n".join(f"- {warning}" for warning in warnings)
+            if warnings
+            else "- No hay fuentes documentales recuperadas."
+        )
         lead = (
             "No he encontrado datos suficientes en los documentos para responder a tu pregunta con seguridad. "
             "Si me das mas contexto (numero de presupuesto, proveedor, ejercicio, etc.) o subes el documento "
@@ -609,7 +681,11 @@ def build_grounded_response(
 
 def budget_context(db: Session, budget: Budget) -> ContextItem:
     document = db.get(Document, budget.document_id)
-    amount = f"{budget.total_amount:.2f} {budget.currency or ''}".strip() if budget.total_amount is not None else "importe no detectado"
+    amount = (
+        f"{budget.total_amount:.2f} {budget.currency or ''}".strip()
+        if budget.total_amount is not None
+        else "importe no detectado"
+    )
     status = budget.status or ("aceptado" if budget.accepted_detected else "sin estado")
     return ContextItem(
         title=f"Presupuesto {budget.budget_number or budget.id}",
@@ -625,10 +701,18 @@ def budget_context(db: Session, budget: Budget) -> ContextItem:
 
 def order_context(db: Session, order: Order, *, include_lines: bool = False) -> ContextItem:
     document = db.get(Document, order.document_id)
-    amount = f"{order.total_amount:.2f} {order.currency or ''}".strip() if order.total_amount is not None else "importe no detectado"
+    amount = (
+        f"{order.total_amount:.2f} {order.currency or ''}".strip()
+        if order.total_amount is not None
+        else "importe no detectado"
+    )
     summary = f"Pedido {order.order_number or order.id} - Proveedor {order.supplier_name or '-'} - Cliente {order.client_name or '-'} - {amount}"
     if include_lines:
-        lines = list(db.scalars(select(OrderLine).where(OrderLine.order_id == order.id).order_by(OrderLine.id.asc())).all())
+        lines = list(
+            db.scalars(
+                select(OrderLine).where(OrderLine.order_id == order.id).order_by(OrderLine.id.asc())
+            ).all()
+        )
         if lines:
             rendered = "; ".join(
                 f"{line.reference or '-'} {line.description or ''} x{line.quantity or '-'} total {line.total_price or '-'}"
@@ -735,10 +819,7 @@ def _warnings_with_low_ocr_notice(
 
 
 def _is_low_ocr_context(item: ContextItem) -> bool:
-    return (
-        item.ocr_confidence is not None
-        and item.ocr_confidence < LOW_OCR_CONFIDENCE_THRESHOLD
-    )
+    return item.ocr_confidence is not None and item.ocr_confidence < LOW_OCR_CONFIDENCE_THRESHOLD
 
 
 def _average_confidence(items: list[ContextItem]) -> float:

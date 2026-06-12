@@ -105,12 +105,7 @@ export function PlanoAnnotationPage() {
             )}
             Sugerir con IA
           </Button>
-          <Button
-            size="sm"
-            onClick={a.onSave}
-            disabled={a.saving || !a.dirty}
-            className="gap-1.5"
-          >
+          <Button size="sm" onClick={a.onSave} disabled={a.saving || !a.dirty} className="gap-1.5">
             {a.saving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
@@ -152,12 +147,7 @@ export function PlanoAnnotationPage() {
         {/* CENTER: canvas */}
         <Card className="flex min-h-0 flex-col overflow-hidden">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
-            <CanvasToolbar
-              tool={a.tool}
-              setTool={a.setTool}
-              page={a.page}
-              setPage={a.setPage}
-            />
+            <CanvasToolbar tool={a.tool} setTool={a.setTool} page={a.page} setPage={a.setPage} />
             <PlanCanvas
               documentId={documentId}
               page={a.page}

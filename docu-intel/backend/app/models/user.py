@@ -15,7 +15,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(50), default="operario", nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -26,4 +28,3 @@ class User(Base):
     questions = relationship("AIQuestion", back_populates="user")
     audit_logs = relationship("AuditLog", back_populates="user", foreign_keys="AuditLog.user_id")
     deleted_documents = relationship("Document", foreign_keys="Document.deleted_by_id")
-

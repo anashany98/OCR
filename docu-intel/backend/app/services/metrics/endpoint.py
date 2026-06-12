@@ -18,11 +18,12 @@ operator's Prometheus job can scrape ``/metrics`` (new
 format) and the admin UI can call ``get_metrics()`` to render
 counters directly (legacy format).
 """
+
 from __future__ import annotations
 
 from typing import Any
 
-from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY
 from prometheus_client.exposition import generate_latest as _gen
 from starlette.responses import Response
 
@@ -119,7 +120,9 @@ def get_metrics() -> dict[str, float]:
     for (lang, doc_type), counter in OCR_LANGUAGE_DETECTED._metrics.items():
         data[f"ocr_language_detected_total_{metric_key(lang)}_{metric_key(doc_type)}"] = _c(counter)
     for (lang, threshold_type), counter in OCR_LANGUAGE_THRESHOLD_USED._metrics.items():
-        data[f"ocr_language_threshold_used_{metric_key(lang)}_{metric_key(threshold_type)}"] = _c(counter)
+        data[f"ocr_language_threshold_used_{metric_key(lang)}_{metric_key(threshold_type)}"] = _c(
+            counter
+        )
 
     # Search.
     for (strategy, outcome), counter in QUERY_TRANSFORM._metrics.items():
@@ -129,7 +132,9 @@ def get_metrics() -> dict[str, float]:
     for (outcome,), gauge in MMR_AVG_PAIRWISE_SIMILARITY._metrics.items():
         data[f"mmr_avg_pairwise_similarity_{metric_key(outcome)}"] = _g(gauge)
     for (action, sensitivity, bucket), counter in PROMPT_INJECTION_ATTEMPTS._metrics.items():
-        data[f"prompt_injection_attempts_{metric_key(action)}_{metric_key(sensitivity)}_{metric_key(bucket)}"] = _c(counter)
+        data[
+            f"prompt_injection_attempts_{metric_key(action)}_{metric_key(sensitivity)}_{metric_key(bucket)}"
+        ] = _c(counter)
     for (vote, reason), counter in FEEDBACK_VOTES._metrics.items():
         data[f"feedback_votes_{metric_key(vote)}_{metric_key(reason)}"] = _c(counter)
 

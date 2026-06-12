@@ -16,6 +16,7 @@ class ClassificationResult:
 @dataclass(frozen=True)
 class LearnedRule:
     """A rule produced by the learning loop, applied BEFORE the built-in RULES."""
+
     pattern_value: str
     target_class: str
     confidence: float = 0.0
@@ -23,11 +24,30 @@ class LearnedRule:
 
 
 RULES: dict[str, list[str]] = {
-    "presupuesto": ["presupuesto", "oferta", "nº presupuesto", "no presupuesto", "total presupuesto", "cliente", "validez"],
+    "presupuesto": [
+        "presupuesto",
+        "oferta",
+        "nº presupuesto",
+        "no presupuesto",
+        "total presupuesto",
+        "cliente",
+        "validez",
+    ],
     "pedido": ["pedido", "orden de compra", "proveedor", "fecha pedido", "referencia pedido"],
     "factura": ["factura", "nº factura", "no factura", "base imponible", "iva", "total factura"],
     "albaran": ["albaran", "albarán", "entrega", "recibido", "mercancia", "mercancía"],
-    "plano": ["escala", "planta", "seccion", "sección", "alzado", "cotas", "m²", "m2", "simbolos de plano", "símbolos de plano"],
+    "plano": [
+        "escala",
+        "planta",
+        "seccion",
+        "sección",
+        "alzado",
+        "cotas",
+        "m²",
+        "m2",
+        "simbolos de plano",
+        "símbolos de plano",
+    ],
     "contrato": ["contrato", "clausula", "cláusula", "firmado por", "partes"],
     "email_exportado": ["from:", "to:", "subject:", "asunto:", "enviado:"],
 }
@@ -109,4 +129,3 @@ def classify_document(
 
 def _normalize(value: str) -> str:
     return " ".join(value.lower().replace("\\", "/").split())
-

@@ -10,6 +10,7 @@ The extractor is rule-based, not LLM-based: it's cheap, deterministic,
 and good enough for the high-confidence columns we care about
 (article / description / quantity / unit price / total).
 """
+
 from __future__ import annotations
 
 import re
@@ -17,11 +18,18 @@ from typing import Any
 
 # Column keywords we look for in the header row. Spanish + English.
 _COL_NUMBER = re.compile(r"^(art|articulo|ref|referencia|sku|codigo|código|code)$", re.IGNORECASE)
-_COL_DESC = re.compile(r"^(desc|descripcion|descripción|concepto|producto|denominacion|denominación|name|detalle)$", re.IGNORECASE)
+_COL_DESC = re.compile(
+    r"^(desc|descripcion|descripción|concepto|producto|denominacion|denominación|name|detalle)$",
+    re.IGNORECASE,
+)
 _COL_QTY = re.compile(r"^(cant|cantidad|qty|quantity|uds|unidades)$", re.IGNORECASE)
 _COL_UNIT = re.compile(r"^(unidad|unit|u\.?\s?d\.?)$", re.IGNORECASE)
-_COL_UNIT_PRICE = re.compile(r"^(precio\s*uni|precio\s*unidad|unit\s*price|pvp\s*uni|importe\s*uni)$", re.IGNORECASE)
-_COL_TOTAL = re.compile(r"^(total|subtotal|importe|pvp|amount|precio|precio\s*total)$", re.IGNORECASE)
+_COL_UNIT_PRICE = re.compile(
+    r"^(precio\s*uni|precio\s*unidad|unit\s*price|pvp\s*uni|importe\s*uni)$", re.IGNORECASE
+)
+_COL_TOTAL = re.compile(
+    r"^(total|subtotal|importe|pvp|amount|precio|precio\s*total)$", re.IGNORECASE
+)
 _COL_DISCOUNT = re.compile(r"^(dto|descuento|discount)$", re.IGNORECASE)
 _COL_TAX = re.compile(r"^(iva|tax)$", re.IGNORECASE)
 
@@ -115,12 +123,12 @@ def parse_markdown_table(md: str) -> list[dict[str, Any]]:
         return []
     header = [c.strip() for c in lines[sep_idx - 1].strip().strip("|").split("|")]
     rows: list[dict[str, Any]] = []
-    for ln in lines[sep_idx + 1:]:
+    for ln in lines[sep_idx + 1 :]:
         cells = [c.strip() for c in ln.strip().strip("|").split("|")]
         if len(cells) < len(header):
             cells = cells + [""] * (len(header) - len(cells))
         elif len(cells) > len(header):
-            cells = cells[: len(header) - 1] + [" | ".join(cells[len(header) - 1:])]
+            cells = cells[: len(header) - 1] + [" | ".join(cells[len(header) - 1 :])]
         row = {h: cells[i] for i, h in enumerate(header) if h}
         if any(v.strip() for v in row.values()):
             rows.append(row)

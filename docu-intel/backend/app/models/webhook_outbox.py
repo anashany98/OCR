@@ -7,9 +7,10 @@ payload, and updates the row with the delivery result. On failure the worker
 schedules a retry with exponential backoff; after ``max_attempts`` the row is
 moved to ``dead_letter`` for manual inspection and replay.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text
@@ -48,4 +49,6 @@ class WebhookOutbox(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -51,7 +51,9 @@ def execute_hybrid_search(
     return _search_response(request_id, "hybrid_search", context, results)
 
 
-def _search_response(request_id: str, tool: str, context: IntegrationContext, results) -> IntegrationToolExecuteResponse:
+def _search_response(
+    request_id: str, tool: str, context: IntegrationContext, results
+) -> IntegrationToolExecuteResponse:
     data = []
     sources = []
     for result in results:

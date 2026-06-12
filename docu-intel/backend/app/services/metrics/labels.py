@@ -15,6 +15,7 @@ required by the OpenMetrics spec but is a common best practice so
 multi-line user-controlled strings do not break the exposition
 format. We follow that here.
 """
+
 from __future__ import annotations
 
 
@@ -41,7 +42,4 @@ def metric_key(value: str) -> str:
     exposition format does not need this; the metric *name* is
     defined in the metric definition.
     """
-    return (
-        "".join(ch.lower() if ch.isalnum() else "_" for ch in value).strip("_")
-        or "unknown"
-    )
+    return "".join(ch.lower() if ch.isalnum() else "_" for ch in value).strip("_") or "unknown"

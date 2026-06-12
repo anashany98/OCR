@@ -38,6 +38,7 @@ directly, e.g. ``from app.ai.agent import select_tools_for_question``.
 We re-export the public surface below so the refactor is
 invisible to the rest of the codebase.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -51,10 +52,10 @@ from sqlalchemy.orm import Session
 
 from app.ai.local_client import LocalOpenAICompatibleClient
 from app.core.config import settings
-from app.models import AIAnswer, AIAnswerSource, AIQuestion, Plan, User
+from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
 from app.services.ai_cache import cache_answer_async, get_cached_answer_async
+from app.services.business_redaction import redact_business_payload_for_scope
 from app.services.tenant_access import (
-    AccessScope,
     access_scope_cache_key,
     filter_documents_for_scope,
     resolve_user_access_scope,
@@ -220,7 +221,9 @@ async def answer_question(
         # Replace the hybrid_search with a more semantic-friendly call by
         # asking the LLM to think about entities first.
         tools = [t for t in tools if t.name != "hybrid_search"] + [
-            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}})
+            ToolCall(
+                "hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}}
+            )
         ]
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
@@ -278,7 +281,8 @@ async def answer_question(
         if details is not None:
             if access_scope is not None:
                 related = [
-                    r for r in related
+                    r
+                    for r in related
                     if filter_documents_for_scope(db, [r["document"]], access_scope)
                 ]
             # For the closest related documents, also pull their entities
@@ -309,10 +313,13 @@ async def answer_question(
                     if rel_details:
                         entry["entities"] = rel_details.get("entities", {})
                 related_payload.append(entry)
-            payload = {
-                "document": details,
-                "related": related_payload,
-            }
+            payload = redact_business_payload_for_scope(
+                {
+                    "document": details,
+                    "related": related_payload,
+                },
+                access_scope,
+            )
             try:
                 resolved_json = json.dumps(payload, default=str, ensure_ascii=False)
             except Exception as exc:
@@ -339,13 +346,15 @@ async def answer_question(
                 excerpt=source.excerpt or source.summary,
             )
         )
-        sources_data.append({
-            "document_id": source.document_id,
-            "page_number": source.page_number,
-            "block_id": source.block_id,
-            "relevance_score": source.relevance_score,
-            "excerpt": source.excerpt or source.summary,
-        })
+        sources_data.append(
+            {
+                "document_id": source.document_id,
+                "page_number": source.page_number,
+                "block_id": source.block_id,
+                "relevance_score": source.relevance_score,
+                "excerpt": source.excerpt or source.summary,
+            }
+        )
 
     db.commit()
     db.refresh(answer_row)
@@ -392,9 +401,17 @@ async def _try_local_ai_answer(
     messages = build_ai_messages(question, context_text, warning_text)
     try:
         client = LocalOpenAICompatibleClient()
-        # 60s to absorb first-load time of a 26B model in LM Studio. The
-        # local server is told the request timeout too (see LocalOpenAICompatibleClient).
-        answer = await asyncio.wait_for(client.chat(messages, temperature=0.0), timeout=60)
+        # The non-stream ``chat()`` already enforces a per-request
+        # timeout (``settings.ai_request_timeout_seconds``,
+        # default 120s) and ``ai_max_retries`` (default 2)
+        # with exponential backoff + jitter inside
+        # ``LocalOpenAICompatibleClient._post_chat_completion``.
+        # Wrapping it in another ``asyncio.wait_for`` would cap
+        # the total wall-clock at 60s and **cut the retry
+        # chain short** (audit A6), so the call goes through
+        # unchanged and the inner timeout / retry handles the
+        # slow / flaky cases instead.
+        answer = await client.chat(messages, temperature=0.0)
     except asyncio.TimeoutError:
         logger.warning("AI answer timed out for question: %s", question[:100])
         return None
@@ -402,7 +419,9 @@ async def _try_local_ai_answer(
         logger.warning("AI client request failed: %s - question: %s", exc, question[:100])
         return None
     except Exception as exc:
-        logger.error("Unexpected error in AI answer generation: %s - question: %s", exc, question[:100])
+        logger.error(
+            "Unexpected error in AI answer generation: %s - question: %s", exc, question[:100]
+        )
         return None
     if question_is_spanish(question) and not response_looks_spanish(answer):
         logger.warning("AI response not in Spanish for Spanish question: %s", answer[:200])

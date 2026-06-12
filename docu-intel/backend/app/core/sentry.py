@@ -9,6 +9,7 @@ works as-is. This module is a thin wrapper that:
 * exposes a no-op ``capture_exception`` for callers that want to report errors
   without depending on the SDK directly
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,7 +57,11 @@ def init_sentry() -> None:
         ],
     )
     _initialized = True
-    logger.info("sentry_initialized environment=%s sample_rate=%.2f", environment, settings.sentry_traces_sample_rate)
+    logger.info(
+        "sentry_initialized environment=%s sample_rate=%.2f",
+        environment,
+        settings.sentry_traces_sample_rate,
+    )
 
 
 def capture_exception(error: BaseException, **extra: Any) -> None:
@@ -69,6 +74,7 @@ def capture_exception(error: BaseException, **extra: Any) -> None:
         return
     try:
         import sentry_sdk
+
         with sentry_sdk.isolation_scope() as scope:
             for key, value in extra.items():
                 scope.set_tag(str(key), str(value))
@@ -83,6 +89,7 @@ def capture_message(message: str, level: str = "info", **extra: Any) -> None:
         return
     try:
         import sentry_sdk
+
         with sentry_sdk.isolation_scope() as scope:
             for key, value in extra.items():
                 scope.set_tag(str(key), str(value))

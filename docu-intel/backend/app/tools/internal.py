@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import (
+from app.models import (  # noqa: E402  (intentional — logger depends on this module)
     Budget,
     BudgetLine,
     Document,
@@ -20,6 +21,7 @@ from app.models import (
     PlanDimension,
     PlanRoom,
 )
+from app.services.tenant_access import AccessScope, filter_records_by_document_scope
 from app.services.search_service import search_hybrid as run_hybrid_search
 from app.services.search_service import search_text
 
@@ -44,7 +46,9 @@ def get_document_blocks(db: Session, document_id: int, page_number: int | None =
 
 def search_budgets(db: Session, query: str, status: str | None = None):
     pattern = f"%{query}%"
-    stmt = select(Budget).where((Budget.budget_number.ilike(pattern)) | (Budget.client_name.ilike(pattern)))
+    stmt = select(Budget).where(
+        (Budget.budget_number.ilike(pattern)) | (Budget.client_name.ilike(pattern))
+    )
     if status:
         stmt = stmt.where(Budget.status == status)
     return list(db.scalars(stmt.limit(20)).all())
@@ -68,7 +72,9 @@ def get_accepted_budgets_without_order(db: Session):
 
 def search_orders(db: Session, query: str):
     pattern = f"%{query}%"
-    stmt = select(Order).where((Order.order_number.ilike(pattern)) | (Order.supplier_name.ilike(pattern)))
+    stmt = select(Order).where(
+        (Order.order_number.ilike(pattern)) | (Order.supplier_name.ilike(pattern))
+    )
     return list(db.scalars(stmt.limit(20)).all())
 
 
@@ -81,6 +87,7 @@ def get_order_by_number(db: Session, order_number: str):
 # *understand* a file and connect it to the rest of the project, instead of
 # just returning a list of text snippets).
 # ---------------------------------------------------------------------------
+
 
 def find_document_by_filename(db: Session, query: str, limit: int = 5) -> list[Document]:
     """Partial / case-insensitive match on `original_filename`. The most-recent
@@ -137,7 +144,9 @@ def _attach_entity_payload(details: dict, document: Document, db: Session) -> No
     if budget:
         lines = list(
             db.scalars(
-                select(BudgetLine).where(BudgetLine.budget_id == budget.id).order_by(BudgetLine.id.asc())
+                select(BudgetLine)
+                .where(BudgetLine.budget_id == budget.id)
+                .order_by(BudgetLine.id.asc())
             ).all()
         )
         entities["budget"] = {
@@ -166,7 +175,9 @@ def _attach_entity_payload(details: dict, document: Document, db: Session) -> No
     order = db.scalar(select(Order).where(Order.document_id == document_id).limit(1))
     if order:
         lines = list(
-            db.scalars(select(OrderLine).where(OrderLine.order_id == order.id).order_by(OrderLine.id.asc())).all()
+            db.scalars(
+                select(OrderLine).where(OrderLine.order_id == order.id).order_by(OrderLine.id.asc())
+            ).all()
         )
         entities["order"] = {
             "number": order.order_number,
@@ -205,7 +216,9 @@ def _attach_entity_payload(details: dict, document: Document, db: Session) -> No
     plan = db.scalar(select(Plan).where(Plan.document_id == document_id).limit(1))
     if plan:
         rooms = list(db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan.id)).all())
-        dimensions = list(db.scalars(select(PlanDimension).where(PlanDimension.plan_id == plan.id)).all())
+        dimensions = list(
+            db.scalars(select(PlanDimension).where(PlanDimension.plan_id == plan.id)).all()
+        )
         entities["plan"] = {
             "project_name": plan.project_name,
             "scale_text": plan.scale_text,
@@ -253,8 +266,13 @@ def _maybe_attach_vision_description(details: dict, document: Document) -> None:
     failure (no model configured, file missing, request fails) is
     silently dropped so the rest of the snapshot still works."""
     from app.core.config import settings
+
+    logger = logging.getLogger("app.tools.internal")
     filename = (details.get("filename") or "").lower()
-    if not any(filename.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp")):
+    if not any(
+        filename.endswith(ext)
+        for ext in (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp")
+    ):
         return
     if not (settings.vision_base_url and settings.vision_model):
         return
@@ -262,6 +280,7 @@ def _maybe_attach_vision_description(details: dict, document: Document) -> None:
         return
     # Resolve the absolute path to the file on disk.
     from pathlib import Path
+
     files_dir = Path(settings.files_dir)
     candidate = files_dir / document.stored_filename
     if not candidate.exists():
@@ -271,8 +290,6 @@ def _maybe_attach_vision_description(details: dict, document: Document) -> None:
         if not candidate.exists():
             return
     try:
-        import base64
-        import io
         from app.ai.local_client import LocalVisionClient
         from app.services.vision_manager import VisionManager
 
@@ -297,6 +314,7 @@ def _maybe_attach_vision_description(details: dict, document: Document) -> None:
         # loop. Run the coroutine in a separate worker thread instead so
         # the vision call never blocks the rest of the pipeline.
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
             future = ex.submit(_run_vision_sync, client, candidate)
             description = future.result(timeout=settings.vision_timeout_seconds + 10)
@@ -317,6 +335,7 @@ def _run_vision_sync(client, candidate):
     """Run the async vision describe in a fresh event loop. Used by
     ``_maybe_attach_vision_description`` which lives on the sync path."""
     import asyncio
+
     loop = asyncio.new_event_loop()
     try:
         return loop.run_until_complete(client.describe(candidate))
@@ -336,6 +355,7 @@ def _maybe_attach_markdown_table_entities(details: dict, document: Document, db:
             extract_all_line_items,
             find_total_amount,
         )
+
         pages = list(
             db.scalars(
                 select(DocumentPage)
@@ -430,7 +450,9 @@ def get_related_documents(db: Session, document_id: int, hops: int = 1) -> list[
                     depth,
                 )
                 # pedido -> factura
-                invoices = db.scalars(select(Invoice).where(Invoice.related_order_id == order.id)).all()
+                invoices = db.scalars(
+                    select(Invoice).where(Invoice.related_order_id == order.id)
+                ).all()
                 for inv in invoices:
                     inv_doc = db.get(Document, inv.document_id) if inv.document_id else None
                     _add(
@@ -463,7 +485,11 @@ def get_related_documents(db: Session, document_id: int, hops: int = 1) -> list[
             if order.related_budget_id:
                 related_budget = db.get(Budget, order.related_budget_id)
                 if related_budget:
-                    budget_doc = db.get(Document, related_budget.document_id) if related_budget.document_id else None
+                    budget_doc = (
+                        db.get(Document, related_budget.document_id)
+                        if related_budget.document_id
+                        else None
+                    )
                     _add(
                         budget_doc,
                         "pedido_to_presupuesto",
@@ -502,7 +528,11 @@ def get_related_documents(db: Session, document_id: int, hops: int = 1) -> list[
             if invoice.related_order_id:
                 related_order = db.get(Order, invoice.related_order_id)
                 if related_order:
-                    order_doc = db.get(Document, related_order.document_id) if related_order.document_id else None
+                    order_doc = (
+                        db.get(Document, related_order.document_id)
+                        if related_order.document_id
+                        else None
+                    )
                     _add(
                         order_doc,
                         "factura_to_pedido",
@@ -512,7 +542,11 @@ def get_related_documents(db: Session, document_id: int, hops: int = 1) -> list[
                     if related_order.related_budget_id:
                         related_budget = db.get(Budget, related_order.related_budget_id)
                         if related_budget:
-                            budget_doc = db.get(Document, related_budget.document_id) if related_budget.document_id else None
+                            budget_doc = (
+                                db.get(Document, related_budget.document_id)
+                                if related_budget.document_id
+                                else None
+                            )
                             _add(
                                 budget_doc,
                                 "factura_to_presupuesto",
@@ -571,16 +605,20 @@ def get_related_documents(db: Session, document_id: int, hops: int = 1) -> list[
     # Strip the internal `depth` field before returning; frontend doesn't need it.
     result = []
     for entry in related.values():
-        result.append({
-            "document": entry["document"],
-            "relation": entry["relation"],
-            "label": entry["label"],
-        })
+        result.append(
+            {
+                "document": entry["document"],
+                "relation": entry["relation"],
+                "label": entry["label"],
+            }
+        )
     return result[:16]
 
 
 def search_plans(db: Session, query: str):
-    return list(db.scalars(select(Plan).where(Plan.project_name.ilike(f"%{query}%")).limit(20)).all())
+    return list(
+        db.scalars(select(Plan).where(Plan.project_name.ilike(f"%{query}%")).limit(20)).all()
+    )
 
 
 def get_plan_rooms(db: Session, plan_id: int):
@@ -594,7 +632,9 @@ def get_plan_dimensions(db: Session, plan_id: int):
 def get_room_measurements(db: Session, plan_id: int, room_name: str):
     pattern = f"%{room_name}%"
     return list(
-        db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id).where(PlanRoom.name.ilike(pattern))).all()
+        db.scalars(
+            select(PlanRoom).where(PlanRoom.plan_id == plan_id).where(PlanRoom.name.ilike(pattern))
+        ).all()
     )
 
 
@@ -625,7 +665,9 @@ def search_entities(db: Session, entity_type: str, value: str):
 
 
 def hybrid_search(db: Session, query: str, filters: dict | None = None):
-    return run_hybrid_search(db, query, filters=(filters or {}), limit=(filters or {}).get("limit", 10))
+    return run_hybrid_search(
+        db, query, filters=(filters or {}), limit=(filters or {}).get("limit", 10)
+    )
 
 
 def get_duplicate_documents(db: Session):
@@ -645,7 +687,11 @@ def get_ocr_review_documents(db: Session):
         db.scalars(
             select(Document)
             .where(Document.deleted_at.is_(None))
-            .where((Document.status == "failed") | (Document.status == "needs_review") | (Document.confidence < 0.75))
+            .where(
+                (Document.status == "failed")
+                | (Document.status == "needs_review")
+                | (Document.confidence < 0.75)
+            )
             .order_by(Document.id.desc())
             .limit(50)
         ).all()
@@ -656,6 +702,7 @@ def get_ocr_review_documents(db: Session):
 # Aggregate / analytics tools (used by the AI agent to answer questions
 # like "cuanto nos hemos gastado en X" or "cuantos pedidos hay sin factura").
 # ---------------------------------------------------------------------------
+
 
 def _money_filters(kind: str, query: str) -> dict[str, Any]:
     """Pull a number, supplier/client/period hint out of a Spanish natural
@@ -724,7 +771,12 @@ def _money_filters(kind: str, query: str) -> dict[str, Any]:
     return filters
 
 
-def _budget_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+def _budget_aggregate(
+    db: Session,
+    kind: str,
+    filters: dict[str, Any],
+    access_scope: AccessScope | None = None,
+) -> list[dict[str, Any]]:
     """Build aggregate results for `kind` in {total, count, top, period}
     restricted to `Budget` records with the given filters."""
     stmt = select(Budget)
@@ -746,12 +798,27 @@ def _budget_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[d
         stmt = stmt.where(Budget.id.not_in(ordered_ids))
 
     budgets = list(db.scalars(stmt).all())
+    if access_scope is not None:
+        budgets = filter_records_by_document_scope(db, budgets, access_scope)
 
     if kind == "count":
-        return [{"metric": "count", "value": len(budgets), "label": "presupuestos que cumplen los filtros"}]
+        return [
+            {
+                "metric": "count",
+                "value": len(budgets),
+                "label": "presupuestos que cumplen los filtros",
+            }
+        ]
     if kind == "total":
         total = sum((b.total_amount or 0.0) for b in budgets if b.total_amount is not None)
-        return [{"metric": "total_amount", "value": round(total, 2), "label": "suma de importes de presupuestos", "count": len(budgets)}]
+        return [
+            {
+                "metric": "total_amount",
+                "value": round(total, 2),
+                "label": "suma de importes de presupuestos",
+                "count": len(budgets),
+            }
+        ]
     if kind == "top":
         sorted_bs = sorted(budgets, key=lambda b: b.total_amount or 0, reverse=True)[:10]
         return [
@@ -769,7 +836,12 @@ def _budget_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[d
     return []
 
 
-def _order_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+def _order_aggregate(
+    db: Session,
+    kind: str,
+    filters: dict[str, Any],
+    access_scope: AccessScope | None = None,
+) -> list[dict[str, Any]]:
     stmt = select(Order)
     if filters.get("supplier"):
         stmt = stmt.where(Order.supplier_name.ilike(f"%{filters['supplier']}%"))
@@ -791,12 +863,23 @@ def _order_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[di
         stmt = stmt.where(Order.id.not_in(invoiced_ids))
 
     orders = list(db.scalars(stmt).all())
+    if access_scope is not None:
+        orders = filter_records_by_document_scope(db, orders, access_scope)
 
     if kind == "count":
-        return [{"metric": "count", "value": len(orders), "label": "pedidos que cumplen los filtros"}]
+        return [
+            {"metric": "count", "value": len(orders), "label": "pedidos que cumplen los filtros"}
+        ]
     if kind == "total":
         total = sum((o.total_amount or 0.0) for o in orders if o.total_amount is not None)
-        return [{"metric": "total_amount", "value": round(total, 2), "label": "suma de importes de pedidos", "count": len(orders)}]
+        return [
+            {
+                "metric": "total_amount",
+                "value": round(total, 2),
+                "label": "suma de importes de pedidos",
+                "count": len(orders),
+            }
+        ]
     if kind == "top":
         sorted_os = sorted(orders, key=lambda o: o.total_amount or 0, reverse=True)[:10]
         return [
@@ -820,13 +903,23 @@ def _order_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[di
             if o.total_amount is not None:
                 g["total"] += o.total_amount
         return [
-            {"metric": "by_supplier", "value": round(g["total"], 2), "count": g["count"], "label": g["label"]}
+            {
+                "metric": "by_supplier",
+                "value": round(g["total"], 2),
+                "count": g["count"],
+                "label": g["label"],
+            }
             for g in sorted(groups.values(), key=lambda x: x["total"], reverse=True)[:10]
         ]
     return []
 
 
-def _invoice_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+def _invoice_aggregate(
+    db: Session,
+    kind: str,
+    filters: dict[str, Any],
+    access_scope: AccessScope | None = None,
+) -> list[dict[str, Any]]:
     stmt = select(Invoice)
     if filters.get("supplier"):
         stmt = stmt.where(Invoice.supplier_name.ilike(f"%{filters['supplier']}%"))
@@ -837,28 +930,90 @@ def _invoice_aggregate(db: Session, kind: str, filters: dict[str, Any]) -> list[
     if filters.get("amount_max") is not None:
         stmt = stmt.where(Invoice.total_amount <= filters["amount_max"])
     invoices = list(db.scalars(stmt).all())
+    if access_scope is not None:
+        invoices = filter_records_by_document_scope(db, invoices, access_scope)
     if kind == "count":
-        return [{"metric": "count", "value": len(invoices), "label": "facturas que cumplen los filtros"}]
+        return [
+            {"metric": "count", "value": len(invoices), "label": "facturas que cumplen los filtros"}
+        ]
     if kind == "total":
         total = sum((i.total_amount or 0.0) for i in invoices if i.total_amount is not None)
-        return [{"metric": "total_amount", "value": round(total, 2), "label": "suma de importes facturados", "count": len(invoices)}]
+        return [
+            {
+                "metric": "total_amount",
+                "value": round(total, 2),
+                "label": "suma de importes facturados",
+                "count": len(invoices),
+            }
+        ]
     return []
 
 
-def aggregate_business(db: Session, *, entity: str, kind: str, query: str | None = None) -> dict[str, Any]:
+PRICE_AGGREGATE_KINDS = {"total", "top", "by_supplier", "period"}
+
+
+def _filters_for_price_scope(
+    filters: dict[str, Any], access_scope: AccessScope | None
+) -> tuple[dict[str, Any], bool]:
+    if access_scope is None or access_scope.can_view_prices:
+        return filters, False
+    clean = dict(filters)
+    redacted = False
+    for key in ("amount_min", "amount_max"):
+        if key in clean:
+            clean.pop(key, None)
+            redacted = True
+    return clean, redacted
+
+
+def aggregate_business(
+    db: Session,
+    *,
+    entity: str,
+    kind: str,
+    query: str | None = None,
+    access_scope: AccessScope | None = None,
+) -> dict[str, Any]:
     """Run an aggregate query against the structured business tables. Used
     by the agent to answer questions like "cuanto nos hemos gastado en X",
     "cuantos pedidos sin factura hay" or "cual es el proveedor top por
     importe". Returns a list of result rows plus the parsed filters so the
     LLM can show its work."""
-    filters = _money_filters(entity if not query else query, query or entity)
+    filters, price_redacted = _filters_for_price_scope(
+        _money_filters(entity if not query else query, query or entity),
+        access_scope,
+    )
+    if (
+        access_scope is not None
+        and not access_scope.can_view_prices
+        and kind.lower() in PRICE_AGGREGATE_KINDS
+    ):
+        return {
+            "entity": entity,
+            "kind": kind,
+            "rows": [],
+            "filters": filters,
+            "price_redacted": True,
+            "warning": "Los importes estan ocultos por la politica de acceso del usuario.",
+        }
     runner = {
         "budget": _budget_aggregate,
         "order": _order_aggregate,
         "invoice": _invoice_aggregate,
     }.get(entity.lower())
     if runner is None:
-        return {"entity": entity, "kind": kind, "rows": [], "filters": filters,
-                "error": f"Tipo de entidad no soportado: {entity}"}
-    rows = runner(db, kind, filters)
-    return {"entity": entity, "kind": kind, "rows": rows, "filters": filters}
+        return {
+            "entity": entity,
+            "kind": kind,
+            "rows": [],
+            "filters": filters,
+            "error": f"Tipo de entidad no soportado: {entity}",
+        }
+    rows = runner(db, kind, filters, access_scope)
+    return {
+        "entity": entity,
+        "kind": kind,
+        "rows": rows,
+        "filters": filters,
+        "price_redacted": price_redacted,
+    }

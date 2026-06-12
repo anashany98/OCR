@@ -37,7 +37,9 @@ def execute_get_budget_by_number(
             "get_budget_by_number",
             context,
             data={"status": "not_found", "budget_number": args.budget_number},
-            warnings=["Presupuesto no encontrado por coincidencia exacta dentro del scope autorizado."],
+            warnings=[
+                "Presupuesto no encontrado por coincidencia exacta dentro del scope autorizado."
+            ],
         )
     if len(budgets) > 1:
         sources = [_budget_source(db, budget, context) for budget in budgets[:5]]
@@ -45,14 +47,26 @@ def execute_get_budget_by_number(
             request_id,
             "get_budget_by_number",
             context,
-            data={"status": "conflict", "budget_number": args.budget_number, "matches": len(budgets)},
+            data={
+                "status": "conflict",
+                "budget_number": args.budget_number,
+                "matches": len(budgets),
+            },
             sources=sources,
             confidence=_average([budget.confidence for budget in budgets]),
-            warnings=["Hay mas de un presupuesto con el mismo numero exacto dentro del scope autorizado; requiere aclaracion humana."],
+            warnings=[
+                "Hay mas de un presupuesto con el mismo numero exacto dentro del scope autorizado; requiere aclaracion humana."
+            ],
             redactions=_redactions_for_policy(context),
         )
     budget = budgets[0]
-    lines = list(db.scalars(select(BudgetLine).where(BudgetLine.budget_id == budget.id).order_by(BudgetLine.id.asc())).all())
+    lines = list(
+        db.scalars(
+            select(BudgetLine)
+            .where(BudgetLine.budget_id == budget.id)
+            .order_by(BudgetLine.id.asc())
+        ).all()
+    )
     return _response(
         request_id,
         "get_budget_by_number",
@@ -71,13 +85,24 @@ def execute_search_budgets(
     request_id: str,
 ) -> IntegrationToolExecuteResponse:
     from fastapi import HTTPException, status
+
     if not _allows_budget_search(context):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tool not allowed by access policy")
-    budgets = _filter_budgets_for_context(db, internal.search_budgets(db, args.query, status=args.status), context)[: args.limit]
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Tool not allowed by access policy"
+        )
+    budgets = _filter_budgets_for_context(
+        db, internal.search_budgets(db, args.query, status=args.status), context
+    )[: args.limit]
     data = []
     sources = []
     for budget in budgets:
-        lines = list(db.scalars(select(BudgetLine).where(BudgetLine.budget_id == budget.id).order_by(BudgetLine.id.asc())).all())
+        lines = list(
+            db.scalars(
+                select(BudgetLine)
+                .where(BudgetLine.budget_id == budget.id)
+                .order_by(BudgetLine.id.asc())
+            ).all()
+        )
         data.append(_budget_payload(budget, lines, context))
         sources.append(_budget_source(db, budget, context))
     return _response(
@@ -96,10 +121,19 @@ def execute_get_accepted_budgets_without_order(
     context: IntegrationContext,
     request_id: str,
 ) -> IntegrationToolExecuteResponse:
-    budgets = _filter_budgets_for_context(db, internal.get_accepted_budgets_without_order(db), context)
+    budgets = _filter_budgets_for_context(
+        db, internal.get_accepted_budgets_without_order(db), context
+    )
     data = [_budget_payload(budget, [], context) for budget in budgets]
     sources = [_budget_source(db, budget, context) for budget in budgets[:10]]
-    return _response(request_id, "get_accepted_budgets_without_order", context, data=data, sources=sources, redactions=_redactions_for_policy(context))
+    return _response(
+        request_id,
+        "get_accepted_budgets_without_order",
+        context,
+        data=data,
+        sources=sources,
+        redactions=_redactions_for_policy(context),
+    )
 
 
 def _budget_payload(budget: Budget, lines: list[BudgetLine], context: IntegrationContext) -> dict:
@@ -131,6 +165,7 @@ def _budget_payload(budget: Budget, lines: list[BudgetLine], context: Integratio
 
 def _budget_source(db: Session, budget: Budget, context: IntegrationContext) -> IntegrationSource:
     from app.models import Document
+
     document = db.get(Document, budget.document_id)
     if not document:
         return IntegrationSource(document_id=budget.document_id, confidence=budget.confidence)

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -26,52 +26,52 @@
 
 :root {
   /* Surfaces — warm cream paper */
-  --bg-base: #FAF7F2;
-  --bg-surface: #FFFFFF;
-  --bg-surface-2: #F5F1E9;
-  --bg-surface-hover: #EBE5D8;
+  --bg-base: #faf7f2;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #f5f1e9;
+  --bg-surface-hover: #ebe5d8;
 
   /* Text — warm ink */
-  --text-primary: #1A1814;
-  --text-secondary: #57534E;
-  --text-muted: #8A857C;
-  --text-disabled: #C7C2B6;
+  --text-primary: #1a1814;
+  --text-secondary: #57534e;
+  --text-muted: #8a857c;
+  --text-disabled: #c7c2b6;
 
   /* Editorial ink scale (used in hero numbers, headings) */
-  --ink-deep: #0F0E0B;
-  --ink: #1A1814;
-  --ink-soft: #44403C;
+  --ink-deep: #0f0e0b;
+  --ink: #1a1814;
+  --ink-soft: #44403c;
 
   /* Terracotta accent — the brand's voice */
-  --accent: #B45309;
-  --accent-hover: #9A4408;
-  --accent-soft: #C2641D;
-  --accent-light: #FDE9D7;
-  --accent-faint: #FDF4E8;
+  --accent: #b45309;
+  --accent-hover: #9a4408;
+  --accent-soft: #c2641d;
+  --accent-light: #fde9d7;
+  --accent-faint: #fdf4e8;
 
   /* Positive — sage, muted */
-  --positive: #6B7F5A;
-  --positive-hover: #586A4A;
-  --positive-light: #E5EAD9;
-  --positive-faint: #F1F4EC;
+  --positive: #6b7f5a;
+  --positive-hover: #586a4a;
+  --positive-light: #e5ead9;
+  --positive-faint: #f1f4ec;
 
   /* Warning — clay */
-  --warning: #A66A2E;
-  --warning-hover: #8C581F;
-  --warning-light: #F4E4D0;
-  --warning-faint: #FAEFE2;
+  --warning: #a66a2e;
+  --warning-hover: #8c581f;
+  --warning-light: #f4e4d0;
+  --warning-faint: #faefe2;
 
   /* Danger — rust */
-  --danger: #A03A28;
-  --danger-hover: #852B1B;
-  --danger-light: #F2D8D2;
-  --danger-faint: #F8E8E4;
+  --danger: #a03a28;
+  --danger-hover: #852b1b;
+  --danger-light: #f2d8d2;
+  --danger-faint: #f8e8e4;
 
   /* Info — ink blue */
-  --info: #2C5066;
-  --info-hover: #1F3D52;
-  --info-light: #DDE6EC;
-  --info-faint: #ECF0F4;
+  --info: #2c5066;
+  --info-hover: #1f3d52;
+  --info-light: #dde6ec;
+  --info-faint: #ecf0f4;
 
   /* Legacy aliases — kept to avoid breaking the many components that
    * reference --primary, --emerald, --amber, --rose, --sky by their old
@@ -79,7 +79,7 @@
   --primary: var(--accent);
   --primary-hover: var(--accent-hover);
   --primary-light: var(--accent-light);
-  --primary-foreground: #FFFFFF;
+  --primary-foreground: #ffffff;
 
   --emerald: var(--positive);
   --emerald-light: var(--positive-light);
@@ -91,17 +91,17 @@
   --sky-light: var(--info-light);
 
   /* Borders — warm hairlines */
-  --border: #E7E0D2;
-  --border-2: #D6CCB8;
-  --border-3: #A89C82;
+  --border: #e7e0d2;
+  --border-2: #d6ccb8;
+  --border-3: #a89c82;
 
   /* Sidebar — deep editorial ink, slightly warmer than pure black */
-  --sidebar-bg: #1F1B16;
-  --sidebar-text: #E5E0D2;
-  --sidebar-muted: #8A857C;
+  --sidebar-bg: #1f1b16;
+  --sidebar-text: #e5e0d2;
+  --sidebar-muted: #8a857c;
   --sidebar-border: rgba(255, 250, 240, 0.07);
   --sidebar-active-bg: rgba(255, 250, 240, 0.06);
-  --sidebar-active-text: #FAF7F2;
+  --sidebar-active-text: #faf7f2;
 
   /* Status colors (legacy) */
   --status-processed: var(--positive);
@@ -109,13 +109,13 @@
   --status-failed: var(--danger);
   --status-needs-review: var(--info);
   --status-duplicate: var(--text-muted);
-  --status-processing: #7C5BC9;
+  --status-processing: #7c5bc9;
 
   /* Semantic text on light surfaces (used by StatusBadge etc.) */
-  --text-on-success: #3F4F33;
-  --text-on-warning: #6E4416;
+  --text-on-success: #3f4f33;
+  --text-on-warning: #6e4416;
   --text-on-danger: #762518;
-  --text-on-info: #1F3D52;
+  --text-on-info: #1f3d52;
   --text-on-neutral: var(--text-secondary);
 
   /* Shadows — paper-like, soft */
@@ -140,61 +140,61 @@
 }
 
 .dark {
-  --bg-base: #0F0E0B;
-  --bg-surface: #1A1814;
-  --bg-surface-2: #25221C;
-  --bg-surface-hover: #2F2B24;
+  --bg-base: #0f0e0b;
+  --bg-surface: #1a1814;
+  --bg-surface-2: #25221c;
+  --bg-surface-hover: #2f2b24;
 
-  --text-primary: #FAF7F2;
-  --text-secondary: #C7C2B6;
-  --text-muted: #8A857C;
-  --text-disabled: #57534E;
+  --text-primary: #faf7f2;
+  --text-secondary: #c7c2b6;
+  --text-muted: #8a857c;
+  --text-disabled: #57534e;
 
-  --ink-deep: #FAF7F2;
-  --ink: #E5E0D2;
-  --ink-soft: #A89C82;
+  --ink-deep: #faf7f2;
+  --ink: #e5e0d2;
+  --ink-soft: #a89c82;
 
-  --accent: #D97706;
-  --accent-hover: #F59E0B;
-  --accent-soft: #C2641D;
+  --accent: #d97706;
+  --accent-hover: #f59e0b;
+  --accent-soft: #c2641d;
   --accent-light: #422517;
-  --accent-faint: #2A1B11;
+  --accent-faint: #2a1b11;
 
-  --positive: #9DAD8B;
-  --positive-hover: #B4C0A4;
-  --positive-light: #2D3326;
-  --positive-faint: #1F2419;
+  --positive: #9dad8b;
+  --positive-hover: #b4c0a4;
+  --positive-light: #2d3326;
+  --positive-faint: #1f2419;
 
-  --warning: #D4A373;
-  --warning-hover: #E0B587;
-  --warning-light: #3D2D1A;
-  --warning-faint: #2A1F12;
+  --warning: #d4a373;
+  --warning-hover: #e0b587;
+  --warning-light: #3d2d1a;
+  --warning-faint: #2a1f12;
 
-  --danger: #D88B7C;
-  --danger-hover: #E0A095;
-  --danger-light: #3D201A;
-  --danger-faint: #2A1612;
+  --danger: #d88b7c;
+  --danger-hover: #e0a095;
+  --danger-light: #3d201a;
+  --danger-faint: #2a1612;
 
-  --info: #8FAEC0;
-  --info-hover: #A8C2D0;
-  --info-light: #1F2D35;
-  --info-faint: #161E23;
+  --info: #8faec0;
+  --info-hover: #a8c2d0;
+  --info-light: #1f2d35;
+  --info-faint: #161e23;
 
-  --border: #2A2620;
-  --border-2: #3A352C;
-  --border-3: #57534E;
+  --border: #2a2620;
+  --border-2: #3a352c;
+  --border-3: #57534e;
 
-  --sidebar-bg: #0A0907;
-  --sidebar-text: #C7C2B6;
-  --sidebar-muted: #6B665E;
+  --sidebar-bg: #0a0907;
+  --sidebar-text: #c7c2b6;
+  --sidebar-muted: #6b665e;
   --sidebar-border: rgba(255, 250, 240, 0.04);
   --sidebar-active-bg: rgba(255, 250, 240, 0.06);
-  --sidebar-active-text: #FAF7F2;
+  --sidebar-active-text: #faf7f2;
 
-  --text-on-success: #C5D0B7;
-  --text-on-warning: #E5C9A8;
-  --text-on-danger: #E0B0A4;
-  --text-on-info: #B5CDDD;
+  --text-on-success: #c5d0b7;
+  --text-on-warning: #e5c9a8;
+  --text-on-danger: #e0b0a4;
+  --text-on-info: #b5cddd;
   --text-on-neutral: var(--text-secondary);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -217,13 +217,19 @@ body {
   min-width: 320px;
   background: var(--bg-base);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv11";
-  transition: background-color var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out);
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out);
 }
 
 /* Scrollbar */
@@ -281,28 +287,53 @@ html {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes chat-bounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-  40% { transform: translateY(-4px); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 @keyframes slideInRight {
@@ -329,7 +360,12 @@ html {
 }
 
 .animate-shimmer {
-  background: linear-gradient(90deg, var(--bg-surface-2) 25%, var(--bg-surface-hover) 50%, var(--bg-surface-2) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface-2) 25%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-2) 75%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -343,28 +379,48 @@ html {
 }
 
 /* Stagger delays */
-.delay-50 { animation-delay: 50ms; }
-.delay-100 { animation-delay: 100ms; }
-.delay-150 { animation-delay: 150ms; }
-.delay-200 { animation-delay: 200ms; }
-.delay-250 { animation-delay: 250ms; }
-.delay-300 { animation-delay: 300ms; }
-.delay-400 { animation-delay: 400ms; }
-.delay-500 { animation-delay: 500ms; }
+.delay-50 {
+  animation-delay: 50ms;
+}
+.delay-100 {
+  animation-delay: 100ms;
+}
+.delay-150 {
+  animation-delay: 150ms;
+}
+.delay-200 {
+  animation-delay: 200ms;
+}
+.delay-250 {
+  animation-delay: 250ms;
+}
+.delay-300 {
+  animation-delay: 300ms;
+}
+.delay-400 {
+  animation-delay: 400ms;
+}
+.delay-500 {
+  animation-delay: 500ms;
+}
 
 /* Typography utilities */
 .font-display {
-  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-family: "Fraunces", ui-serif, Georgia, serif;
   font-feature-settings: "ss01", "salt";
   font-optical-sizing: auto;
 }
 
 .font-sans {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
 }
 
 .font-mono {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 /* Editorial numerics — slight tabular feel for large numbers */
@@ -397,7 +453,9 @@ html {
 
 /* Hover lift used in cards/tiles */
 .hover-lift {
-  transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 .hover-lift:hover {
   transform: translateY(-1px);

@@ -9,20 +9,43 @@ export type DocumentFilters = {
   offset?: number
 }
 
-export const documentViews: { id: DocumentViewId; label: string; description: string; filters: DocumentFilters }[] = [
+export const documentViews: {
+  id: DocumentViewId
+  label: string
+  description: string
+  filters: DocumentFilters
+}[] = [
   { id: "all", label: "Todos", description: "Últimos documentos registrados", filters: {} },
-  { id: "needs-review", label: "OCR pendiente", description: "Documentos que requieren revisión humana", filters: { status: "needs_review" } },
-  { id: "failed", label: "Fallidos", description: "Errores de ingesta o procesamiento", filters: { status: "failed" } },
+  {
+    id: "needs-review",
+    label: "OCR pendiente",
+    description: "Documentos que requieren revisión humana",
+    filters: { status: "needs_review" },
+  },
+  {
+    id: "failed",
+    label: "Fallidos",
+    description: "Errores de ingesta o procesamiento",
+    filters: { status: "failed" },
+  },
   {
     id: "plans-without-scale",
     label: "Planos sin escala",
     description: "Planos que necesitan corrección de escala",
     filters: { document_type: "plano", quality_status: "needs_human_review" },
   },
-  { id: "recent", label: "Últimos 7 días", description: "Entrada reciente para revisión rápida", filters: {} },
+  {
+    id: "recent",
+    label: "Últimos 7 días",
+    description: "Entrada reciente para revisión rápida",
+    filters: {},
+  },
 ]
 
-export function applyDocumentView(viewId: DocumentViewId, current: DocumentFilters = {}): DocumentFilters {
+export function applyDocumentView(
+  viewId: DocumentViewId,
+  current: DocumentFilters = {},
+): DocumentFilters {
   const view = documentViews.find((candidate) => candidate.id === viewId) ?? documentViews[0]
   return {
     q: current.q,

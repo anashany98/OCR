@@ -5,16 +5,15 @@ load on the local LLM server for repeated questions. The cache supports
 both exact-key lookups and semantic (embedding-similarity) lookups so
 reformulations of the same question also hit the cache.
 """
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import logging
 import math
 from typing import Any
 
-from app.core.config import settings
 from app.services.cache import cache_service
 
 
@@ -25,7 +24,9 @@ AI_SEMANTIC_PREFIX = "ai:sem:"
 SEMANTIC_SIM_THRESHOLD = 0.92  # cosine similarity above this = cache hit
 
 
-def _cache_key(question: str, user_id: int, mode: str | None = None, scope_key: str | None = None) -> str:
+def _cache_key(
+    question: str, user_id: int, mode: str | None = None, scope_key: str | None = None
+) -> str:
     """Generate a cache key for an AI question.
 
     Uses SHA256 hash to handle long questions and ensure consistent key length.
@@ -57,6 +58,7 @@ def _embed_question(question: str) -> list[float] | None:
     model, or None if the service is unavailable."""
     try:
         from app.services.embeddings import embed_text
+
         return embed_text(question)
     except Exception as exc:
         logger.debug("Embedding service unavailable, skipping semantic cache: %s", exc)
@@ -133,7 +135,9 @@ def cache_answer(
         if vec:
             sem_key = _semantic_key(user_id)
             index = cache_service.get(sem_key) or []
-            index.append({"embedding": vec, "key": key, "ts": hashlib.md5(question.encode()).hexdigest()[:8]})
+            index.append(
+                {"embedding": vec, "key": key, "ts": hashlib.md5(question.encode()).hexdigest()[:8]}
+            )
             # Keep the index bounded; trim oldest entries past 200.
             if len(index) > 200:
                 index = index[-200:]
@@ -208,6 +212,7 @@ async def _embed_question_async(question: str) -> list[float] | None:
     """
     try:
         from app.services.embeddings import embed_text_async
+
         return await embed_text_async(question)
     except Exception as exc:  # pragma: no cover - same semantics as sync version
         logger.debug("Embedding service unavailable, skipping semantic cache: %s", exc)

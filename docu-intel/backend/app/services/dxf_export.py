@@ -17,11 +17,11 @@ logs the error.
 The DXF output is a minimal valid DXF R2010 file that can be
 opened by any CAD software.
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger("app.services.dxf_export")
 
@@ -62,8 +62,8 @@ def export_annotations_to_dxf(
 
         # Create layers.
         doc.layers.add("habitaciones_ia", color=1)  # red
-        doc.layers.add("cotas_ia", color=3)           # green
-        doc.layers.add("texto_ia", color=7)            # white
+        doc.layers.add("cotas_ia", color=3)  # green
+        doc.layers.add("texto_ia", color=7)  # white
 
         mm_per_m = 1000.0
 
@@ -110,7 +110,8 @@ def export_annotations_to_dxf(
             p1 = (start[0] * mm_per_m, start[1] * mm_per_m)
             p2 = (end[0] * mm_per_m, end[1] * mm_per_m)
             msp.add_line(
-                p1, p2,
+                p1,
+                p2,
                 dxfattribs={"layer": "cotas_ia"},
             )
             # Add dimension text at midpoint.

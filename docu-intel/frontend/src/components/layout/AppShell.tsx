@@ -20,15 +20,24 @@ export function AppShell() {
   const matches = useMatches()
   const [query, setQuery] = useState("")
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const health = useQuery({ queryKey: ["system-health"], queryFn: api.systemHealth, refetchInterval: 30000 })
-  const inbox = useQuery({ queryKey: ["work-inbox-count"], queryFn: () => api.workInboxCount(), refetchInterval: 30000 })
+  const health = useQuery({
+    queryKey: ["system-health"],
+    queryFn: api.systemHealth,
+    refetchInterval: 30000,
+  })
+  const inbox = useQuery({
+    queryKey: ["work-inbox-count"],
+    queryFn: () => api.workInboxCount(),
+    refetchInterval: 30000,
+  })
 
   const inboxCount = inbox.data?.count ?? 0
 
   const pageTitle = getPageTitle(matches)
 
   function setMobileDrawer(open: boolean) {
-    if (open && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) return
+    if (open && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches)
+      return
     setDrawerOpen(open)
   }
 
@@ -78,7 +87,9 @@ export function AppShell() {
             </button>
 
             {/* Page title */}
-            <h1 className="truncate text-[14px] font-semibold tracking-tight text-[var(--text-primary)]">{pageTitle}</h1>
+            <h1 className="truncate text-[14px] font-semibold tracking-tight text-[var(--text-primary)]">
+              {pageTitle}
+            </h1>
 
             {/* Spacer */}
             <div className="flex-1" />
@@ -91,7 +102,9 @@ export function AppShell() {
                 onClick={() => navigate("/work-inbox")}
                 aria-label={`${inboxCount} ${inboxCount === 1 ? "tarea pendiente" : "tareas pendientes"}`}
               >
-                <span>{inboxCount} {inboxCount === 1 ? "tarea" : "tareas"}</span>
+                <span>
+                  {inboxCount} {inboxCount === 1 ? "tarea" : "tareas"}
+                </span>
               </Badge>
             )}
 
@@ -105,7 +118,9 @@ export function AppShell() {
             >
               <CommandIcon className="h-3.5 w-3.5" />
               <span>Buscar…</span>
-              <kbd className="ml-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1 font-mono text-[10px] text-[var(--text-muted)]">⌘K</kbd>
+              <kbd className="ml-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1 font-mono text-[10px] text-[var(--text-muted)]">
+                ⌘K
+              </kbd>
             </button>
 
             {/* Search fallback (mobile) */}
@@ -122,7 +137,12 @@ export function AppShell() {
 
             {/* Status indicator */}
             <div className="hidden items-center gap-1.5 sm:flex">
-              <span className={cn("h-1.5 w-1.5 rounded-full", systemStatus ? "bg-[var(--positive)]" : "bg-[var(--warning)]")} />
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  systemStatus ? "bg-[var(--positive)]" : "bg-[var(--warning)]",
+                )}
+              />
               <span className="text-[11px] text-[var(--text-muted)]">Sistema</span>
             </div>
 
@@ -139,7 +159,9 @@ export function AppShell() {
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent-faint)] text-[11px] font-semibold text-[var(--accent)]">
                   {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
                 </div>
-                <span className="hidden text-[var(--text-secondary)] sm:inline">{user?.name?.split(" ")[0]}</span>
+                <span className="hidden text-[var(--text-secondary)] sm:inline">
+                  {user?.name?.split(" ")[0]}
+                </span>
                 <ChevronDown className="hidden h-3 w-3 text-[var(--text-muted)] sm:block" />
               </button>
             </div>

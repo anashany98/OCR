@@ -31,14 +31,14 @@ DB-touching parts (``record_feedback``, ``apply_chunk_weights``)
 take a session and are exercised in CI with the existing test
 fixtures.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -58,10 +58,10 @@ logger = logging.getLogger("app.services.feedback_loop")
 
 ALLOWED_REASONS: frozenset[str] = frozenset(
     {
-        "alucinacion",        # LLM invented facts not in the context
+        "alucinacion",  # LLM invented facts not in the context
         "fuente_incorrecta",  # the cited source is wrong
-        "irrelevante",        # the answer does not address the question
-        "otro",               # free-form (operator can extend)
+        "irrelevante",  # the answer does not address the question
+        "otro",  # free-form (operator can extend)
     }
 )
 
@@ -213,14 +213,18 @@ def record_feedback(
     # way on the same answer. (We allow a *change* of vote:
     # voting 👍 then 👎 is two rows but the loop only honours
     # the most recent per (answer, user).)
-    existing = db.execute(
-        select(AIAnswerFeedback)
-        .where(
-            AIAnswerFeedback.answer_id == answer_id,
-            AIAnswerFeedback.user_id == user_id,
+    existing = (
+        db.execute(
+            select(AIAnswerFeedback)
+            .where(
+                AIAnswerFeedback.answer_id == answer_id,
+                AIAnswerFeedback.user_id == user_id,
+            )
+            .order_by(AIAnswerFeedback.created_at.desc())
         )
-        .order_by(AIAnswerFeedback.created_at.desc())
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing is not None and existing.vote == vote:
         track_feedback_vote(vote=str(vote), reason="duplicate")
         return FeedbackOutcome(accepted=False, reason="duplicate", feedback_id=existing.id)
@@ -271,13 +275,16 @@ def apply_chunk_weights(
     the retriever.
     """
     since = datetime.utcnow() - timedelta(days=settings.feedback_rebalance_window_days)
-    vote_rows = db.execute(
-        select(AIAnswerFeedback.vote)
-        .where(
-            AIAnswerFeedback.answer_id == answer_id,
-            AIAnswerFeedback.created_at >= since,
+    vote_rows = (
+        db.execute(
+            select(AIAnswerFeedback.vote).where(
+                AIAnswerFeedback.answer_id == answer_id,
+                AIAnswerFeedback.created_at >= since,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     total = len(vote_rows)
     if total < settings.feedback_min_votes_to_apply:
         return None
@@ -297,11 +304,7 @@ def apply_chunk_weights(
     # so a single very-angry user cannot sink a chunk below 0.1
     # in one round of clicks; the periodic rebalance eventually
     # pulls everything back to 1.0.
-    sources = list(
-        db.scalars(
-            select(AIAnswerSource).where(AIAnswerSource.answer_id == answer_id)
-        )
-    )
+    sources = list(db.scalars(select(AIAnswerSource).where(AIAnswerSource.answer_id == answer_id)))
     if not sources:
         return None
     new_weight = clamp_weight(1.0 + cumulative)
@@ -332,7 +335,11 @@ def rebalance_chunk_weight(
     )
     source.weight = new_weight
     db.flush()
-    direction = "up" if new_weight > source.weight else ("down" if new_weight < source.weight else "neutral")
+    direction = (
+        "up"
+        if new_weight > source.weight
+        else ("down" if new_weight < source.weight else "neutral")
+    )
     track_chunk_weight_adjustment(direction=direction, source_count=1)
     return new_weight
 
@@ -346,9 +353,7 @@ def rebalance_all_chunk_weights(
     1.0. Returns the number of rows touched. Called by a
     Celery beat task on the maintenance queue.
     """
-    rows = db.execute(
-        select(AIAnswerSource).where(AIAnswerSource.weight != 1.0)
-    ).scalars().all()
+    rows = db.execute(select(AIAnswerSource).where(AIAnswerSource.weight != 1.0)).scalars().all()
     touched = 0
     for source in rows:
         new_weight = rebalance_weight(

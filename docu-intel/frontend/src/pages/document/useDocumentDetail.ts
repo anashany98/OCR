@@ -20,11 +20,22 @@ import type {
 // ---------------------------------------------------------------------------
 
 const KEY_ENTITIES = new Set([
-  "invoice_number", "budget_number", "order_number",
-  "supplier", "supplier_name", "client", "client_name",
-  "total_amount", "amount", "amount_total",
-  "date", "invoice_date", "budget_date", "order_date",
-  "currency", "reference",
+  "invoice_number",
+  "budget_number",
+  "order_number",
+  "supplier",
+  "supplier_name",
+  "client",
+  "client_name",
+  "total_amount",
+  "amount",
+  "amount_total",
+  "date",
+  "invoice_date",
+  "budget_date",
+  "order_date",
+  "currency",
+  "reference",
 ])
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -185,9 +196,13 @@ export function useDocumentDetail(documentId: number) {
   }, [selectedPage?.id, selectedPage?.text])
 
   function invalidateAll() {
-    ["document", "document-pages", "document-blocks", "document-entities", "document-timeline"].forEach(
-      (key) => queryClient.invalidateQueries({ queryKey: [key, documentId] }),
-    )
+    ;[
+      "document",
+      "document-pages",
+      "document-blocks",
+      "document-entities",
+      "document-timeline",
+    ].forEach((key) => queryClient.invalidateQueries({ queryKey: [key, documentId] }))
   }
 
   return {
@@ -207,12 +222,18 @@ export function useDocumentDetail(documentId: number) {
     hashShort: shortHash(doc?.file_hash),
     hasThumbnailExt: hasThumbnailExt(doc?.extension),
     // state
-    selectedPageNumber, setSelectedPageNumber,
-    textQuery, setTextQuery,
-    editedText, setEditedText,
-    revisionReason, setRevisionReason,
-    showGraph, setShowGraph,
-    showBlocks, setShowBlocks,
+    selectedPageNumber,
+    setSelectedPageNumber,
+    textQuery,
+    setTextQuery,
+    editedText,
+    setEditedText,
+    revisionReason,
+    setRevisionReason,
+    showGraph,
+    setShowGraph,
+    showBlocks,
+    setShowBlocks,
     // mutations
     reprocess,
     saveRevision,

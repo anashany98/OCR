@@ -13,6 +13,7 @@ The factory is cached with :func:`functools.lru_cache` so the same
 engine instance is reused across calls in a worker. Tests patch this
 symbol on the ``app.services.document_service`` module to inject a fake.
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,7 +57,6 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
         return PPStructureEngine
 
     if engine == "cascading":
-        from app.ocr.cascading import CascadingOCREngine
         from app.ocr.paddle import PaddleOCREngine
         from app.ocr.tesseract import TesseractOCREngine
 

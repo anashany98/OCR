@@ -10,6 +10,7 @@ logger = logging.getLogger("app.ingestion.stability")
 
 IGNORED_SUFFIXES = {".tmp", ".part", ".crdownload", ".download", ".swp"}
 
+
 # WATCH-1 (Sprint 2): maximum file size the watcher will try to
 # enqueue. Matches the HTTP ``max_upload_size_mb`` so a file that
 # would be rejected by the upload endpoint is also rejected by

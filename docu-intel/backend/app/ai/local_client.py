@@ -143,55 +143,92 @@ class LocalOpenAICompatibleClient:
             raise RuntimeError("Local AI is not configured")
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         headers["Accept"] = "text/event-stream"
-        self._raise_if_circuit_open()
-        try:
-            async with httpx.AsyncClient(
-                timeout=timeout or settings.ai_request_timeout_seconds,
-                transport=self.transport,
-            ) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self.base_url}/chat/completions",
-                    headers=headers,
-                    json={
-                        "model": self.model,
-                        "messages": messages,
-                        "temperature": temperature,
-                        "max_tokens": max_tokens,
-                        "stream": True,
-                    },
-                ) as response:
-                    response.raise_for_status()
-                    self._record_success()
-                    async for line in response.aiter_lines():
-                        if not line:
-                            continue
-                        if line.startswith("data:"):
-                            data = line[len("data:"):].strip()
-                            if data == "[DONE]":
-                                break
-                            try:
-                                import json
-                                payload = json.loads(data)
-                            except Exception:
+        request_timeout = timeout or settings.ai_request_timeout_seconds
+        json_payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        # Retry-with-backoff, but only BEFORE the first token
+        # lands in the caller's hands. Re-streaming a partial
+        # answer would duplicate content in the UI, so the
+        # retry stops as soon as the upstream server starts
+        # sending SSE chunks. Transient errors during
+        # stream setup (connection refused, 5xx, 429) still
+        # get the full ``max_retries`` budget; errors raised
+        # while we are already mid-stream propagate
+        # immediately so the partial answer is preserved.
+        last_exc: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            self._raise_if_circuit_open()
+            try:
+                async with httpx.AsyncClient(
+                    timeout=request_timeout,
+                    transport=self.transport,
+                ) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=json_payload,
+                    ) as response:
+                        response.raise_for_status()
+                        self._record_success()
+                        async for line in response.aiter_lines():
+                            if not line:
                                 continue
-                            choices = payload.get("choices") or []
-                            if not choices:
-                                continue
-                            delta = (choices[0] or {}).get("delta") or {}
-                            # Qwen3 (and other reasoning models) stream their
-                            # internal reasoning in `reasoning_content`. We
-                            # surface it as a separate event so the UI can
-                            # show "razonando..." while the model is thinking.
-                            thinking = delta.get("reasoning_content")
-                            if thinking:
-                                yield ("thinking", thinking)
-                            piece = delta.get("content")
-                            if piece:
-                                yield piece
-        except Exception:
+                            if line.startswith("data:"):
+                                data = line[len("data:") :].strip()
+                                if data == "[DONE]":
+                                    break
+                                try:
+                                    import json
+
+                                    payload = json.loads(data)
+                                except Exception:
+                                    continue
+                                choices = payload.get("choices") or []
+                                if not choices:
+                                    continue
+                                delta = (choices[0] or {}).get("delta") or {}
+                                # Qwen3 (and other reasoning models) stream their
+                                # internal reasoning in `reasoning_content`. We
+                                # surface it as a separate event so the UI can
+                                # show "razonando..." while the model is thinking.
+                                thinking = delta.get("reasoning_content")
+                                if thinking:
+                                    yield ("thinking", thinking)
+                                piece = delta.get("content")
+                                if piece:
+                                    yield piece
+                        # Stream completed cleanly: exit the retry
+                        # loop without raising.
+                        return
+            except Exception as exc:
+                last_exc = exc
+                # The stream was already producing chunks when
+                # this error fired (otherwise the
+                # ``raise_for_status`` / ``aiter_lines`` path
+                # would have raised before we yielded
+                # anything). Re-raise without consuming
+                # another retry so the caller keeps the
+                # partial answer it already saw.
+                if not _is_retryable_ai_error(exc) or attempt >= self.max_retries:
+                    self._record_failure()
+                    raise
+                await self._sleep_before_retry(attempt)
+                continue
+        # The loop only exits via the explicit ``return``
+        # above or the re-raise inside the except. If we ever
+        # land here it means a retry exhausted without an
+        # exception, which is a logic bug.
+        if last_exc is not None:
             self._record_failure()
-            raise
+            raise last_exc
+        raise RuntimeError("chat_stream retry loop exited without an exception")
 
     async def _post_chat_completion(
         self,
@@ -225,7 +262,7 @@ class LocalOpenAICompatibleClient:
         raise RuntimeError("AI request failed without an exception") from last_exc
 
     async def _sleep_before_retry(self, attempt: int) -> None:
-        delay = self.retry_base_delay_seconds * (2 ** attempt)
+        delay = self.retry_base_delay_seconds * (2**attempt)
         if delay <= 0:
             return
         jitter = random.uniform(0.0, delay * 0.25)
@@ -276,6 +313,7 @@ def _is_retryable_ai_error(exc: Exception) -> bool:
 # exposes /v1/chat/completions and supports vision.
 # ---------------------------------------------------------------------------
 
+
 class LocalVisionClient:
     def __init__(
         self,
@@ -296,9 +334,7 @@ class LocalVisionClient:
         else:
             self.model = settings.vision_model
         self.api_key = (
-            api_key
-            if api_key is not None
-            else (settings.vision_api_key or settings.ai_api_key)
+            api_key if api_key is not None else (settings.vision_api_key or settings.ai_api_key)
         )
 
     def is_configured(self) -> bool:
@@ -309,6 +345,7 @@ class LocalVisionClient:
         """Return (data_url, mime_type) for a local image, downscaling if
         needed. LM Studio and most local servers reject huge images."""
         import imghdr
+
         mime, _ = ("image/jpeg", None)
         kind = imghdr.what(str(path))
         if kind == "png":
@@ -323,6 +360,7 @@ class LocalVisionClient:
         max_dim = settings.vision_max_image_dim
         try:
             from PIL import Image  # type: ignore
+
             with Image.open(path) as img:
                 if max(img.size) > max_dim:
                     img.thumbnail((max_dim, max_dim))

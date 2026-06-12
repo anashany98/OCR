@@ -1,7 +1,19 @@
 import { ChangeEvent, useCallback, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, CheckCircle2, Download, Eye, FileSpreadsheet, FolderUp, Loader2, RefreshCcw, Search, Upload, X } from "lucide-react"
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  FolderUp,
+  Loader2,
+  RefreshCcw,
+  Search,
+  Upload,
+  X,
+} from "lucide-react"
 
 import { api, downloadUrl } from "@/api/client"
 import { EmptyState } from "@/components/layout/EmptyState"
@@ -12,7 +24,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { applyDocumentView, documentViews, type DocumentViewId } from "@/lib/documentViews"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { EmptyDocumentsIllustration } from "@/components/illustrations/EditorialIllustrations"
@@ -21,7 +40,15 @@ import { formatBytes, formatDate } from "@/lib/utils"
 import type { Document } from "@/types/api"
 
 const pageSize = 25
-const statusOptions = ["", "pending", "processing", "processed", "needs_review", "failed", "duplicate"]
+const statusOptions = [
+  "",
+  "pending",
+  "processing",
+  "processed",
+  "needs_review",
+  "failed",
+  "duplicate",
+]
 const typeOptions = ["", "presupuesto", "pedido", "factura", "plano", "imagen", "excel", "otro"]
 
 export function DocumentsPage() {
@@ -43,7 +70,10 @@ export function DocumentsPage() {
     }
   }, [documentType, offset, query, status, view])
 
-  const documents = useQuery({ queryKey: ["documents", "operations", params], queryFn: () => api.operationsDocuments(params) })
+  const documents = useQuery({
+    queryKey: ["documents", "operations", params],
+    queryFn: () => api.operationsDocuments(params),
+  })
   const rows = documents.data?.items ?? []
   const total = documents.data?.total ?? 0
   const selectedSet = useMemo(() => new Set(selected), [selected])
@@ -153,17 +183,30 @@ export function DocumentsPage() {
   }
 
   function toggleSelected(documentId: number) {
-    setSelected((current) => (current.includes(documentId) ? current.filter((id) => id !== documentId) : [...current, documentId]))
+    setSelected((current) =>
+      current.includes(documentId)
+        ? current.filter((id) => id !== documentId)
+        : [...current, documentId],
+    )
   }
 
   function togglePage() {
     const rowIds = rows.map((document) => document.id)
     const allSelected = rowIds.length > 0 && rowIds.every((id) => selectedSet.has(id))
-    setSelected((current) => (allSelected ? current.filter((id) => !rowIds.includes(id)) : Array.from(new Set([...current, ...rowIds]))))
+    setSelected((current) =>
+      allSelected
+        ? current.filter((id) => !rowIds.includes(id))
+        : Array.from(new Set([...current, ...rowIds])),
+    )
   }
 
   return (
-    <div className="flex flex-col gap-4" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+    <div
+      className="flex flex-col gap-4"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <Breadcrumbs items={[{ label: "Documentos" }]} />
       <PageHeader
         title="Documentos"
@@ -190,6 +233,7 @@ export function DocumentsPage() {
                   type="file"
                   /* @ts-expect-error - non-standard but supported in Chrome/Edge/Firefox/Safari */
                   webkitdirectory=""
+                  /* eslint-disable-next-line react/no-unknown-property -- HTML5 dir-upload attribute */
                   directory=""
                   multiple
                   onChange={onFolderChange}
@@ -212,7 +256,13 @@ export function DocumentsPage() {
       <PageToolbar>
         <div className="flex flex-1 flex-wrap gap-2">
           {documentViews.map((item) => (
-            <Button key={item.id} type="button" variant={item.id === view ? "default" : "outline"} size="sm" onClick={() => changeView(item.id)}>
+            <Button
+              key={item.id}
+              type="button"
+              variant={item.id === view ? "default" : "outline"}
+              size="sm"
+              onClick={() => changeView(item.id)}
+            >
               {item.label}
             </Button>
           ))}
@@ -229,19 +279,37 @@ export function DocumentsPage() {
             placeholder="Archivo, proveedor, referencia..."
           />
         </div>
-        <select className="h-9 rounded-md border bg-background px-3 text-sm" value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0) }}>
+        <select
+          className="h-9 rounded-md border bg-background px-3 text-sm"
+          value={status}
+          onChange={(event) => {
+            setStatus(event.target.value)
+            setOffset(0)
+          }}
+        >
           {statusOptions.map((option) => (
-            <option key={option} value={option}>{option || "Estado"}</option>
+            <option key={option} value={option}>
+              {option || "Estado"}
+            </option>
           ))}
         </select>
-        <select className="h-9 rounded-md border bg-background px-3 text-sm" value={documentType} onChange={(event) => { setDocumentType(event.target.value); setOffset(0) }}>
+        <select
+          className="h-9 rounded-md border bg-background px-3 text-sm"
+          value={documentType}
+          onChange={(event) => {
+            setDocumentType(event.target.value)
+            setOffset(0)
+          }}
+        >
           {typeOptions.map((option) => (
-            <option key={option} value={option}>{option || "Tipo"}</option>
+            <option key={option} value={option}>
+              {option || "Tipo"}
+            </option>
           ))}
         </select>
       </PageToolbar>
 
-      {(upload.isPending || uploadBatch.isPending) ? (
+      {upload.isPending || uploadBatch.isPending ? (
         <div
           role="status"
           aria-live="polite"
@@ -257,7 +325,7 @@ export function DocumentsPage() {
         </div>
       ) : null}
 
-      {(upload.isError || uploadBatch.isError) ? (
+      {upload.isError || uploadBatch.isError ? (
         <div
           role="alert"
           data-testid="upload-status-error"
@@ -266,7 +334,8 @@ export function DocumentsPage() {
           <div className="flex min-w-0 items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span className="truncate">
-              Error al subir: {upload.error?.message ?? uploadBatch.error?.message ?? "fallo desconocido"}
+              Error al subir:{" "}
+              {upload.error?.message ?? uploadBatch.error?.message ?? "fallo desconocido"}
             </span>
           </div>
           <Button
@@ -327,10 +396,14 @@ export function DocumentsPage() {
           <CardHeader className="flex-row items-center justify-between gap-3 border-b">
             <div>
               <CardTitle>Listado</CardTitle>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">{total} documentos encontrados</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                {total} documentos encontrados
+              </p>
             </div>
             <div className="flex items-center gap-2">
-              {selected.length ? <Badge variant="info">{selected.length} seleccionados</Badge> : null}
+              {selected.length ? (
+                <Badge variant="info">{selected.length} seleccionados</Badge>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"
@@ -348,7 +421,14 @@ export function DocumentsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10">
-                      <input type="checkbox" aria-label="Seleccionar página" checked={rows.length > 0 && rows.every((document) => selectedSet.has(document.id))} onChange={togglePage} />
+                      <input
+                        type="checkbox"
+                        aria-label="Seleccionar página"
+                        checked={
+                          rows.length > 0 && rows.every((document) => selectedSet.has(document.id))
+                        }
+                        onChange={togglePage}
+                      />
                     </TableHead>
                     <TableHead>Archivo</TableHead>
                     <TableHead>Tipo</TableHead>
@@ -362,7 +442,13 @@ export function DocumentsPage() {
                 </TableHeader>
                 <TableBody>
                   {rows.map((document) => (
-                    <DocumentRow key={document.id} document={document} selected={selectedSet.has(document.id)} onToggle={() => toggleSelected(document.id)} onReprocess={() => reprocess.mutate(document.id)} />
+                    <DocumentRow
+                      key={document.id}
+                      document={document}
+                      selected={selectedSet.has(document.id)}
+                      onToggle={() => toggleSelected(document.id)}
+                      onReprocess={() => reprocess.mutate(document.id)}
+                    />
                   ))}
                   {!rows.length ? (
                     <TableRow>
@@ -385,10 +471,20 @@ export function DocumentsPage() {
                 Mostrando {rows.length ? offset + 1 : 0}-{offset + rows.length} de {total}
               </span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={offset === 0 || documents.isFetching} onClick={() => setOffset(Math.max(0, offset - pageSize))}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={offset === 0 || documents.isFetching}
+                  onClick={() => setOffset(Math.max(0, offset - pageSize))}
+                >
                   Anterior
                 </Button>
-                <Button variant="outline" size="sm" disabled={offset + pageSize >= total || documents.isFetching} onClick={() => setOffset(offset + pageSize)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={offset + pageSize >= total || documents.isFetching}
+                  onClick={() => setOffset(offset + pageSize)}
+                >
                   Siguiente
                 </Button>
               </div>
@@ -401,7 +497,9 @@ export function DocumentsPage() {
             <CardTitle>Vista activa</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p className="text-muted-foreground">{documentViews.find((item) => item.id === view)?.description}</p>
+            <p className="text-muted-foreground">
+              {documentViews.find((item) => item.id === view)?.description}
+            </p>
             <Info label="Filtro texto" value={query || "-"} />
             <Info label="Estado" value={status || params.status || "-"} />
             <Info label="Tipo" value={documentType || params.document_type || "-"} />
@@ -418,30 +516,59 @@ export function DocumentsPage() {
   )
 }
 
-function DocumentRow({ document, selected, onToggle, onReprocess }: { document: Document; selected: boolean; onToggle: () => void; onReprocess: () => void }) {
+function DocumentRow({
+  document,
+  selected,
+  onToggle,
+  onReprocess,
+}: {
+  document: Document
+  selected: boolean
+  onToggle: () => void
+  onReprocess: () => void
+}) {
   return (
     <TableRow className={selected ? "bg-cyan-50/60" : undefined}>
       <TableCell>
-        <input type="checkbox" aria-label={`Seleccionar ${document.original_filename}`} checked={selected} onChange={onToggle} />
+        <input
+          type="checkbox"
+          aria-label={`Seleccionar ${document.original_filename}`}
+          checked={selected}
+          onChange={onToggle}
+        />
       </TableCell>
       <TableCell className="min-w-[260px]">
         <div className="flex items-center gap-2">
           <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
           <div className="min-w-0">
             <p className="truncate font-medium">{document.original_filename}</p>
-            <p className="truncate text-xs text-muted-foreground">{document.source_path ?? document.file_hash}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {document.source_path ?? document.file_hash}
+            </p>
           </div>
         </div>
       </TableCell>
       <TableCell>{document.document_type}</TableCell>
-      <TableCell><StatusBadge status={document.status} /></TableCell>
-      <TableCell><StatusBadge status={document.quality_status ?? "-"} /></TableCell>
-      <TableCell>{document.confidence != null ? `${Math.round(document.confidence * 100)}%` : "-"}</TableCell>
+      <TableCell>
+        <StatusBadge status={document.status} />
+      </TableCell>
+      <TableCell>
+        <StatusBadge status={document.quality_status ?? "-"} />
+      </TableCell>
+      <TableCell>
+        {document.confidence != null ? `${Math.round(document.confidence * 100)}%` : "-"}
+      </TableCell>
       <TableCell>{formatBytes(document.file_size)}</TableCell>
       <TableCell>{formatDate(document.created_at)}</TableCell>
       <TableCell>
         <div className="flex justify-end gap-1">
-          <Button asChild variant="ghost" size="icon" title="Ver documento" aria-label={`Ver ${document.original_filename}`}>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            title="Ver documento"
+            aria-label={`Ver ${document.original_filename}`}
+          >
             <Link to={`/documents/${document.id}`}>
               <Eye aria-hidden="true" />
             </Link>
@@ -455,7 +582,13 @@ function DocumentRow({ document, selected, onToggle, onReprocess }: { document: 
           >
             <RefreshCcw aria-hidden="true" />
           </Button>
-          <Button asChild variant="ghost" size="icon" title="Descargar" aria-label={`Descargar ${document.original_filename}`}>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            title="Descargar"
+            aria-label={`Descargar ${document.original_filename}`}
+          >
             <a href={downloadUrl(document.id)}>
               <Download aria-hidden="true" />
             </a>

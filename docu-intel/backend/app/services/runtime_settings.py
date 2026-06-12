@@ -24,18 +24,18 @@ RUNTIME_SETTINGS_PREFIX = "settings:runtime:"
 
 class RuntimeSettingsService:
     """Service for managing runtime settings overrides.
-    
+
     Runtime settings take precedence over default config values
     and are stored in Redis for persistence across restarts.
     """
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a runtime setting value.
-        
+
         Args:
             key: Setting key (e.g., 'max_upload_size_mb')
             default: Default value if not set
-        
+
         Returns:
             The runtime override value or default
         """
@@ -47,12 +47,12 @@ class RuntimeSettingsService:
 
     def set(self, key: str, value: Any, ttl_seconds: int = RUNTIME_SETTINGS_TTL) -> bool:
         """Set a runtime setting override.
-        
+
         Args:
             key: Setting key
             value: Value to set
             ttl_seconds: How long to cache (default 24h)
-        
+
         Returns:
             True if successful, False otherwise
         """
@@ -61,10 +61,10 @@ class RuntimeSettingsService:
 
     def delete(self, key: str) -> bool:
         """Remove a runtime setting override, reverting to default.
-        
+
         Args:
             key: Setting key to remove
-        
+
         Returns:
             True if deleted, False otherwise
         """
@@ -73,7 +73,7 @@ class RuntimeSettingsService:
 
     def get_all_runtime(self) -> dict[str, Any]:
         """Get all runtime settings overrides.
-        
+
         Returns:
             Dict of all runtime overrides
         """
@@ -96,9 +96,9 @@ runtime_settings = RuntimeSettingsService()
 
 def get_max_upload_size_mb() -> int:
     """Get the current max upload size in MB.
-    
+
     Checks runtime override first, falls back to config default.
-    
+
     Returns:
         Max upload size in MB (default: 200)
     """
@@ -107,10 +107,10 @@ def get_max_upload_size_mb() -> int:
 
 def set_max_upload_size_mb(value: int) -> bool:
     """Set the max upload size in MB.
-    
+
     Args:
         value: New max size in MB
-    
+
     Returns:
         True if successful
     """

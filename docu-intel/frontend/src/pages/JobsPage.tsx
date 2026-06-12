@@ -8,13 +8,24 @@ import { EmptyState } from "@/components/layout/EmptyState"
 import { LoadingState } from "@/components/layout/LoadingState"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { notify } from "@/lib/toast"
 import { formatDate } from "@/lib/utils"
 
 export function JobsPage() {
   const queryClient = useQueryClient()
-  const { data, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: api.jobs, refetchInterval: 5000 })
+  const { data, isLoading } = useQuery({
+    queryKey: ["jobs"],
+    queryFn: api.jobs,
+    refetchInterval: 5000,
+  })
   const retryJob = useMutation({
     mutationFn: api.retryJob,
     onSuccess: (job) => {
@@ -76,10 +87,26 @@ export function JobsPage() {
                     <TableCell className="max-w-md truncate">{job.error_message ?? "-"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => retryJob.mutate(job.id)} disabled={retryJob.isPending} aria-label={`Reintentar job ${job.id}`}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => retryJob.mutate(job.id)}
+                          disabled={retryJob.isPending}
+                          aria-label={`Reintentar job ${job.id}`}
+                        >
                           Reintentar
                         </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => cancelJob.mutate(job.id)} disabled={cancelJob.isPending || !["pending", "failed"].includes(job.status)} aria-label={`Cancelar job ${job.id}`}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => cancelJob.mutate(job.id)}
+                          disabled={
+                            cancelJob.isPending || !["pending", "failed"].includes(job.status)
+                          }
+                          aria-label={`Cancelar job ${job.id}`}
+                        >
                           Cancelar
                         </Button>
                       </div>

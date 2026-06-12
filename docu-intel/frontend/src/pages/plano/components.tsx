@@ -241,121 +241,120 @@ export function PlanCanvas({
         onDoubleClick={onCanvasDoubleClick}
       >
         <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
-        {/* Page image as a background layer */}
-        <image
-          href={pageImageUrl(documentId, page)}
-          x="0"
-          y="0"
-          width={SVG_W}
-          height={SVG_H}
-          preserveAspectRatio="xMidYMid meet"
-          opacity={0.85}
-        />
+          {/* Page image as a background layer */}
+          <image
+            href={pageImageUrl(documentId, page)}
+            x="0"
+            y="0"
+            width={SVG_W}
+            height={SVG_H}
+            preserveAspectRatio="xMidYMid meet"
+            opacity={0.85}
+          />
 
-        {/* Existing rooms */}
-        {rooms.map((r) => (
-          <g
-            key={r.id}
-            onClick={(e) => {
-              e.stopPropagation()
-              setSelectedId(r.id)
-              setTool("select")
-            }}
-          >
-            <polygon
-              points={r.polygon?.map((p) => `${p.x},${p.y}`).join(" ")}
-              fill={
-                r.source?.startsWith("vision")
-                  ? "rgba(59, 130, 246, 0.18)"
-                  : "rgba(34, 197, 94, 0.18)"
-              }
-              stroke={
-                selectedId === r.id
-                  ? "#f59e0b"
-                  : r.source?.startsWith("vision")
-                    ? "#3b82f6"
-                    : "#22c55e"
-              }
-              strokeWidth={selectedId === r.id ? 3 : 2}
-            />
-            {r.polygon && r.polygon.length > 0 && (
-              <text
-                x={r.polygon[0].x}
-                y={r.polygon[0].y - 6}
-                fill="white"
-                fontSize="13"
-                fontWeight="600"
-                stroke="black"
-                strokeWidth="0.4"
-                paintOrder="stroke"
-              >
-                {r.name || "(sin nombre)"}{" "}
-                {r.area_m2 != null ? `· ${fmt(r.area_m2, 1)} m²` : ""}
-              </text>
-            )}
-          </g>
-        ))}
+          {/* Existing rooms */}
+          {rooms.map((r) => (
+            <g
+              key={r.id}
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedId(r.id)
+                setTool("select")
+              }}
+            >
+              <polygon
+                points={r.polygon?.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill={
+                  r.source?.startsWith("vision")
+                    ? "rgba(59, 130, 246, 0.18)"
+                    : "rgba(34, 197, 94, 0.18)"
+                }
+                stroke={
+                  selectedId === r.id
+                    ? "#f59e0b"
+                    : r.source?.startsWith("vision")
+                      ? "#3b82f6"
+                      : "#22c55e"
+                }
+                strokeWidth={selectedId === r.id ? 3 : 2}
+              />
+              {r.polygon && r.polygon.length > 0 && (
+                <text
+                  x={r.polygon[0].x}
+                  y={r.polygon[0].y - 6}
+                  fill="white"
+                  fontSize="13"
+                  fontWeight="600"
+                  stroke="black"
+                  strokeWidth="0.4"
+                  paintOrder="stroke"
+                >
+                  {r.name || "(sin nombre)"} {r.area_m2 != null ? `· ${fmt(r.area_m2, 1)} m²` : ""}
+                </text>
+              )}
+            </g>
+          ))}
 
-        {/* P2 — YOLO symbol overlay. Drawn between the existing
+          {/* P2 — YOLO symbol overlay. Drawn between the existing
             annotations and the in-progress drawings so the user's
             current selection is never hidden by a detection box. */}
-        {symbolOverlay}
+          {symbolOverlay}
 
-        {/* In-progress polygon */}
-        {polygonInProgress.length > 0 && (
-          <polyline
-            points={polygonInProgress.map((p) => `${p.x},${p.y}`).join(" ")}
-            fill="rgba(245, 158, 11, 0.1)"
-            stroke="#f59e0b"
-            strokeWidth="2"
-            strokeDasharray="4 3"
-          />
-        )}
-        {polygonInProgress.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="3" fill="#f59e0b" />
-        ))}
+          {/* In-progress polygon */}
+          {polygonInProgress.length > 0 && (
+            <polyline
+              points={polygonInProgress.map((p) => `${p.x},${p.y}`).join(" ")}
+              fill="rgba(245, 158, 11, 0.1)"
+              stroke="#f59e0b"
+              strokeWidth="2"
+              strokeDasharray="4 3"
+            />
+          )}
+          {polygonInProgress.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r="3" fill="#f59e0b" />
+          ))}
 
-        {/* Existing dimensions */}
-        {dimensions.map((d) =>
-          d.start && d.end ? (
-            <g key={d.id}>
-              <line
-                x1={d.start.x}
-                y1={d.start.y}
-                x2={d.end.x}
-                y2={d.end.y}
-                stroke="#a855f7"
-                strokeWidth="2"
-                strokeDasharray={d.raw_text === "escala" ? "2 4" : ""}
-              />
-              <text
-                x={(d.start.x + d.end.x) / 2}
-                y={(d.start.y + d.end.y) / 2 - 6}
-                fill="white"
-                fontSize="11"
-                stroke="black"
-                strokeWidth="0.4"
-                paintOrder="stroke"
-                textAnchor="middle"
-              >
-                {d.raw_text || `${d.value ?? "?"} ${d.unit ?? ""}`}
-              </text>
-            </g>
-          ) : null,
-        )}
+          {/* Existing dimensions */}
+          {dimensions.map((d) =>
+            d.start && d.end ? (
+              <g key={d.id}>
+                <line
+                  x1={d.start.x}
+                  y1={d.start.y}
+                  x2={d.end.x}
+                  y2={d.end.y}
+                  stroke="#a855f7"
+                  strokeWidth="2"
+                  strokeDasharray={d.raw_text === "escala" ? "2 4" : ""}
+                />
+                <text
+                  x={(d.start.x + d.end.x) / 2}
+                  y={(d.start.y + d.end.y) / 2 - 6}
+                  fill="white"
+                  fontSize="11"
+                  stroke="black"
+                  strokeWidth="0.4"
+                  paintOrder="stroke"
+                  textAnchor="middle"
+                >
+                  {d.raw_text || `${d.value ?? "?"} ${d.unit ?? ""}`}
+                </text>
+              </g>
+            ) : null,
+          )}
 
-        {/* In-progress dimension */}
-        {draftDim && draftDim.start && (
-          <line
-            x1={draftDim.start.x}
-            y1={draftDim.start.y}
-            x2={draftDim.end?.x ?? draftDim.start.x}
-            y2={draftDim.end?.y ?? draftDim.start.y}
-            stroke="#a855f7"
-            strokeWidth="2"
-            strokeDasharray="4 2"
-          />
-        )}
+          {/* In-progress dimension */}
+          {draftDim && draftDim.start && (
+            <line
+              x1={draftDim.start.x}
+              y1={draftDim.start.y}
+              x2={draftDim.end?.x ?? draftDim.start.x}
+              y2={draftDim.end?.y ?? draftDim.start.y}
+              stroke="#a855f7"
+              strokeWidth="2"
+              strokeDasharray="4 2"
+            />
+          )}
         </g>
       </svg>
 
@@ -582,8 +581,8 @@ function ScaleEditor({
         </div>
       ) : (
         <p className="text-[11.5px] text-[var(--text-muted)]">
-          Selecciona la herramienta <b>Escala</b> y dibuja una línea sobre un elemento de
-          longitud conocida.
+          Selecciona la herramienta <b>Escala</b> y dibuja una línea sobre un elemento de longitud
+          conocida.
         </p>
       )}
     </section>
@@ -633,8 +632,7 @@ function RoomEditor({
           </div>
           {scaleRatio != null && selected.polygon && selected.polygon.length >= 3 && (
             <p className="text-[11px] text-[var(--text-muted)]">
-              Área medida: {fmt(polygonAreaM2(selected.polygon, scaleRatio), 2)} m²
-              (escala activa)
+              Área medida: {fmt(polygonAreaM2(selected.polygon, scaleRatio), 2)} m² (escala activa)
             </p>
           )}
           <Button
@@ -688,7 +686,9 @@ function ShortcutsHint() {
           cancela el dibujo actual
         </li>
         <li>· Doble-click cierra un polígono</li>
-        <li>· <b>Sugerir con IA</b> usa el vision model</li>
+        <li>
+          · <b>Sugerir con IA</b> usa el vision model
+        </li>
       </ul>
     </section>
   )
@@ -748,7 +748,7 @@ export function SymbolOverlay({
               width={w}
               height={h}
               fill={color}
-              fillOpacity={0.10}
+              fillOpacity={0.1}
               stroke={color}
               strokeOpacity={0.85}
               strokeWidth={1.5}
@@ -842,13 +842,11 @@ export function SymbolLegend({
       </header>
 
       {isLoading ? (
-        <p className="px-1 py-1 text-[11.5px] text-[var(--text-muted)]">
-          Cargando detecciones…
-        </p>
+        <p className="px-1 py-1 text-[11.5px] text-[var(--text-muted)]">Cargando detecciones…</p>
       ) : classes.length === 0 ? (
         <p className="px-1 py-1 text-[11.5px] text-[var(--text-muted)]">
-          No se han detectado símbolos todavía. Si el plano se acaba de
-          procesar, espera unos segundos y recarga.
+          No se han detectado símbolos todavía. Si el plano se acaba de procesar, espera unos
+          segundos y recarga.
         </p>
       ) : (
         <>
@@ -868,7 +866,10 @@ export function SymbolLegend({
               Ninguna
             </button>
             {sourceModel && (
-              <span className="ml-auto truncate font-mono text-[10px] opacity-70" title={sourceModel}>
+              <span
+                className="ml-auto truncate font-mono text-[10px] opacity-70"
+                title={sourceModel}
+              >
                 {sourceModel}
               </span>
             )}

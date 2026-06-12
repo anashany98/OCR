@@ -15,11 +15,11 @@ The module is **read-only** (no mutations) and **fail-safe**:
 any error returns ``None`` so the caller can decide whether to
 show a "source not available" message.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -92,8 +92,7 @@ def get_source_highlight(
         block = db.get(DocumentBlock, source.block_id)
         if block is not None:
             if all(
-                v is not None
-                for v in (block.bbox_x1, block.bbox_y1, block.bbox_x2, block.bbox_y2)
+                v is not None for v in (block.bbox_x1, block.bbox_y1, block.bbox_x2, block.bbox_y2)
             ):
                 bbox = (
                     float(block.bbox_x1),

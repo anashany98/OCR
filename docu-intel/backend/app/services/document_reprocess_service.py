@@ -26,7 +26,13 @@ def reprocess_document(
     document.error_message = None
     job = ExtractionJob(document_id=document.id, job_type=job_type, status="pending")
     db.add(job)
-    write_audit(db, user=user, action="document_reprocess_requested", entity_type="document", entity_id=document.id)
+    write_audit(
+        db,
+        user=user,
+        action="document_reprocess_requested",
+        entity_type="document",
+        entity_id=document.id,
+    )
     db.commit()
     db.refresh(job)
     if enqueue:
@@ -34,7 +40,9 @@ def reprocess_document(
         from app.workers.routing import queue_for_document
 
         cache_service.invalidate_search_cache()
-        process_document_task.apply_async(args=(document.id, job.id), queue=queue_for_document(document, job.job_type))
+        process_document_task.apply_async(
+            args=(document.id, job.id), queue=queue_for_document(document, job.job_type)
+        )
     return job
 
 
@@ -58,7 +66,9 @@ def reprocess_document_page(
     document.quality_status = "pending"
     document.quality_flags_json = []
     document.error_message = None
-    job = ExtractionJob(document_id=document.id, job_type=f"reprocess:ocr_page:{page.page_number}", status="pending")
+    job = ExtractionJob(
+        document_id=document.id, job_type=f"reprocess:ocr_page:{page.page_number}", status="pending"
+    )
     db.add(job)
     write_audit(
         db,
@@ -75,14 +85,22 @@ def reprocess_document_page(
         from app.workers.routing import queue_for_document
 
         cache_service.invalidate_search_cache()
-        process_document_task.apply_async(args=(document.id, job.id), queue=queue_for_document(document, job.job_type))
+        process_document_task.apply_async(
+            args=(document.id, job.id), queue=queue_for_document(document, job.job_type)
+        )
     return job
 
 
 def soft_delete_document(db: Session, *, document: Document, user: User) -> Document:
     document.deleted_at = datetime.utcnow()
     document.deleted_by_id = user.id
-    write_audit(db, user=user, action="document_deleted_logically", entity_type="document", entity_id=document.id)
+    write_audit(
+        db,
+        user=user,
+        action="document_deleted_logically",
+        entity_type="document",
+        entity_id=document.id,
+    )
     cache_service.invalidate_search_cache()
     db.commit()
     db.refresh(document)

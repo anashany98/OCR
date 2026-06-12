@@ -2,9 +2,8 @@ from celery.exceptions import Reject
 
 from app.database.session import SessionLocal
 from app.ingestion.scanner import scan_input_folders
-from app.models import Document, ExtractionJob
+from app.models import ExtractionJob
 from app.services.document_service import process_document
-from app.services.notification import notification_service
 from app.workers.celery_app import celery_app
 from app.workers.errors import (
     RETRYABLE_EXCEPTIONS,
@@ -19,12 +18,12 @@ from app.workers.errors import (
     bind=True,
     autoretry_for=RETRYABLE_EXCEPTIONS,  # WRK-RETRY-1: narrow allow-list
     retry_backoff=True,
-    retry_backoff_max=300,             # cap the exponential backoff at 5 min
-    retry_jitter=True,                  # avoid thundering herd on retry
+    retry_backoff_max=300,  # cap the exponential backoff at 5 min
+    retry_jitter=True,  # avoid thundering herd on retry
     max_retries=3,
-    soft_time_limit=900,                # 15 min soft kill (SIGTERM, can clean up)
-    time_limit=1200,                    # 20 min hard kill (SIGKILL)
-    acks_late=True,                     # ack only after work is done
+    soft_time_limit=900,  # 15 min soft kill (SIGTERM, can clean up)
+    time_limit=1200,  # 20 min hard kill (SIGKILL)
+    acks_late=True,  # ack only after work is done
 )
 def process_document_task(self, document_id: int, job_id: int) -> None:
     """Process a single document.

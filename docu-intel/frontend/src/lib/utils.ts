@@ -62,7 +62,10 @@ export function formatBytes(value: number) {
 /** Format large numbers with k/M suffix for metric tiles. 1234 → "1,2 k". */
 export function formatCompact(value: number | null | undefined, fractionDigits = 1) {
   if (value == null) return "-"
-  return new Intl.NumberFormat("es-ES", { notation: "compact", maximumFractionDigits: fractionDigits }).format(value)
+  return new Intl.NumberFormat("es-ES", {
+    notation: "compact",
+    maximumFractionDigits: fractionDigits,
+  }).format(value)
 }
 
 // ----- Truncate ------------------------------------------------------------

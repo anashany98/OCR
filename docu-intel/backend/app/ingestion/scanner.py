@@ -16,7 +16,9 @@ from app.services.queue_control import is_ingestion_paused, should_accept_more_j
 DEFAULT_SUBFOLDERS = ["presupuestos", "pedidos", "facturas", "planos", "imagenes", "otros"]
 
 
-def scan_input_folders(db: Session, *, user: User | None = None, enqueue: bool = True, limit: int | None = None) -> dict:
+def scan_input_folders(
+    db: Session, *, user: User | None = None, enqueue: bool = True, limit: int | None = None
+) -> dict:
     settings.input_dir.mkdir(parents=True, exist_ok=True)
     for folder in DEFAULT_SUBFOLDERS:
         (settings.input_dir / folder).mkdir(parents=True, exist_ok=True)
@@ -80,12 +82,17 @@ def scan_input_folders(db: Session, *, user: User | None = None, enqueue: bool =
             ignored += 1
             continue
         if not is_file_stable(path, settings.ingestion_stable_seconds):
-            _record_path_status(db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds})
+            _record_path_status(
+                db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds}
+            )
             db.commit()
             unstable += 1
             continue
         existing_document = db.scalar(
-            select(Document).where(Document.source_path == source_path).order_by(Document.id.desc()).limit(1)
+            select(Document)
+            .where(Document.source_path == source_path)
+            .order_by(Document.id.desc())
+            .limit(1)
         )
         if existing_document:
             current_hash = calculate_sha256(path)

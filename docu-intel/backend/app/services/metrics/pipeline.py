@@ -5,6 +5,7 @@ package that touches the database: it groups documents by
 status and feeds the ``docuintel_documents_by_status`` gauge. The
 rest of the file is pure in-memory state.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import func, select
@@ -17,6 +18,7 @@ from ._registry import (
     DOCUMENTS_FAILED,
     DOCUMENTS_PROCESSED,
     JOBS_PENDING_BY_QUEUE,
+    PARSER_FALLBACK_FAILURES,
     WATCHER_ERRORS,
     WORKER_INIT_FAILURES,
 )
@@ -31,6 +33,50 @@ _ALLOWED_INIT_STAGES = frozenset(
         "yolo_preload",
         "reranker_preload",
         "embedding_preload",
+        "other",
+    }
+)
+
+# OPS-2: bounded label sets for parser-fallback failure counters.
+# Each (stage, kind) combination is a different fallback path;
+# the parser logs a warning and increments the counter so
+# operators can see WHICH fallback degraded and how often,
+# instead of "some doc came out without entities" being the
+# only signal.
+_ALLOWED_PARSER_STAGES = frozenset(
+    {
+        # Standalone image parser, vision transcription path.
+        "image_vision_transcribe",
+        # PDF page parser, vision transcription path.
+        "pdf_vision_table",
+        # PDF page parser, pdfplumber table extraction path.
+        "pdfplumber_table",
+        # PDF page renderer: JPEG and PNG fallbacks inside
+        # ``_render_page_to_image``.
+        "pdf_render_jpeg",
+        "pdf_render_png",
+        # PDF page renderer: the final stage that moves the
+        # encoded bytes to the canonical on-disk path.
+        # OPS-1 added this so a write/rename failure on the
+        # final path is observable in /metrics rather than
+        # crashing the DPI ladder silently.
+        "pdf_render_finalise",
+        # PDF page parser, OCR engine crash on a rendered
+        # image (DPI ladder moves on, but the page ends up
+        # blank if every step fails).
+        "pdf_ocr_extract",
+        # PDF page parser, rename to canonical filename for
+        # the viewer.
+        "pdf_rename_canonical",
+        # Anything new will land here; bounded so we don't blow up
+        # cardinality if a caller passes a typo.
+        "other",
+    }
+)
+_ALLOWED_PARSER_KINDS = frozenset(
+    {
+        "exception",
+        "import_error",
         "other",
     }
 )
@@ -74,6 +120,30 @@ def track_worker_init_failure(stage: str, count: int = 1) -> None:
         return
     safe_stage = stage if stage in _ALLOWED_INIT_STAGES else "other"
     WORKER_INIT_FAILURES.labels(stage=safe_stage).inc(count)
+
+
+def track_parser_fallback_failure(stage: str, kind: str = "exception", count: int = 1) -> None:
+    """Record a swallowed exception in a parser fallback path.
+
+    OPS-2: the standalone image parser, the PDF parser and the
+    pdfplumber table extractor used to ``except Exception: pass``
+    on their fallback paths, which made degradation invisible —
+    the only signal that the vision model was failing was "the
+    document came out without entities". This counter gives the
+    operator per-(stage, kind) visibility so the on-call can
+    distinguish "vision model OOM" from "pdfplumber strategy
+    rejected the layout".
+
+    Both labels are bucketed against an allow-list; anything
+    outside is mapped to ``"other"`` so a caller passing a
+    typo or a new value can never blow up Prometheus
+    cardinality.
+    """
+    if count <= 0:
+        return
+    safe_stage = stage if stage in _ALLOWED_PARSER_STAGES else "other"
+    safe_kind = kind if kind in _ALLOWED_PARSER_KINDS else "other"
+    PARSER_FALLBACK_FAILURES.labels(stage=safe_stage, kind=safe_kind).inc(count)
 
 
 def update_queue_status_snapshot(snapshot) -> None:

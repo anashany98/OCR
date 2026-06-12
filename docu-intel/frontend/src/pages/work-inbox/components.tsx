@@ -31,11 +31,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { WorkItem } from "@/types/api"
 
-import {
-  getKindConfig,
-  PRIORITY_LABELS,
-  type TaskItem,
-} from "./useWorkInbox"
+import { getKindConfig, PRIORITY_LABELS, type TaskItem } from "./useWorkInbox"
 
 // ---------------------------------------------------------------------------
 // ICON_MAP: maps the string icon name stored in ``getKindConfig`` to a

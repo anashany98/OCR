@@ -6,6 +6,7 @@ credentials via env vars.
 """
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,20 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "openapi_contract" in item.nodeid:
             item.add_marker(pytest.mark.contract)
+
+    # OPS-2 / P2 repair: the OCR cascade depends on the
+    # ``tesseract`` binary being on PATH. CI installs it via
+    # apt-get, but local Windows / macOS dev machines often
+    # don't have it. We auto-skip OCR tests (anything whose
+    # path mentions ``test_ocr`` or that the test itself
+    # marks with ``@pytest.mark.requires_tesseract``) so the
+    # local run is still useful and CI stays the source of
+    # truth for the OCR pipeline.
+    if shutil.which("tesseract") is None:
+        skip = pytest.mark.skip(reason="tesseract binary not on PATH (CI-only test)")
+        for item in items:
+            if "test_ocr" in item.nodeid or "ocr_pipeline" in item.nodeid:
+                item.add_marker(skip)
 
 
 @pytest.fixture
