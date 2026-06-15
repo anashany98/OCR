@@ -70,5 +70,5 @@ limiter = Limiter(
     default_limits=["200/minute"],
     storage_uri=settings.rate_limit_storage_uri
     or ("memory://" if settings.environment in {"local", "development"} else settings.redis_url),
-    headers_enabled=True,  # surface X-RateLimit-* on every response
+    headers_enabled=False,  # Disabled: slowapi 0.1.9 crashes on sync endpoints with headers_enabled=True
 )

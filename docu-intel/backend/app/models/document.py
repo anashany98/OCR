@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import BigInteger, Computed, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 try:
@@ -189,7 +189,7 @@ class DocumentChunk(Base):
     )
     page_number: Mapped[int | None] = mapped_column(Integer)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Any | None] = mapped_column(Vector(1024), nullable=True)
+    embedding: Mapped[Any | None] = mapped_column(Vector(768), nullable=True)
     embedding_provider_used: Mapped[str | None] = mapped_column(String(80))
     embedding_fallback: Mapped[bool] = mapped_column(default=False, nullable=False)
     needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
@@ -209,7 +209,11 @@ class DocumentChunk(Base):
     # legally be NULL when ``chunk_text`` is NULL, and a stale
     # row inserted before the column existed would otherwise fail
     # the NOT NULL check on a SELECT.
-    tsv: Mapped[Any | None] = mapped_column(Text(), nullable=True)
+    tsv: Mapped[Any | None] = mapped_column(
+        Text(),
+        Computed("to_tsvector('simple', COALESCE(chunk_text, ''::text))", persisted=True),
+        nullable=True,
+    )
     # E4 — versioned embedding model. When the operator changes
     # ``EMBEDDING_MODEL`` (e.g. ``bge-m3`` → ``bge-m3-v2``),
     # every chunk whose ``embedding_model_version`` differs from

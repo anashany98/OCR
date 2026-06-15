@@ -62,6 +62,7 @@ from .pipeline import (
     track_document_processed,
     track_parser_fallback_failure,
     track_watcher_error,
+    track_worker_init_failure,
     update_queue_status_snapshot,
 )
 from .rag import (
@@ -134,6 +135,7 @@ __all__ = [
     "track_document_failed",
     "track_watcher_error",
     "track_parser_fallback_failure",
+    "track_worker_init_failure",
     "update_queue_status_snapshot",
     "document_status_counts",
     "refresh_documents_by_status_gauge",
