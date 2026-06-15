@@ -38,7 +38,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libgomp1 \
     poppler-utils \
+    # See note in backend/Dockerfile: libreoffice-core alone is not
+    # enough — the .doc parser (app/parsers/doc.py) needs the writer
+    # module and a /usr/bin/soffice symlink in PATH.
     libreoffice-core \
+    libreoffice-writer \
+    libreoffice-common \
     curl \
     ca-certificates \
     tesseract-ocr \

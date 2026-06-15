@@ -29,7 +29,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libgomp1 \
     poppler-utils \
+    # `libreoffice-core` alone ships the soffice binary under
+    # /usr/lib/libreoffice/program/ but NOT a /usr/bin/soffice symlink
+    # and NOT the writer module needed for .doc -> .docx conversion
+    # (see app/parsers/doc.py). `libreoffice-writer` adds the writer
+    # module; `libreoffice-common` adds the /usr/bin/soffice symlink
+    # so shutil.which("soffice") works in the parser's _find_libreoffice.
     libreoffice-core \
+    libreoffice-writer \
+    libreoffice-common \
     curl \
     tesseract-ocr \
     tesseract-ocr-spa \
@@ -56,4 +64,8 @@ USER appuser
 # env var (set in .env.production). Default "*" is intentionally
 # permissive in local dev; in production the operator MUST pin it to
 # the actual reverse-proxy CIDR (e.g. "10.0.0.0/8").
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='${UVICORN_FORWARDED_ALLOW_IPS:-*}'"]
+#
+# NOTE: do NOT wrap ${UVICORN_FORWARDED_ALLOW_IPS:-*} in single quotes
+# inside this sh -c string — single quotes prevent shell variable
+# expansion, and uvicorn would receive the literal placeholder text.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-*}"]

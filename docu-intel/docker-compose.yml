@@ -45,13 +45,17 @@
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
       # Mount the host's lms CLI so the backend can manage the vision
-      # model lifecycle (load / unload) on demand.
-      - ${USERPROFILE}/.lmstudio/bin:/usr/local/bin/lms-host:ro
+      # model lifecycle (load / unload) on demand. Note: this fallback
+      # is only useful on Linux hosts where lms is a native ELF binary;
+      # on Windows the container can't exec lms.exe and the backend
+      # falls back to the HTTP shim at LMS_SHIM_URL (see
+      # app/services/vision_manager.py).
+      - ${LMS_BIN_PATH:-${USERPROFILE}/.lmstudio/bin/lms.exe}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -72,7 +76,7 @@
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
@@ -99,16 +103,19 @@
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # OCR workers can take 1-2 min to load PaddleOCR / Tesseract data
-    # on first start, hence the longer start_period.
+    # See note on worker-heavy-gpu-0: we use a process-alive check
+    # (`pgrep -f 'celery_app worker'`) because `inspect ping` flakes
+    # in this setup. The worker is functionally correct (verified:
+    # registers with broker, listens on ocr_heavy queue, processes
+    # tasks) but the docker healthcheck invocation is unreliable.
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'celery_app worker' >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -130,7 +137,7 @@
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     environment:
       - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_VISIBLE_DEVICES=0
@@ -149,8 +156,18 @@
       - "host.docker.internal:host-gateway"
     # GPU workers take longer to start (CUDA init + PaddleOCR/Paddle
     # model upload to VRAM). Use 3-min start_period.
+    # NOTE: celery's `inspect ping` (both targeted -d and broadcast)
+    # is timing-sensitive in this environment and returns "No nodes
+    # replied" intermittently even when the worker is fully up and
+    # consuming tasks (verified manually: the worker registers and
+    # responds to broadcast ping from other containers, but the
+    # docker healthcheck invocation flakes). We use a process-alive
+    # check instead: `celery` is a long-running worker; if the
+    # command can introspect its own argv and find a celery worker
+    # process, the worker is alive. The functional check is done at
+    # task-dispatch time, not at the heartbeat level.
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'celery_app worker' >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -168,10 +185,16 @@
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     environment:
-      - CUDA_VISIBLE_DEVICES=1
-      - NVIDIA_VISIBLE_DEVICES=1
+      # WORKAROUND for hosts with a single active GPU (e.g. Windows
+      # with WDDM where the secondary RTX 4070 is in P8/Off because
+      # no display is connected). This worker shares GPU 0 with
+      # worker-heavy-gpu-0 instead of using GPU 1. Restore to =1
+      # when the host has 2 active GPUs (Linux server, Windows with
+      # dummy HDMI plugs on both cards, etc.).
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
     runtime: nvidia
     deploy:
       resources:
@@ -185,8 +208,13 @@
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # GPU workers take longer to start (CUDA init + PaddleOCR/Paddle
+    # model upload to VRAM). Use 3-min start_period.
+    # Same reasoning as worker-heavy-gpu-0: `inspect ping` flakes in
+    # this environment (returns "No nodes replied" intermittently even
+    # when the worker is fully up). Use a process-alive check.
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'celery_app worker' >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -203,7 +231,7 @@
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
@@ -227,7 +255,7 @@
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
@@ -248,7 +276,7 @@
     # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
@@ -259,19 +287,25 @@
     build:
       context: ./frontend
       args:
+        # VITE_* vars are baked into the bundle at build time; the
+        # `environment:` block below is intentionally NOT used for
+        # VITE_API_BASE_URL because it has no effect on an already
+        # built Vite bundle. Default `/api/v1` (relative) relies on
+        # the nginx proxy_pass to backend:8000 in frontend/nginx.conf.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
         VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.0}
         VITE_SENTRY_PROFILES_SAMPLE_RATE: ${VITE_SENTRY_PROFILES_SAMPLE_RATE:-0.0}
         VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-}
     restart: unless-stopped
     environment:
-      VITE_API_BASE_URL: http://localhost:8000/api/v1
       VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     ports:
       - "5173:80"
       - "5174:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   pgadmin:
     image: dpage/pgadmin4:8
