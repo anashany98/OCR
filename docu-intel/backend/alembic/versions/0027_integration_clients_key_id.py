@@ -27,7 +27,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0027_integration_clients_key_id"
-down_revision = "0025_ocr_engine_version"
+down_revision = "0026_pgcrypto_and_alembic_version"
 branch_labels = None
 depends_on = None
 
@@ -57,6 +57,13 @@ def upgrade() -> None:
     #    needed) distinguish it from a raw secret.
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
+        # ``gen_random_bytes`` lives in the ``pgcrypto`` extension.
+        # ``pgvector/pgvector:pg16`` ships with the extension
+        # available but does not enable it by default, so we turn
+        # it on here. ``IF NOT EXISTS`` keeps the migration
+        # idempotent for re-runs and for environments that already
+        # enable it via their own bootstrap.
+        op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
         op.execute(
             sa.text(
                 "UPDATE integration_clients "

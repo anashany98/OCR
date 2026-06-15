@@ -75,6 +75,15 @@ def upgrade() -> None:
     #    the group's id; the outer WHERE excludes users that are
     #    already members (idempotent). Admins are excluded because
     #    their access scope is built independently.
+    #
+    #    Note: ``access_group_members.principal_id`` is ``String(180)``
+    #    (it has to hold user ids, group ids, api-client ids, …) while
+    #    ``users.id`` is ``Integer``. We ``CAST(u.id AS TEXT)`` in both
+    #    the SELECT (the INSERT target column is varchar) and the
+    #    WHERE (the comparison) so the migration runs on Postgres
+    #    too — SQLite is permissive about cross-type ``=`` and would
+    #    work without the cast, but standard SQL keeps both dialects
+    #    happy and self-documents the intent.
     op.execute(
         sa.text(
             """
@@ -83,7 +92,7 @@ def upgrade() -> None:
             SELECT
                 (SELECT id FROM access_groups WHERE name = 'default-permissive'),
                 'user',
-                u.id,
+                CAST(u.id AS TEXT),
                 CURRENT_TIMESTAMP
             FROM users u
             WHERE u.is_active = true
@@ -93,7 +102,7 @@ def upgrade() -> None:
                 FROM access_group_members m
                 WHERE m.group_id = (SELECT id FROM access_groups WHERE name = 'default-permissive')
                   AND m.principal_type = 'user'
-                  AND m.principal_id = u.id
+                  AND m.principal_id = CAST(u.id AS TEXT)
               )
             """
         )
