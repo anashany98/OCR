@@ -1,4 +1,5 @@
 ﻿.sisyphus/
+.omo/
 .claude/settings.local.json
 .env
 .env.local
