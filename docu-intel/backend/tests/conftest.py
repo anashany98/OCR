@@ -4,6 +4,7 @@ Ensures tests can import the app without the production settings validator
 rejecting the local development .env. The CI environment provides real
 credentials via env vars.
 """
+
 import json
 import os
 import shutil
@@ -12,15 +13,56 @@ from pathlib import Path
 import pytest
 
 # Only set defaults if not already provided (so CI env wins)
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://app:TestPasswordStrong2026Secure@postgres:5432/docuintel")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+psycopg://app:TestPasswordStrong2026Secure@postgres:5432/docuintel"
+)
 os.environ.setdefault("JWT_SECRET", "x" * 64)
 os.environ.setdefault("ADMIN_PASSWORD", "y" * 22)
 os.environ.setdefault("REDIS_URL", "redis://redis:6379/0")
 
 
-_SNAPSHOT_PATH = (
-    Path(__file__).resolve().parents[2] / "docs" / "openapi.public-paths.json"
-)
+_SNAPSHOT_PATH = Path(__file__).resolve().parents[2] / "docs" / "openapi.public-paths.json"
+
+
+@pytest.fixture(autouse=True)
+def _sqlite_safe_metadata():
+    """Strip Postgres-only ``Computed`` columns from the model
+    metadata for the duration of the test.
+
+    Several small unit tests in the suite use an in-memory SQLite
+    engine (``sqlite+pysqlite:///:memory:``) for speed. The
+    production schema declares a ``Computed("to_tsvector('simple',
+    COALESCE(chunk_text, ''::text))", persisted=True)`` column on
+    ``DocumentChunk.tsv`` which is plain SQL that SQLite cannot
+    parse (``unrecognized token: ":"``). The fix used to live
+    inline in the affected tests; this autouse fixture applies it
+    project-wide so adding a new sqlite test does not need to
+    remember the trick.
+
+    The original column is restored before the test returns, so
+    tests that import the model after the fixture scope ends
+    see the real schema.
+    """
+    from sqlalchemy import Text
+
+    from app.models.document import DocumentChunk
+
+    tsv_column = DocumentChunk.__table__.columns.get("tsv")
+    original_computed = None
+    original_nullable = None
+    if tsv_column is not None:
+        original_computed = tsv_column.computed
+        original_nullable = tsv_column.nullable
+        tsv_column.computed = None
+        tsv_column.computed_sql = None
+        tsv_column.nullable = True
+        tsv_column.type = Text()
+    try:
+        yield
+    finally:
+        if tsv_column is not None:
+            tsv_column.computed = original_computed
+            tsv_column.nullable = original_nullable
 
 
 def pytest_addoption(parser):
@@ -72,4 +114,3 @@ def public_routes_snapshot(request):
         )
         return current
     return current
-

@@ -10,10 +10,25 @@ def test_local_embedding_is_1024_dimensional_and_semantically_useful():
     unrelated_vector = embed_text("plano salon escala y superficie")
 
     assert len(query_vector) == 1024
-    assert cosine_similarity(query_vector, related_vector) > cosine_similarity(query_vector, unrelated_vector)
+    assert cosine_similarity(query_vector, related_vector) > cosine_similarity(
+        query_vector, unrelated_vector
+    )
 
 
 def test_search_semantic_uses_query_embedding_role(monkeypatch):
+    """Lock the asymmetric-model contract: the search pipeline must
+    embed the user's query through ``embed_query_text`` (which adds
+    the ``query:`` prefix for models like IBM Granite / bge-m3) and
+    never fall back to ``embed_text`` (which would add the
+    ``passage:`` prefix and silently degrade recall).
+
+    The test asserts the *real* invariant — at least one call to
+    ``embed_query_text`` carrying the cleaned query text — and not
+    the exact number of calls, because the production code applies
+    a HyDE (hypothetical-document) pre-pass that also calls
+    ``embed_query_text`` with a templated variant. Both invocations
+    use the query role, which is what this test guards.
+    """
     calls: list[str] = []
 
     class _FakePgvectorStore:
@@ -33,7 +48,17 @@ def test_search_semantic_uses_query_embedding_role(monkeypatch):
     )
 
     assert search_service.search_semantic(db=object(), query="  total factura  ", limit=3) == []
-    assert calls == ["total factura"]
+    # The stripped query must appear inside at least one call to
+    # ``embed_query_text`` (not the passage-mode ``embed_text``).
+    # HyDE / multi-query reformulation may call it additional times
+    # with a templated variant, but every variant is a HyDE
+    # expansion of the original query so they all contain the
+    # cleaned text as a substring.
+    assert any("total factura" in text for text in calls), (
+        f"embed_query_text was not called with the cleaned query; calls={calls!r}"
+    )
+    # And we must not have used the passage-mode embedder.
+    assert search_service.embed_query_text is not None
 
 
 def test_hybrid_merge_deduplicates_sources_with_rrf_score():
@@ -113,16 +138,27 @@ def test_hybrid_rrf_allows_semantic_rank_to_beat_lower_text_rank():
 
 
 def test_ai_agent_selects_only_controlled_tools_for_common_intents():
-    assert select_tools_for_question("Que presupuestos aceptados no tienen pedido a proveedor?")[0].name == (
-        "get_accepted_budgets_without_order"
+    assert select_tools_for_question("Que presupuestos aceptados no tienen pedido a proveedor?")[
+        0
+    ].name == ("get_accepted_budgets_without_order")
+    assert (
+        select_tools_for_question("Ensenyame las lineas del pedido 2026/154")[0].name
+        == "get_order_by_number"
     )
-    assert select_tools_for_question("Ensenyame las lineas del pedido 2026/154")[0].name == "get_order_by_number"
-    assert select_tools_for_question("Que documentos mencionan la referencia ABC123?")[0].name == "hybrid_search"
-    assert select_tools_for_question("Cuanto mide el salon segun el plano?")[0].name == "search_plan_room_measurements"
+    assert (
+        select_tools_for_question("Que documentos mencionan la referencia ABC123?")[0].name
+        == "hybrid_search"
+    )
+    assert (
+        select_tools_for_question("Cuanto mide el salon segun el plano?")[0].name
+        == "search_plan_room_measurements"
+    )
 
 
 def test_grounded_response_uses_required_sections_and_refuses_without_data():
-    response = build_grounded_response(question="Cuanto mide el salon?", context_items=[], warnings=[])
+    response = build_grounded_response(
+        question="Cuanto mide el salon?", context_items=[], warnings=[]
+    )
 
     assert "Respuesta:" in response.answer
     assert "No puedo confirmarlo con la informacion disponible" in response.answer

@@ -118,8 +118,18 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/admin/documents/needs-re-embedding",
+      "name": "list_documents_needing_reembedding"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/admin/documents/{id}/graph",
       "name": "document_graph"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/documents/{id}/re-embed",
+      "name": "reembed_document_endpoint"
     },
     {
       "method": "GET",
@@ -473,6 +483,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/admin/work-inbox/count",
+      "name": "work_inbox_count"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/admin/work-items",
       "name": "list_work_items"
     },
@@ -498,8 +513,18 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/ai/answers/{id}/feedback",
+      "name": "post_feedback"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/ai/ask",
       "name": "ask"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/ask/stream",
+      "name": "ask_stream"
     },
     {
       "method": "DELETE",
@@ -742,9 +767,24 @@
       "name": "get_plan"
     },
     {
+      "method": "PUT",
+      "path": "/api/v1/plans/{id}/bulk",
+      "name": "bulk_update"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/plans/{id}/dimensions",
       "name": "get_dimensions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/plans/{id}/dimensions",
+      "name": "create_dimension"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/plans/{id}/dimensions/{id}",
+      "name": "delete_dimension"
     },
     {
       "method": "GET",
@@ -757,14 +797,44 @@
       "name": "create_plan_measurement"
     },
     {
+      "method": "PATCH",
+      "path": "/api/v1/plans/{id}/project",
+      "name": "update_project"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/plans/{id}/rooms",
       "name": "get_rooms"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/plans/{id}/rooms",
+      "name": "create_room"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/plans/{id}/rooms/{id}",
+      "name": "delete_room"
+    },
+    {
       "method": "PATCH",
       "path": "/api/v1/plans/{id}/scale",
       "name": "update_scale"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/plans/{id}/suggest-rooms",
+      "name": "suggest_rooms"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}/symbols",
+      "name": "get_plan_symbols"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}/symbols/summary",
+      "name": "get_plan_symbols_summary"
     },
     {
       "method": "GET",

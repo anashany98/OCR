@@ -12,6 +12,7 @@ Verifies the worker retry policy:
   call ``mark_job_as_failed`` for a retryable error (Celery will
   retry, then mark failed at the end of the chain).
 """
+
 from __future__ import annotations
 
 import os
@@ -151,9 +152,7 @@ class TestNotifyFailed:
 
         broken_service = MagicMock()
         broken_service.notify_job_failed.side_effect = ConnectionError("redis down")
-        monkeypatch.setattr(
-            notification_module, "notification_service", broken_service
-        )
+        monkeypatch.setattr(notification_module, "notification_service", broken_service)
         # Should NOT raise.
         notify_failed(job_id=1, document_id=2, exc=ValueError("x"))
         broken_service.notify_job_failed.assert_called_once()
@@ -217,9 +216,7 @@ class TestProcessDocumentTaskWrapper:
             )
             session.add(document)
             session.flush()
-            job = ExtractionJob(
-                document_id=document.id, job_type="extract", status="pending"
-            )
+            job = ExtractionJob(document_id=document.id, job_type="extract", status="pending")
             session.add(job)
             session.commit()
 
@@ -232,8 +229,7 @@ class TestProcessDocumentTaskWrapper:
                 tasks_module.process_document_task.run(document.id, job.id)
             # The exception must be the Reject from celery, which
             # carries the original exception.
-            assert "FileNotFoundError" in str(excinfo.value) or \
-                "gone" in str(excinfo.value)
+            assert "FileNotFoundError" in str(excinfo.value) or "gone" in str(excinfo.value)
 
             # Refresh and verify the job was marked failed.
             session.expire_all()
@@ -286,9 +282,7 @@ class TestProcessDocumentTaskWrapper:
             )
             session.add(document)
             session.flush()
-            job = ExtractionJob(
-                document_id=document.id, job_type="extract", status="processing"
-            )
+            job = ExtractionJob(document_id=document.id, job_type="extract", status="processing")
             session.add(job)
             session.commit()
 
@@ -336,4 +330,5 @@ class TestTaskConfiguration:
         # Set globally on the celery app; we verify it is True
         # even if the task does not override it.
         from app.workers.celery_app import celery_app
+
         assert celery_app.conf.task_acks_late is True

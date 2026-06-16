@@ -61,18 +61,26 @@ def process_document_task(self, document_id: int, job_id: int) -> None:
             db.expire_all()
             job = db.get(ExtractionJob, job_id)
             if is_permanent(exc):
-                # Non-retryable: mark the job as failed now, notify,
-                # and Reject the message so it does not come back.
+                # Non-retryable: mark the job as failed now, and
+                # Reject the message so it does not come back.
                 # We do this BEFORE re-raising so the admin sees
                 # the failure even if the worker dies between the
                 # raise and the ack.
                 mark_job_as_failed(db, job, exc)
                 db.commit()
-                notify_failed(
-                    job_id=job_id,
-                    document_id=document_id,
-                    exc=exc,
-                )
+                # Notify only on the **final** attempt. An
+                # intermediate retry of a permanent error can
+                # still happen if Celery re-routes the message
+                # before the Reject lands; notifying once per
+                # attempt would spam the admin UI / on-call. The
+                # ``final_failure`` flag is True exactly when the
+                # retry budget has been spent.
+                if final_failure:
+                    notify_failed(
+                        job_id=job_id,
+                        document_id=document_id,
+                        exc=exc,
+                    )
                 raise Reject(exc, requeue=False)
             # Retryable: log + re-raise so Celery's autoretry_for
             # kicks in. We do NOT mark the job as failed here; the

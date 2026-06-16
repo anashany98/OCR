@@ -542,6 +542,37 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     normalized = _normalize(question)
     document_number = _extract_document_number(question)
 
+    # ---- Plan-room measurement ("cuanto mide el salon segun el plano?") ----
+    # This must be checked BEFORE the aggregation branch below: the
+    # aggregation hints contain "cuanto", which would otherwise
+    # shadow the more specific plan-room pattern. The plan tool
+    # needs the actual room name, not a SQL aggregate, so
+    # routing to ``aggregate_business`` is the wrong answer.
+    if _contains_any(
+        normalized,
+        (
+            "mide",
+            "medida",
+            "medidas",
+            "superficie",
+            "tamano",
+            "how big",
+            "how large",
+            "size",
+            "area",
+            "square",
+            "taille",
+            "dimension",
+            "groesse",
+            "flaeche",
+            "dimensione",
+            "superficie",
+            "tamanho",
+            "surface",
+        ),
+    ) and (room_name := _extract_room_name(normalized)):
+        return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
+
     # ---- Aggregation intent (SQL over structured tables) ----
     # Catches the "cuanto nos hemos gastado en X", "cuantos pedidos sin
     # factura" family of questions that cannot be answered with text search.
@@ -626,30 +657,11 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
         return [
             ToolCall("search_entities", {"entity_type": "reference", "value": value or question})
         ]
-    if _contains_any(
-        normalized,
-        (
-            "mide",
-            "medida",
-            "medidas",
-            "superficie",
-            "tamano",
-            "how big",
-            "how large",
-            "size",
-            "area",
-            "square",
-            "taille",
-            "dimension",
-            "groesse",
-            "flaeche",
-            "dimensione",
-            "superficie",
-            "tamanho",
-            "surface",
-        ),
-    ) and (room_name := _extract_room_name(normalized)):
-        return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
+    # NOTE: the plan-room-measurement case ("cuanto mide el salon
+    # segun el plano?") is handled at the top of this function,
+    # before the aggregation branch. Leaving the check there would
+    # never fire because the aggregation check matches "cuanto"
+    # first. See the function-level comment for the full reasoning.
     if _contains_any(normalized, _PLAN_HINTS) or _contains_any(
         normalized,
         (
