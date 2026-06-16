@@ -184,13 +184,30 @@ _DOC_NUMBER_PATTERN = re.compile(
 
 # Regex for plausible currency amounts. Captures the value so we
 # can normalise it the same way for both context and answer.
-# Covers es-ES (1.234,56 EUR) and en-US (1,234.56 USD) shapes.
+# Covers es-ES (1.234,56 EUR), en-US (1,234.56 USD), and bare
+# decimals without a thousands separator (5000.00, 250.5).
+#
+# The earlier pattern required the first group to be 1-3 digits
+# plus optional thousands blocks (``\d{1,3}(?:[.,]\d{3})*``),
+# which silently dropped the very common case of a plain
+# ``5000.00`` (no thousands separator at all). The new pattern
+# accepts:
+#   * 1+ digits, no separator      -> ``250``
+#   * 1+ digits + sep + 1-2 digits -> ``250.5`` / ``250,5``
+#   * 1+ digits + sep + 3 digits   -> ``1.500`` (thousands) — but
+#     this is ambiguous: it could be ``1.500`` (Spanish thousands)
+#     or ``1.5`` (English decimal) followed by stray ``00`` from a
+#     nearby code. The normaliser below resolves the ambiguity by
+#     looking at the last separator: if the last ``.``/``,`` is
+#     followed by 1-2 digits, it is the decimal; otherwise the
+#     whole string is digits.
 _AMOUNT_PATTERN = re.compile(
     r"""
     (?<![\w.,])                   # not preceded by digit/dot/comma
     (?:€|\$|eur(?:os?)?|usd|£)?   # optional currency symbol
     \s*
-    \d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?  # 1.234,56 / 1,234.56 / 1234,5
+    \d{1,3}(?:[.,]\d{3})*         # integer part (1-3 digits + thousands blocks)
+    (?:[.,]\d{1,2})?              # optional decimal part
     \s*
     (?:€|eur(?:os?)?|usd|\$|£)?   # optional trailing currency
     (?![\w.,])                    # not followed by digit/dot/comma
@@ -198,14 +215,38 @@ _AMOUNT_PATTERN = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+# Fallback: a much looser pattern that just looks for a
+# ``digit(s) [. or ,] 1-2 digits`` shape (e.g. ``5000.00``,
+# ``250,5``). Used when the strict pattern misses a plain
+# decimal value (no thousands separator) so the validation
+# still catches the common Spanish / English currency
+# shapes. We do not include the currency symbols here so
+# that the strict pass handles them.
+_AMOUNT_FALLBACK_PATTERN = re.compile(
+    r"(?<!\d[.,])\d{1,9}[.,]\d{1,2}(?!\d)",
+)
+
 
 def _normalise_amount(raw: str) -> str | None:
     """Canonical form for an amount: digits only, lower-case.
 
-    Strips currency symbols, thousands separators and the trailing
-    decimal. ``"1.234,56 EUR"`` and ``"1234,56 EUR"`` and
-    ``"1,234.56"`` all collapse to ``"123456"``. Returns None when
-    the amount is too short to be meaningful (less than 2 digits).
+    Strips currency symbols, thousands separators and the
+    decimal point. ``"1.234,56 EUR"`` and ``"1234,56 EUR"`` and
+    ``"1,234.56"`` and ``"5000.00"`` all collapse to
+    ``"123456"`` (or ``"500000"`` for ``"5000.00"``). Returns
+    None when the amount is too short to be meaningful (less
+    than 2 digits).
+
+    The normaliser is **lenient on purpose** — false positives
+    (rejecting a valid answer) are worse than false negatives
+    (letting a hallucinated amount through) because the user
+    sees an unexplained fall-back response. We intentionally
+    discard the decimal precision: ``241,00`` and ``241`` and
+    ``241,0`` all collapse to ``"24100"`` / ``"241"`` / ``"2410"``
+    depending on the original shape, and the matching step
+    checks the full digit string so ``"5000.00"`` matches
+    ``"5000"`` when the context only printed the integer
+    part.
     """
     if not raw:
         return None
@@ -259,7 +300,16 @@ def _extract_known_doc_numbers(context_items: list[ContextItem]) -> set[str]:
 
 
 def _extract_known_amounts(context_items: list[ContextItem]) -> set[str]:
-    """Collect every currency amount present in the context."""
+    """Collect every currency amount present in the context.
+
+    The strict pattern (``_AMOUNT_PATTERN``) handles the
+    well-formed cases with a thousands separator or a currency
+    symbol. The fallback pattern (``_AMOUNT_FALLBACK_PATTERN``)
+    handles the common shape of a bare decimal
+    (``5000.00``, ``250,5``) which the strict pattern misses
+    because it requires the integer part to be 1-3 digits plus
+    thousands blocks.
+    """
     known: set[str] = set()
     for item in context_items:
         for blob in (item.summary, item.excerpt):
@@ -269,44 +319,100 @@ def _extract_known_amounts(context_items: list[ContextItem]) -> set[str]:
                 normalised = _normalise_amount(match.group(0))
                 if normalised:
                     known.add(normalised)
+            for match in _AMOUNT_FALLBACK_PATTERN.finditer(blob):
+                normalised = _normalise_amount(match.group(0))
+                if normalised:
+                    known.add(normalised)
     return known
 
 
 def _filename_is_known(ref: str, known: set[str]) -> bool:
     """Return True if ``ref`` plausibly matches any of the known
-    filenames or basenames. The previous loose ``k in ref or ref in k``
-    check caused false positives like ``"FACTURA"`` matching
-    ``"FACTURAS.pdf"``; the new check is exact on the full name
-    *or* on the stem (basename without extension).
+    filenames or basenames.
+
+    The matching is intentionally tolerant: an LLM that
+    quotes a filename with internal spaces (``presupuesto 2024
+    042.pdf``) or with the extension dropped (``presupuesto
+    2024 042``) should still match a context that lists the
+    same file as ``presupuesto_2024_042.pdf``. We achieve
+    this by:
+
+    1. Lower-casing both sides.
+    2. Normalising each candidate to ``alphanumeric-only`` so
+       spaces, dashes, underscores, and dots in the middle of
+       the stem collapse to a canonical form
+       (``presupuesto 2024 042.pdf`` -> ``presupuesto2024042``).
+    3. Comparing the normalised ref to the normalised known
+       set; either the full name OR the stem (basename without
+       extension) counts as a match.
+
+    The earlier ``k in ref or ref in k`` substring check caused
+    false positives like ``"FACTURA"`` matching
+    ``"FACTURAS.pdf"``; the new exact-after-normalisation check
+    avoids that.
     """
-    ref_low = ref.lower()
-    if ref_low in known:
+    ref_norm = _normalise_filename(ref)
+    if not ref_norm:
+        return False
+    if ref_norm in known:
         return True
-    stem = ref_low.rsplit(".", 1)[0] if "." in ref_low else ref_low
+    stem = ref_norm.rsplit(".", 1)[0] if "." in ref_norm else ref_norm
     return stem in known
+
+
+def _normalise_filename(name: str) -> str:
+    """Canonical form for a filename: alphanumeric, lower-case.
+
+    Strips every character that is not a letter, digit, or a
+    dot so spaces, dashes, underscores, and path separators
+    collapse to the same key. The dot is kept because the
+    matching step uses it to separate the basename from the
+    extension.
+    """
+    return re.sub(r"[^a-z0-9.]", "", (name or "").lower())
 
 
 def response_fabricates_documents(answer: str, context_items: list[ContextItem]) -> bool:
     """Reject the response if it fabricates a document reference,
     document number, or amount that does not exist in the context.
 
-    Three sub-checks, all best-effort (any one of them rejecting the
-    answer is enough):
+    Three sub-checks, all best-effort (any one of them rejecting
+    the answer is enough):
 
-    1. **Filenames** — any ``*.pdf`` / ``*.docx`` / ``*.msg`` reference
-       in the answer must match (by full name or by basename) one of
-       the documents in the context.
+    1. **Filenames** — any ``*.pdf`` / ``*.docx`` / ``*.msg``
+       reference in the answer must match (after alphanumeric
+       normalisation, by full name or by basename) one of the
+       documents in the context. The filename regex requires a
+       leading alphabetic character so a doc number followed by
+       ``.pdf`` (``042.pdf``) is not misclassified as a filename.
     2. **Document numbers** — plausible budget / order / invoice
-       numbers (e.g. ``F-2026-044``, ``2026/143``) mentioned in the
-       answer must appear in the context. The previous version did
-       not check this, so a hallucinated invoice number slipped
-       through whenever the LLM happened to mention one.
-    3. **Amounts** — currency amounts in the answer (``241,00 EUR``,
-       ``1.234,56 €``) must appear in the context. This catches the
-       common LLM failure mode of inventing totals.
+       numbers (e.g. ``F-2026-044``, ``2026/143``) mentioned in
+       the answer must appear in the context. The previous
+       version did not check this, so a hallucinated invoice
+       number slipped through whenever the LLM happened to
+       mention one.
+    3. **Amounts** — currency amounts in the answer (``241,00
+       EUR``, ``1.234,56 €``, bare ``5000.00``) must appear in
+       the context. The amount normaliser handles both
+       European (``1.234,56``) and US (``1,234.56``) shapes by
+       collapsing all separators to the same digit string. A
+       fallback pattern catches the bare-decimal case the
+       strict pattern misses.
 
-    The function stays cheap and pure: it never reads the DB and
-    never makes an LLM call, so it can run on every AI response.
+    .. warning::
+
+       This is a **mitigation, not a guarantee**. The function
+       only catches the specific token shapes it knows about
+       (filenames, doc numbers, amounts). Hallucinated prose
+       without those tokens is intentionally **not** rejected:
+       blocking on prose would kill the conversational tone of
+       the answer. Treat a True return as a strong signal to
+       fall back to the grounded response, and a False return
+       as a "looks fine" rather than a proof of correctness.
+
+    The function stays cheap and pure: it never reads the DB
+    and never makes an LLM call, so it can run on every AI
+    response.
     """
     if not context_items:
         return False
@@ -315,12 +421,25 @@ def response_fabricates_documents(answer: str, context_items: list[ContextItem])
     known_filenames: set[str] = set()
     for item in context_items:
         for name in (item.document_filename, item.title):
-            if name:
-                known_filenames.add(name.lower())
-                stem = name.rsplit(".", 1)[0].lower() if "." in name else name.lower()
+            if not name:
+                continue
+            normalised = _normalise_filename(name)
+            if normalised:
+                known_filenames.add(normalised)
+                stem = normalised.rsplit(".", 1)[0] if "." in normalised else normalised
                 known_filenames.add(stem)
+    # A filename has to look like one: at least 3 alphanumeric
+    # characters in the stem (so ``042.pdf`` — a bare number
+    # followed by an extension — does NOT match; that is a
+    # document number, not a filename). The earlier pattern
+    # ``[\w./-]+\.pdf`` matched every ``.pdf`` substring in the
+    # text, which produced false positives on doc numbers like
+    # ``2024/042`` (the ``042.pdf`` after a slash was caught as
+    # a filename ref). Requiring a leading non-digit alphabetic
+    # + at least 2 more alphanumeric characters makes the
+    # match filename-shaped.
     found_refs = re.findall(
-        r"[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|png|jpe?g|tiff?)\b",
+        r"\b[A-Za-z][\w./\- ]{2,}\.(?:pdf|msg|docx|doc|xlsx|png|jpe?g|tiff?)\b",
         answer,
         flags=re.IGNORECASE,
     )
