@@ -559,18 +559,47 @@ class LocalSentenceTransformerEmbeddingClient:
                 return self._model
             if self._init_error is not None:
                 raise self._init_error
-            try:
-                from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
 
+            # OPS-FALLBACK-1: try the configured device first
+            # (typically ``cuda``). If the load fails because the
+            # host has no GPU / no torch CUDA build, fall back to
+            # CPU. Embeddings still work, just slower.
+            try:
                 self._model = SentenceTransformer(
                     self.model_name,
                     device=self.device,
                     trust_remote_code=False,
                 )
-                self._model.max_seq_length = self.max_length
-            except Exception as exc:
-                self._init_error = exc
-                raise
+                import logging
+
+                logging.getLogger("app.services.embeddings").info(
+                    "Local embedding model loaded: name=%s device=%s",
+                    self.model_name,
+                    self.device,
+                )
+            except Exception as exc:  # noqa: BLE001
+                if self.device == "cpu":
+                    # Already on the safest path; nothing to fall
+                    # back to.
+                    self._init_error = exc
+                    raise
+                import logging
+
+                logging.getLogger("app.services.embeddings").warning(
+                    "Local embedding model failed to load on device=%s (%s); "
+                    "falling back to CPU. The platform keeps working, "
+                    "embeddings are just slower.",
+                    self.device,
+                    exc,
+                )
+                self.device = "cpu"
+                self._model = SentenceTransformer(
+                    self.model_name,
+                    device="cpu",
+                    trust_remote_code=False,
+                )
+            self._model.max_seq_length = self.max_length
         return self._model
 
     @property

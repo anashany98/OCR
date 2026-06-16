@@ -57,8 +57,39 @@ class PPStructureEngine:
                 "'NotImplementedError: ConvertPirAttribute2RuntimeAttribute'. "
                 "Use PaddleOCR (Tier 2) on CPU workers."
             )
+        # OPS-FALLBACK-1: when the host has no usable GPU the
+        # engine refuses to instantiate. The cascade's Tier 3
+        # call site already handles the resulting RuntimeError
+        # by falling back to Tier 2 (PaddleOCR); here we also log
+        # the cause so the operator can see why the heavyweight
+        # layout engine is unavailable in this worker's logs.
+        if not self._cuda_available():
+            import logging
+
+            logging.getLogger("app.ocr.pp_structure").warning(
+                "PP-Structure: no CUDA runtime detected on this host; the "
+                "engine will be marked unavailable at first use. The cascade "
+                "will fall back to PaddleOCR (Tier 2) instead."
+            )
         self.device = device
         self.lang = lang
+
+    @staticmethod
+    def _cuda_available() -> bool:
+        """Best-effort CUDA-runtime probe. Mirrors
+        :func:`app.ocr.paddle._cuda_runtime_available` so both
+        engines make the same decision on the same host.
+        """
+        try:
+            import paddle  # type: ignore[import-not-found]
+        except Exception:  # noqa: BLE001
+            return False
+        try:
+            if not paddle.device.is_compiled_with_cuda():
+                return False
+            return int(paddle.device.cuda.device_count()) > 0
+        except Exception:  # noqa: BLE001
+            return False
 
     @cached_property
     def _pipeline(self):

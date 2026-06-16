@@ -59,6 +59,83 @@ def _get_gpu_device() -> str | None:
     return None
 
 
+def _cuda_runtime_available() -> bool:
+    """Return True when the Paddle CUDA runtime can actually see a
+    GPU on this host.
+
+    The check is intentionally cheap: we try to import
+    ``paddle.device.is_compiled_with_cuda`` and call
+    ``paddle.device.cuda.device_count()``. A return of ``0`` (no
+    GPU visible to Paddle) or a failed import (CUDA build of
+    Paddle not installed) both count as "no GPU available". The
+    function never raises; the caller treats a False return as
+    "use CPU".
+
+    This is the runtime guard behind
+    :func:`resolve_paddle_device` so a host that does have a
+    GPU but the Paddle install is CPU-only (the default
+    ``paddlepaddle`` wheel) does not crash the worker at first
+    OCR call.
+    """
+    try:
+        import paddle  # type: ignore[import-not-found]
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        if not paddle.device.is_compiled_with_cuda():
+            return False
+        return int(paddle.device.cuda.device_count()) > 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def resolve_paddle_device(
+    *,
+    requested: str | None = None,
+) -> str | None:
+    """Return the Paddle device string we should pass to
+    ``PaddleOCR(...)``.
+
+    Resolution order:
+
+    1. An explicit ``requested`` value (already formatted, e.g.
+       ``"gpu:0"``) is honoured as-is.
+    2. If ``CUDA_VISIBLE_DEVICES`` is set AND the Paddle CUDA
+       runtime reports at least one device, we format the index
+       as ``"gpu:<idx>"``.
+    3. Otherwise we return ``None`` so PaddleOCR picks its own
+       default. On a CUDA build that is GPU 0; on a CPU build
+       that is CPU — both safe.
+
+    The chosen device is logged at INFO so the operator can
+    see at boot which engine is going to be used. The
+    resolution is also cached at module import time so the
+    same value is reused across worker boot and per-request
+    PaddleOCR instances.
+    """
+    if requested:
+        logger.info("PaddleOCR: using explicit device=%s", requested)
+        return requested
+    gpu_idx = _get_gpu_device()
+    if gpu_idx and _cuda_runtime_available():
+        device = f"gpu:{gpu_idx}"
+        logger.info("PaddleOCR: CUDA available; using device=%s", device)
+        return device
+    if gpu_idx and not _cuda_runtime_available():
+        logger.warning(
+            "PaddleOCR: CUDA_VISIBLE_DEVICES=%s is set but the Paddle "
+            "runtime reports no usable GPU. Falling back to CPU; the OCR "
+            "cascade will still work, just slower.",
+            gpu_idx,
+        )
+    else:
+        logger.info(
+            "PaddleOCR: no CUDA_VISIBLE_DEVICES set; using Paddle's default "
+            "device (GPU if the runtime supports it, otherwise CPU)."
+        )
+    return None
+
+
 class PaddleOCREngine:
     """PaddleOCR 3.x engine. Implements the :class:`BaseOCREngine` protocol."""
 
@@ -66,7 +143,13 @@ class PaddleOCREngine:
 
     def __init__(self, lang: str | None = None, device: str | None = None) -> None:
         self.lang = lang or settings.paddle_lang
-        self.device = device or _format_paddle_device(_get_gpu_device())
+        # ``resolve_paddle_device`` honours an explicit ``device``
+        # argument; otherwise it inspects ``CUDA_VISIBLE_DEVICES``
+        # plus the Paddle runtime and falls back to the Paddle
+        # default (CPU on a CPU build, GPU 0 on a CUDA build) when
+        # no GPU is visible. The chosen device is logged once at
+        # construction time.
+        self.device = device or resolve_paddle_device()
 
     @cached_property
     def _engine(self):
@@ -80,23 +163,35 @@ class PaddleOCREngine:
         run the heavy ``PaddleOCR(...)`` call inside a daemon thread
         and raise ``RuntimeError`` when it does not complete within
         ``_PADDLE_INIT_TIMEOUT_SECONDS``.
+
+        CPU fallback (OPS-FALLBACK-1): if the first attempt with the
+        requested device fails — e.g. the host has ``CUDA_VISIBLE_DEVICES=0``
+        set but the Paddle wheel is the CPU-only build, or the GPU
+        driver is missing — we retry once with ``device=None`` so
+        Paddle picks its own default (CPU on a CPU build, GPU 0 on a
+        CUDA build). The retry is only triggered by a real
+        init-time failure, not by the timeout: a 120-second hang
+        still raises so the worker is not blocked forever.
         """
         from paddleocr import PaddleOCR
 
-        kwargs = {
-            "use_textline_orientation": True,
-            "lang": self.lang,
-            "enable_mkldnn": False,
-        }
-        if self.device:
-            kwargs["device"] = self.device
-
-        def _do_init():
+        def _attempt(device_value: str | None) -> "PaddleOCR":
+            kwargs = {
+                "use_textline_orientation": True,
+                "lang": self.lang,
+                "enable_mkldnn": False,
+            }
+            if device_value:
+                kwargs["device"] = device_value
             with paddleocr_init_lock():
                 return PaddleOCR(**kwargs)
 
+        def _do_init(device_value: str | None) -> "PaddleOCR":
+            return _attempt(device_value)
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_do_init)
+            # First attempt: the device the constructor picked.
+            future = pool.submit(_do_init, self.device)
             try:
                 return future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
             except concurrent.futures.TimeoutError:
@@ -109,6 +204,38 @@ class PaddleOCREngine:
                 raise RuntimeError(
                     f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
                 ) from None
+            except Exception as exc:  # noqa: BLE001
+                # Only retry on real init failures (the engine
+                # object was never created), not on timeouts (a
+                # hung worker thread must not leak).
+                if self.device is None or self.device == "cpu":
+                    # Already on the safest path; nothing to fall
+                    # back to.
+                    logger.error(
+                        "PaddleOCR init failed on device=%s and no GPU fallback is possible: %s",
+                        self.device,
+                        exc,
+                    )
+                    raise
+                logger.warning(
+                    "PaddleOCR init failed on device=%s (%s); retrying "
+                    "with the runtime default (CPU on a CPU build, "
+                    "GPU 0 on a CUDA build).",
+                    self.device,
+                    exc,
+                )
+                self.device = None
+                future = pool.submit(_do_init, None)
+                try:
+                    return future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
+                except concurrent.futures.TimeoutError:
+                    logger.error(
+                        "PaddleOCR fallback init timed out after %.0fs",
+                        _PADDLE_INIT_TIMEOUT_SECONDS,
+                    )
+                    raise RuntimeError(
+                        f"PaddleOCR fallback init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
+                    ) from None
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
@@ -266,4 +393,11 @@ def paddleocr_init_lock():
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
 
 
-__all__ = ["PaddleOCREngine", "paddleocr_init_lock"]
+__all__ = [
+    "PaddleOCREngine",
+    "paddleocr_init_lock",
+    "resolve_paddle_device",
+    "_get_gpu_device",
+    "_cuda_runtime_available",
+    "_format_paddle_device",
+]

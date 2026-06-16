@@ -55,6 +55,11 @@ COPY app /app/app
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY scripts /app/scripts
+# Make the migration entrypoint executable in the image.
+# ``COPY`` from Windows or from a git checkout does not always
+# preserve the executable bit; the ``migrate`` compose service
+# invokes this script via ``entrypoint:`` so it must be +x.
+RUN chmod +x /app/scripts/entrypoint-migrate.sh
 
 USER appuser
 
@@ -68,4 +73,12 @@ USER appuser
 # NOTE: do NOT wrap ${UVICORN_FORWARDED_ALLOW_IPS:-*} in single quotes
 # inside this sh -c string — single quotes prevent shell variable
 # expansion, and uvicorn would receive the literal placeholder text.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-*}"]
+#
+# Migrations are NOT run from the CMD. A separate ``migrate`` service
+# in docker-compose.yml / docker-compose.prod.yml runs
+# ``scripts/entrypoint-migrate.sh`` once at stack start and the
+# backend / workers declare ``depends_on.migrate.condition:
+# service_completed_successfully``. Running ``alembic upgrade head``
+# from every uvicorn replica was racing on ``alembic_version`` when
+# more than one replica booted at the same time.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-*}"]

@@ -34,6 +34,36 @@ services:
     mem_limit: ${REDIS_MEM_LIMIT:-512m}
     cpus: ${REDIS_CPUS:-1}
 
+  # One-shot migration job (MIG-1).
+  #
+  # Alembic is run here, exactly once per stack start, instead of
+  # from every uvicorn replica's CMD. Multiple backend replicas
+  # used to race on ``alembic_version`` at boot and a slow migration
+  # would crash the healthcheck loop. The migrate service waits
+  # for the schema to be at head, exits 0, and the backend / workers
+  # declare ``depends_on.migrate.condition:
+  # service_completed_successfully`` so they do not start until
+  # the schema is current.
+  #
+  # Re-run manually after a hotfix with:
+  #   docker compose -f docker-compose.prod.yml run --rm migrate
+  migrate:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/app/scripts/entrypoint-migrate.sh"]
+    restart: "no"
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    volumes:
+      - ./backend/scripts:/app/scripts:ro
+    networks:
+      - internal
+    mem_limit: ${MIGRATE_MEM_LIMIT:-512m}
+    cpus: ${MIGRATE_CPUS:-1}
+
   backend:
     build:
       context: ./backend
@@ -41,6 +71,8 @@ services:
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -67,6 +99,8 @@ services:
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -92,6 +126,8 @@ services:
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -117,6 +153,8 @@ services:
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -142,6 +180,8 @@ services:
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -167,6 +207,8 @@ services:
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       postgres:

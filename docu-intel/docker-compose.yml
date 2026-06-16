@@ -23,6 +23,26 @@
       timeout: 5s
       retries: 5
 
+  # One-shot migration job (MIG-1).
+  #
+  # Runs ``alembic upgrade head`` once per stack start. The backend
+  # and workers declare ``depends_on.migrate.condition:
+  # service_completed_successfully`` so they do not start until the
+  # schema is current. This avoids the previous behaviour where every
+  # backend replica ran ``alembic upgrade head`` from its CMD and
+  # raced on ``alembic_version`` at boot.
+  migrate:
+    build:
+      context: ./backend
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/app/scripts/entrypoint-migrate.sh"]
+    restart: "no"
+    volumes:
+      - ./backend/scripts:/app/scripts:ro
+
   backend:
     build:
       context: ./backend
@@ -73,6 +93,8 @@
     restart: unless-stopped
     # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -100,6 +122,8 @@
     restart: unless-stopped
     # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -134,6 +158,8 @@
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-0@%h
     restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -182,6 +208,8 @@
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-1@%h
     restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -228,6 +256,8 @@
     restart: unless-stopped
     # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -252,6 +282,8 @@
     restart: unless-stopped
     # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -275,6 +307,8 @@
     restart: unless-stopped
     # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     volumes:
