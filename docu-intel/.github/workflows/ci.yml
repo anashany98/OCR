@@ -1,0 +1,157 @@
+# S2.4 (Sprint 2) — CI workflow with ruff gate.
+#
+# This workflow runs on every push and PR. The matrix covers
+# Python 3.11 (the project's target). The steps:
+#
+# 1. Checkout
+# 2. Set up Python with pip caching keyed on requirements*.txt
+# 3. Install backend dev dependencies (which pin ruff 0.7.4)
+# 4. Run ``ruff check`` with the project's pyproject.toml rules
+# 5. Run ``ruff format --check`` to fail on un-formatted code
+# 6. Run the full test suite (only the unit tests, not the
+#    integration tests that need a running Postgres / Redis /
+#    LM Studio)
+#
+# The job is split: linting fails fast (no test run needed)
+# and the test job only runs if the lint job passes. A
+# separate ``docker-build`` job verifies the production image
+# builds (catches Dockerfile syntax errors).
+
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint:
+    name: ruff lint + format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docu-intel/backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            docu-intel/backend/requirements.txt
+            docu-intel/backend/requirements-dev.txt
+      - name: Install ruff
+        run: pip install "ruff==0.7.4"
+      - name: Lint
+        # S2.4: enforce the rule set configured in
+        # ``pyproject.toml`` (``[tool.ruff.lint].select``). A
+        # developer who adds a new ``print(secret)`` or ``eval``
+        # call in a PR will see a CI failure pointing at the
+        # ``S`` rule that caught it.
+        run: ruff check --output-format=github .
+      - name: Format check
+        # Block PRs that introduce un-formatted code. The
+        # operator can run ``ruff format`` locally to fix
+        # before pushing.
+        run: ruff format --check .
+
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: docu-intel/backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: docuintel_test
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d docuintel_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://app:app@localhost:5432/docuintel_test
+      REDIS_URL: redis://localhost:6379/0
+      ENVIRONMENT: test
+      JWT_SECRET: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      ADMIN_EMAIL: admin@test.local
+      ADMIN_PASSWORD: test_admin_password_at_least_16_chars
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            docu-intel/backend/requirements.txt
+            docu-intel/backend/requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Run migrations
+        # The test DB schema needs to exist before the unit
+        # tests connect. We bring the schema to head; the
+        # unit tests use a per-test in-memory DB so this is
+        # only for the integration tests.
+        run: alembic upgrade head
+      - name: Run unit tests
+        # ``--ignore=tests/performance`` keeps the run under
+        # 5 minutes; perf tests run on a separate schedule.
+        run: pytest tests/ --ignore=tests/performance -q
+
+  docker-build:
+    name: docker build (production compose)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        # Catches Dockerfile syntax errors and missing
+        # dependencies. The compose-level ``docker compose
+        # config`` check is in a separate job (see
+        # ``compose-validate``) to keep this one fast.
+        run: |
+          docker build -f docu-intel/backend/Dockerfile docu-intel/backend \
+            --tag docuintel-backend:ci
+
+  compose-validate:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate dev compose
+        # ``docker compose config`` parses the file, expands
+        # variables, and rejects unknown keys. Catches typos
+        # in service names, missing profiles, etc. before the
+        # operator sees them at deploy time.
+        run: |
+          cd docu-intel
+          cp .env.example .env 2>/dev/null || true
+          docker compose -f docker-compose.yml config -q
+      - name: Validate prod compose
+        env:
+          REDIS_PASSWORD: ci_dummy
+          POSTGRES_PASSWORD: ci_dummy
+        run: |
+          cd docu-intel
+          docker compose -f docker-compose.prod.yml config -q
