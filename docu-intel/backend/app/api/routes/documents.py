@@ -26,6 +26,7 @@ from app.services.audit import write_audit
 from app.services.document_service import register_upload, reprocess_document, soft_delete_document
 from app.services.operations import BulkReprocessFilters, bulk_reprocess_documents
 from app.services.tenant_access import (
+    AccessScope,
     apply_access_predicates,
     can_access_document,
     filter_documents_for_scope,
@@ -35,6 +36,24 @@ from app.services.tenant_access import (
 router = APIRouter()
 
 logger = logging.getLogger(__name__)
+
+
+def get_user_access_scope(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Cache the per-request :class:`AccessScope` so multiple
+    ``can_access_document`` checks in the same handler do not
+    re-run the (potentially expensive) ``resolve_user_access_scope``
+    query.
+
+    FastAPI's dependency cache (``use_cache=True``, the default)
+    ensures the scope is computed once per request and reused
+    by every endpoint that lists it as a ``Depends``. The
+    returned dataclass is immutable (frozen) so a downstream
+    consumer cannot accidentally mutate the cached value.
+    """
+    return resolve_user_access_scope(db, user)
 
 
 class BatchUploadItem(BaseModel):
@@ -138,6 +157,7 @@ def list_documents(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    scope: AccessScope = Depends(get_user_access_scope),
 ) -> list[Document]:
     stmt = (
         select(Document).where(Document.deleted_at.is_(None)).order_by(Document.created_at.desc())
@@ -149,7 +169,6 @@ def list_documents(
     if q:
         escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = stmt.where(Document.original_filename.ilike(f"%{escaped_q}%"))
-    scope = resolve_user_access_scope(db, user)
     if scope.is_admin:
         return list(db.scalars(stmt.offset(offset).limit(limit)).all())
     # DATA-03: push the scope into SQL so the page slice and the
@@ -188,10 +207,13 @@ def reprocess_bulk(
 
 @router.get("/{document_id}", response_model=DocumentRead)
 def get_document(
-    document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    scope: AccessScope = Depends(get_user_access_scope),
 ) -> Document:
     document = db.get(Document, document_id)
-    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+    if not can_access_document(db, document, scope):
         raise HTTPException(status_code=404, detail="Document not found")
     return document
 
@@ -203,9 +225,10 @@ def get_document_pages(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    scope: AccessScope = Depends(get_user_access_scope),
 ) -> list[DocumentPage]:
     document = db.get(Document, document_id)
-    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+    if not can_access_document(db, document, scope):
         raise HTTPException(status_code=404, detail="Document not found")
     return list(
         db.scalars(
@@ -224,9 +247,10 @@ def get_document_page_image(
     page_number: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    scope: AccessScope = Depends(get_user_access_scope),
 ):
     document = db.get(Document, document_id)
-    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+    if not can_access_document(db, document, scope):
         raise HTTPException(status_code=404, detail="Document not found")
     page = db.scalar(
         select(DocumentPage)
@@ -259,9 +283,10 @@ def get_document_blocks(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    scope: AccessScope = Depends(get_user_access_scope),
 ) -> list[DocumentBlock]:
     document = db.get(Document, document_id)
-    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+    if not can_access_document(db, document, scope):
         raise HTTPException(status_code=404, detail="Document not found")
     stmt = (
         select(DocumentBlock)
@@ -280,9 +305,10 @@ def get_document_entities(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    scope: AccessScope = Depends(get_user_access_scope),
 ) -> list[DocumentEntity]:
     document = db.get(Document, document_id)
-    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+    if not can_access_document(db, document, scope):
         raise HTTPException(status_code=404, detail="Document not found")
     return list(
         db.scalars(
@@ -303,9 +329,10 @@ def reprocess(
     ] = Query(default="full"),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor")),
+    scope: AccessScope = Depends(get_user_access_scope),
 ):
     document = db.get(Document, document_id)
-    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+    if not can_access_document(db, document, scope):
         raise HTTPException(status_code=404, detail="Document not found")
     job_type = "reprocess" if mode == "full" else f"reprocess:{mode}"
     job = reprocess_document(db, document=document, user=user, job_type=job_type)
@@ -326,13 +353,13 @@ def delete_document(
 
 @router.get("/{document_id}/download")
 def download_document(
-    document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    scope: AccessScope = Depends(get_user_access_scope),
 ):
     document = db.get(Document, document_id)
-    if (
-        not can_access_document(db, document, resolve_user_access_scope(db, user))
-        or not document.stored_filename
-    ):
+    if not can_access_document(db, document, scope) or not document.stored_filename:
         raise HTTPException(status_code=404, detail="Document not found")
     path = (settings.files_dir / document.stored_filename).resolve()
     if not path.exists() or settings.files_dir.resolve() not in path.parents:

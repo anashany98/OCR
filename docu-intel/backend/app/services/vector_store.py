@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Document, DocumentChunk
 from app.services.embeddings import cosine_similarity
+
+logger = logging.getLogger("app.services.vector_store")
 
 
 @dataclass(frozen=True)
@@ -148,9 +151,41 @@ class QdrantStore:
 
 
 def _is_postgres(db: Session) -> bool:
+    """True when the session's bind is a PostgreSQL engine.
+
+    The pgvector path is the production default; SQLite and
+    other backends fall back to a Python cosine-similarity
+    loop in :func:`search_semantic`. The previous version
+    silently swallowed every exception and returned
+    ``False`` so a malformed session (e.g. ``db.bind is
+    None`` because the session was constructed with a
+    non-Engine bind, or a network blip when the dialect was
+    being introspected) silently routed every search to the
+    slower Python path with no log line. We now log the
+    fallback so the operator can see why their pgvector
+    install is not being used.
+    """
     try:
-        return db.bind is not None and db.bind.dialect.name == "postgresql"
-    except Exception:
+        if db.bind is None:
+            logger.debug("vector_store_is_postgres: db.bind is None; using Python fallback")
+            return False
+        dialect = db.bind.dialect.name
+        is_pg = dialect == "postgresql"
+        if not is_pg:
+            logger.debug(
+                "vector_store_is_postgres: dialect=%s (not postgresql); using Python fallback",
+                dialect,
+            )
+        return is_pg
+    except Exception as exc:  # noqa: BLE001
+        # Real failure (e.g. introspection raised). Fall back
+        # to the Python path so search still works, but log
+        # the cause so the operator can see the pgvector
+        # install is not being used.
+        logger.warning(
+            "vector_store_is_postgres_failed: %s; falling back to Python cosine",
+            exc,
+        )
         return False
 
 

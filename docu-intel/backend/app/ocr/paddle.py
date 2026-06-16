@@ -237,7 +237,12 @@ class PaddleOCREngine:
                         f"PaddleOCR fallback init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
                     ) from None
 
-    def extract(self, image_path: Path) -> OCRResult:
+    def extract(
+        self,
+        image_path: Path,
+        *,
+        language: str | None = None,
+    ) -> OCRResult:
         start = time.perf_counter()
         ocr_path = preprocess_for_paddle(image_path)
         raw = self._engine.ocr(str(ocr_path))

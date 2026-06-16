@@ -257,6 +257,8 @@ def _ocr_with_dpi_ladder(
     output_dir: Path,
     page_number: int,
     ocr_engine,
+    *,
+    language: str | None = None,
 ) -> tuple[Path, object, str]:
     """Render a scanned PDF page at progressively higher DPI until
     the cascade produces a usable result.
@@ -265,6 +267,13 @@ def _ocr_with_dpi_ladder(
     file is the *highest* DPI render we tried (the one whose OCR
     result we kept). The function is fail-safe: on any exception
     we return the result of the *last successful* attempt.
+
+    The optional ``language`` keyword is the detected page
+    language (``"es"``, ``"en"`` ...). It is forwarded to the
+    engine's ``extract`` so the cascade can look up the
+    per-language adaptive thresholds (O2) without the parser
+    having to mutate a mutable instance attribute on the
+    engine.
     """
     from app.ocr.base import OCRResult
 
@@ -287,7 +296,7 @@ def _ocr_with_dpi_ladder(
         image_file = image_file.with_suffix(rendered_ext)
 
         try:
-            ocr = ocr_engine.extract(image_file)
+            ocr = ocr_engine.extract(image_file, language=language)
         except Exception as exc:
             # OPS-2: the OCR engine itself can crash on a
             # particular image (corrupt raster, tesseract
@@ -629,19 +638,6 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
             except Exception:  # pragma: no cover - defensive
                 pass
 
-            # Tell the cascade the current page's language so the
-            # per-language thresholds apply. We use ``getattr`` /
-            # ``setattr`` instead of a direct attribute access
-            # because ``BaseOCREngine`` is a ``Protocol`` and the
-            # cascade-specific ``current_language`` is not part of
-            # the interface contract. Non-cascading engines (single
-            # Tesseract, single PaddleOCR) will simply ignore the
-            # attribute set.
-            try:
-                setattr(ocr_engine, "current_language", effective_profile.detected)
-            except Exception:  # pragma: no cover - defensive
-                pass
-
             # --- Digital fast path: embedded text is enough ----------
             if len(text) >= 30:
                 table_md = _extract_table_markdown(path, index - 1)
@@ -680,6 +676,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                     output_dir,
                     index,
                     ocr_engine,
+                    language=effective_profile.detected,
                 )
                 image_path = str(image_file)
                 text = ocr.text or text

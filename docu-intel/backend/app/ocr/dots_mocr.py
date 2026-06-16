@@ -23,7 +23,12 @@ class DotsMOCREngine:
     def __init__(self, config: DotsMOCRConfig) -> None:
         self.config = config
 
-    def extract(self, image_path: Path) -> OCRResult:
+    def extract(
+        self,
+        image_path: Path,
+        *,
+        language: str | None = None,
+    ) -> OCRResult:
         if not self.config.enabled:
             raise RuntimeError("dots.mocr integration is disabled")
         if not self.config.endpoint:

@@ -54,7 +54,12 @@ class TesseractOCREngine:
                 "apt-get install -y tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng"
             ) from exc
 
-    def extract(self, image_path: Path) -> OCRResult:
+    def extract(
+        self,
+        image_path: Path,
+        *,
+        language: str | None = None,
+    ) -> OCRResult:
         start = time.perf_counter()
         ocr_path = preprocess_for_tesseract(image_path)
         image = Image.open(ocr_path)

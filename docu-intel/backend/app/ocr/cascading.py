@@ -151,14 +151,6 @@ class CascadingOCREngine:
         self.min_chars = min_chars
         self.min_confidence = min_confidence
         self.tier4_quality_threshold = tier4_quality_threshold
-        # O2 — per-page language context. The parser sets this before
-        # each ``extract`` call; the cascade reads it to look up the
-        # per-language thresholds. ``None`` means "no detection, use
-        # the legacy document-wide constants". The cascade is *not*
-        # thread-safe w.r.t. this attribute; the workers that build
-        # a fresh cascade per process rely on the parser always
-        # setting it before calling.
-        self.current_language: str | None = None
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
         # value.
@@ -168,13 +160,36 @@ class CascadingOCREngine:
     def name(self) -> str:
         return self._name
 
-    def extract(self, image_path: Path) -> OCRResult:
+    def extract(
+        self,
+        image_path: Path,
+        *,
+        language: str | None = None,
+    ) -> OCRResult:
+        """Run the cascade on a single image.
+
+        The ``language`` keyword is the detected page language
+        (e.g. ``"es"``, ``"en"``). It is used to look up the
+        per-language adaptive thresholds (O2) when the
+        setting ``ocr_cascading_use_adaptive_thresholds`` is
+        on. ``None`` means "no detection", and the cascade
+        falls back to the document-wide ``self.min_chars`` /
+        ``self.min_confidence`` constants.
+
+        ``language`` is passed as a parameter (not stored on
+        ``self``) so two threads can run the cascade in
+        parallel — the previous design stored the language
+        on ``self.current_language`` and the parser had to
+        set it via ``setattr`` before each call, which
+        raced when multiple pages were processed in
+        parallel.
+        """
         start = time.perf_counter()
-        primary_result = self.primary.extract(image_path)
+        primary_result = self.primary.extract(image_path, language=language)
         track_ocr_duration(time.perf_counter() - start)
 
-        if self._is_acceptable(primary_result):
-            return self._finalize(image_path, self.primary.name, primary_result)
+        if self._is_acceptable(primary_result, language=language):
+            return self._finalize(image_path, self.primary.name, primary_result, language)
 
         # Escalate to the fallback. Any failure here is best-effort:
         # we keep the primary result so the user at least sees *some*
@@ -182,26 +197,29 @@ class CascadingOCREngine:
         # downstream catches the truly impossible cases.
         start = time.perf_counter()
         try:
-            fallback_result = self.fallback.extract(image_path)
+            fallback_result = self.fallback.extract(image_path, language=language)
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.fallback.name, exc)
-            return self._finalize(image_path, self.primary.name, primary_result)
+            return self._finalize(image_path, self.primary.name, primary_result, language)
         track_ocr_duration(time.perf_counter() - start)
 
         should_replace, reason = _should_replace_with_fallback(primary_result, fallback_result)
         if should_replace:
             # Tier 2 won — try Tier 3 only if it's wired in AND Tier 2
             # is still weak (below thresholds). Otherwise return Tier 2.
-            if self.pp_structure is not None and not self._is_acceptable(fallback_result):
-                tier3 = self._try_tier3(image_path, primary_result, fallback_result)
+            if self.pp_structure is not None and not self._is_acceptable(
+                fallback_result, language=language
+            ):
+                tier3 = self._try_tier3(image_path, primary_result, fallback_result, language)
                 if tier3 is not None:
                     return self._finalize(
                         image_path,
                         self.pp_structure.name if self.pp_structure else self._name,
                         tier3,
+                        language,
                     )
-            return self._finalize(image_path, self.fallback.name, fallback_result)
+            return self._finalize(image_path, self.fallback.name, fallback_result, language)
 
         # S0.6 — record why the cascade kept the primary result instead
         # of paying for the Tier 2 win. The Prometheus label lets the
@@ -221,17 +239,18 @@ class CascadingOCREngine:
 
         # Tier 2 didn't beat Tier 1 — try Tier 3 if available.
         if self.pp_structure is not None:
-            tier3 = self._try_tier3(image_path, primary_result, fallback_result)
+            tier3 = self._try_tier3(image_path, primary_result, fallback_result, language)
             if tier3 is not None:
-                return self._finalize(image_path, self.pp_structure.name, tier3)
+                return self._finalize(image_path, self.pp_structure.name, tier3, language)
 
-        return self._finalize(image_path, self.primary.name, primary_result)
+        return self._finalize(image_path, self.primary.name, primary_result, language)
 
     def _try_tier3(
         self,
         image_path: Path,
         primary_result: OCRResult,
         fallback_result: OCRResult,
+        language: str | None = None,
     ) -> OCRResult | None:
         """Run PP-Structure on the page. Returns the best of the three
         results, or ``None`` if Tier 3 failed / didn't beat the others.
@@ -243,7 +262,7 @@ class CascadingOCREngine:
         assert self.pp_structure is not None  # caller-guaranteed
         start = time.perf_counter()
         try:
-            tier3_result = self.pp_structure.extract(image_path)
+            tier3_result = self.pp_structure.extract(image_path, language=language)
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.pp_structure.name, exc)
@@ -262,19 +281,30 @@ class CascadingOCREngine:
             return tier3_result
         return None
 
-    def _finalize(self, image_path: Path, tier: str, result: OCRResult) -> OCRResult:
+    def _finalize(
+        self,
+        image_path: Path,
+        tier: str,
+        result: OCRResult,
+        language: str | None = None,
+    ) -> OCRResult:
         if self.vlm_ocr is None or _quality(result) >= self.tier4_quality_threshold:
             return self._record_winner(tier, result)
-        tier4_result = self._try_tier4(image_path, result)
+        tier4_result = self._try_tier4(image_path, result, language)
         if tier4_result is not None:
             return tier4_result
         return self._record_winner(tier, result)
 
-    def _try_tier4(self, image_path: Path, best_prior: OCRResult) -> OCRResult | None:
+    def _try_tier4(
+        self,
+        image_path: Path,
+        best_prior: OCRResult,
+        language: str | None = None,
+    ) -> OCRResult | None:
         assert self.vlm_ocr is not None
         start = time.perf_counter()
         try:
-            tier4_result = self.vlm_ocr.extract(image_path)
+            tier4_result = self.vlm_ocr.extract(image_path, language=language)
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.vlm_ocr.name, exc)
@@ -285,7 +315,12 @@ class CascadingOCREngine:
             return self._record_winner(self.vlm_ocr.name, tier4_result)
         return None
 
-    def _is_acceptable(self, result: OCRResult) -> bool:
+    def _is_acceptable(
+        self,
+        result: OCRResult,
+        *,
+        language: str | None = None,
+    ) -> bool:
         """A primary result is acceptable when it has enough text and
         a confidence above the configured floor.
 
@@ -297,28 +332,28 @@ class CascadingOCREngine:
         ``track_ocr_language_threshold_used`` counter so the admin
         UI can show which thresholds are actually firing.
         """
-        thresholds = self._thresholds_for_current_page()
+        thresholds = self._thresholds_for_language(language)
         if not result.text or len(result.text.strip()) < thresholds.min_chars:
             return False
         if result.confidence is not None and result.confidence < thresholds.min_confidence:
             return False
         return True
 
-    def _thresholds_for_current_page(self) -> LanguageThresholds:
-        """Return the thresholds to use for the current page.
+    def _thresholds_for_language(self, language: str | None) -> LanguageThresholds:
+        """Return the thresholds to use for the given language.
 
         Falls back to the document-wide ``self.min_chars`` /
         ``self.min_confidence`` when adaptive thresholds are
         disabled or no language has been detected.
         """
-        if not settings.ocr_cascading_use_adaptive_thresholds or not self.current_language:
+        if not settings.ocr_cascading_use_adaptive_thresholds or not language:
             return LanguageThresholds(
                 min_chars=self.min_chars,
                 min_confidence=self.min_confidence,
             )
-        thresholds = thresholds_for(self.current_language)
-        track_ocr_language_threshold_used(self.current_language, "min_chars")
-        track_ocr_language_threshold_used(self.current_language, "min_confidence")
+        thresholds = thresholds_for(language)
+        track_ocr_language_threshold_used(language, "min_chars")
+        track_ocr_language_threshold_used(language, "min_confidence")
         return thresholds
 
     def _is_better(self, candidate: OCRResult, baseline: OCRResult) -> bool:

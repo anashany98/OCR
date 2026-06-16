@@ -56,12 +56,32 @@ class BaseOCREngine(Protocol):
     The ``name`` attribute is the engine's identity (e.g. ``"tesseract"``,
     ``"paddleocr"``). The cascading engine has a dynamic ``name`` that
     reflects which underlying engine won the last call.
+
+    The ``language`` keyword on :meth:`extract` is the page's
+    detected language (e.g. ``"es"``, ``"en"``). Single-engine
+    implementations can ignore it; the cascading engine uses it
+    to look up the per-language adaptive thresholds (O2). The
+    keyword is part of the contract (not just a cascading
+    attribute) so the parser does not have to mutate the
+    engine's instance state before each call, which used to
+    race when multiple pages were processed in parallel.
     """
 
     name: str
 
-    def extract(self, image_path: Path) -> OCRResult:
-        """Run OCR on a single image file and return the result."""
+    def extract(
+        self,
+        image_path: Path,
+        *,
+        language: str | None = None,
+    ) -> OCRResult:
+        """Run OCR on a single image file and return the result.
+
+        ``language`` is an optional hint for engines that can
+        bias their internal model (the cascading engine uses
+        it for per-language thresholds). Default ``None`` means
+        "no detection, use the document-wide defaults".
+        """
         ...
 
 
