@@ -12,10 +12,13 @@ The pattern here is:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.core.config import settings
 from app.services.cache import cache_service
+
+logger = logging.getLogger("app.services.runtime_settings")
 
 # TTL for runtime settings (24 hours)
 RUNTIME_SETTINGS_TTL = 86400
@@ -86,8 +89,13 @@ class RuntimeSettingsService:
                 value = cache_service.get(key)
                 if value is not None:
                     result[setting_key] = value
-        except Exception:
-            pass
+        except Exception as exc:
+            # The runtime-settings snapshot is best-effort: a
+            # transient Redis failure (e.g. cluster failover) should
+            # not break the admin endpoint. We log at WARNING so
+            # the operator can see when the snapshot is empty
+            # because the cache was unreachable.
+            logger.warning("runtime_settings_snapshot_failed error=%s", exc)
         return result
 
 

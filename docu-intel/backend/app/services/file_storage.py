@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 from pathlib import Path
+
+logger = logging.getLogger("app.services.file_storage")
 
 
 def calculate_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -49,6 +52,16 @@ def copy_to_storage(
     # vision client, and the thumbnail generator can all read the file.
     try:
         os.chmod(target, 0o644)
-    except OSError:
-        pass
+    except OSError as exc:
+        # On Windows ``os.chmod`` only honours the read-only bit;
+        # the underlying NTFS ACL is what really controls access.
+        # A failure here usually means the volume does not
+        # support POSIX permissions at all (FAT32, exFAT,
+        # bind-mounted SMB). We log at WARNING so the operator
+        # can see the source ACL is unchanged.
+        logger.warning(
+            "file_storage_chmod_failed path=%s error=%s",
+            target,
+            exc,
+        )
     return relative_path

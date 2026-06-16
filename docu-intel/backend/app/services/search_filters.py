@@ -121,8 +121,16 @@ def normalise_filters(filters: dict[str, Any] | None) -> dict[str, Any]:
     if "budget_scope_id" in filters:
         try:
             out["budget_scope_id"] = int(filters["budget_scope_id"])
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as exc:
+            # An unparseable budget_scope_id is operator error
+            # (they pasted a UUID or a string). The downstream
+            # filter call would also fail; logging at WARNING
+            # surfaces the bad input without raising.
+            logger.warning(
+                "search_filter_budget_scope_id_invalid value=%r error=%s",
+                filters.get("budget_scope_id"),
+                exc,
+            )
     if filters.get("document_type"):
         out["document_type"] = str(filters["document_type"])
     if filters.get("status"):

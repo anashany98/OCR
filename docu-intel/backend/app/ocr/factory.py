@@ -228,8 +228,17 @@ def _exercise(engine: BaseOCREngine) -> None:
     finally:
         try:
             image_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            # Best-effort cleanup of the synthetic preload image.
+            # A locked file on Windows is not actionable: the OS
+            # will reap the tmp dir eventually. Log at DEBUG so
+            # the operator can see the leak pattern if it
+            # becomes frequent.
+            logger.debug(
+                "ocr_preload_tmp_cleanup_failed path=%s error=%s",
+                image_path,
+                exc,
+            )
 
 
 __all__ = ["get_ocr_engine_class", "get_ocr_engine", "preload_ocr_engine", "clear_ocr_engine_cache"]

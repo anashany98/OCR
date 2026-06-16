@@ -25,6 +25,7 @@ they stay cheap and predictable.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import unicodedata
 
@@ -35,6 +36,9 @@ from sqlalchemy.orm import Session
 from app.models import AIAnswer, AIQuestion, User
 
 from .context import ContextItem
+
+
+logger = logging.getLogger("app.ai.validation")
 
 
 # ---------------------------------------------------------------------------
@@ -529,8 +533,20 @@ def build_memory_block(db: Session, user: User, question: str, limit: int = 3) -
                         entities.append(f"proyecto {p['project_name']}")
                 if doc.get("filename"):
                     entities.append(f"archivo {doc['filename']}")
-            except Exception:
-                pass
+            except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+                # The ``resolved_document_json`` column is a free-form
+                # payload written by the agent; we cannot enforce
+                # its shape here. A malformed row just means we
+                # skip the entity extraction for that past answer
+                # and keep building the memory block from the
+                # remaining entries. We log at DEBUG so the
+                # operator can spot repeated corruption without
+                # filling INFO logs.
+                logger.debug(
+                    "memory_block_entity_parse_failed answer_id=%s error=%s",
+                    getattr(ans, "id", "?"),
+                    exc,
+                )
         if entities:
             lines.append("- " + ", ".join(entities))
         elif snippet:

@@ -23,11 +23,14 @@ compact email-style preview.
 
 from __future__ import annotations
 
+import logging
 import re
 from html.parser import HTMLParser
 from pathlib import Path
 
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
+
+logger = logging.getLogger("app.parsers.msg")
 
 # Hard cap on the body we surface into the OCR panel. Forwarded threads can
 # easily be a few MB; the panel is not the place to dump the whole thing.
@@ -295,15 +298,29 @@ def parse_msg(path: Path) -> ExtractedDocument:
                     or "(adjunto sin nombre)"
                 )
                 attachment_names.append(name)
-        except Exception:
-            pass
+        except Exception as exc:
+            # The .msg MAPI iterator is fragile on malformed /
+            # password-protected files. We log at WARNING so
+            # the operator can see when the attachment list is
+            # silently dropped, and keep going with the body
+            # text.
+            logger.warning(
+                "msg_attachment_list_failed subject=%s error=%s",
+                subject,
+                exc,
+            )
     finally:
         close = getattr(msg, "close", None)
         if callable(close):
             try:
                 close()
-            except Exception:
-                pass
+            except Exception as exc:
+                # ``extract-msg`` opens a temp MAPI file that the
+                # library itself should clean up. A close failure
+                # means we leaked a temp handle; on Windows this
+                # can also block subsequent reads. Log at
+                # WARNING so the operator can spot a leak.
+                logger.warning("msg_close_failed subject=%s error=%s", subject, exc)
 
     header_lines = [
         f"Asunto: {subject}",

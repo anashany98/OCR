@@ -515,8 +515,18 @@ def suggest_rooms(
                 # moment, but if memory is tight the user can unload
                 # the other explicitly).
                 _VM.ensure_loaded(target_model)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Vision model load failures are best-effort: the
+            # structured / non-thinking variants still go through
+            # the model that's already loaded, so a transient
+            # failure here should not 500 the whole endpoint.
+            # We log at WARNING so the operator can see when the
+            # vision model swap is silently skipped.
+            logger.warning(
+                "vision_model_swap_skipped model=%s error=%s",
+                target_model,
+                exc,
+            )
 
     # Non-thinking variant for JSON output.
     client = LocalVisionClient(use_structured_model=True)
@@ -600,8 +610,16 @@ async def _describe_plan_page(client: LocalVisionClient, pdf_path: Path, page_in
     finally:
         try:
             tmp.unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            # Best-effort cleanup. A locked tmp file on Windows
+            # is not actionable: it will be reaped by the OS.
+            # We log at DEBUG so the operator can see the leak
+            # pattern if it becomes frequent.
+            logger.debug(
+                "vision_tmp_cleanup_failed path=%s error=%s",
+                tmp,
+                exc,
+            )
 
 
 def _run_plan_vision_sync(client: LocalVisionClient, pdf_path: Path, page_index: int) -> str:

@@ -123,8 +123,18 @@ def parse_dxf(path: str | Path, output_dir: Path | None = None) -> DxfExtraction
                 x_val = x.x if x else 0
                 y_pos = y_val.y if y_val else 0
                 dimensions.append((value, unit, float(x_val), float(y_pos)))
-            except Exception:
-                pass
+            except (AttributeError, ValueError, TypeError) as exc:
+                # DXF files in the wild frequently have malformed
+                # DIMENSION entities (custom block definitions,
+                # proxy graphics, vendor-specific attributes). We
+                # skip them and keep parsing the rest. The DEBUG
+                # log keeps a trace for forensic analysis without
+                # filling INFO logs.
+                logger.debug(
+                    "dxf_dimension_skipped handle=%s error=%s",
+                    getattr(entity, "dxf", "?"),
+                    exc,
+                )
 
         elif dxftype == "INSERT":
             name = entity.dxf.name if hasattr(entity.dxf, "name") else ""

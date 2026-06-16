@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import logging
 import random
 import time
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from typing import AsyncIterator
 import httpx
 
 from app.core.config import settings
+
+logger = logging.getLogger("app.ai.local_client")
 
 
 @dataclass(frozen=True)
@@ -481,5 +484,16 @@ class LocalVisionClient:
             if output_dir is None and tmp.exists():
                 try:
                     tmp.unlink()
-                except Exception:
-                    pass
+                except OSError as exc:
+                    # Best-effort cleanup of a tmp file. A failure
+                    # here (e.g. another process holding the file
+                    # on Windows) is not actionable: the file will
+                    # be reaped by the OS at some point. We log
+                    # at DEBUG so the operator can see it if they
+                    # dig, but the transcription result is not
+                    # affected.
+                    logger.debug(
+                        "transcribe_table_tmp_cleanup_failed path=%s error=%s",
+                        tmp,
+                        exc,
+                    )

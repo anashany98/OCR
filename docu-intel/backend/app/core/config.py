@@ -1,9 +1,12 @@
 from functools import lru_cache
+import logging
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("app.core.config")
 
 
 class Settings(BaseSettings):
@@ -529,9 +532,19 @@ class Settings(BaseSettings):
                     'Generate a secure password with: python -c "import secrets; print(secrets.token_urlsafe(24))"'
                 )
         except ValueError:
+            # Re-raise the explicit weak-password error verbatim
+            # so the operator sees the actionable message above.
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            # The validator must not crash the process on an
+            # unparseable URL: pydantic will already surface the
+            # underlying ``InvalidURL`` / ``ValueError`` to the
+            # caller. We log so the silent skip is visible.
+            logger.warning(
+                "validate_db_password_unexpected error=%s url_scheme=%s",
+                exc,
+                value.split("://", 1)[0] if "://" in value else "<no-scheme>",
+            )
         return value
 
 

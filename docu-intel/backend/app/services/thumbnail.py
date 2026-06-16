@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import io
+import logging
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from app.core.config import settings
+
+logger = logging.getLogger("app.services.thumbnail")
 
 THUMBNAIL_SIZE = (200, 280)
 THUMBNAIL_DIR = settings.files_dir / "thumbnails"
@@ -221,8 +224,13 @@ def generate_msg_thumbnail(msg_path: Path, document_hash: str) -> Path | None:
             if callable(close):
                 try:
                     close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # ``extract-msg`` opens a temp MAPI file. A
+                    # close failure leaks a file handle (and on
+                    # Windows can block subsequent reads). Log
+                    # at WARNING so the operator can see when
+                    # the .msg temp file is left behind.
+                    logger.warning("thumbnail_msg_close_failed error=%s", exc)
 
         W, H = THUMBNAIL_SIZE
         scale = 2
