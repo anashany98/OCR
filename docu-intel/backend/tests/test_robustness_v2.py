@@ -22,13 +22,10 @@ Three sub-areas:
 """
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 
-from app.ai.context import ContextItem
 from app.ocr.base import OCRBlock, OCRResult
 from app.services import vector_store as vector_store_module
 
@@ -176,7 +173,6 @@ def test_base_ocr_engine_extract_accepts_language_kwarg() -> None:
     structural: a dummy class that implements the protocol
     must be considered a valid engine.
     """
-    from app.ocr.base import BaseOCREngine
 
     class _ProtocolImpl:
         name = "stub"
