@@ -187,6 +187,22 @@ async def answer_question(
         save_active_context,
     )
 
+    # CTX-3: load the active conversation context and resolve any
+    # follow-up references in the question ("este presupuesto" → the
+    # active budget). The rewritten question is what the tool
+    # selector and the LLM prompt see; the resolution is what the
+    # scope guard and the intent router consume. When the request is
+    # stateless (no session_id) we still build an empty context so
+    # the downstream code path is identical.
+    active_context: ActiveContext = (
+        load_active_context(db, user, session_id) if session_id else ActiveContext()
+    )
+    from .reference_resolver import resolve_references
+
+    resolved_question, reference_resolution = resolve_references(
+        question, active_context
+    )
+
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
     cached = await get_cached_answer_async(
@@ -221,6 +237,13 @@ async def answer_question(
         db.commit()
         db.refresh(answer_row)
         return answer_row
+
+    # CTX-3: from this point on, the rest of the orchestrator sees the
+    # *resolved* question so the tool selector and the LLM prompt
+    # receive the [Contexto: ...] block when the user used a follow-up
+    # reference. The original question was already used for the cache
+    # key above and is preserved in the AIQuestion row.
+    question = resolved_question
 
     # Generate new answer
     question_row = AIQuestion(user_id=user.id, question=question)
