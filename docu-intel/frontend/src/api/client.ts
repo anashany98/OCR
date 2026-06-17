@@ -5,6 +5,7 @@ import { businessApi } from "./business"
 import { documentsApi } from "./documents"
 import { integrationsApi } from "./integrations"
 import { learningApi } from "./learning"
+import { ocrFlowStreamUrl } from "./ocrFlow"
 import { searchApi } from "./search"
 
 export {
@@ -16,6 +17,8 @@ export {
   request,
   thumbnailUrl,
 } from "./core"
+
+export { ocrFlowStreamUrl } from "./ocrFlow"
 
 export const api = {
   ...authApi,

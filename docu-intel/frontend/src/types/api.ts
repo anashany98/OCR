@@ -866,3 +866,40 @@ export type LearnedPattern = {
   created_at: string
   updated_at: string
 }
+
+
+// ---- OCR flow admin page ----
+
+export interface OcrFlowLiveJob {
+  job_id: number
+  document_id: number
+  original_filename: string
+  job_type: string
+  status: string
+  started_at: string | null
+  retries: number
+  error: string | null
+}
+
+export interface OcrFlowDocumentStep {
+  kind: string
+  at: string | null
+  details: Record<string, unknown>
+  error: string | null
+}
+
+export interface OcrCascadeAttempt {
+  id: number
+  document_id: number
+  page_id: number
+  page_number: number
+  tier: string
+  tier_index: number
+  success: boolean
+  duration_ms: number
+  confidence: number | null
+  chars: number
+  reason: string | null
+  error_message: string | null
+  created_at: string
+}

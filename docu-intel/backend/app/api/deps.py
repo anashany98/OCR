@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -17,12 +17,22 @@ def get_current_user(
     db: Session = Depends(get_db),
     authorization: str | None = Header(default=None),
     cookie_token: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
+    token: str | None = Query(default=None),
 ) -> User:
-    token = cookie_token
+    # ``token`` is supplied via the ``?token=...`` query string. The
+    # ``EventSource`` browser API cannot send custom ``Authorization``
+    # headers so SSE endpoints accept the bearer token this way.
+    query_token = token
+    bearer = None
+    if cookie_token:
+        bearer = cookie_token
     if authorization and authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-    if not token:
+        bearer = authorization.split(" ", 1)[1].strip()
+    if not bearer and query_token:
+        bearer = query_token
+    if not bearer:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    token = bearer
 
     try:
         payload = decode_access_token(token)

@@ -41,6 +41,11 @@ const AdminLearningRoute = lazy(() =>
     default: module.AdminLearningRoute,
   })),
 )
+const AdminOcrFlowRoute = lazy(() =>
+  import("@/pages/admin/AdminOcrFlowRoute").then((module) => ({
+    default: module.AdminOcrFlowRoute,
+  })),
+)
 const BudgetsPage = lazy(() =>
   import("@/pages/BudgetsPage").then((module) => ({ default: module.BudgetsPage })),
 )
@@ -268,6 +273,15 @@ export const router = createBrowserRouter([
               </Suspense>
             ),
             handle: { title: "Administración · Aprendizaje IA" },
+          },
+          {
+            path: "flujo-ocr",
+            element: (
+              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+                <AdminOcrFlowRoute />
+              </Suspense>
+            ),
+            handle: { title: "Administración · Flujo OCR" },
           },
         ],
       },
