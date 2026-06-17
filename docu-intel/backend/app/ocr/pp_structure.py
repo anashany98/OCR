@@ -31,6 +31,7 @@ backwards-compatible alias for tests).
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -76,8 +77,34 @@ class PPStructureEngine:
 
     @property
     def _pipeline(self):
-        """Backwards-compatible accessor used by the legacy tests."""
-        return self._adapter._holder.get()
+        """Backwards-compatible accessor used by the legacy tests.
+
+        Returns the underlying PaddleX pipeline object if it has been
+        built, otherwise ``None``. We deliberately do **not** trigger
+        the lazy init here so that ``monkeypatch.setattr(engine,
+        "_pipeline", ...)`` (which internally does a ``getattr`` first)
+        does not pay the ~500 MB model download on every test run.
+        """
+        return self._adapter._holder._instance
+
+    @_pipeline.setter
+    def _pipeline(self, value):  # pragma: no cover - test shim
+        """Backwards-compat setter: ``monkeypatch.setattr(engine, "_pipeline", ...)``.
+
+        The legacy tests inject a stub pipeline with a ``predict`` method.
+        The adapter's holder supports a factory-style replacement so the
+        next ``engine.extract`` call reuses the stub. Tests that did this
+        pre-refactor keep working unchanged.
+
+        We deliberately avoid ``_holder.get()`` here so the setter does
+        not accidentally trip the holder's lazy-init and download the
+        real PaddleX pipeline.
+        """
+        holder = self._adapter._holder
+        holder._instance = value
+        # Also redirect the factory so the next ``get()`` (after the
+        # holder was reset) returns the same stub.
+        holder._engine_factory = lambda _previous=value: value
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()

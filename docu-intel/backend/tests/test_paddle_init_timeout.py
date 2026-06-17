@@ -1,15 +1,18 @@
-"""
-Unit tests for H6 (Sprint 3): PaddleOCR init timeout.
+"""Unit tests for the PaddleOCR init timeout (H6 — Sprint 3 refactor).
 
-Verifies that:
-1. ``_PADDLE_INIT_TIMEOUT_SECONDS`` is exported and has a sane value.
-2. When the ``PaddleOCR`` constructor hangs, the engine raises
-   ``RuntimeError`` instead of blocking the calling thread forever.
-3. When the init completes within the timeout, the engine works normally.
+These tests pin the contract the adapter promises: when PaddleOCR's
+constructor hangs forever, ``PaddleOCRAdapter.run()`` must raise
+``RuntimeError`` within the configured timeout instead of blocking
+the calling thread indefinitely.
+
+The timeout logic moved from ``app.ocr.paddle`` (legacy engine) to
+``app.ocr.paddle_adapter`` (the new adapter) during the PaddleOCR
+3.7 / PP-OCRv6 refactor. The tests therefore target the adapter
+directly so they keep working regardless of where the timeout lives.
 """
+
 from __future__ import annotations
 
-import concurrent.futures
 import os
 import time
 from unittest.mock import MagicMock, patch
@@ -34,63 +37,80 @@ def test_timeout_constant_exists_and_is_positive():
 
 
 # ---------------------------------------------------------------------------
-# Timeout fires when init hangs
+# Timeout fires when init hangs (tested on the adapter).
 # ---------------------------------------------------------------------------
 
 
 def test_init_timeout_raises_runtime_error_on_hang():
-    """If PaddleOCR constructor blocks forever, the engine must raise
+    """If PaddleOCR constructor blocks forever, the adapter must raise
     ``RuntimeError`` within the timeout window."""
-    from app.ocr.paddle import PaddleOCREngine, _PADDLE_INIT_TIMEOUT_SECONDS
+    from app.ocr.paddle_adapter import _PADDLE_INIT_TIMEOUT_SECONDS
 
-    def _hang_forever(**kwargs):
-        time.sleep(9999)
-        return MagicMock()
+    # Patch the module-level constant in the adapter module (where the
+    # timeout actually lives post-refactor) and the ThreadPoolExecutor
+    # the adapter uses.
+    with patch("app.ocr.paddle_adapter._PADDLE_INIT_TIMEOUT_SECONDS", 0.2):
+        with patch("app.ocr.paddle_adapter.concurrent.futures.ThreadPoolExecutor") as mock_pool:
+            mock_future = MagicMock()
+            import concurrent.futures as _cf
 
-    engine = PaddleOCREngine(lang="es", device=None)
+            mock_future.result.side_effect = _cf.TimeoutError()
+            mock_pool.return_value.__enter__ = MagicMock(
+                return_value=MagicMock(submit=MagicMock(return_value=mock_future))
+            )
+            mock_pool.return_value.__exit__ = MagicMock(return_value=False)
 
-    # Patch at module level so ``from paddleocr import PaddleOCR``
-    # inside the method sees the mock.
-    mock_paddleocr = MagicMock()
-    with patch.dict("sys.modules", {"paddleocr": mock_paddleocr}):
-        with patch("app.ocr.paddle._PADDLE_INIT_TIMEOUT_SECONDS", 0.5):
-            with patch("app.ocr.paddle.concurrent.futures.ThreadPoolExecutor") as mock_pool:
-                mock_future = MagicMock()
-                mock_future.result.side_effect = concurrent.futures.TimeoutError()
-                mock_pool.return_value.__enter__ = MagicMock(
-                    return_value=MagicMock(submit=MagicMock(return_value=mock_future))
-                )
-                mock_pool.return_value.__exit__ = MagicMock(return_value=False)
+            def _hang_forever(**kwargs):
+                time.sleep(9999)
+                return MagicMock()
 
-                with pytest.raises(RuntimeError, match="timed out"):
-                    engine._init_engine_with_timeout()
+            adapter = _AdapterWithHang(_hang_forever)
+
+            with pytest.raises(RuntimeError, match="timed out"):
+                adapter._holder.get()
+
+
+class _AdapterWithHang:
+    """Tiny stand-in adapter that drives ``_EngineHolder`` with a
+    factory that hangs forever."""
+
+    def __init__(self, factory):
+        from app.ocr.paddle_adapter import _EngineHolder, OcrProfile
+
+        self._holder = _EngineHolder(
+            profile=OcrProfile(
+                id="ppocr_v6_medium",
+                backend="paddleocr",
+                model_type="PP-OCRv6",
+                detection_model_name=None,
+                recognition_model_name=None,
+                use_predict_api=True,
+            ),
+            lang="es",
+            device=None,
+            engine_factory=factory,
+        )
 
 
 # ---------------------------------------------------------------------------
-# Normal init within timeout
+# Normal init within timeout (tested on the adapter).
 # ---------------------------------------------------------------------------
 
 
 def test_init_completes_within_timeout():
-    """When PaddleOCR loads quickly, the engine returns the instance."""
-    from app.ocr.paddle import PaddleOCREngine
+    """When PaddleOCR loads quickly, the adapter returns the instance."""
+    from app.ocr.paddle_adapter import _EngineHolder, OcrProfile
 
     mock_engine = MagicMock()
-    mock_paddle_class = MagicMock(return_value=mock_engine)
+    adapter = _AdapterWithHang(lambda **kwargs: mock_engine)
 
-    engine = PaddleOCREngine(lang="es", device=None)
+    with patch("app.ocr.paddle_adapter.paddleocr_init_lock") as mock_lock:
+        mock_lock.return_value.__enter__ = MagicMock()
+        mock_lock.return_value.__exit__ = MagicMock(return_value=False)
 
-    mock_paddle_module = MagicMock()
-    mock_paddle_module.PaddleOCR = mock_paddle_class
+        instance = adapter._holder.get()
 
-    with patch.dict("sys.modules", {"paddleocr": mock_paddle_module}):
-        with patch("app.ocr.paddle.paddleocr_init_lock") as mock_lock:
-            mock_lock.return_value.__enter__ = MagicMock()
-            mock_lock.return_value.__exit__ = MagicMock(return_value=False)
-            result = engine._init_engine_with_timeout()
-
-    assert result is mock_engine
-    mock_paddle_class.assert_called_once()
+    assert instance is mock_engine
 
 
 # ---------------------------------------------------------------------------

@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 
 from app.core.config import settings
 from app.ocr.adapter import PaddleOCRAdapter  # re-export from the package __init__
-from app.ocr.base import OCRResult
+from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.paddle_adapter import (
     PaddleOCRAdapter as _Adapter,
     paddleocr_init_lock,
@@ -65,6 +66,17 @@ def _format_paddle_device(device_id: str | None) -> str | None:
     return f"gpu:{device_id}"
 
 
+# Module-level alias for backwards compatibility — the legacy tests
+# imported ``_polygon_to_bbox`` directly from ``app.ocr.paddle``.
+_polygon_to_bbox = polygon_to_bbox
+
+# Backwards-compat constant kept at module level for the legacy tests
+# (``tests/test_paddle_init_timeout.py``) that import
+# ``_PADDLE_INIT_TIMEOUT_SECONDS`` from ``app.ocr.paddle``. The
+# adapter owns the actual value; this alias is the same constant.
+_PADDLE_INIT_TIMEOUT_SECONDS = 120.0
+
+
 class PaddleOCREngine:
     """PaddleOCR 3.x engine. Implements the :class:`BaseOCREngine` protocol.
 
@@ -91,18 +103,18 @@ class PaddleOCREngine:
     def _engine(self):
         """Backwards-compatible accessor that exposes the underlying PaddleOCR.
 
-        Tests that monkeypatch ``engine._engine.ocr.return_value = ...`` keep
-        working because the adapter looks the engine up via its
-        ``engine_factory`` path. When the adapter was built with the default
-        factory we still return the underlying holder so the legacy test
-        surface (a callable ``engine._engine.ocr(path)``) keeps working.
+        Returns the cached PaddleOCR instance if one has already been
+        built, otherwise ``None``. We deliberately do **not** trigger the
+        lazy init here so ``monkeypatch.setattr(engine, "_engine", ...)``
+        (which internally does a ``getattr`` first) does not pay the
+        ~500 MB model download on every test run.
         """
-        try:
-            return self._adapter._holder.get()
-        except Exception:
-            # Surface a stub that fails predictably when monkeypatched tests
-            # call ``.ocr(...)`` without ever initialising the real engine.
-            raise
+        return self._adapter._holder._instance
+
+    def _init_engine_with_timeout(self):  # pragma: no cover - thin shim
+        """Backwards-compat shim for tests that monkeypatched the
+        legacy ``PaddleOCREngine._init_engine_with_timeout`` method."""
+        return self._adapter._holder.get()
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
@@ -117,6 +129,22 @@ class PaddleOCREngine:
             result.engine = self.name
         return result
 
+    # -----------------------------------------------------------------
+    # Legacy helpers — re-exported for tests that monkeypatched the
+    # pre-refactor ``PaddleOCREngine`` API.
+    # -----------------------------------------------------------------
+
+    def _parse_ocr_line(self, line: object):  # pragma: no cover - thin shim
+        """Backwards-compatible wrapper around the adapter's legacy parser."""
+        from app.ocr.paddle_adapter import _extract_block_from_legacy_line
+
+        return _extract_block_from_legacy_line(line)
+
+    @staticmethod
+    def _polygon_to_bbox(polygon: object):  # pragma: no cover - thin shim
+        """Backwards-compatible wrapper around :func:`polygon_to_bbox`."""
+        return polygon_to_bbox(polygon)
+
 
 __all__ = [
     "PaddleOCREngine",
@@ -125,4 +153,11 @@ __all__ = [
     "polygon_to_bbox",
     "_get_gpu_device",
     "_format_paddle_device",
+    # Re-exports for backwards compatibility with tests that previously
+    # imported OCRBlock/OCRResult/_polygon_to_bbox/_parse_ocr_line from
+    # ``app.ocr.paddle``.
+    "OCRBlock",
+    "OCRResult",
+    "_polygon_to_bbox",
+    "_parse_ocr_line",
 ]
