@@ -273,6 +273,17 @@ async def answer_question(
     # prefer when multiple are viable.
     tools = select_tools_for_question(question)
 
+    # CTX-6: structured-first path. The intent router may have
+    # classified the question as one of the business intents that has
+    # a dedicated SQL tool. Prepend those tool calls so they run
+    # first; the orchestrator still falls back to the regular RAG
+    # path when the structured tool returns ``found=False``.
+    from .tools import select_structured_tools
+
+    structured_tools = select_structured_tools(question, active_context=active_context)
+    if structured_tools:
+        tools = structured_tools + tools
+
     # CTX-4: apply the budget scope guard. When the active context
     # pins a specific budget (and the user did not ask for a global
     # view) the tool arguments are mutated to keep the retrieval

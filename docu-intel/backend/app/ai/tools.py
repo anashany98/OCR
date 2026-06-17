@@ -678,6 +678,116 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
 
 
 # ---------------------------------------------------------------------------
+# CTX-6 — Structured tools selected by the business intent router.
+#
+# The router in :mod:`app.ai.intent_router` classifies the question
+# into one of the business intents. For the intents that have a
+# dedicated SQL tool, this function emits a ToolCall that the
+# :func:`app.ai.context.collect_context` function dispatches to the
+# matching tool in :mod:`app.tools.internal`. The structured tool runs
+# FIRST; if it returns ``found=False`` the orchestrator falls back to
+# the regular RAG path.
+# ---------------------------------------------------------------------------
+
+
+from typing import Any
+
+
+def select_structured_tools(
+    question: str,
+    *,
+    active_context: Any | None = None,
+) -> list[ToolCall]:
+    """Return the structured tools the orchestrator should try first.
+
+    ``active_context`` is the :class:`app.ai.active_context.ActiveContext`
+    instance for the session. When the question is a follow-up
+    ("por cuanto esta presupuestado") the context supplies the
+    budget number. When the user named the budget explicitly the
+    function pulls it from the question.
+
+    The function is intentionally additive: it returns an empty list
+    when the intent does not match a structured tool, so the
+    orchestrator keeps falling back to the existing
+    :func:`select_tools_for_question` output.
+    """
+    from .intent_router import (
+        INTENT_ACCEPTED_BUDGETS,
+        INTENT_BUDGET_LINES,
+        INTENT_BUDGET_TOTAL,
+        INTENT_DELIVERY_NOTE,
+        INTENT_INVOICE_ORIGIN_ORDER,
+        INTENT_INVOICED_AMOUNT,
+        INTENT_PLAN_SUMMARY,
+        INTENT_SHIPPING_COST,
+        classify_intent,
+    )
+
+    classification = classify_intent(question, active_context)
+    intent = classification.intent
+
+    # The intent router returns ``needs_state=True`` when the intent
+    # requires an active context. When the context has nothing to
+    # resolve the follow-up, we still emit the tool call with an
+    # empty argument so the dispatcher can produce a structured "no
+    # se ha detectado presupuesto activo" answer.
+    budget_number = (active_context.current_budget_number if active_context else None) or None
+    budget_id = (active_context.current_budget_id if active_context else None) or None
+    folder_path = (active_context.current_folder_path if active_context else None) or None
+    invoice_number = (active_context.current_invoice_number if active_context else None) or None
+    order_number = (active_context.current_order_number if active_context else None) or None
+
+    # If the user named a budget number in the question, it wins.
+    explicit_budget = _extract_document_number(question)
+    if explicit_budget and (
+        "presupuesto" in _normalize(question)
+        or "budget" in _normalize(question)
+        or "presupuest" in _normalize(question)
+    ):
+        budget_number = explicit_budget
+        budget_id = None
+
+    if intent == INTENT_BUDGET_TOTAL:
+        return [ToolCall("get_budget_total", {
+            "budget_number": budget_number or "",
+            "budget_id": budget_id,
+        })]
+    if intent == INTENT_BUDGET_LINES:
+        return [ToolCall("get_budget_lines", {
+            "budget_number": budget_number or "",
+            "budget_id": budget_id,
+        })]
+    if intent == INTENT_INVOICED_AMOUNT:
+        return [ToolCall("get_invoiced_amount_for_budget", {
+            "budget_number": budget_number or "",
+            "budget_id": budget_id,
+        })]
+    if intent == INTENT_ACCEPTED_BUDGETS:
+        return [ToolCall("list_recent_accepted_budgets", {"limit": 10})]
+    if intent == INTENT_INVOICE_ORIGIN_ORDER:
+        return [ToolCall("get_invoice_origin_order", {
+            "invoice_number": invoice_number or "",
+        })]
+    if intent == INTENT_DELIVERY_NOTE:
+        return [ToolCall("find_delivery_note_in_scope", {
+            "budget_number": budget_number or "",
+            "folder_path": folder_path or "",
+        })]
+    if intent == INTENT_SHIPPING_COST:
+        return [ToolCall("find_shipping_cost_in_scope", {
+            "budget_number": budget_number or "",
+            "folder_path": folder_path or "",
+        })]
+    if intent == INTENT_PLAN_SUMMARY:
+        # Plan summaries still go through RAG (the structured data
+        # does not have a "summary" field), but we tag the tool
+        # selection so the orchestrator knows the question is about a
+        # plan and applies the right context windows.
+        return []
+    return []
+
+
+# ---------------------------------------------------------------------------
 # Question-classification helpers (aggregation + re-ranking)
 # ---------------------------------------------------------------------------
 

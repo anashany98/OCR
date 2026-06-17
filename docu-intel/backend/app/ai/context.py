@@ -153,6 +153,134 @@ def collect_context(
     resolved_doc_id: int | None = None
 
     for tool in tools:
+        if tool.name == "get_budget_total":
+            payload = internal.get_budget_total(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                budget_id=tool.arguments.get("budget_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Total presupuesto {payload.get('budget_number')}"
+                        if payload.get("found")
+                        else "Total presupuesto (no encontrado)"
+                    ),
+                )
+            )
+            if not payload.get("found"):
+                warnings.append(
+                    f"No he encontrado el presupuesto "
+                    f"{payload.get('budget_number') or 'indicado'} en las tablas estructuradas."
+                )
+        elif tool.name == "get_budget_lines":
+            payload = internal.get_budget_lines(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                budget_id=tool.arguments.get("budget_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Lineas presupuesto {payload.get('budget_number')} "
+                        f"({len(payload.get('lines') or [])} lineas)"
+                    ),
+                )
+            )
+        elif tool.name == "get_invoiced_amount_for_budget":
+            payload = internal.get_invoiced_amount_for_budget(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                budget_id=tool.arguments.get("budget_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Facturado presupuesto {payload.get('budget_number')}"
+                        if payload.get("found")
+                        else "Facturado presupuesto (no encontrado)"
+                    ),
+                )
+            )
+        elif tool.name == "list_recent_accepted_budgets":
+            payload = internal.list_recent_accepted_budgets(
+                db, limit=int(tool.arguments.get("limit") or 10)
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Presupuestos aceptados recientes ({payload.get('count')})"
+                    ),
+                )
+            )
+        elif tool.name == "get_invoice_origin_order":
+            payload = internal.get_invoice_origin_order(
+                db,
+                invoice_number=tool.arguments.get("invoice_number") or None,
+                invoice_id=tool.arguments.get("invoice_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Origen factura {payload.get('invoice_number')}"
+                        if payload.get("found")
+                        else "Origen factura (no encontrada)"
+                    ),
+                )
+            )
+        elif tool.name == "find_delivery_note_in_scope":
+            payload = internal.find_delivery_note_in_scope(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                folder_path=tool.arguments.get("folder_path") or None,
+                source_path_like=tool.arguments.get("source_path_like") or None,
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Albaranes en ambito {payload.get('scope')}"
+                        if payload.get("scope")
+                        else "Albaranes en ambito activo"
+                    ),
+                )
+            )
+            if not payload.get("found"):
+                warnings.append(
+                    "No he encontrado un albaran dentro del ambito activo. "
+                    "Si quieres buscar en todos los documentos dilo explicitamente."
+                )
+        elif tool.name == "find_shipping_cost_in_scope":
+            payload = internal.find_shipping_cost_in_scope(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                folder_path=tool.arguments.get("folder_path") or None,
+                source_path_like=tool.arguments.get("source_path_like") or None,
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Costes de envio en ambito {payload.get('scope')}"
+                    ),
+                )
+            )
+            if not payload.get("found"):
+                warnings.append(
+                    "No he encontrado conceptos de envio dentro del ambito activo."
+                )
         if tool.name == "find_document_by_filename":
             query = tool.arguments.get("query") or ""
             documents = internal.find_document_by_filename(db, query)
@@ -741,6 +869,37 @@ def document_context(document: Document, prefix: str) -> ContextItem:
         relevance_score=document.confidence,
         confidence=document.confidence,
         source_path=document.source_path,
+    )
+
+
+def _structured_context_item(
+    *,
+    tool_name: str,
+    payload: dict,
+    label: str,
+) -> ContextItem:
+    """Render a structured-tool payload as a :class:`ContextItem`.
+
+    The payload is JSON-serialised into the ``excerpt`` and the
+    ``title`` carries a short label so the LLM can cite the source.
+    The relevance score is 1.0 because structured data is always
+    authoritative when present.
+    """
+    import json
+
+    excerpt = json.dumps(payload, default=str, ensure_ascii=False)
+    found = bool(payload.get("found", True))
+    confidence = float(payload.get("confidence") or (0.95 if found else 0.2))
+    return ContextItem(
+        title=f"[Estructurado] {label}",
+        summary=excerpt,
+        document_id=payload.get("document_id"),
+        document_filename=None,
+        page_number=None,
+        relevance_score=1.0,
+        excerpt=excerpt,
+        confidence=confidence,
+        source_path=None,
     )
 
 
