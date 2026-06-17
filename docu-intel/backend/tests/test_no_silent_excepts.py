@@ -38,6 +38,7 @@ fine. The ``re.MULTILINE`` flag keeps the regex anchored to the
 ``except`` line itself so a comment immediately after the
 except does not match.
 """
+
 from __future__ import annotations
 
 import re

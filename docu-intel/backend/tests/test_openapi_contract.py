@@ -17,6 +17,7 @@ Run with::
 The ``--update-snapshot`` flag rewrites ``docs/openapi.public-paths.json``
 after a deliberate, reviewed change.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,7 @@ from pathlib import Path
 import pytest
 from fastapi.routing import APIRoute
 
-SNAPSHOT_PATH = (
-    Path(__file__).resolve().parents[2] / "docs" / "openapi.public-paths.json"
-)
+SNAPSHOT_PATH = Path(__file__).resolve().parents[2] / "docs" / "openapi.public-paths.json"
 
 # Path templates that are allowed to change without bumping the snapshot
 # (they are part of dynamic resources where the ID is in the URL).
@@ -110,7 +109,9 @@ def test_public_routes_match_snapshot(public_routes_snapshot):
     ``--update-snapshot`` for intentional changes.
     """
     current = public_routes_snapshot
-    stored = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8")) if SNAPSHOT_PATH.exists() else None
+    stored = (
+        json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8")) if SNAPSHOT_PATH.exists() else None
+    )
 
     if stored is None:
         SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -146,8 +147,7 @@ def test_public_routes_match_snapshot(public_routes_snapshot):
             msg_parts.append("Reordered or modified entries — review the diff.")
         pytest.fail(
             "Public API surface changed. Review the diff and re-run with "
-            "`--update-snapshot` if the change is intentional.\n  "
-            + "\n  ".join(msg_parts)
+            "`--update-snapshot` if the change is intentional.\n  " + "\n  ".join(msg_parts)
         )
 
 

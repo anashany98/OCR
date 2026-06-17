@@ -20,6 +20,7 @@ Three sub-areas:
   inspecting the FastAPI dependency tree on a representative
   endpoint.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -124,9 +125,9 @@ def test_is_postgres_logs_when_bind_is_none(caplog) -> None:
     with caplog.at_level("DEBUG", logger="app.services.vector_store"):
         result = vector_store_module._is_postgres(db)
     assert result is False
-    assert any(
-        "db.bind is None" in record.message for record in caplog.records
-    ), f"expected a DEBUG log naming db.bind, got: {[r.message for r in caplog.records]}"
+    assert any("db.bind is None" in record.message for record in caplog.records), (
+        f"expected a DEBUG log naming db.bind, got: {[r.message for r in caplog.records]}"
+    )
 
 
 def test_is_postgres_logs_when_dialect_is_not_postgresql(caplog) -> None:
@@ -139,9 +140,9 @@ def test_is_postgres_logs_when_dialect_is_not_postgresql(caplog) -> None:
     with caplog.at_level("DEBUG", logger="app.services.vector_store"):
         result = vector_store_module._is_postgres(db)
     assert result is False
-    assert any(
-        "dialect=sqlite" in record.message for record in caplog.records
-    ), f"expected a DEBUG log naming the dialect, got: {[r.message for r in caplog.records]}"
+    assert any("dialect=sqlite" in record.message for record in caplog.records), (
+        f"expected a DEBUG log naming the dialect, got: {[r.message for r in caplog.records]}"
+    )
 
 
 def test_is_postgres_logs_warning_on_introspection_failure(caplog) -> None:
@@ -157,9 +158,9 @@ def test_is_postgres_logs_warning_on_introspection_failure(caplog) -> None:
     with caplog.at_level("WARNING", logger="app.services.vector_store"):
         result = vector_store_module._is_postgres(db)
     assert result is False
-    assert any(
-        "detached" in record.message for record in caplog.records
-    ), f"expected a WARNING log naming the error, got: {[r.message for r in caplog.records]}"
+    assert any("detached" in record.message for record in caplog.records), (
+        f"expected a WARNING log naming the error, got: {[r.message for r in caplog.records]}"
+    )
 
 
 # ---------------------------------------------------------------------------
