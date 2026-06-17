@@ -121,6 +121,57 @@ from .validation import (
 
 logger = logging.getLogger("app.ai.agent")
 
+
+def _format_gate_blocked_answer(gate_eval, active_context) -> str:
+    """Render a safe answer when a confidence gate blocks the LLM.
+
+    Used by the orchestrator when a confidence gate is open and the
+    question is about an amount. The answer mentions the active
+    budget (so the user knows the scope was respected) and lists the
+    amount candidates the OCR could see, so the user can verify the
+    real number from the document.
+    """
+    # local imports to keep the top-level import block small
+    from .confidence_gates import GateEvaluation
+
+    if not isinstance(gate_eval, GateEvaluation):
+        gate_eval = GateEvaluation()
+    scope = ""
+    if active_context is not None and active_context.current_budget_number:
+        scope = f"del presupuesto {active_context.current_budget_number} "
+    parts: list[str] = []
+    parts.append(
+        f"No puedo confirmarlo con seguridad para {scope}porque el documento "
+        f"tiene una o varias señales de baja calidad: "
+        + ", ".join(gate_eval.gates_open)
+        + "."
+    )
+    parts.append(
+        "No he fabricado un importe a partir de una lectura dudosa. "
+        "Te dejo abajo los importes que el OCR ha detectado para que "
+        "puedas verificar el real en el documento original."
+    )
+    if gate_eval.amount_candidates:
+        lines = ["", "**Importes detectados (candidatos):**", ""]
+        for cand in gate_eval.amount_candidates[:12]:
+            amount = cand.get("amount") or "?"
+            document = cand.get("document") or "?"
+            page = cand.get("page")
+            page_text = f" (pag. {page})" if page else ""
+            conf = cand.get("confidence")
+            conf_text = (
+                f" — confianza {int(round(float(conf) * 100))}%"
+                if isinstance(conf, (int, float))
+                else ""
+            )
+            lines.append(f"- **{amount}** en {document}{page_text}{conf_text}")
+        parts.append("\n".join(lines))
+    parts.append(
+        "Si quieres, puedo re-procesar el PDF con OCR avanzado (PaddleOCR v3 / "
+        "PP-Structure) para mejorar la lectura. Dime y lo lanzo."
+    )
+    return "\n\n".join(parts)
+
 # ``DetectorFactory.seed = 0`` is set inside validation.py at
 # import time. We re-import the module to make the dependency
 # explicit (so a test that imports agent.py also imports the
@@ -313,6 +364,29 @@ async def answer_question(
     # the active budget explicitly when nothing was found inside it.
     warnings = scope_warnings + warnings
 
+    # CTX-8: evaluate the confidence gates. When a gate is open and
+    # the question expects an amount, the orchestrator will skip the
+    # LLM call and produce a safe fallback that lists the amount
+    # candidates so the user can verify the answer themselves.
+    from .confidence_gates import (
+        evaluate_confidence_gates,
+        gate_warning_prompt_line,
+    )
+
+    resolved_doc_payload_for_gates: dict | None = None
+    if resolved_doc_id is not None:
+        resolved_doc_payload_for_gates = internal.get_document_full_details(
+            db, resolved_doc_id
+        )
+    gate_eval = evaluate_confidence_gates(
+        question=question,
+        context_items=context_items,
+        resolved_document=resolved_doc_payload_for_gates,
+    )
+    gate_warning = gate_warning_prompt_line(gate_eval)
+    if gate_warning:
+        warnings.append(gate_warning)
+
     # Inject conversation memory: if the question is a short follow-up
     # (e.g. "y las facturas?", "y del mismo proveedor?"), prepend a memory
     # block summarising the entities mentioned in the previous assistant
@@ -342,7 +416,17 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    if context_items:
+    # CTX-8: when the gate blocks an amount question, build a safe
+    # answer that lists the amount candidates and skip the LLM call
+    # so the model cannot override the safety message with a
+    # fabricated number. The candidate list also gets attached to
+    # the AIAnswer row so the UI can render a verification table.
+    amount_candidates_payload: list[dict] = []
+    if gate_eval.is_blocked and gate_eval.requires_amount:
+        answer_text = _format_gate_blocked_answer(gate_eval, active_context)
+        model_name = "backend_grounded_fallback"
+        amount_candidates_payload = gate_eval.amount_candidates
+    elif context_items:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
