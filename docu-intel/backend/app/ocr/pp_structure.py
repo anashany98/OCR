@@ -19,7 +19,7 @@ from HuggingFace into ``$HOME/.paddlex/official_models`` and compiles
 the Paddle inference graphs (~5-10 s). Subsequent calls are ~0.5-2 s
 per page on an RTX 4070.
 
-Install: ``pip install 'paddlex[ocr]==3.5.2'`` (only on the GPU image).
+Install: ``pip install 'paddlex[ocr]==3.7.1'`` (only on the GPU image).
 """
 
 from __future__ import annotations

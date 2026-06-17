@@ -8,13 +8,17 @@ extract-msg==0.48.0
 numpy==1.26.4
 opencv-python-headless==4.10.0.84
 openpyxl==3.1.5
-paddleocr==3.5.0
+paddleocr==3.7.0
 # paddlepaddle is installed separately per-Dockerfile with --no-deps:
 # - Dockerfile (CPU) installs `paddlepaddle==3.3.1` from PyPI.
 # - Dockerfile.gpu installs `paddlepaddle-gpu==3.3.1` from the
 #   PaddlePaddle custom index.
 # Both PaddleOCR and Tesseract stay installed so the cascade can use
 # the cheap Tesseract first and only escalate to Paddle on hard cases.
+# PaddleOCR 3.7 ships PP-OCRv6 server / mobile / tiny / small / medium
+# model profiles; the actual profile is selected at runtime via the
+# ``model_registry`` module and ``PADDLE_OCR_PROFILE`` / ``ppocr_*``
+# settings (no hardcoded model name in the engine code).
 pytesseract==0.3.13
 # xlrd is required to read legacy .xls files (Excel 97-2003). Without
 # it, the Excel parser raises "Missing optional dependency 'xlrd'" and
