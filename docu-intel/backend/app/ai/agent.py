@@ -250,6 +250,23 @@ async def answer_question(
     db.add(question_row)
     db.flush()
 
+    # CTX-5: classify the business intent before any tool is called.
+    # The classification is stored in the active context (for the
+    # next turn) and also used as a hint in the answer header so the
+    # admin UI can show "estoy respondiendo a la pregunta X".
+    from .intent_router import classify_intent
+
+    intent_cls = classify_intent(question, active_context)
+    # Surface the needs_state warning via the orchestrator's log so
+    # operators can audit when the router thought the user was
+    # following up on an entity that the context no longer carries.
+    if intent_cls.needs_state:
+        logger.info(
+            "Intent %s needs active context but state is empty; "
+            "the assistant will ask for clarification.",
+            intent_cls.intent,
+        )
+
     # Always run the smart tool selector so the LLM gets the document's
     # entities and relations when the user mentions a specific file or
     # number. The `mode` is just a hint about which search strategy to
@@ -446,10 +463,7 @@ async def answer_question(
                     resolved_doc_payload = details
             update_after_answer(
                 ctx,
-                intent=(
-                    "document_lookup" if resolved_doc_id is not None
-                    else ctx.last_user_intent
-                ),
+                intent=intent_cls.intent,
                 resolved_document=resolved_doc_payload,
                 resolved_budget=(
                     (resolved_doc_payload or {}).get("entities", {}).get("budget")
