@@ -166,6 +166,7 @@ async def answer_question(
     user: User,
     question: str,
     mode: str | None = None,
+    session_id: str | None = None,
 ) -> AIAnswer:
     """End-to-end: cache lookup, tool selection, context collection,
     memory injection, grounded fallback, optional LLM call, and
@@ -173,10 +174,24 @@ async def answer_question(
 
     This is the function the API endpoint (``app.api.routes.ai``)
     calls. Everything else in the agent package is a helper.
+
+    ``session_id`` (CTX-2) is the optional opaque identifier the
+    client passes to keep an in-conversation state (current budget,
+    current document, last intent, …) between turns. When omitted the
+    call is stateless and the behaviour is identical to the previous
+    version.
     """
+    from .active_context import (
+        ActiveContext,
+        load_active_context,
+        save_active_context,
+    )
+
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
-    cached = await get_cached_answer_async(question, user.id, mode, scope_key=scope_key)
+    cached = await get_cached_answer_async(
+        question, user.id, mode, scope_key=scope_key, session_id=session_id
+    )
     if cached:
         # Return cached answer as AIAnswer object
         question_row = AIQuestion(user_id=user.id, question=question)
@@ -371,7 +386,57 @@ async def answer_question(
         },
         mode=mode,
         scope_key=scope_key,
+        session_id=session_id,
     )
+
+    # CTX-2: persist the active context (current budget, current
+    # document, last intent, …) so the next turn in the same session
+    # can resolve "este presupuesto" / "este pedido" against the same
+    # entity. Best-effort: a failure here must not break the answer.
+    try:
+        from .active_context import update_after_answer
+
+        if session_id:
+            ctx: ActiveContext = load_active_context(db, user, session_id)
+            resolved_doc_payload: dict | None = None
+            if resolved_doc_id is not None:
+                details = internal.get_document_full_details(db, resolved_doc_id)
+                if details is not None:
+                    resolved_doc_payload = details
+            update_after_answer(
+                ctx,
+                intent=(
+                    "document_lookup" if resolved_doc_id is not None
+                    else ctx.last_user_intent
+                ),
+                resolved_document=resolved_doc_payload,
+                resolved_budget=(
+                    (resolved_doc_payload or {}).get("entities", {}).get("budget")
+                    if resolved_doc_payload
+                    else None
+                ),
+                resolved_order=(
+                    (resolved_doc_payload or {}).get("entities", {}).get("order")
+                    if resolved_doc_payload
+                    else None
+                ),
+                resolved_invoice=(
+                    (resolved_doc_payload or {}).get("entities", {}).get("invoice")
+                    if resolved_doc_payload
+                    else None
+                ),
+                retrieved_document_ids=[
+                    src.document_id for src in dedupe_sources(context_items)
+                ],
+            )
+            save_active_context(db, user, session_id, ctx)
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("active_context save failed: %s", exc)
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
 
     return answer_row
 

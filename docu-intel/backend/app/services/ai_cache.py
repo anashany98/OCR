@@ -25,15 +25,27 @@ SEMANTIC_SIM_THRESHOLD = 0.92  # cosine similarity above this = cache hit
 
 
 def _cache_key(
-    question: str, user_id: int, mode: str | None = None, scope_key: str | None = None
+    question: str,
+    user_id: int,
+    mode: str | None = None,
+    scope_key: str | None = None,
+    session_id: str | None = None,
 ) -> str:
     """Generate a cache key for an AI question.
 
     Uses SHA256 hash to handle long questions and ensure consistent key length.
     The user_id is placed before the hash so invalidate_user_cache can scan by prefix.
+    The session_id is mixed in so the same question from two different
+    sessions (e.g. one with active context, one without) does not
+    collide. The two requests could legitimately produce different
+    answers (the second one has the active context to resolve "este
+    presupuesto").
     """
     normalized_question = question.strip().lower()
-    content = f"{normalized_question}:{user_id}:{mode or 'default'}:{scope_key or 'default-scope'}"
+    content = (
+        f"{normalized_question}:{user_id}:{mode or 'default'}:"
+        f"{scope_key or 'default-scope'}:{session_id or 'no-session'}"
+    )
     hash_digest = hashlib.sha256(content.encode()).hexdigest()
     return f"{AI_CACHE_PREFIX}{user_id}:{hash_digest}"
 
@@ -70,6 +82,7 @@ def get_cached_answer(
     user_id: int,
     mode: str | None = None,
     scope_key: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Retrieve a cached AI answer if available.
 
@@ -79,7 +92,7 @@ def get_cached_answer(
          reformulations like "cuanto llevamos en melia?" vs "total
          facturado a melia").
     """
-    key = _cache_key(question, user_id, mode, scope_key)
+    key = _cache_key(question, user_id, mode, scope_key, session_id)
     exact = cache_service.get(key)
     if exact:
         return exact
@@ -119,6 +132,7 @@ def cache_answer(
     answer: dict[str, Any],
     mode: str | None = None,
     scope_key: str | None = None,
+    session_id: str | None = None,
     ttl: int = AI_CACHE_TTL,
 ) -> bool:
     """Cache an AI answer for future queries.
@@ -127,7 +141,7 @@ def cache_answer(
     containing the question's embedding, so subsequent reformulations
     can be served from cache.
     """
-    key = _cache_key(question, user_id, mode, scope_key)
+    key = _cache_key(question, user_id, mode, scope_key, session_id)
     ok = cache_service.set(key, answer, ttl)
     # Sidecar: append a {embedding, key} to the per-user semantic index.
     try:
@@ -224,6 +238,7 @@ async def get_cached_answer_async(
     user_id: int,
     mode: str | None = None,
     scope_key: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Async variant of :func:`get_cached_answer` for FastAPI handlers.
 
@@ -237,6 +252,7 @@ async def get_cached_answer_async(
         user_id,
         mode,
         scope_key,
+        session_id,
     )
 
 
@@ -246,6 +262,7 @@ async def cache_answer_async(
     answer: dict[str, Any],
     mode: str | None = None,
     scope_key: str | None = None,
+    session_id: str | None = None,
     ttl: int = AI_CACHE_TTL,
 ) -> bool:
     """Async variant of :func:`cache_answer` for FastAPI handlers.
@@ -261,5 +278,6 @@ async def cache_answer_async(
         answer,
         mode,
         scope_key,
+        session_id,
         ttl,
     )
