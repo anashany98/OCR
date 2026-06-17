@@ -157,7 +157,7 @@ class Settings(BaseSettings):
     # wastes tokens on CoT and often returns empty content.
     vision_model_structured: str = ""
 
-    ocr_engine: Literal["tesseract", "paddleocr", "cascading"] = "cascading"
+    ocr_engine: Literal["tesseract", "paddleocr", "cascading", "pp_structure"] = "cascading"
     enable_dots_mocr: bool = False
     dots_mocr_endpoint: str = ""
     dots_mocr_api_key: str = ""
@@ -213,12 +213,68 @@ class Settings(BaseSettings):
     # Optional Tier 3: PP-Structure (PaddleX layout_parsing). Only fires
     # when Tier 1 AND Tier 2 both fail to produce a usable result. GPU
     # only — the engine refuses to instantiate on CPU because the
-    # PaddlePaddle 3.3.x PIR executor crashes layout_parsing on CPU.
+    # PaddlePaddle 3.x PIR executor crashes layout_parsing on CPU.
     # Off by default; enable per environment.
     ocr_cascading_use_pp_structure: bool = False
     pp_structure_device: str = "gpu"
     pp_structure_lang: str = "es"
     paddle_lang: str = "es"
+
+    # --- UPG-5 (PaddleOCR 3.7 / PP-OCRv6 / PaddleX 3.7.1) ---------------
+    # PaddleOCR profile id; resolved against ``app.ocr.model_registry``.
+    # Valid ids: ppocr_v5_server, ppocr_v6_tiny, ppocr_v6_small,
+    # ppocr_v6_medium (default), custom. Unknown ids fall back to the
+    # default with a WARNING.
+    paddle_ocr_profile: str = "ppocr_v6_medium"
+    # Optional detection/recognition model overrides. Empty values
+    # defer to the profile defaults. Used by the ``custom`` profile or
+    # to point the adapter at a private model directory.
+    paddle_text_detection_model_name: str | None = None
+    paddle_text_recognition_model_name: str | None = None
+    # Prefer PaddleOCR 3.x ``predict()`` over the legacy ``ocr()``.
+    paddle_use_predict_api: bool = True
+    # Escape hatches: force one API path explicitly (settings win over
+    # the profile's default).
+    paddle_force_legacy_ocr_api: bool = False
+    paddle_force_predict_api: bool = False
+    # Whether the adapter should auto-detect the PaddleOCR version /
+    # available APIs at runtime (recommended). Disable only when
+    # running against a frozen PaddleOCR build where auto-detection
+    # mis-fires.
+    paddle_enable_model_autodetect: bool = True
+    # Whether to silently swallow unknown PaddleOCR output shapes and
+    # return an empty result, instead of raising. Recommended for
+    # production; tests flip this off to assert version-drift
+    # compatibility.
+    paddle_allow_unknown_output_format: bool = True
+    # Emit a one-shot INFO log when the underlying PaddleOCR engine
+    # is initialised, with version + profile + device info. Operators
+    # leave this on; tests typically disable it.
+    paddle_log_runtime_info: bool = True
+
+    # PP-Structure / PaddleX profile id; resolved against
+    # ``app.ocr.model_registry``. Valid ids: pp_structure_v3 (default),
+    # layout_parsing_legacy, custom.
+    pp_structure_profile: str = "pp_structure_v3"
+    # Optional pipeline name override; only honoured by the ``custom``
+    # profile.
+    pp_structure_pipeline_name: str | None = None
+    # Try ``PPStructureV3`` first; fall back to
+    # ``paddlex.create_pipeline('layout_parsing')`` automatically when
+    # PPStructureV3 is unavailable.
+    pp_structure_use_v3: bool = True
+    # Append the layout_parsing markdown export (when the version
+    # exposes one) to the OCRResult.text.
+    pp_structure_export_markdown: bool = True
+    # Persist the raw structured JSON on the OCRResult metadata.
+    pp_structure_export_json: bool = True
+    # Force the paddlex.create_pipeline('layout_parsing') path,
+    # bypassing PPStructureV3 entirely. Useful as a rollback when the
+    # V3 path is unstable on a given PaddleX build.
+    pp_structure_force_paddlex_fallback: bool = False
+    # Emit a one-shot INFO log when the underlying PaddleX pipeline
+    # is initialised, with version + profile + device info.
+    pp_structure_log_runtime_info: bool = True
 
     embedding_provider: str = "local_hash"
     embedding_base_url: str = ""
