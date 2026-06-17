@@ -132,6 +132,15 @@ def normalise_filters(filters: dict[str, Any] | None) -> dict[str, Any]:
     if filters.get("extension"):
         ext = str(filters["extension"]).lower()
         out["extension"] = ext if ext.startswith(".") else ("." + ext if ext else "")
+    # CTX-4: scope guard filter — restricts the search to documents
+    # whose ``source_path`` matches a substring (e.g. ``%Presupuesto
+    # 260009%``). Useful for the in-conversation budget scope where
+    # the user has not been registered in a ``budget_scope`` row yet
+    # but the documents all live in a folder with the budget number.
+    if filters.get("source_path_like"):
+        like = str(filters["source_path_like"]).strip()
+        if like:
+            out["source_path_like"] = like
 
     created_from = _coerce_datetime(filters.get("created_from"))
     if created_from is not None:
@@ -208,6 +217,12 @@ def apply_document_filters(
         stmt = stmt.where(Document.quality_status == f["quality_status"])
     if f.get("extension"):
         stmt = stmt.where(Document.extension == f["extension"])
+    if f.get("source_path_like"):
+        # SQL ``LIKE`` is case-sensitive on Postgres by default; we
+        # use ILIKE so the scope guard works regardless of the casing
+        # in the source path. The trigram index from migration 0031
+        # accelerates this.
+        stmt = stmt.where(Document.source_path.ilike(f["source_path_like"]))
     if "created_from" in f:
         stmt = stmt.where(Document.created_at >= f["created_from"])
     if "created_to" in f:

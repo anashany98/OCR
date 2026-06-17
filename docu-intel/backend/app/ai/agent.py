@@ -255,6 +255,21 @@ async def answer_question(
     # number. The `mode` is just a hint about which search strategy to
     # prefer when multiple are viable.
     tools = select_tools_for_question(question)
+
+    # CTX-4: apply the budget scope guard. When the active context
+    # pins a specific budget (and the user did not ask for a global
+    # view) the tool arguments are mutated to keep the retrieval
+    # inside the active budget folder.
+    from .scope_guard import enforce_budget_scope
+
+    scope_outcome = enforce_budget_scope(
+        question=question, state=active_context, tools=tools
+    )
+    tools = scope_outcome.tools
+    # The scope guard warnings are folded into the orchestrator-level
+    # warnings so they reach both the LLM prompt and the grounded
+    # fallback.
+    scope_warnings: list[str] = list(scope_outcome.warnings)
     if mode == "semantic":
         # Replace the hybrid_search with a more semantic-friendly call by
         # asking the LLM to think about entities first.
@@ -266,6 +281,9 @@ async def answer_question(
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
     )
+    # CTX-4: prepend the scope guard warnings so the fallback mentions
+    # the active budget explicitly when nothing was found inside it.
+    warnings = scope_warnings + warnings
 
     # Inject conversation memory: if the question is a short follow-up
     # (e.g. "y las facturas?", "y del mismo proveedor?"), prepend a memory
