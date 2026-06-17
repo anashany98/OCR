@@ -237,11 +237,6 @@ class Settings(BaseSettings):
     # the profile's default).
     paddle_force_legacy_ocr_api: bool = False
     paddle_force_predict_api: bool = False
-    # Whether the adapter should auto-detect the PaddleOCR version /
-    # available APIs at runtime (recommended). Disable only when
-    # running against a frozen PaddleOCR build where auto-detection
-    # mis-fires.
-    paddle_enable_model_autodetect: bool = True
     # Whether to silently swallow unknown PaddleOCR output shapes and
     # return an empty result, instead of raising. Recommended for
     # production; tests flip this off to assert version-drift
@@ -498,7 +493,7 @@ class Settings(BaseSettings):
     # automatically. Bump this when you upgrade PaddleOCR / Tesseract /
     # pp-structure and the next ``reprocess_with_new_ocr_engine_task``
     # tick will pick them up.
-    current_ocr_engine_version: str = "paddleocr-v3"
+    current_ocr_engine_version: str = "paddleocr-3.7-ppocrv6"
     # Cap the number of re-OCR jobs enqueued per tick by the engine
     # version sweep. Mirrors ``reembed_reocr_per_tick`` to keep the
     # heavy queue from being flooded.

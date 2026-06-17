@@ -7,6 +7,7 @@ cascade's Tier-3 escalation logic with fake engines.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -262,6 +263,7 @@ def test_factory_standalone_pp_structure(monkeypatch):
         get_ocr_engine_class.cache_clear()
 
 
+@pytest.mark.skipif(shutil.which("tesseract") is None, reason="CI-only")
 def test_factory_cascading_without_pp_structure(monkeypatch):
     from app.core.config import settings
 
@@ -276,6 +278,7 @@ def test_factory_cascading_without_pp_structure(monkeypatch):
         get_ocr_engine_class.cache_clear()
 
 
+@pytest.mark.skipif(shutil.which("tesseract") is None, reason="CI-only")
 def test_factory_cascading_with_pp_structure(monkeypatch):
     """When ``ocr_cascading_use_pp_structure`` is on, the factory wires
     ``pp_structure`` into the cascade. On GPU containers the engine

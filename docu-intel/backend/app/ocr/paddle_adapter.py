@@ -408,7 +408,15 @@ class PaddleOCRAdapter:
     def name(self) -> str:
         return "paddleocr"
 
-    def _log_runtime_info(self) -> None:
+    def _log_runtime_info(self, engine: Any | None = None) -> None:
+        """Emit the one-shot INFO line with PaddleOCR runtime details.
+
+        ``engine`` is the already-resolved PaddleOCR instance when
+        available (typical case from :meth:`run`). It defaults to
+        ``None`` so callers that have not yet built the engine can still
+        log the version + profile line; in that case we only emit the
+        metadata we know, and skip the API-shape probe.
+        """
         if not self.log_runtime_info:
             return
         try:
@@ -417,13 +425,9 @@ class PaddleOCRAdapter:
             paddle_version = getattr(_paddleocr_mod, "__version__", "unknown")
         except Exception:
             paddle_version = "unavailable"
-        has_predict = False
-        try:
-            engine = self._holder.get()
-            has_predict = callable(getattr(engine, "predict", None))
-        except Exception as exc:
-            logger.warning("paddle_adapter: runtime probe failed: %s", exc)
-            engine = None
+        has_predict = (
+            callable(getattr(engine, "predict", None)) if engine is not None else False
+        )
         logger.info(
             "paddle_adapter ready profile=%s model_type=%s lang=%s device=%s "
             "paddleocr_version=%s predict_api=%s",
@@ -437,13 +441,9 @@ class PaddleOCRAdapter:
 
     def run(self, image_path: Path) -> OCRResult:
         """Run OCR on a single image file and return the result."""
-        try:
-            engine = self._holder.get()
-        except Exception:
-            # Runtime info could not be emitted (init failed). Re-raise.
-            raise
+        engine = self._holder.get()
         if self.log_runtime_info and not getattr(self, "_logged_runtime", False):
-            self._log_runtime_info()
+            self._log_runtime_info(engine=engine)
             self._logged_runtime = True
 
         raw = self._invoke_engine(engine, str(image_path))

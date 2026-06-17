@@ -224,3 +224,18 @@ The upgrade is designed to be **additive and reversible**:
    at any directory with scanned PDFs).
 6. If the upgrade looks bad, flip the rollback flags in
    `.env.production` (see §5) and rebuild — no code revert needed.
+
+> **UPG-11 note — engine-version stamp bump.** The setting
+> `current_ocr_engine_version` moved from `paddleocr-v3` to
+> `paddleocr-3.7-ppocrv6` so the periodic re-OCR sweep
+> (`OCR_REPROCESS_ON_VERSION_DRIFT`, default off) can find every
+> page produced before this upgrade and re-process them with the
+> new PaddleOCR 3.7 pipeline. The new label is also exported in
+> `.env.example`. Operators that want to flip the sweep on after the
+> merge should set `OCR_REPROCESS_ON_VERSION_DRIFT=true` and monitor
+> the `reocr_versioned_per_tick` cap (`settings.reocr_versioned_per_tick`)
+> to avoid flooding the heavy queue.
+>
+> The dead setting `paddle_enable_model_autodetect` was removed in the
+> same commit. The PaddleOCR adapter always auto-detects the available
+> API at runtime; the flag was never read.

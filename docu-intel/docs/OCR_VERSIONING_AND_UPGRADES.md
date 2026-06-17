@@ -67,7 +67,6 @@ code change.
 | `paddle_use_predict_api` | `True` | Prefer PaddleOCR 3.x `predict()` over legacy `ocr()`. |
 | `paddle_force_legacy_ocr_api` | `False` | Force the legacy `ocr()` path even when `predict` is available. |
 | `paddle_force_predict_api` | `False` | Force `predict()` even when `use_predict_api=False`. |
-| `paddle_enable_model_autodetect` | `True` | Auto-detect the PaddleOCR version / available APIs. |
 | `paddle_allow_unknown_output_format` | `True` | Silently swallow unknown output shapes (recommended). |
 | `paddle_log_runtime_info` | `True` | Emit one-shot INFO log with version + profile + device. |
 
