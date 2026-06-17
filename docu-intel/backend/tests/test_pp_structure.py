@@ -8,6 +8,7 @@ cascade's Tier-3 escalation logic with fake engines.
 from __future__ import annotations
 
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -51,7 +52,7 @@ def test_pp_structure_extract_handles_empty_results(monkeypatch, tmp_path: Path)
         def predict(self, _path):
             return iter([])  # empty generator
 
-    monkeypatch.setattr(eng, "_pipeline", _StubPipeline())
+    monkeypatch.setitem(eng.__dict__, "_pipeline", _StubPipeline())
     image = tmp_path / "blank.png"
     image.write_bytes(b"")
 
@@ -110,7 +111,7 @@ def test_pp_structure_extract_converts_parsing_res_list(monkeypatch, tmp_path: P
                 ]
             )
 
-    monkeypatch.setattr(eng, "_pipeline", _StubPipeline())
+    monkeypatch.setitem(eng.__dict__, "_pipeline", _StubPipeline())
     image = tmp_path / "doc.png"
     image.write_bytes(b"")
 
@@ -140,7 +141,7 @@ class _FakeEngine:
         self._result = result
         self.calls = 0
 
-    def extract(self, image_path: Path) -> OCRResult:
+    def extract(self, image_path: Path, *, language: str | None = None) -> OCRResult:
         self.calls += 1
         return self._result
 
@@ -228,7 +229,7 @@ def test_cascade_3tier_falls_back_silently_when_pp_structure_raises(tmp_path: Pa
     """If Tier 3 blows up (e.g. GPU OOM), the cascade returns the
     best of Tier 1 / Tier 2 and never propagates the error."""
     class _BoomEngine(_FakeEngine):
-        def extract(self, image_path: Path) -> OCRResult:
+        def extract(self, image_path: Path, *, language: str | None = None) -> OCRResult:
             super().extract(image_path)
             raise RuntimeError("GPU OOM")
 
@@ -250,6 +251,29 @@ def test_cascade_3tier_falls_back_silently_when_pp_structure_raises(tmp_path: Pa
 # ---------------------------------------------------------------------------
 
 
+def _install_fake_ocr_modules(monkeypatch):
+    import sys
+
+    class _FakeTesseract:
+        name = "tesseract"
+
+        def __init__(self, **_kwargs):
+            pass
+
+    class _FakePaddle:
+        name = "paddleocr"
+
+        def __init__(self, **_kwargs):
+            pass
+
+    tesseract_module = ModuleType("app.ocr.tesseract")
+    tesseract_module.TesseractOCREngine = _FakeTesseract
+    paddle_module = ModuleType("app.ocr.paddle")
+    paddle_module.PaddleOCREngine = _FakePaddle
+    monkeypatch.setitem(sys.modules, "app.ocr.tesseract", tesseract_module)
+    monkeypatch.setitem(sys.modules, "app.ocr.paddle", paddle_module)
+
+
 def test_factory_standalone_pp_structure(monkeypatch):
     from app.core.config import settings
 
@@ -264,16 +288,18 @@ def test_factory_standalone_pp_structure(monkeypatch):
 
 def test_factory_cascading_without_pp_structure(monkeypatch):
     from app.core.config import settings
+    from app.ocr import factory
 
+    _install_fake_ocr_modules(monkeypatch)
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", False)
-    get_ocr_engine_class.cache_clear()
+    factory.clear_ocr_engine_cache()
     try:
-        cls = get_ocr_engine_class()
+        cls = factory.get_ocr_engine_class()
         instance = cls()
         assert instance.pp_structure is None
     finally:
-        get_ocr_engine_class.cache_clear()
+        factory.clear_ocr_engine_cache()
 
 
 def test_factory_cascading_with_pp_structure(monkeypatch):
@@ -282,12 +308,14 @@ def test_factory_cascading_with_pp_structure(monkeypatch):
     instantiates fine; on CPU it raises ``RuntimeError("GPU-only")``
     which is the cascade's fail-fast guard."""
     from app.core.config import settings
+    from app.ocr import factory
 
+    _install_fake_ocr_modules(monkeypatch)
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", True)
-    get_ocr_engine_class.cache_clear()
+    factory.clear_ocr_engine_cache()
     try:
-        cls = get_ocr_engine_class()
+        cls = factory.get_ocr_engine_class()
         try:
             instance = cls()
         except RuntimeError as exc:
@@ -300,4 +328,4 @@ def test_factory_cascading_with_pp_structure(monkeypatch):
         assert isinstance(instance.pp_structure, PPStructureEngine)
         assert instance.pp_structure.device == "gpu"
     finally:
-        get_ocr_engine_class.cache_clear()
+        factory.clear_ocr_engine_cache()

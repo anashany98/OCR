@@ -14,7 +14,6 @@ concurrent workers.
 
 from __future__ import annotations
 
-import concurrent.futures
 import os
 import tempfile
 import time
@@ -29,13 +28,6 @@ from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 
 logger = __import__("logging").getLogger("app.ocr.paddle")
-
-# H6 (Sprint 2): maximum time (seconds) to wait for PaddleOCR model
-# to load.  If the init does not complete within this window the
-# engine is marked unavailable and subsequent calls raise instead of
-# blocking the worker thread forever.
-_PADDLE_INIT_TIMEOUT_SECONDS: float = 120.0
-
 
 # =============================================================================
 # MULTI-GPU SUPPORT para PaddleOCR con RTX 4070 (x2)
@@ -150,29 +142,33 @@ class PaddleOCREngine:
         # no GPU is visible. The chosen device is logged once at
         # construction time.
         self.device = device or resolve_paddle_device()
+        self._init_failure_reason: str | None = None
 
     @cached_property
     def _engine(self):
         return self._init_engine_with_timeout()
 
     def _init_engine_with_timeout(self):
-        """Load the PaddleOCR model with a cross-platform timeout.
+        """Load the PaddleOCR model synchronously in the worker process.
 
-        H6 (Sprint 3): the previous ``@cached_property`` blocked
-        indefinitely if the GPU driver or model download hung.  We now
-        run the heavy ``PaddleOCR(...)`` call inside a daemon thread
-        and raise ``RuntimeError`` when it does not complete within
-        ``_PADDLE_INIT_TIMEOUT_SECONDS``.
+        O6: do not wrap model loading in a helper thread with
+        ``future.result(timeout=...)``. Python cannot cancel a thread that is
+        stuck inside CUDA/model initialisation, so a timeout leaves an orphan
+        thread that can keep consuming RAM/VRAM. Celery calls
+        :func:`app.ocr.factory.preload_ocr_engine` from ``worker_process_init``,
+        so the right cancellation boundary is the worker process itself.
 
-        CPU fallback (OPS-FALLBACK-1): if the first attempt with the
-        requested device fails — e.g. the host has ``CUDA_VISIBLE_DEVICES=0``
-        set but the Paddle wheel is the CPU-only build, or the GPU
-        driver is missing — we retry once with ``device=None`` so
-        Paddle picks its own default (CPU on a CPU build, GPU 0 on a
-        CUDA build). The retry is only triggered by a real
-        init-time failure, not by the timeout: a 120-second hang
-        still raises so the worker is not blocked forever.
+        The method name is kept for compatibility with existing tests and
+        call sites, but there is intentionally no background timeout here.
+        If initialisation fails, the engine is marked unavailable and future
+        accesses raise a clear error without retrying model construction.
         """
+        if self._init_failure_reason:
+            raise RuntimeError(
+                "PaddleOCR engine unavailable after previous init failure: "
+                f"{self._init_failure_reason}"
+            )
+
         from paddleocr import PaddleOCR
 
         def _attempt(device_value: str | None) -> "PaddleOCR":
@@ -186,56 +182,43 @@ class PaddleOCREngine:
             with paddleocr_init_lock():
                 return PaddleOCR(**kwargs)
 
-        def _do_init(device_value: str | None) -> "PaddleOCR":
-            return _attempt(device_value)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            # First attempt: the device the constructor picked.
-            future = pool.submit(_do_init, self.device)
-            try:
-                return future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
-            except concurrent.futures.TimeoutError:
+        try:
+            return _attempt(self.device)
+        except Exception as exc:  # noqa: BLE001
+            # Only retry on real init failures (the engine object was never
+            # created). There is no helper thread anymore, so no timed-out
+            # CUDA/model load can keep running in the background.
+            if self.device is None or self.device == "cpu":
                 logger.error(
-                    "PaddleOCR init timed out after %.0fs (lang=%s, device=%s)",
-                    _PADDLE_INIT_TIMEOUT_SECONDS,
-                    self.lang,
-                    self.device,
-                )
-                raise RuntimeError(
-                    f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
-                ) from None
-            except Exception as exc:  # noqa: BLE001
-                # Only retry on real init failures (the engine
-                # object was never created), not on timeouts (a
-                # hung worker thread must not leak).
-                if self.device is None or self.device == "cpu":
-                    # Already on the safest path; nothing to fall
-                    # back to.
-                    logger.error(
-                        "PaddleOCR init failed on device=%s and no GPU fallback is possible: %s",
-                        self.device,
-                        exc,
-                    )
-                    raise
-                logger.warning(
-                    "PaddleOCR init failed on device=%s (%s); retrying "
-                    "with the runtime default (CPU on a CPU build, "
-                    "GPU 0 on a CUDA build).",
+                    "PaddleOCR init failed on device=%s and no GPU fallback is possible: %s",
                     self.device,
                     exc,
                 )
-                self.device = None
-                future = pool.submit(_do_init, None)
-                try:
-                    return future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
-                except concurrent.futures.TimeoutError:
-                    logger.error(
-                        "PaddleOCR fallback init timed out after %.0fs",
-                        _PADDLE_INIT_TIMEOUT_SECONDS,
-                    )
-                    raise RuntimeError(
-                        f"PaddleOCR fallback init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
-                    ) from None
+                self._init_failure_reason = str(exc) or exc.__class__.__name__
+                raise RuntimeError(
+                    "PaddleOCR engine unavailable after init failure: "
+                    f"{self._init_failure_reason}"
+                ) from exc
+
+            logger.warning(
+                "PaddleOCR init failed on device=%s (%s); retrying "
+                "with the runtime default (CPU on a CPU build, "
+                "GPU 0 on a CUDA build).",
+                self.device,
+                exc,
+            )
+            self.device = None
+            try:
+                return _attempt(None)
+            except Exception as fallback_exc:  # noqa: BLE001
+                logger.error("PaddleOCR fallback init failed: %s", fallback_exc)
+                self._init_failure_reason = (
+                    str(fallback_exc) or fallback_exc.__class__.__name__
+                )
+                raise RuntimeError(
+                    "PaddleOCR engine unavailable after fallback init failure: "
+                    f"{self._init_failure_reason}"
+                ) from fallback_exc
 
     def extract(
         self,

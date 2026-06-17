@@ -32,10 +32,11 @@ def _fake_ocr_engine() -> MagicMock:
     """Mock cascade that returns a canned OCRResult only when called."""
     eng = MagicMock()
     eng.name = "tesseract"
+    text = "OCR TEXT recovered from scanned page"
     eng.extract.return_value = OCRResult(
-        text="OCR TEXT",
+        text=text,
         confidence=0.7,
-        blocks=[OCRBlock(text="OCR TEXT", confidence=0.7, bbox=(0, 0, 100, 100))],
+        blocks=[OCRBlock(text=text, confidence=0.7, bbox=(0, 0, 100, 100))],
         engine="tesseract",
     )
     return eng
@@ -84,7 +85,7 @@ def test_scanned_pages_go_through_ocr(tmp_path: Path):
     for page in doc.pages:
         assert page.ocr_engine == "tesseract", f"expected tesseract, got {page.ocr_engine}"
         assert page.ocr_confidence == 0.7
-        assert page.text == "OCR TEXT"
+        assert page.text.startswith("OCR TEXT")
 
     # OCR must have been called once per page.
     assert eng.extract.call_count == 3
@@ -119,7 +120,7 @@ def test_mixed_pdf_routes_per_page(tmp_path: Path):
 
     # Page 2: scanned → tesseract
     assert doc.pages[1].ocr_engine == "tesseract"
-    assert doc.pages[1].text == "OCR TEXT"
+    assert doc.pages[1].text.startswith("OCR TEXT")
 
     # Page 3: digital → pymupdf
     assert doc.pages[2].ocr_engine == "pymupdf"

@@ -57,32 +57,38 @@ class BaseOCREngine(Protocol):
     ``"paddleocr"``). The cascading engine has a dynamic ``name`` that
     reflects which underlying engine won the last call.
 
-    The ``language`` keyword on :meth:`extract` is the page's
-    detected language (e.g. ``"es"``, ``"en"``). Single-engine
-    implementations can ignore it; the cascading engine uses it
-    to look up the per-language adaptive thresholds (O2). The
-    keyword is part of the contract (not just a cascading
-    attribute) so the parser does not have to mutate the
-    engine's instance state before each call, which used to
-    race when multiple pages were processed in parallel.
+    Keep the public contract narrow: parsers and tests can provide any
+    object with ``extract(image_path)`` and ``name``. Newer built-in engines
+    may accept optional hints through :func:`extract_with_language_hint`, but
+    that is an extension, not a requirement for third-party/fake engines.
     """
 
     name: str
 
-    def extract(
-        self,
-        image_path: Path,
-        *,
-        language: str | None = None,
-    ) -> OCRResult:
-        """Run OCR on a single image file and return the result.
-
-        ``language`` is an optional hint for engines that can
-        bias their internal model (the cascading engine uses
-        it for per-language thresholds). Default ``None`` means
-        "no detection, use the document-wide defaults".
-        """
+    def extract(self, image_path: Path) -> OCRResult:
+        """Run OCR on a single image file and return the result."""
         ...
 
 
-__all__ = ["OCRBlock", "OCRResult", "BaseOCREngine"]
+def extract_with_language_hint(
+    engine: BaseOCREngine,
+    image_path: Path,
+    *,
+    language: str | None = None,
+) -> OCRResult:
+    """Run OCR while preserving compatibility with strict engines.
+
+    The original OCR contract was ``extract(image_path)``. Newer internal
+    engines accept an optional ``language`` hint, but tests and external
+    adapters may still implement the original signature. Try the richer call
+    first and fall back only when Python tells us the keyword is unsupported.
+    """
+    try:
+        return engine.extract(image_path, language=language)
+    except TypeError as exc:
+        if "unexpected keyword argument 'language'" not in str(exc):
+            raise
+        return engine.extract(image_path)
+
+
+__all__ = ["OCRBlock", "OCRResult", "BaseOCREngine", "extract_with_language_hint"]

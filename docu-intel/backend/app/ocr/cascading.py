@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 from app.core.config import settings
-from app.ocr.base import BaseOCREngine, OCRResult
+from app.ocr.base import BaseOCREngine, OCRResult, extract_with_language_hint
 from app.services.metrics import (
     track_ocr_cascade_fallback,
     track_ocr_duration,
@@ -185,7 +185,11 @@ class CascadingOCREngine:
         parallel.
         """
         start = time.perf_counter()
-        primary_result = self.primary.extract(image_path, language=language)
+        primary_result = extract_with_language_hint(
+            self.primary,
+            image_path,
+            language=language,
+        )
         track_ocr_duration(time.perf_counter() - start)
 
         if self._is_acceptable(primary_result, language=language):
@@ -197,7 +201,11 @@ class CascadingOCREngine:
         # downstream catches the truly impossible cases.
         start = time.perf_counter()
         try:
-            fallback_result = self.fallback.extract(image_path, language=language)
+            fallback_result = extract_with_language_hint(
+                self.fallback,
+                image_path,
+                language=language,
+            )
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.fallback.name, exc)
@@ -262,7 +270,11 @@ class CascadingOCREngine:
         assert self.pp_structure is not None  # caller-guaranteed
         start = time.perf_counter()
         try:
-            tier3_result = self.pp_structure.extract(image_path, language=language)
+            tier3_result = extract_with_language_hint(
+                self.pp_structure,
+                image_path,
+                language=language,
+            )
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.pp_structure.name, exc)
@@ -304,7 +316,11 @@ class CascadingOCREngine:
         assert self.vlm_ocr is not None
         start = time.perf_counter()
         try:
-            tier4_result = self.vlm_ocr.extract(image_path, language=language)
+            tier4_result = extract_with_language_hint(
+                self.vlm_ocr,
+                image_path,
+                language=language,
+            )
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.vlm_ocr.name, exc)

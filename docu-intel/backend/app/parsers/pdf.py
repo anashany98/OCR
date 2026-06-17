@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Awaitable, TypeVar
 
 from app.core.config import settings
-from app.ocr.base import BaseOCREngine
+from app.ocr.base import BaseOCREngine, extract_with_language_hint
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 from app.services.metrics import (
     track_ocr_dpi_escalation,
@@ -296,7 +296,11 @@ def _ocr_with_dpi_ladder(
         image_file = image_file.with_suffix(rendered_ext)
 
         try:
-            ocr = ocr_engine.extract(image_file, language=language)
+            ocr = extract_with_language_hint(
+                ocr_engine,
+                image_file,
+                language=language,
+            )
         except Exception as exc:
             # OPS-2: the OCR engine itself can crash on a
             # particular image (corrupt raster, tesseract
