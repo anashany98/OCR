@@ -193,10 +193,23 @@ def resolve_references(
     # return the original question (no rewrite) and a no-op resolution
     # so the orchestrator can fall through to the existing behaviour
     # (which will warn the user that the conversation context is empty).
-    if not state_value and not state.has_budget_scope and not state.current_document_id:
+    state_has_anything = (
+        state_value
+        or state.has_budget_scope
+        or state.current_document_id
+        or state.current_invoice_number
+        or state.current_order_number
+        or state.current_delivery_note_number
+        or state.current_folder_path
+    )
+    if not state_has_anything:
         return original, ResolvedReference(referenced_entity="none")
 
     # Build the [Contexto: ...] block from the non-empty state fields.
+    # We always include the active budget / folder / client (they are
+    # the most useful context for the LLM regardless of the kind) and
+    # add the entity-specific number only when it is the one the user
+    # asked about.
     context_parts: list[str] = []
     if state.current_budget_number:
         context_parts.append(f"presupuesto {state.current_budget_number}")
@@ -204,9 +217,15 @@ def resolve_references(
         context_parts.append(f"cliente {state.current_client_name}")
     if state.current_folder_path:
         context_parts.append(f"carpeta {state.current_folder_path}")
-    if state.current_invoice_number and kind == "invoice":
+    # Include the entity-specific reference when:
+    # - the kind matches (the user is asking about that entity), OR
+    # - the active context HAS that entity and the user is asking
+    #   about a related one (e.g. "que pedido origino esta factura"
+    #   with state.invoice_number = F-200 should inject the invoice
+    #   number so the LLM can look it up).
+    if state.current_invoice_number and kind in {"invoice", "order"}:
         context_parts.append(f"factura {state.current_invoice_number}")
-    if state.current_order_number and kind == "order":
+    if state.current_order_number and kind in {"order", "invoice"}:
         context_parts.append(f"pedido {state.current_order_number}")
     if state.current_delivery_note_number and kind == "delivery_note":
         context_parts.append(f"albaran {state.current_delivery_note_number}")

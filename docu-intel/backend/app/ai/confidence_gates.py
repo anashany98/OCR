@@ -255,3 +255,97 @@ def gate_warning_prompt_line(evaluation: GateEvaluation) -> str | None:
     }
     bits = [rules.get(g, g) for g in evaluation.gates_open]
     return " ".join(bits)
+
+
+def format_gate_blocked_answer(
+    evaluation: GateEvaluation,
+    active_context: "Any | None" = None,
+) -> str:
+    """Render the standard answer when a confidence gate blocks the LLM.
+
+    Delegates the layout to :func:`app.ai.answer_format.format_grounded_answer`
+    so the user always sees the same five-section layout (directa /
+    evidencia / documentos usados / advertencias / que falta)
+    regardless of which fallback path produced the response. The
+    amount candidates are passed as synthetic :class:`ContextItem`
+    objects so they show up in the "Evidencia" section.
+    """
+    from .answer_format import format_grounded_answer
+    from .context import ContextItem
+
+    if not isinstance(evaluation, GateEvaluation):
+        evaluation = GateEvaluation()
+    scope = ""
+    if active_context is not None and getattr(active_context, "current_budget_number", None):
+        scope = f"del presupuesto {active_context.current_budget_number} "
+    direct = (
+        f"No puedo confirmarlo con seguridad para {scope}porque el documento "
+        f"tiene una o varias senales de baja calidad: "
+        + ", ".join(evaluation.gates_open)
+        + "."
+    )
+    evidence_items: list[ContextItem] = []
+    for cand in evaluation.amount_candidates[:12]:
+        amount = cand.get("amount") or "?"
+        document = cand.get("document") or "documento"
+        page = cand.get("page")
+        conf = cand.get("confidence")
+        excerpt = f"importe candidato: {amount}"
+        evidence_items.append(
+            ContextItem(
+                title=f"Cantidad detectada en {document}",
+                summary=f"importe candidato: {amount}",
+                document_id=None,
+                document_filename=document,
+                page_number=page,
+                relevance_score=0.0,
+                excerpt=excerpt,
+                confidence=conf,
+                source_path=None,
+            )
+        )
+    missing = [
+        "No he fabricado un importe a partir de una lectura dudosa.",
+        (
+            "Si quieres, puedo re-procesar el PDF con OCR avanzado (PaddleOCR v3 / "
+            "PP-Structure) para mejorar la lectura. Dime y lo lanzo."
+        ),
+    ]
+    return format_grounded_answer(
+        context_items=evidence_items,
+        warnings=[direct] + list(evaluation.gates_open),
+        direct=direct,
+        missing=missing,
+        active_context=active_context,
+    )
+
+
+def evaluate_gates_for_turn(
+    db: "Any | None",
+    *,
+    question: str,
+    context_items: list,
+    resolved_doc_id: int | None,
+) -> tuple[GateEvaluation, str | None]:
+    """One-shot helper used by the orchestrator.
+
+    Resolves the resolved document (if any) and returns both the
+    :class:`GateEvaluation` and the one-line warning the LLM
+    prompt needs. The ``db`` argument is required so we can look
+    the document up without making the orchestrator do it
+    inline; the parameter is typed ``Any | None`` to keep this
+    module free of an ORM dependency for the pure-helper tests.
+    """
+    resolved_doc_payload: dict | None = None
+    if resolved_doc_id is not None and db is not None:
+        from app.tools import internal
+
+        resolved_doc_payload = internal.get_document_full_details(
+            db, resolved_doc_id
+        )
+    evaluation = evaluate_confidence_gates(
+        question=question,
+        context_items=context_items,
+        resolved_document=resolved_doc_payload,
+    )
+    return evaluation, gate_warning_prompt_line(evaluation)

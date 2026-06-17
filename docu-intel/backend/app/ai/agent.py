@@ -123,71 +123,15 @@ logger = logging.getLogger("app.ai.agent")
 
 
 def _format_gate_blocked_answer(gate_eval, active_context) -> str:
-    """Render a safe answer when a confidence gate blocks the LLM.
+    """Thin wrapper around :func:`app.ai.confidence_gates.format_gate_blocked_answer`.
 
-    Used by the orchestrator when a confidence gate is open and the
-    question is about an amount. The answer mentions the active
-    budget (so the user knows the scope was respected) and lists the
-    amount candidates the OCR could see, so the user can verify the
-    real number from the document.
-
-    The function delegates the layout to
-    :func:`app.ai.answer_format.format_grounded_answer` so the user
-    always sees the same five-section layout (directa / evidencia /
-    documentos usados / advertencias / que falta) regardless of
-    which fallback path produced the response.
+    Kept here as a private alias so the orchestrator code stays short
+    and so a future refactor of the gate helper does not break the
+    call site.
     """
-    from .answer_format import format_grounded_answer
-    from .confidence_gates import GateEvaluation
-    from .context import ContextItem
+    from .confidence_gates import format_gate_blocked_answer
 
-    if not isinstance(gate_eval, GateEvaluation):
-        gate_eval = GateEvaluation()
-    scope = ""
-    if active_context is not None and active_context.current_budget_number:
-        scope = f"del presupuesto {active_context.current_budget_number} "
-    direct = (
-        f"No puedo confirmarlo con seguridad para {scope}porque el documento "
-        f"tiene una o varias senales de baja calidad: "
-        + ", ".join(gate_eval.gates_open)
-        + "."
-    )
-    # Render the amount candidates as synthetic ContextItems so they
-    # show up in the "Evidencia" section of the standard format.
-    evidence_items: list[ContextItem] = []
-    for cand in gate_eval.amount_candidates[:12]:
-        amount = cand.get("amount") or "?"
-        document = cand.get("document") or "documento"
-        page = cand.get("page")
-        conf = cand.get("confidence")
-        excerpt = f"importe candidato: {amount}"
-        evidence_items.append(
-            ContextItem(
-                title=f"Cantidad detectada en {document}",
-                summary=f"importe candidato: {amount}",
-                document_id=None,
-                document_filename=document,
-                page_number=page,
-                relevance_score=0.0,
-                excerpt=excerpt,
-                confidence=conf,
-                source_path=None,
-            )
-        )
-    missing = [
-        "No he fabricado un importe a partir de una lectura dudosa.",
-        (
-            "Si quieres, puedo re-procesar el PDF con OCR avanzado (PaddleOCR v3 / "
-            "PP-Structure) para mejorar la lectura. Dime y lo lanzo."
-        ),
-    ]
-    return format_grounded_answer(
-        context_items=evidence_items,
-        warnings=[direct] + list(gate_eval.gates_open),
-        direct=direct,
-        missing=missing,
-        active_context=active_context,
-    )
+    return format_gate_blocked_answer(gate_eval, active_context)
 
 # ``DetectorFactory.seed = 0`` is set inside validation.py at
 # import time. We re-import the module to make the dependency
@@ -385,22 +329,14 @@ async def answer_question(
     # the question expects an amount, the orchestrator will skip the
     # LLM call and produce a safe fallback that lists the amount
     # candidates so the user can verify the answer themselves.
-    from .confidence_gates import (
-        evaluate_confidence_gates,
-        gate_warning_prompt_line,
-    )
+    from .confidence_gates import evaluate_gates_for_turn
 
-    resolved_doc_payload_for_gates: dict | None = None
-    if resolved_doc_id is not None:
-        resolved_doc_payload_for_gates = internal.get_document_full_details(
-            db, resolved_doc_id
-        )
-    gate_eval = evaluate_confidence_gates(
+    gate_eval, gate_warning = evaluate_gates_for_turn(
+        db,
         question=question,
         context_items=context_items,
-        resolved_document=resolved_doc_payload_for_gates,
+        resolved_doc_id=resolved_doc_id,
     )
-    gate_warning = gate_warning_prompt_line(gate_eval)
     if gate_warning:
         warnings.append(gate_warning)
 
@@ -563,47 +499,16 @@ async def answer_question(
     # document, last intent, …) so the next turn in the same session
     # can resolve "este presupuesto" / "este pedido" against the same
     # entity. Best-effort: a failure here must not break the answer.
-    try:
-        from .active_context import update_after_answer
+    from .active_context import persist_context_after_answer
 
-        if session_id:
-            ctx: ActiveContext = load_active_context(db, user, session_id)
-            resolved_doc_payload: dict | None = None
-            if resolved_doc_id is not None:
-                details = internal.get_document_full_details(db, resolved_doc_id)
-                if details is not None:
-                    resolved_doc_payload = details
-            update_after_answer(
-                ctx,
-                intent=intent_cls.intent,
-                resolved_document=resolved_doc_payload,
-                resolved_budget=(
-                    (resolved_doc_payload or {}).get("entities", {}).get("budget")
-                    if resolved_doc_payload
-                    else None
-                ),
-                resolved_order=(
-                    (resolved_doc_payload or {}).get("entities", {}).get("order")
-                    if resolved_doc_payload
-                    else None
-                ),
-                resolved_invoice=(
-                    (resolved_doc_payload or {}).get("entities", {}).get("invoice")
-                    if resolved_doc_payload
-                    else None
-                ),
-                retrieved_document_ids=[
-                    src.document_id for src in dedupe_sources(context_items)
-                ],
-            )
-            save_active_context(db, user, session_id, ctx)
-            db.commit()
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("active_context save failed: %s", exc)
-        try:
-            db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+    persist_context_after_answer(
+        db,
+        user=user,
+        session_id=session_id,
+        intent=intent_cls.intent,
+        resolved_doc_id=resolved_doc_id,
+        context_items=context_items,
+    )
 
     return answer_row
 

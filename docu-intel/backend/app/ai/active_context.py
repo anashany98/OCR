@@ -293,3 +293,72 @@ def record_message(
             intent=intent,
             was_structured_hit=was_structured_hit,
         )
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator helper
+# ---------------------------------------------------------------------------
+
+
+def persist_context_after_answer(
+    db: Session,
+    *,
+    user: User | None,
+    session_id: str | None,
+    intent: str | None,
+    resolved_doc_id: int | None,
+    context_items: list,
+) -> None:
+    """Persist the active context after a chat turn completes.
+
+    Best-effort: any failure (missing session, DB error, …) is
+    swallowed and logged so the assistant never crashes because of
+    a session-state hiccup. The function is intentionally side-effect
+    only: the caller is still responsible for the final
+    ``db.commit()`` on the AIAnswer row.
+    """
+    if not session_id:
+        return
+    try:
+        ctx = load_active_context(db, user, session_id)
+        resolved_doc_payload: dict | None = None
+        if resolved_doc_id is not None:
+            # Local import to keep the top-level module light and to
+            # avoid a circular dependency with :mod:`app.tools.internal`.
+            from app.tools import internal
+
+            resolved_doc_payload = internal.get_document_full_details(
+                db, resolved_doc_id
+            )
+        update_after_answer(
+            ctx,
+            intent=intent,
+            resolved_document=resolved_doc_payload,
+            resolved_budget=(
+                (resolved_doc_payload or {}).get("entities", {}).get("budget")
+                if resolved_doc_payload
+                else None
+            ),
+            resolved_order=(
+                (resolved_doc_payload or {}).get("entities", {}).get("order")
+                if resolved_doc_payload
+                else None
+            ),
+            resolved_invoice=(
+                (resolved_doc_payload or {}).get("entities", {}).get("invoice")
+                if resolved_doc_payload
+                else None
+            ),
+            retrieved_document_ids=[
+                getattr(src, "document_id", None)
+                for src in context_items
+            ],
+        )
+        save_active_context(db, user, session_id, ctx)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("active_context save failed: %s", exc)
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
