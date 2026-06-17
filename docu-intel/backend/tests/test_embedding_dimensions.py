@@ -134,5 +134,15 @@ class TestCoerceEmbeddingDimensions:
             settings.embedding_allow_dimension_coercion = original
 
 
+def test_document_chunk_vector_dimension_matches_settings():
+    """The ORM pgvector dimension must match the configured model size."""
+    from app.core.config import settings
+    from app.models import DocumentChunk
+
+    column_dim = getattr(DocumentChunk.__table__.c.embedding.type, "dim", None)
+
+    assert column_dim == int(settings.embedding_dimensions)
+
+
 # Need pytest for raises
 import pytest

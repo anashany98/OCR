@@ -189,7 +189,7 @@ class DocumentChunk(Base):
     )
     page_number: Mapped[int | None] = mapped_column(Integer)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Any | None] = mapped_column(Vector(768), nullable=True)
+    embedding: Mapped[Any | None] = mapped_column(Vector(1024), nullable=True)
     embedding_provider_used: Mapped[str | None] = mapped_column(String(80))
     embedding_fallback: Mapped[bool] = mapped_column(default=False, nullable=False)
     needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
