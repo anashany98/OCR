@@ -130,47 +130,64 @@ def _format_gate_blocked_answer(gate_eval, active_context) -> str:
     budget (so the user knows the scope was respected) and lists the
     amount candidates the OCR could see, so the user can verify the
     real number from the document.
+
+    The function delegates the layout to
+    :func:`app.ai.answer_format.format_grounded_answer` so the user
+    always sees the same five-section layout (directa / evidencia /
+    documentos usados / advertencias / que falta) regardless of
+    which fallback path produced the response.
     """
-    # local imports to keep the top-level import block small
+    from .answer_format import format_grounded_answer
     from .confidence_gates import GateEvaluation
+    from .context import ContextItem
 
     if not isinstance(gate_eval, GateEvaluation):
         gate_eval = GateEvaluation()
     scope = ""
     if active_context is not None and active_context.current_budget_number:
         scope = f"del presupuesto {active_context.current_budget_number} "
-    parts: list[str] = []
-    parts.append(
+    direct = (
         f"No puedo confirmarlo con seguridad para {scope}porque el documento "
-        f"tiene una o varias señales de baja calidad: "
+        f"tiene una o varias senales de baja calidad: "
         + ", ".join(gate_eval.gates_open)
         + "."
     )
-    parts.append(
-        "No he fabricado un importe a partir de una lectura dudosa. "
-        "Te dejo abajo los importes que el OCR ha detectado para que "
-        "puedas verificar el real en el documento original."
-    )
-    if gate_eval.amount_candidates:
-        lines = ["", "**Importes detectados (candidatos):**", ""]
-        for cand in gate_eval.amount_candidates[:12]:
-            amount = cand.get("amount") or "?"
-            document = cand.get("document") or "?"
-            page = cand.get("page")
-            page_text = f" (pag. {page})" if page else ""
-            conf = cand.get("confidence")
-            conf_text = (
-                f" — confianza {int(round(float(conf) * 100))}%"
-                if isinstance(conf, (int, float))
-                else ""
+    # Render the amount candidates as synthetic ContextItems so they
+    # show up in the "Evidencia" section of the standard format.
+    evidence_items: list[ContextItem] = []
+    for cand in gate_eval.amount_candidates[:12]:
+        amount = cand.get("amount") or "?"
+        document = cand.get("document") or "documento"
+        page = cand.get("page")
+        conf = cand.get("confidence")
+        excerpt = f"importe candidato: {amount}"
+        evidence_items.append(
+            ContextItem(
+                title=f"Cantidad detectada en {document}",
+                summary=f"importe candidato: {amount}",
+                document_id=None,
+                document_filename=document,
+                page_number=page,
+                relevance_score=0.0,
+                excerpt=excerpt,
+                confidence=conf,
+                source_path=None,
             )
-            lines.append(f"- **{amount}** en {document}{page_text}{conf_text}")
-        parts.append("\n".join(lines))
-    parts.append(
-        "Si quieres, puedo re-procesar el PDF con OCR avanzado (PaddleOCR v3 / "
-        "PP-Structure) para mejorar la lectura. Dime y lo lanzo."
+        )
+    missing = [
+        "No he fabricado un importe a partir de una lectura dudosa.",
+        (
+            "Si quieres, puedo re-procesar el PDF con OCR avanzado (PaddleOCR v3 / "
+            "PP-Structure) para mejorar la lectura. Dime y lo lanzo."
+        ),
+    ]
+    return format_grounded_answer(
+        context_items=evidence_items,
+        warnings=[direct] + list(gate_eval.gates_open),
+        direct=direct,
+        missing=missing,
+        active_context=active_context,
     )
-    return "\n\n".join(parts)
 
 # ``DetectorFactory.seed = 0`` is set inside validation.py at
 # import time. We re-import the module to make the dependency
