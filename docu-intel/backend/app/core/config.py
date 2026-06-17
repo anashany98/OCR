@@ -382,10 +382,22 @@ class Settings(BaseSettings):
     auth_login_rate_limit: str = "10/minute"
 
     max_upload_size_mb: int = 500  # Bumped for large architectural plans (up to 300 MB)
-    # Max number of file parts in a single multipart upload (python-multipart's
-    # default is 1000). Bumped so a folder drag-and-drop or webkitdirectory
-    # pick with many files is not rejected before reaching the route.
-    max_upload_files: int = 10_000_000
+    # SEC-BLOCK-7: max number of file parts in a single multipart upload.
+    # The previous default of 10_000_000 was effectively unbounded: the
+    # Starlette multipart parser would happily read that many parts into
+    # memory before the route got a chance to reject anything. The new
+    # default of 2_000 supports a folder drag-and-drop of ~2k files
+    # (well within the ``webkitdirectory`` common case) without
+    # exposing the worker to OOM. Operators that need to ingest larger
+    # batches can override ``MAX_UPLOAD_FILES`` in ``.env.production``.
+    #
+    # TODO(BLOCK-7): replace the Starlette ``Request._get_form``
+    # monkeypatch in ``app.core.multipart_limits`` with a public-config
+    # hook that FastAPI exposes natively in a recent version. Until
+    # then, raising the default above 2_000 is acceptable for internal
+    # tooling; re-evaluate when the deployment moves to a less
+    # controlled network.
+    max_upload_files: int = 2_000
     max_pdf_pages: int = 1000  # Bumped for large plan sets
     max_image_megapixels: float = 40.0
     max_excel_rows: int = 100_000
@@ -498,6 +510,85 @@ class Settings(BaseSettings):
             )
         if environment == "local" and len(value) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters long")
+        return value
+
+    @field_validator("integration_jwt_secret", mode="after")
+    @classmethod
+    def validate_integration_jwt_secret(cls, value: str, info: ValidationInfo) -> str:
+        """SEC-BLOCK-7: in non-local environments ``integration_jwt_secret``
+        and ``api_key_hmac_secret`` MUST be set to a value distinct from
+        ``jwt_secret``. The use-site fallback (``_integration_jwt_secret``
+        returns ``settings.jwt_secret`` when the dedicated secret is
+        empty) is retained for backward compatibility in ``local`` but
+        must not be relied on in production: a leak in any one surface
+        would otherwise compromise the others.
+
+        TODO(BLOCK-7): when the deployment runbook mandates a distinct
+        secret, drop the fallback in ``_integration_jwt_secret()`` and
+        require both settings to be present from boot.
+        """
+        environment = info.data.get("environment", "local")
+        if not value:
+            if environment != "local":
+                raise ValueError(
+                    "INTEGRATION_JWT_SECRET must be set in non-local environments. "
+                    "Generate one with: "
+                    'python -c "import secrets; print(secrets.token_urlsafe(64))" '
+                    "and set it in .env.production. The fallback to JWT_SECRET is "
+                    "deprecated and will be removed in the next major release."
+                )
+            # In local environments the empty default is accepted and
+            # the use-site fallback to ``jwt_secret`` keeps the dev
+            # workflow smooth.
+            return value
+        # When set, the integration secret must be distinct from the
+        # user JWT secret. A duplicate creates a single point of
+        # compromise — a leak of one surface would let an attacker
+        # forge tokens for the other.
+        jwt_secret = info.data.get("jwt_secret", "")
+        if value == jwt_secret:
+            raise ValueError(
+                "INTEGRATION_JWT_SECRET must differ from JWT_SECRET. "
+                "Generate a fresh value with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(64))"'
+            )
+        if len(value) < 64 and environment != "local":
+            raise ValueError(
+                "INTEGRATION_JWT_SECRET must be at least 64 characters long "
+                "in non-local environments"
+            )
+        return value
+
+    @field_validator("api_key_hmac_secret", mode="after")
+    @classmethod
+    def validate_api_key_hmac_secret(cls, value: str, info: ValidationInfo) -> str:
+        """SEC-BLOCK-7: see ``validate_integration_jwt_secret`` for the
+        rationale. ``api_key_hmac_secret`` HMACs integration API keys
+        before they are stored; a duplicate with ``jwt_secret`` means
+        the user signing key and the API-key HMAC key are the same
+        and a leak in either surface compromises both.
+        """
+        environment = info.data.get("environment", "local")
+        if not value:
+            if environment != "local":
+                raise ValueError(
+                    "API_KEY_HMAC_SECRET must be set in non-local environments. "
+                    "Generate one with: "
+                    'python -c "import secrets; print(secrets.token_urlsafe(64))" '
+                    "and set it in .env.production."
+                )
+            return value
+        jwt_secret = info.data.get("jwt_secret", "")
+        if value == jwt_secret:
+            raise ValueError(
+                "API_KEY_HMAC_SECRET must differ from JWT_SECRET. "
+                "Generate a fresh value with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(64))"'
+            )
+        if len(value) < 64 and environment != "local":
+            raise ValueError(
+                "API_KEY_HMAC_SECRET must be at least 64 characters long in non-local environments"
+            )
         return value
 
     @field_validator("admin_password", mode="after")

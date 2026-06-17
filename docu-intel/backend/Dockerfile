@@ -66,13 +66,18 @@ USER appuser
 # SEC-RL-1 (Sprint 0): pass --proxy-headers so uvicorn populates
 # ``request.client.host`` from a trusted reverse proxy. The list of
 # trusted proxy IPs is injected via the UVICORN_FORWARDED_ALLOW_IPS
-# env var (set in .env.production). Default "*" is intentionally
-# permissive in local dev; in production the operator MUST pin it to
-# the actual reverse-proxy CIDR (e.g. "10.0.0.0/8").
+# env var (set in .env.production).
 #
-# NOTE: do NOT wrap ${UVICORN_FORWARDED_ALLOW_IPS:-*} in single quotes
-# inside this sh -c string — single quotes prevent shell variable
-# expansion, and uvicorn would receive the literal placeholder text.
+# SEC-BLOCK-7: the default is now the RFC1918 private network ranges
+# (``10.0.0.0/8``, ``172.16.0.0/12``, ``192.168.0.0/16``) plus the
+# loopback (``127.0.0.0/8``) so the default is not wide open (``*``).
+# Operators should still pin ``UVICORN_FORWARDED_ALLOW_IPS`` to the
+# actual reverse-proxy CIDR in ``.env.production``; the default
+# is a safety net for the case where the env var is missing.
+#
+# NOTE: do NOT wrap ${UVICORN_FORWARDED_ALLOW_IPS:-...} in single
+# quotes inside this sh -c string — single quotes prevent shell
+# variable expansion, and uvicorn would receive the literal placeholder text.
 #
 # Migrations are NOT run from the CMD. A separate ``migrate`` service
 # in docker-compose.yml / docker-compose.prod.yml runs
@@ -81,4 +86,4 @@ USER appuser
 # service_completed_successfully``. Running ``alembic upgrade head``
 # from every uvicorn replica was racing on ``alembic_version`` when
 # more than one replica booted at the same time.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-*}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"]
