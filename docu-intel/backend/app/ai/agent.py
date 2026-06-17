@@ -45,6 +45,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import AsyncIterator
 
 import httpx
@@ -178,23 +179,24 @@ async def answer_question(
     scope_key = access_scope_cache_key(access_scope)
     cached = await get_cached_answer_async(question, user.id, mode, scope_key=scope_key)
     if cached:
-        # Return cached answer as AIAnswer object
-        question_row = AIQuestion(user_id=user.id, question=question)
-        db.add(question_row)
-        db.flush()
-
+        # Cache hit: return a transient ``AIAnswer`` without inserting
+        # a new ``AIQuestion`` / ``AIAnswer`` row. Persisting duplicates
+        # would inflate ``/ai/history`` and skew the feedback loop's
+        # cumulative vote count. The SSE endpoint (``/ai/ask/stream``)
+        # already creates its own persistent row when needed; this
+        # path is only used by the non-streaming ``/ai/ask`` endpoint.
         answer_row = AIAnswer(
-            question_id=question_row.id,
+            id=0,
+            question_id=0,
             answer=cached["answer"],
             confidence=cached["confidence"],
             model_name=cached.get("model_name", "cached"),
+            created_at=datetime.utcnow(),
         )
-        db.add(answer_row)
-        db.flush()
-
         for source in cached.get("sources", []):
             answer_row.sources.append(
                 AIAnswerSource(
+                    answer_id=0,
                     document_id=source.get("document_id"),
                     page_number=source.get("page_number"),
                     block_id=source.get("block_id"),
@@ -202,9 +204,6 @@ async def answer_question(
                     excerpt=source.get("excerpt"),
                 )
             )
-
-        db.commit()
-        db.refresh(answer_row)
         return answer_row
 
     # Generate new answer

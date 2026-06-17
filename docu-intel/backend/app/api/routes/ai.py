@@ -269,6 +269,7 @@ async def ask_stream(
 
         end_payload = {
             "answer": full_text,
+            "answer_id": answer_row.id,
             "model": model_name,
             "confidence": confidence,
             "fallback": use_fallback,
@@ -378,6 +379,19 @@ def post_feedback(
     chunks. See :mod:`app.services.feedback_loop` for the
     loop semantics.
     """
+    # Ownership check (matches ``/answers/{id}``): without this guard
+    # an authenticated user could vote on someone else's answer and
+    # poison the cross-user weight signal. ``record_feedback`` itself
+    # also bails out when the answer does not exist, but doing the
+    # check here keeps the 404 vs 403 vs 400 separation consistent
+    # with the rest of the chat API.
+    item = db.get(AIAnswer, answer_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    question = db.get(AIQuestion, item.question_id)
+    if question is None or question.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Answer not found")
+
     from app.services.feedback_loop import record_feedback
 
     outcome = record_feedback(

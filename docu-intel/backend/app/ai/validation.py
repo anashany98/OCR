@@ -416,8 +416,13 @@ def suggest_followups(
             suggestions.append("¿Cuanto suman los presupuestos aceptados?")
         elif "pedido" in normalized:
             suggestions.append("¿Que proveedor tiene mas pedidos en curso?")
-        else:
-            suggestions.append("¿Cuales son los ultimos presupuestos aceptados?")
+        # No signal contextual at all: return ``[]`` instead of the
+        # generic budget suggestion. The previous behaviour injected
+        # "¿Cuales son los ultimos presupuestos aceptados?" for every
+        # off-topic question, which made the suggestions box feel
+        # disconnected from the actual answer. Returning an empty list
+        # lets the UI hide the suggestions panel when there is no
+        # useful follow-up to propose.
 
     # Deduplicate and cap at 3.
     seen: set[str] = set()

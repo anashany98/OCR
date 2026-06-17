@@ -16,6 +16,7 @@ import type { AIAnswer, AIQuestion } from "@/types/api"
 import { composeQuestion } from "./composeQuestion"
 
 const STORAGE_KEY = "docu-intel:chat:messages"
+const STORAGE_MAX_MESSAGES = 30
 
 export type ChatMessage = {
   id: string
@@ -75,11 +76,16 @@ export function useChat() {
     setHydrated(true)
   }, [])
 
-  // Persist conversation (skip transient pending markers).
+  // Persist conversation (skip transient pending markers, cap to the
+  // last ``STORAGE_MAX_MESSAGES`` entries to keep the localStorage
+  // payload small — a long chat with thousands of turns would
+  // otherwise hit the 5 MB browser quota and silently drop writes).
   useEffect(() => {
     if (!hydrated) return
     try {
-      const slim = messages.map((m) => ({ ...m, pending: false }))
+      const slim = messages
+        .map((m) => ({ ...m, pending: false }))
+        .slice(-STORAGE_MAX_MESSAGES)
       localStorage.setItem(STORAGE_KEY, JSON.stringify(slim))
     } catch {
       // quota / private mode — non-fatal
@@ -177,7 +183,7 @@ export function useChat() {
             followups = ev.followups
             sources = ev.sources
             usedFallback = ev.fallback
-            dbId = (ev as { answer_id?: number }).answer_id ?? null
+            dbId = ev.answer_id
           }
         }
       } catch (err) {

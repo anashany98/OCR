@@ -8,6 +8,7 @@ export type AIStreamEvent =
   | {
       type: "end"
       answer: string
+      answer_id: number
       model: string
       confidence: number | null
       fallback: boolean
