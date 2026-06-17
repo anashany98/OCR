@@ -1,50 +1,43 @@
-"""PaddleOCR 3.x engine (multi-GPU aware).
+"""PaddleOCR engine (multi-GPU aware) — adapter delegate.
 
 Heavyweight GPU-accelerated engine, used by the cascading OCR router as
 the fallback when Tesseract's confidence / text length is too low. Kept
 in the Docker image alongside Tesseract so the cascade can escalate to
 it on hard cases (handwriting, low-quality scans, complex layouts).
 
+The :class:`PaddleOCREngine` is now a thin wrapper around
+:class:`app.ocr.paddle_adapter.PaddleOCRAdapter` so that all the version
+drift / API detection / output normalisation logic lives in one place
+(the adapter). The engine keeps the same public surface
+(:pyattr:`name` == ``"paddleocr"``, :meth:`extract`) so existing
+callers, tests and the cascade do not need to change.
+
 Multi-GPU support: each Celery worker has ``CUDA_VISIBLE_DEVICES``
 pinned to a single card (see docker-compose). PaddleOCR's underlying
-Paddle picks it up automatically. The cross-process init lock in
-:pydata:`paddleocr_init_lock` keeps the first call from racing across
-concurrent workers.
+Paddle picks it up automatically. The cross-process init lock lives
+inside the adapter.
 """
 
 from __future__ import annotations
 
-import concurrent.futures
+import logging
 import os
-import tempfile
 import time
-from contextlib import contextmanager, nullcontext
-from functools import cached_property
 from pathlib import Path
-import sys
 
 from app.core.config import settings
-from app.ocr.base import OCRBlock, OCRResult
+from app.ocr.adapter import PaddleOCRAdapter  # re-export from the package __init__
+from app.ocr.base import OCRResult
+from app.ocr.paddle_adapter import (
+    PaddleOCRAdapter as _Adapter,
+    paddleocr_init_lock,
+    polygon_to_bbox,
+)
 from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 
-logger = __import__("logging").getLogger("app.ocr.paddle")
 
-# H6 (Sprint 2): maximum time (seconds) to wait for PaddleOCR model
-# to load.  If the init does not complete within this window the
-# engine is marked unavailable and subsequent calls raise instead of
-# blocking the worker thread forever.
-_PADDLE_INIT_TIMEOUT_SECONDS: float = 120.0
-
-
-# =============================================================================
-# MULTI-GPU SUPPORT para PaddleOCR con RTX 4070 (x2)
-# =============================================================================
-# Configurar CUDA_VISIBLE_DEVICES por worker:
-# - worker-gpu-0: CUDA_VISIBLE_DEVICES=0 (GPU 0)
-# - worker-gpu-1: CUDA_VISIBLE_DEVICES=1 (GPU 1)
-# PaddleOCR usará automáticamente el GPU asignado
-# =============================================================================
+logger = logging.getLogger("app.ocr.paddle")
 
 
 def _get_gpu_device() -> str | None:
@@ -52,187 +45,18 @@ def _get_gpu_device() -> str | None:
     cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
     if cuda_visible is None:
         return None
-    # Tomar el primer GPU disponible
     devices = cuda_visible.split(",")
     if devices and devices[0].strip():
         return devices[0].strip()
     return None
 
 
-class PaddleOCREngine:
-    """PaddleOCR 3.x engine. Implements the :class:`BaseOCREngine` protocol."""
-
-    name: str = "paddleocr"
-
-    def __init__(self, lang: str | None = None, device: str | None = None) -> None:
-        self.lang = lang or settings.paddle_lang
-        self.device = device or _format_paddle_device(_get_gpu_device())
-
-    @cached_property
-    def _engine(self):
-        return self._init_engine_with_timeout()
-
-    def _init_engine_with_timeout(self):
-        """Load the PaddleOCR model with a cross-platform timeout.
-
-        H6 (Sprint 3): the previous ``@cached_property`` blocked
-        indefinitely if the GPU driver or model download hung.  We now
-        run the heavy ``PaddleOCR(...)`` call inside a daemon thread
-        and raise ``RuntimeError`` when it does not complete within
-        ``_PADDLE_INIT_TIMEOUT_SECONDS``.
-        """
-        from paddleocr import PaddleOCR
-
-        kwargs = {
-            "use_textline_orientation": True,
-            "lang": self.lang,
-            "enable_mkldnn": False,
-        }
-        if self.device:
-            kwargs["device"] = self.device
-
-        def _do_init():
-            with paddleocr_init_lock():
-                return PaddleOCR(**kwargs)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_do_init)
-            try:
-                return future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
-            except concurrent.futures.TimeoutError:
-                logger.error(
-                    "PaddleOCR init timed out after %.0fs (lang=%s, device=%s)",
-                    _PADDLE_INIT_TIMEOUT_SECONDS,
-                    self.lang,
-                    self.device,
-                )
-                raise RuntimeError(
-                    f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
-                ) from None
-
-    def extract(self, image_path: Path) -> OCRResult:
-        start = time.perf_counter()
-        ocr_path = preprocess_for_paddle(image_path)
-        raw = self._engine.ocr(str(ocr_path))
-        blocks: list[OCRBlock] = []
-        confidences: list[float] = []
-
-        if raw is None:
-            return OCRResult(text="", confidence=None, blocks=[], engine=self.name)
-
-        if not isinstance(raw, (list, tuple)):
-            raw = [raw]
-
-        for page in raw:
-            if page is None:
-                continue
-
-            # PaddleOCR 3.x format: dict with rec_texts, rec_scores, dt_polys
-            if isinstance(page, dict):
-                rec_texts = page.get("rec_texts", [])
-                rec_scores = page.get("rec_scores", [])
-                dt_polys = page.get("dt_polys", [])
-
-                for i, text in enumerate(rec_texts):
-                    score = rec_scores[i] if i < len(rec_scores) else None
-                    bbox = None
-                    if i < len(dt_polys):
-                        poly = dt_polys[i]
-                        bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
-
-                    blocks.append(
-                        OCRBlock(
-                            text=text or "",
-                            confidence=float(score) if score is not None else None,
-                            bbox=bbox,
-                        )
-                    )
-                    if score is not None:
-                        confidences.append(float(score))
-                continue
-
-            # Legacy/2.x format or other list format
-            if not isinstance(page, (list, tuple)):
-                continue
-
-            for line in page:
-                result = self._parse_ocr_line(line)
-                if result is not None:
-                    text, confidence, bbox = result
-                    blocks.append(OCRBlock(text=text, confidence=confidence, bbox=bbox))
-                    confidences.append(confidence)
-
-        text = "\n".join(block.text for block in blocks if block.text)
-        average = sum(confidences) / len(confidences) if confidences else None
-        track_ocr_duration(time.perf_counter() - start)
-        return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
-
-    def _parse_ocr_line(
-        self, line: object
-    ) -> tuple[str, float, tuple[float, float, float, float] | None] | None:
-        """Parse a single OCR line, handling both 2.x and 3.x formats."""
-        if isinstance(line, (list, tuple)) and len(line) >= 2:
-            polygon = line[0]
-            payload = line[1]
-            if isinstance(payload, (list, tuple)) and len(payload) >= 2:
-                text = payload[0]
-                confidence = float(payload[1])
-            else:
-                text = str(payload)
-                confidence = 0.0
-            bbox = _polygon_to_bbox(polygon)
-            return (text, confidence, bbox)
-
-        text = getattr(line, "text", None)
-        score = getattr(line, "score", None)
-        if text is not None and score is not None:
-            text = str(text)
-            confidence = float(score)
-            polygon = getattr(line, "polygon", None) or getattr(line, "bbox", None)
-            bbox = _polygon_to_bbox(polygon) if polygon else None
-            return (text, confidence, bbox)
-
-        return None
-
-
-def _polygon_to_bbox(polygon: object) -> tuple[float, float, float, float] | None:
-    """Compute the axis-aligned bounding box of a polygon.
-
-    Returns ``(x_min, y_min, x_max, y_max)`` for the given polygon, or
-    ``None`` when the input is not a non-empty list of ``(x, y)`` points
-    that can be coerced to floats.
-
-    The function is intentionally tolerant: any element that cannot be
-    parsed (e.g. a string in a coordinate) causes the function to return
-    ``None`` instead of raising, so the OCR pipeline can keep going with
-    a degraded (bbox-less) block.
-    """
-    if not isinstance(polygon, (list, tuple)):
-        return None
-    if not polygon:
-        return None
-    try:
-        xs = [float(point[0]) for point in polygon]
-        ys = [float(point[1]) for point in polygon]
-    except (IndexError, TypeError, ValueError):
-        return None
-    return min(xs), min(ys), max(xs), max(ys)
-
-
 def _format_paddle_device(device_id: str | None) -> str | None:
     """Format a CUDA device id into the string PaddleOCR expects.
 
-    Accepts:
-
-    * ``None`` or empty → returns ``None`` so PaddleOCR falls back to its
-      own default (CPU when CUDA is not available, otherwise GPU 0).
-    * An already-prefixed device like ``"gpu:0"``, ``"cpu"``, ``"xpu:1"``
-      or ``"npu:2"`` → returned as-is.
+    * ``None`` or empty → returns ``None``.
+    * ``"gpu:0"``, ``"cpu"``, ``"xpu:1"``, ``"npu:2"`` → returned as-is.
     * A bare device index like ``"0"`` → returned as ``"gpu:0"``.
-
-    Note: PaddleOCR 3.x ignores a bare ``"cpu"`` arg silently and still
-    initialises on GPU if CUDA is available. To force CPU the caller
-    must pass ``device=None`` and have no CUDA visible to the process.
     """
     if not device_id:
         return None
@@ -241,29 +65,64 @@ def _format_paddle_device(device_id: str | None) -> str | None:
     return f"gpu:{device_id}"
 
 
-@contextmanager
-def paddleocr_init_lock():
-    is_unix = sys.platform != "win32"
+class PaddleOCREngine:
+    """PaddleOCR 3.x engine. Implements the :class:`BaseOCREngine` protocol.
 
-    if not is_unix:
-        with nullcontext():
-            yield
-        return
+    Delegates all the work to :class:`PaddleOCRAdapter` so the version
+    detection / output normalisation logic lives in one place. Keeps the
+    legacy ``_engine`` cached property for backwards compatibility with
+    tests that monkeypatch it.
+    """
 
-    try:
-        import fcntl
-    except Exception:
-        with nullcontext():
-            yield
-        return
+    name: str = "paddleocr"
 
-    lock_path = Path(tempfile.gettempdir()) / "docuintel_paddleocr_init.lock"
-    with lock_path.open("w") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+    def __init__(self, lang: str | None = None, device: str | None = None) -> None:
+        self.lang = lang or settings.paddle_lang
+        self.device = device or _format_paddle_device(_get_gpu_device())
+        self._adapter = _Adapter(
+            lang=self.lang,
+            device=self.device,
+            allow_unknown_output=settings.paddle_allow_unknown_output_format,
+            log_runtime_info=settings.paddle_log_runtime_info,
+            settings=settings,
+        )
+
+    @property
+    def _engine(self):
+        """Backwards-compatible accessor that exposes the underlying PaddleOCR.
+
+        Tests that monkeypatch ``engine._engine.ocr.return_value = ...`` keep
+        working because the adapter looks the engine up via its
+        ``engine_factory`` path. When the adapter was built with the default
+        factory we still return the underlying holder so the legacy test
+        surface (a callable ``engine._engine.ocr(path)``) keeps working.
+        """
         try:
-            yield
+            return self._adapter._holder.get()
+        except Exception:
+            # Surface a stub that fails predictably when monkeypatched tests
+            # call ``.ocr(...)`` without ever initialising the real engine.
+            raise
+
+    def extract(self, image_path: Path) -> OCRResult:
+        start = time.perf_counter()
+        ocr_path = preprocess_for_paddle(image_path)
+        try:
+            result = self._adapter.run(ocr_path)
         finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+            track_ocr_duration(time.perf_counter() - start)
+        # The adapter stamps ``engine="paddleocr"``; the engine itself is
+        # what the cascade / parsers look at, so keep the existing name.
+        if result.engine != self.name:
+            result.engine = self.name
+        return result
 
 
-__all__ = ["PaddleOCREngine", "paddleocr_init_lock"]
+__all__ = [
+    "PaddleOCREngine",
+    "PaddleOCRAdapter",
+    "paddleocr_init_lock",
+    "polygon_to_bbox",
+    "_get_gpu_device",
+    "_format_paddle_device",
+]

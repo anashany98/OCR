@@ -132,8 +132,20 @@ def _get_or_create_engine(factory) -> BaseOCREngine:
 
 def _build_cascading_engine() -> BaseOCREngine:
     from app.ocr.cascading import CascadingOCREngine
+    from app.ocr.model_registry import resolve_ocr_models, resolve_structure_pipeline
     from app.ocr.paddle import PaddleOCREngine
     from app.ocr.tesseract import TesseractOCREngine
+
+    # Resolve profiles up-front so a misconfigured ENV fails fast at
+    # worker boot, not on the first real document. The settings alone
+    # decide everything; ``PaddleOCREngine`` / ``PPStructureEngine``
+    # only call back into the adapters.
+    ocr_profile = resolve_ocr_models(settings)
+    logger.info(
+        "OCR factory: selected paddle profile id=%s model_type=%s",
+        ocr_profile.id,
+        ocr_profile.model_type,
+    )
 
     kwargs: dict[str, object] = dict(
         primary=TesseractOCREngine(
@@ -148,6 +160,12 @@ def _build_cascading_engine() -> BaseOCREngine:
     if settings.ocr_cascading_use_pp_structure:
         from app.ocr.pp_structure import PPStructureEngine
 
+        structure_profile = resolve_structure_pipeline(settings)
+        logger.info(
+            "OCR factory: selected structure profile id=%s pipeline=%s",
+            structure_profile.id,
+            structure_profile.pipeline,
+        )
         kwargs["pp_structure"] = PPStructureEngine(
             device=settings.pp_structure_device,
             lang=settings.pp_structure_lang,
