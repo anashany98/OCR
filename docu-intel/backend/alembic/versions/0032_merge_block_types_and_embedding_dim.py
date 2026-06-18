@@ -1,35 +1,32 @@
-"""M7 (Sprint 2) — Enums + CHECK constraints for ``block_type`` /
-``chunk_type``.
+"""Merge 0032 heads: block_type/chunk_type enums + embedding dimension fix.
 
-The previous implementation accepted any string in
-``document_blocks.block_type`` and ``document_chunks.chunk_type``,
-which is a footgun: a typo (``"textt"`` instead of ``"text"``)
-silently zeroed the result of a ``WHERE block_type='table'``
-filter without raising. The ORM model already documents a fixed
-set of values in its docstring; this migration enforces them at
-the database level.
+Two parallel migrations were created against the same parent
+``0031_pg_trgm_text_search_indexes``:
 
-The migration:
+* ``block_type_chunk_type_enums``    -> CHECK constraints on
+  ``document_blocks.block_type`` and ``document_chunks.chunk_type``
+  so a typo (``"textt"``) cannot silently zero a filter result.
 
-1. Adds a CHECK constraint on ``document_blocks.block_type``
-   limiting values to the documented set.
-2. Adds a CHECK constraint on ``document_chunks.chunk_type``
-   limiting values to the documented set.
+* ``fix_embedding_vector_dimension`` -> ``vector(1024)`` -> ``vector(768)``
+  so the deployed ``nomic-embed-text:v1.5`` model (768d) can actually
+  insert rows instead of failing every extraction job with
+  ``expected 1024 dimensions, not 768``.
 
-The migration does **not** use a Postgres ENUM type because:
+Both are independent schema changes that need to land together before
+the next ``0033_*`` migration can chain off a single head. This single
+file replaces both so alembic only sees one head at ``0032``.
 
-* ENUMs require an ``ALTER TYPE`` to add new values, which is
-  awkward to coordinate across migrations and rollbacks.
-* ENUMs add a new catalogue type that other tools (``psql``,
-  monitoring, BI) need to be aware of. CHECK constraints keep
-  the schema portable.
-* The set of valid values is small and stable; CHECK + an
-  ``Enum`` in the Python layer is the standard pattern.
+The original two files were deleted from disk; this merged file is the
+new unique ``0032`` revision. Because the backend has been failing to
+boot since these were authored (multiple-heads error), neither half
+has ever been applied to a live database, so the merge is safe — a
+fresh ``alembic upgrade head`` runs the combined upgrade exactly once.
 
-Existing data is sanitised before the constraint is added: any
-``block_type`` or ``chunk_type`` not in the documented set is
-mapped to ``"text"`` (the historical default). The mapping is
-reversible via the downgrade.
+Order matters: data sanitisation and CHECK constraints run first (the
+CHECK on ``chunk_type`` does not touch the ``embedding`` column so it
+is independent of the dimension change), then the HNSW index is
+dropped, the column is altered, and the index is recreated. Downgrade
+reverses the same steps in reverse.
 """
 from __future__ import annotations
 
@@ -37,7 +34,7 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision = "0032_block_type_chunk_type_enums"
+revision = "0032_merge_block_types_and_embedding_dim"
 down_revision = "0031_pg_trgm_text_search_indexes"
 branch_labels = None
 depends_on = None
@@ -79,6 +76,8 @@ def _sql_list(values: tuple[str, ...]) -> str:
 
 def upgrade() -> None:
     bind = op.get_bind()
+
+    # --- block_type / chunk_type CHECK constraints ----------------------
     # Sanitise any existing rows that have an out-of-set value.
     # The historical default for both columns is ``"text"``, so
     # we map anything else to ``"text"`` rather than deleting
@@ -120,8 +119,38 @@ def upgrade() -> None:
                 "chunk_type IN " + _sql_list(_DOCUMENT_CHUNK_TYPES),
             )
 
+    # --- embedding dimension fix (1024 -> 768) --------------------------
+    # Drop the HNSW index first (it depends on the old vector type).
+    op.execute("DROP INDEX IF EXISTS ix_document_chunks_embedding_hnsw")
+    # Alter the column type from vector(1024) to vector(768).
+    op.execute(
+        "ALTER TABLE document_chunks "
+        "ALTER COLUMN embedding TYPE vector(768)"
+    )
+    # Recreate the HNSW index with the new dimension.
+    op.execute(
+        "CREATE INDEX ix_document_chunks_embedding_hnsw "
+        "ON document_chunks USING hnsw (embedding vector_cosine_ops) "
+        "WITH (m = 16, ef_construction = 64) "
+        "WHERE embedding IS NOT NULL"
+    )
+
 
 def downgrade() -> None:
+    # --- reverse embedding dimension (768 -> 1024) ---------------------
+    op.execute("DROP INDEX IF EXISTS ix_document_chunks_embedding_hnsw")
+    op.execute(
+        "ALTER TABLE document_chunks "
+        "ALTER COLUMN embedding TYPE vector(1024)"
+    )
+    op.execute(
+        "CREATE INDEX ix_document_chunks_embedding_hnsw "
+        "ON document_chunks USING hnsw (embedding vector_cosine_ops) "
+        "WITH (m = 16, ef_construction = 64) "
+        "WHERE embedding IS NOT NULL"
+    )
+
+    # --- drop CHECK constraints ----------------------------------------
     op.drop_constraint(
         "ck_document_blocks_block_type", "document_blocks", type_="check"
     )

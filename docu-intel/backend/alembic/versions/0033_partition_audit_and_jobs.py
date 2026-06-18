@@ -53,7 +53,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "0033_partition_audit_and_jobs"
-down_revision = "0032_block_type_chunk_type_enums"
+down_revision = "0032_merge_block_types_and_embedding_dim"
 branch_labels = None
 depends_on = None
 
