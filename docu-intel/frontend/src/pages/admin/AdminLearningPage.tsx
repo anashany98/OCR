@@ -14,7 +14,6 @@ import {
   Power,
   PowerOff,
   RotateCcw,
-  ShieldAlert,
   TrendingUp,
   XCircle,
 } from "lucide-react"
@@ -24,8 +23,8 @@ import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
-import { formatDate } from "@/lib/utils"
+import { cn, formatDate } from "@/lib/utils"
+import { useAdminLearningData } from "./useAdminLearningData"
 
 interface MutationLike<TData = unknown> {
   mutate: (vars: number) => void
@@ -35,7 +34,7 @@ interface MutationLike<TData = unknown> {
   error: Error | null
 }
 
-interface AdminLearningTabProps {
+interface LearningViewProps {
   suggestions: ClassificationSuggestion[]
   patterns: LearnedPattern[]
   counts?: Record<string, number>
@@ -70,7 +69,6 @@ function riskLevel(confidence: number): { level: string; color: string; bg: stri
 }
 
 function estimatedImpact(suggestion: ClassificationSuggestion): { docs: number; label: string } {
-  // Estimate based on rule type vs single correction
   if (suggestion.suggestion_type === "classification_rule") {
     return { docs: 5, label: "~5 docs similares" }
   }
@@ -80,7 +78,7 @@ function estimatedImpact(suggestion: ClassificationSuggestion): { docs: number; 
   return { docs: 1, label: "Impacto directo" }
 }
 
-export function AdminLearningTab({
+function LearningView({
   suggestions,
   patterns,
   counts,
@@ -88,7 +86,7 @@ export function AdminLearningTab({
   rejectSuggestion,
   enablePattern,
   disablePattern,
-}: AdminLearningTabProps) {
+}: LearningViewProps) {
   const [filter, setFilter] = useState<"pending" | "approved" | "all">("pending")
   const [selectedSuggestion, setSelectedSuggestion] = useState<ClassificationSuggestion | null>(
     null,
@@ -109,7 +107,6 @@ export function AdminLearningTab({
 
   return (
     <div className="space-y-6">
-      {/* Overview */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-[16px]">
@@ -132,7 +129,6 @@ export function AdminLearningTab({
         </CardContent>
       </Card>
 
-      {/* Suggestions detail view */}
       {selectedSuggestion && (
         <SuggestionDetailCard
           suggestion={selectedSuggestion}
@@ -150,7 +146,6 @@ export function AdminLearningTab({
         />
       )}
 
-      {/* Suggestions list */}
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3">
           <div>
@@ -184,7 +179,6 @@ export function AdminLearningTab({
             filtered.map((s) => {
               const risk = riskLevel(s.confidence)
               const impact = estimatedImpact(s)
-
               return (
                 <div
                   key={s.id}
@@ -192,7 +186,6 @@ export function AdminLearningTab({
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1 space-y-2">
-                      {/* Header row */}
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="neutral" className="text-[10px]">
                           #{s.id} · {suggestionLabels[s.suggestion_type] ?? s.suggestion_type}
@@ -209,13 +202,9 @@ export function AdminLearningTab({
                           Riesgo {risk.level}
                         </span>
                       </div>
-
-                      {/* Reason */}
                       <p className="text-[13px] text-[var(--text-primary)] leading-relaxed">
                         {s.reason}
                       </p>
-
-                      {/* Type change detail */}
                       {s.suggested_document_type && (
                         <div className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-1.5">
                           <span className="text-xs text-[var(--text-muted)]">Tipo actual:</span>
@@ -228,8 +217,6 @@ export function AdminLearningTab({
                           </Badge>
                         </div>
                       )}
-
-                      {/* Pattern detail */}
                       {s.pattern_value && (
                         <div className="rounded-md bg-slate-50 px-3 py-1.5">
                           <code className="text-xs text-[var(--text-secondary)]">
@@ -239,8 +226,6 @@ export function AdminLearningTab({
                           <span className="text-xs font-medium">{s.target_action ?? "?"}</span>
                         </div>
                       )}
-
-                      {/* Evidence */}
                       {s.evidence && Object.keys(s.evidence).length > 0 && (
                         <details className="text-xs">
                           <summary className="cursor-pointer text-[var(--sky)] hover:underline">
@@ -251,8 +236,6 @@ export function AdminLearningTab({
                           </pre>
                         </details>
                       )}
-
-                      {/* Meta row */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
                         <span className="inline-flex items-center gap-1">
                           <Link
@@ -282,8 +265,6 @@ export function AdminLearningTab({
                         </span>
                       </div>
                     </div>
-
-                    {/* Actions column */}
                     <div className="flex flex-col gap-1.5 sm:min-w-[180px] sm:items-end">
                       <Button
                         variant="ghost"
@@ -293,7 +274,6 @@ export function AdminLearningTab({
                       >
                         <Eye className="mr-1 h-3 w-3" /> Ver detalle
                       </Button>
-
                       {s.status === "pending" && (
                         <>
                           <Button
@@ -310,10 +290,7 @@ export function AdminLearningTab({
                             size="sm"
                             className="h-7 w-full justify-start text-xs"
                             disabled={approveSuggestion.isPending}
-                            onClick={() => {
-                              // Approve as future rule — same endpoint, the server decides
-                              approveSuggestion.mutate(s.id)
-                            }}
+                            onClick={() => approveSuggestion.mutate(s.id)}
                           >
                             <Brain className="mr-1 h-3 w-3" />
                             {s.suggestion_type === "classification_rule"
@@ -331,7 +308,6 @@ export function AdminLearningTab({
                           </Button>
                         </>
                       )}
-
                       {s.status !== "pending" && (
                         <div className="text-xs text-[var(--text-muted)] text-right">
                           {s.reviewed_at && <p>Revisada: {formatDate(s.reviewed_at)}</p>}
@@ -345,7 +321,6 @@ export function AdminLearningTab({
               )
             })
           )}
-
           {(approveSuggestion.isError || rejectSuggestion.isError) && (
             <p className="mt-2 text-sm text-destructive">
               {(approveSuggestion.error ?? rejectSuggestion.error)?.message}
@@ -354,7 +329,6 @@ export function AdminLearningTab({
         </CardContent>
       </Card>
 
-      {/* History */}
       <Card>
         <button
           type="button"
@@ -432,7 +406,6 @@ export function AdminLearningTab({
         )}
       </Card>
 
-      {/* Learned patterns */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-[14px] flex items-center gap-2">
@@ -542,7 +515,6 @@ export function AdminLearningTab({
         </CardContent>
       </Card>
 
-      {/* Simulate impact (placeholder) */}
       <Card className="border-dashed">
         <CardContent className="flex items-start gap-3 py-4">
           <FlaskConical className="mt-0.5 h-4 w-4 text-[var(--amber)]" />
@@ -560,9 +532,6 @@ export function AdminLearningTab({
   )
 }
 
-// ---------------------------------------------------------------------------
-// Suggestion detail card (expanded view)
-// ---------------------------------------------------------------------------
 function SuggestionDetailCard({
   suggestion,
   onClose,
@@ -595,7 +564,6 @@ function SuggestionDetailCard({
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Info grid */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <InfoItem
             label="Documento afectado"
@@ -633,13 +601,11 @@ function SuggestionDetailCard({
           <InfoItem label="Fecha" value={formatDate(suggestion.created_at)} />
         </div>
 
-        {/* Motivo */}
         <div>
           <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">Motivo</h4>
           <p className="text-sm text-[var(--text-primary)]">{suggestion.reason}</p>
         </div>
 
-        {/* Evidencia */}
         {suggestion.evidence && Object.keys(suggestion.evidence).length > 0 && (
           <div>
             <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">
@@ -651,7 +617,6 @@ function SuggestionDetailCard({
           </div>
         )}
 
-        {/* Pattern */}
         {suggestion.pattern_value && (
           <div>
             <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">
@@ -666,7 +631,6 @@ function SuggestionDetailCard({
           </div>
         )}
 
-        {/* Documentos similares (placeholder) */}
         {suggestion.suggestion_type === "classification_rule" && (
           <div className="flex items-start gap-2 rounded-md border border-[var(--sky-light)] bg-[var(--sky-light)]/10 p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 text-[var(--sky)]" />
@@ -682,7 +646,6 @@ function SuggestionDetailCard({
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex flex-wrap gap-2 border-t pt-3">
           <Button
             size="sm"
@@ -734,9 +697,6 @@ function SuggestionDetailCard({
   )
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-md border bg-white px-3 py-2">
@@ -783,5 +743,46 @@ function StatusBadge({ status }: { status: string }) {
     <Badge variant={variants[status] ?? "neutral"} className="text-[10px]">
       {statusLabels[status] ?? status}
     </Badge>
+  )
+}
+
+/** F4b - Learning admin sub-page. Lazy-loaded via the router. */
+export function AdminLearningPage() {
+  const { queries, mutations } = useAdminLearningData()
+
+  return (
+    <LearningView
+      suggestions={queries.learningSuggestions.data ?? []}
+      patterns={queries.learnedPatterns.data ?? []}
+      counts={queries.learningCounts.data}
+      approveSuggestion={{
+        mutate: (id: number) => mutations.approveSuggestion.mutate(id),
+        isPending: mutations.approveSuggestion.isPending,
+        data: mutations.approveSuggestion.data,
+        isError: mutations.approveSuggestion.isError,
+        error: mutations.approveSuggestion.error,
+      }}
+      rejectSuggestion={{
+        mutate: (id: number) => mutations.rejectSuggestion.mutate(id),
+        isPending: mutations.rejectSuggestion.isPending,
+        data: mutations.rejectSuggestion.data,
+        isError: mutations.rejectSuggestion.isError,
+        error: mutations.rejectSuggestion.error,
+      }}
+      enablePattern={{
+        mutate: (id: number) => mutations.enablePattern.mutate(id),
+        isPending: mutations.enablePattern.isPending,
+        data: mutations.enablePattern.data,
+        isError: mutations.enablePattern.isError,
+        error: mutations.enablePattern.error,
+      }}
+      disablePattern={{
+        mutate: (id: number) => mutations.disablePattern.mutate(id),
+        isPending: mutations.disablePattern.isPending,
+        data: mutations.disablePattern.data,
+        isError: mutations.disablePattern.isError,
+        error: mutations.disablePattern.error,
+      }}
+    />
   )
 }

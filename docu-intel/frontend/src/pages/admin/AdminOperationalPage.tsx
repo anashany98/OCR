@@ -19,7 +19,7 @@ import type {
 } from "@/types/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
   Table,
@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/table"
 
 import { formatDuration, formatGigabytes, inputFolders, MetricBlock, MetricTile } from "./shared"
+import { useAdminOperationalData } from "./useAdminOperationalData"
+import { useAdminReprocess } from "./useAdminReprocess"
 
 interface MutationLike<TData = unknown> {
   mutate: () => void
@@ -40,7 +42,7 @@ interface MutationLike<TData = unknown> {
   error: Error | null
 }
 
-interface AdminOperationalTabProps {
+interface OperationalViewProps {
   auditLogs: AuditLog[]
   alerts: AdminAlert[]
   metrics?: ProcessingMetrics
@@ -71,7 +73,7 @@ interface AdminOperationalTabProps {
   loadDocumentGraph: MutationLike<DocumentGraph>
 }
 
-export function AdminOperationalTab(props: AdminOperationalTabProps) {
+function OperationalView(props: OperationalViewProps) {
   const {
     alerts,
     queueStatus,
@@ -81,8 +83,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
     operationsStatus,
     operationsDocuments,
     ingestionEvents,
-    maintenanceReport,
-    metrics,
     auditLogs,
     status,
     setStatus,
@@ -103,7 +103,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* ── Alertas ── */}
       <SectionHeader icon={AlertTriangle} title="Alertas activas" />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="xl:col-span-2">
@@ -142,7 +141,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
         </Card>
       </div>
 
-      {/* ── Ingesta ── */}
       <SectionHeader icon={RefreshCw} title="Control de ingesta" />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
@@ -195,7 +193,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
         </Card>
       </div>
 
-      {/* ── Centro de operaciones ── */}
       <SectionHeader icon={Activity} title="Centro de operaciones" />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
@@ -230,7 +227,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
         </Card>
       </div>
 
-      {/* ── Reprocesado masivo ── */}
       <SectionHeader icon={RefreshCw} title="Reprocesado masivo" />
       <div className="grid gap-4">
         <Card>
@@ -290,7 +286,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
         </Card>
       </div>
 
-      {/* ── Documentos problemáticos ── */}
       <SectionHeader icon={FileWarning} title="Documentos problemáticos" />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
@@ -355,7 +350,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
         </Card>
       </div>
 
-      {/* ── Auditoría y grafo ── */}
       <SectionHeader icon={Network} title="Auditoría y relaciones" />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
@@ -439,7 +433,6 @@ export function AdminOperationalTab(props: AdminOperationalTabProps) {
   )
 }
 
-// Section header component
 function SectionHeader({
   icon: Icon,
   title,
@@ -455,5 +448,72 @@ function SectionHeader({
       </h3>
       <div className="h-px flex-1 bg-[var(--border)]" />
     </div>
+  )
+}
+
+/**
+ * F4b - Operational admin sub-page. Lazy-loaded via the router.
+ *
+ * Mounts ``useAdminOperationalData`` so this tab fetches only its
+ * own queries. The bulk-reprocess filters are kept in local state
+ * and published into ``AdminReprocessContext`` so the shell's
+ * confirm dialog can read them.
+ */
+export function AdminOperationalPage() {
+  const { state, queries, mutations, handlers, reprocessContextValue, AdminReprocessContext } =
+    useAdminOperationalData()
+  const { reprocess } = useAdminReprocess()
+
+  return (
+    <AdminReprocessContext.Provider value={reprocessContextValue}>
+      <OperationalView
+        auditLogs={queries.auditLogs.data ?? []}
+        alerts={queries.alerts.data ?? []}
+        metrics={queries.metrics.data}
+        queueStatus={queries.queueStatus.data}
+        operationsOverview={queries.operationsOverview.data}
+        operationsStatus={queries.operationsStatus.data}
+        maintenanceReport={queries.maintenanceReport.data}
+        operationsDocuments={queries.operationsDocuments.data}
+        watchedFiles={queries.watchedFiles.data ?? []}
+        ingestionEvents={queries.ingestionEvents.data ?? []}
+        stats={queries.stats.data}
+        status={state.status}
+        setStatus={state.setStatus}
+        documentType={state.documentType}
+        setDocumentType={state.setDocumentType}
+        sourcePath={state.sourcePath}
+        setSourcePath={state.setSourcePath}
+        mode={state.mode}
+        setMode={state.setMode}
+        reprocessPending={reprocess.isPending}
+        reprocessResult={reprocess.data}
+        reprocessError={reprocess.isError ? (reprocess.error as Error).message : null}
+        onReprocessSubmit={handlers.onReprocessSubmit}
+        pauseQueues={{
+          mutate: () => mutations.pauseQueues.mutate(),
+          isPending: mutations.pauseQueues.isPending,
+          data: mutations.pauseQueues.data,
+          isError: mutations.pauseQueues.isError,
+          error: mutations.pauseQueues.error,
+        }}
+        resumeQueues={{
+          mutate: () => mutations.resumeQueues.mutate(),
+          isPending: mutations.resumeQueues.isPending,
+          data: mutations.resumeQueues.data,
+          isError: mutations.resumeQueues.isError,
+          error: mutations.resumeQueues.error,
+        }}
+        graphDocumentId={state.graphDocumentId}
+        setGraphDocumentId={state.setGraphDocumentId}
+        loadDocumentGraph={{
+          mutate: () => mutations.loadDocumentGraph.mutate(),
+          isPending: mutations.loadDocumentGraph.isPending,
+          data: mutations.loadDocumentGraph.data,
+          isError: mutations.loadDocumentGraph.isError,
+          error: mutations.loadDocumentGraph.error,
+        }}
+      />
+    </AdminReprocessContext.Provider>
   )
 }

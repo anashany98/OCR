@@ -8,8 +8,8 @@ import {
   WorkInboxFiltersToolbar,
   WorkInboxSummaryCards,
   WorkInboxTopBar,
-} from "./work-inbox/components"
-import { useWorkInbox } from "./work-inbox/useWorkInbox"
+} from "./components"
+import { useWorkInbox } from "./useWorkInbox"
 
 // ---------------------------------------------------------------------------
 // F8b-cont3 - work-inbox page composition

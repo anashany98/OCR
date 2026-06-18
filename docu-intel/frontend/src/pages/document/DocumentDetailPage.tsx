@@ -37,8 +37,8 @@ import {
   TimelineEventRow,
   UnsupportedPreviewCard,
   VisorCardHeader,
-} from "./document/components"
-import { useDocumentDetail } from "./document/useDocumentDetail"
+} from "./components"
+import { useDocumentDetail } from "./useDocumentDetail"
 
 // ---------------------------------------------------------------------------
 // F8b-cont2 - document detail page composition

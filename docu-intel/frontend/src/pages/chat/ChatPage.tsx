@@ -14,9 +14,9 @@ import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
-import { HistoryRow, TypingIndicator, WelcomeCard } from "./chat/components"
-import { MessageBubble } from "./chat/MessageBubble"
-import { useChat } from "./chat/useChat"
+import { HistoryRow, TypingIndicator, WelcomeCard } from "./components"
+import { MessageBubble } from "./MessageBubble"
+import { useChat } from "./useChat"
 
 // ---------------------------------------------------------------------------
 // F8b - chat page composition

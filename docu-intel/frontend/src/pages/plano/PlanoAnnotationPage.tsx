@@ -13,8 +13,8 @@ import {
   SymbolLegend,
   SymbolOverlay,
   colorForSymbolClass as _colorForSymbolClass,
-} from "./plano/components"
-import { usePlanAnnotation } from "./plano/usePlanAnnotation"
+} from "./components"
+import { usePlanAnnotation } from "./usePlanAnnotation"
 
 // ---------------------------------------------------------------------------
 // F8b-cont - plano annotation page composition

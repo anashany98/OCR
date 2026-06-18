@@ -12,8 +12,8 @@ import {
   SearchBreadcrumbs,
   SearchInputBar,
   SearchTipsCard,
-} from "./search/components"
-import { useSearchPage } from "./search/useSearchPage"
+} from "./components"
+import { useSearchPage } from "./useSearchPage"
 
 // ---------------------------------------------------------------------------
 // F8b-cont5 - search page composition

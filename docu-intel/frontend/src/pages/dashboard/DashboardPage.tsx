@@ -8,8 +8,8 @@ import {
   PriorityWorkCard,
   ShortcutsCard,
   UrgentActionsSection,
-} from "./dashboard/components"
-import { useDashboard } from "./dashboard/useDashboard"
+} from "./components"
+import { useDashboard } from "./useDashboard"
 
 // ---------------------------------------------------------------------------
 // F8b-cont4 - dashboard page composition

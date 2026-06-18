@@ -6,6 +6,10 @@
  * sub-routes are wired correctly: each one exists, is reachable
  * under ``/admin/<id>`` and is a child of the ``/admin`` parent.
  *
+ * Titles are no longer carried on the route's ``handle``: the
+ * canonical source is :data:`NAV_ROUTE_TITLES` in
+ * ``navigation/config.ts`` (covered by its own test).
+ *
  * We do not render the routes (that would require a full app
  * provider tree); we just inspect the data structure the
  * ``createBrowserRouter`` function returns.
@@ -18,7 +22,6 @@ interface RouteLike {
   path?: string
   index?: boolean
   children?: RouteLike[]
-  handle?: { title?: string }
 }
 
 function findAdmin(routes: RouteLike[]): RouteLike | undefined {
@@ -50,19 +53,5 @@ describe("admin route tree (F4b)", () => {
   it("redirects the admin index to operativa", () => {
     const indexRoute = adminRoute?.children?.find((child) => child.index === true)
     expect(indexRoute).toBeDefined()
-  })
-})
-
-describe("admin route titles (F4b / F7)", () => {
-  it("every admin sub-route sets a route-level title", () => {
-    // Pull every admin sub-route by walking the tree, looking for
-    // ``handle.title`` on each child. This protects the
-    // ``getPageTitle`` reader in ``AppShell`` from silently falling
-    // back to a generic "Administración" when a new tab is added
-    // without a title.
-    const adminParent = findAdmin(router.routes as RouteLike[])
-    const children = adminParent?.children ?? []
-    const tabsWithTitle = children.filter((child) => child.handle?.title).length
-    expect(tabsWithTitle).toBeGreaterThanOrEqual(6)
   })
 })

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react"
-import { Outlet, useMatches, useNavigate, type UIMatch } from "react-router-dom"
+import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, Command as CommandIcon, FileText, LogOut, Menu, Search } from "lucide-react"
 
@@ -12,12 +12,14 @@ import { SidebarNav } from "@/components/layout/Sidebar"
 import { SidebarDrawer, useSidebarDrawerHotkey } from "@/components/layout/SidebarDrawer"
 import { ThemeToggle } from "@/components/layout/ThemeToggle"
 import { useAuth } from "@/hooks/useAuth"
+import { useWorkInboxCount } from "@/hooks/useWorkInboxCount"
+import { titleForPath } from "@/navigation/config"
 import { cn } from "@/lib/utils"
 
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const matches = useMatches()
+  const location = useLocation()
   const [query, setQuery] = useState("")
   const [drawerOpen, setDrawerOpen] = useState(false)
   const health = useQuery({
@@ -25,15 +27,11 @@ export function AppShell() {
     queryFn: api.systemHealth,
     refetchInterval: 30000,
   })
-  const inbox = useQuery({
-    queryKey: ["work-inbox-count"],
-    queryFn: () => api.workInboxCount(),
-    refetchInterval: 30000,
-  })
+  const inbox = useWorkInboxCount()
 
   const inboxCount = inbox.data?.count ?? 0
 
-  const pageTitle = getPageTitle(matches)
+  const pageTitle = titleForPath(location.pathname)
 
   function setMobileDrawer(open: boolean) {
     if (open && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches)
@@ -190,16 +188,4 @@ export function AppShell() {
       <CommandPalette />
     </div>
   )
-}
-
-type PageTitleHandle = {
-  title?: string
-}
-
-function getPageTitle(matches: UIMatch<unknown, unknown>[]): string {
-  for (const match of [...matches].reverse()) {
-    const title = (match.handle as PageTitleHandle | undefined)?.title
-    if (title) return title
-  }
-  return "Docu-Intel"
 }

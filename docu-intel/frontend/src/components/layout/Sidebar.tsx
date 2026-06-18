@@ -1,200 +1,21 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
 import { NavLink, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import {
-  AlertCircle,
-  BookOpen,
-  Brain,
-  Briefcase,
-  ClipboardList,
-  DatabaseZap,
-  Eye,
-  FileSearch,
-  FileText,
-  FileWarning,
-  Filter,
-  KeyRound,
-  LayoutDashboard,
-  Map as MapIcon,
-  Receipt,
-  Scale,
-  Search,
-  Settings,
-  Users,
-} from "lucide-react"
 
 import { api } from "@/api/client"
 import { useAuth } from "@/hooks/useAuth"
+import {
+  canSeeNavItem,
+  NAV_GROUPS,
+  NAV_ITEMS_BY_PATH,
+  type NavItem,
+  type NavGroup,
+} from "@/navigation/config"
+import { useRecentNav } from "@/navigation/useRecentNav"
 import { cn } from "@/lib/utils"
-import { ADMIN_TAB_LABELS } from "@/routes/adminTabs"
 
-export type NavItem = {
-  to: string
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  badge?: boolean
-  roles?: string[]
-  beta?: boolean
-  keywords?: string[]
-}
-
-export type NavGroup = {
-  id: string
-  label: string
-  description?: string
-  items: NavItem[]
-}
-
-// ---------------------------------------------------------------------------
-// Navigation config. Ordered by user workflow:
-//   1. General      — entry points (start of session)
-//   2. Documentos   — primary data surface (read / search)
-//   3. Operación    — business workflow (budgets → orders → invoices)
-//   4. Sistema      — admin / technical (only when needed)
-// ---------------------------------------------------------------------------
-export const NAV_GROUPS: NavGroup[] = [
-  {
-    id: "general",
-    label: "General",
-    items: [
-      {
-        to: "/",
-        label: "Dashboard",
-        icon: LayoutDashboard,
-        keywords: ["resumen", "inicio", "panel"],
-      },
-      {
-        to: "/work-inbox",
-        label: "Tareas",
-        icon: AlertCircle,
-        badge: true,
-        keywords: ["incidencias", "cola"],
-      },
-    ],
-  },
-  {
-    id: "documentos",
-    label: "Documentos",
-    items: [
-      {
-        to: "/documents",
-        label: "Todos los documentos",
-        icon: FileText,
-        keywords: ["listado", "tabla"],
-      },
-      { to: "/search", label: "Buscar", icon: Search, keywords: ["encontrar", "consulta"] },
-      {
-        to: "/chat",
-        label: "Preguntar a documentos",
-        icon: BookOpen,
-        keywords: ["ia", "rag", "chat"],
-      },
-      {
-        to: "/plans",
-        label: "Planos",
-        icon: MapIcon,
-        roles: ["admin", "gestor"],
-        beta: true,
-        keywords: ["dwg", "cad"],
-      },
-    ],
-  },
-  {
-    id: "operacion",
-    label: "Operación",
-    items: [
-      { to: "/budgets", label: "Presupuestos", icon: Briefcase, keywords: ["oferta"] },
-      { to: "/orders", label: "Pedidos", icon: ClipboardList, keywords: ["orden"] },
-      { to: "/invoices", label: "Facturas", icon: Receipt, keywords: ["cobro"] },
-      {
-        to: "/reconciliation",
-        label: "Incidencias",
-        icon: Scale,
-        keywords: ["conciliación", "diferencias"],
-      },
-      {
-        to: "/ocr-review",
-        label: "OCR y calidad",
-        icon: Eye,
-        keywords: ["revisión", "baja confianza"],
-      },
-      { to: "/admin/calidad", label: "Duplicados", icon: FileWarning, keywords: ["duplicado"] },
-      {
-        to: "/admin/calidad",
-        label: "Cuarentena",
-        icon: Filter,
-        roles: ["admin", "gestor"],
-        keywords: ["cuarentena", "seguridad"],
-      },
-    ],
-  },
-  {
-    id: "sistema",
-    label: "Sistema",
-    items: [
-      {
-        to: "/jobs",
-        label: "Procesamiento",
-        icon: DatabaseZap,
-        roles: ["admin"],
-        keywords: ["jobs", "celery", "cola"],
-      },
-      {
-        to: "/admin/sistema",
-        label: ADMIN_TAB_LABELS.sistema,
-        icon: Settings,
-        roles: ["admin"],
-        keywords: ["salud", "infraestructura"],
-      },
-      {
-        to: "/admin/acceso",
-        label: ADMIN_TAB_LABELS.acceso,
-        icon: Users,
-        roles: ["admin"],
-        keywords: ["permisos", "rbac"],
-      },
-      {
-        to: "/admin/integraciones",
-        label: ADMIN_TAB_LABELS.integraciones,
-        icon: KeyRound,
-        roles: ["admin"],
-        keywords: ["api", "cliente", "webhook"],
-      },
-      {
-        to: "/admin/aprendizaje",
-        label: ADMIN_TAB_LABELS.aprendizaje,
-        icon: Brain,
-        roles: ["admin"],
-        keywords: ["ia", "patrones"],
-      },
-    ],
-  },
-]
-
-const RECENT_KEY_PREFIX = "docu-intel:recent-nav:"
-
-function readRecent(userId: string | number | undefined): string[] {
-  if (typeof window === "undefined" || !userId) return []
-  try {
-    const raw = window.localStorage.getItem(RECENT_KEY_PREFIX + userId)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed)
-      ? parsed.filter((x): x is string => typeof x === "string").slice(0, 4)
-      : []
-  } catch {
-    return []
-  }
-}
-
-function writeRecent(userId: string | number | undefined, paths: string[]) {
-  if (typeof window === "undefined" || !userId) return
-  try {
-    window.localStorage.setItem(RECENT_KEY_PREFIX + userId, JSON.stringify(paths.slice(0, 4)))
-  } catch {
-    /* ignore quota errors */
-  }
-}
+export type { NavItem, NavGroup }
+export { NAV_GROUPS } from "@/navigation/config"
 
 // ---------------------------------------------------------------------------
 // SidebarNav — shared navigation content used by the persistent desktop
@@ -209,19 +30,7 @@ export function SidebarNav({
 }) {
   const { user } = useAuth()
   const location = useLocation()
-  const [recentPaths, setRecentPaths] = useState<string[]>(() => readRecent(user?.id))
-
-  useEffect(() => {
-    if (!user) return
-    const segments = location.pathname.split("/").filter(Boolean)
-    const currentPath = segments.length ? "/" + segments[0] : "/"
-    if (!currentPath || currentPath === "/") return
-    setRecentPaths((prev) => {
-      const next = [currentPath, ...prev.filter((p) => p !== currentPath)].slice(0, 4)
-      writeRecent(user.id, next)
-      return next
-    })
-  }, [location.pathname, user])
+  const recentPaths = useRecentNav()
 
   const inbox = useQuery({
     queryKey: ["work-inbox-count"],
@@ -230,28 +39,12 @@ export function SidebarNav({
   })
   const inboxCount = inbox.data?.count ?? 0
 
-  const allItems = useMemo(() => {
-    const map = new Map<string, NavItem>()
-    for (const group of NAV_GROUPS) {
-      for (const item of group.items) {
-        const basePath = item.to.split("?")[0]
-        if (!map.has(basePath)) map.set(basePath, item)
-      }
-    }
-    return map
-  }, [])
-
   const recentItems = useMemo(() => {
     return recentPaths
-      .map((p) => allItems.get(p))
+      .map((p) => NAV_ITEMS_BY_PATH.get(p))
       .filter((item): item is NavItem => Boolean(item))
-      .filter((item) => canSee(item, user?.role))
-  }, [recentPaths, allItems, user])
-
-  function canSee(item: NavItem, role: string | undefined): boolean {
-    if (!item.roles?.length) return true
-    return role ? item.roles.includes(role) : false
-  }
+      .filter((item) => canSeeNavItem(item, user?.role))
+  }, [recentPaths, user?.role])
 
   function isActive(to: string): boolean {
     const [path, hash] = to.split("?")[0].split("#")
@@ -262,7 +55,7 @@ export function SidebarNav({
     return true
   }
 
-  const groupSpacing = embedded ? "mb-5 last:mb-3" : "mb-5 last:mb-3"
+  const groupSpacing = "mb-5 last:mb-3"
 
   return (
     <div className={cn("flex flex-col h-full", embedded ? "p-3" : "py-3")}>
@@ -299,7 +92,7 @@ export function SidebarNav({
 
       {/* Nav groups */}
       {NAV_GROUPS.map((group) => {
-        const visibleItems = group.items.filter((item) => canSee(item, user?.role))
+        const visibleItems = group.items.filter((item) => canSeeNavItem(item, user?.role))
         if (!visibleItems.length) return null
         return (
           <div

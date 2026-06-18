@@ -22,7 +22,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-import { csv, ids, MetricBlock, optionalId } from "./shared"
+import { ids, MetricBlock } from "./shared"
+import { useAdminQualityData } from "./useAdminQualityData"
 
 interface MutationLike<TData = unknown> {
   mutate: () => void
@@ -32,7 +33,7 @@ interface MutationLike<TData = unknown> {
   error: Error | null
 }
 
-interface AdminQualityTabProps {
+interface QualityViewProps {
   qualityRules?: QualityRules
   qualitySummary?: QualitySummary
   recalculateQuality: MutationLike<QualityRecalculateResponse>
@@ -60,7 +61,7 @@ interface AdminQualityTabProps {
   updateDocumentAccess: MutationLike
 }
 
-export function AdminQualityTab({
+function QualityView({
   qualityRules,
   qualitySummary,
   recalculateQuality,
@@ -86,7 +87,7 @@ export function AdminQualityTab({
   chains,
   hotels,
   updateDocumentAccess,
-}: AdminQualityTabProps) {
+}: QualityViewProps) {
   return (
     <div className="space-y-4">
       <Card>
@@ -342,5 +343,58 @@ export function AdminQualityTab({
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+/** F4b - Quality admin sub-page. Lazy-loaded via the router. */
+export function AdminQualityPage() {
+  const { state, queries, mutations, tenantAdminEnabled } = useAdminQualityData()
+
+  return (
+    <QualityView
+      qualityRules={queries.qualityRules.data}
+      qualitySummary={queries.qualitySummary.data}
+      recalculateQuality={{
+        mutate: () => mutations.recalculateQuality.mutate(),
+        isPending: mutations.recalculateQuality.isPending,
+        data: mutations.recalculateQuality.data,
+        isError: mutations.recalculateQuality.isError,
+        error: mutations.recalculateQuality.error,
+      }}
+      ocrReviewPages={queries.ocrReview.data ?? []}
+      duplicates={queries.duplicates.data ?? []}
+      quarantine={queries.quarantine.data ?? []}
+      tenantAdminEnabled={tenantAdminEnabled}
+      bulkTagDocumentIds={state.bulkTagDocumentIds}
+      setBulkTagDocumentIds={state.setBulkTagDocumentIds}
+      bulkTagAdd={state.bulkTagAdd}
+      setBulkTagAdd={state.setBulkTagAdd}
+      bulkTagRemove={state.bulkTagRemove}
+      setBulkTagRemove={state.setBulkTagRemove}
+      applyBulkTags={{
+        mutate: () => mutations.applyBulkTags.mutate(),
+        isPending: mutations.applyBulkTags.isPending,
+        data: mutations.applyBulkTags.data,
+        isError: mutations.applyBulkTags.isError,
+        error: mutations.applyBulkTags.error,
+      }}
+      assignDocumentId={state.assignDocumentId}
+      setAssignDocumentId={state.setAssignDocumentId}
+      assignChainId={state.assignChainId}
+      setAssignChainId={state.setAssignChainId}
+      assignHotelId={state.assignHotelId}
+      setAssignHotelId={state.setAssignHotelId}
+      assignTags={state.assignTags}
+      setAssignTags={state.setAssignTags}
+      chains={queries.chains.data ?? []}
+      hotels={queries.hotels.data ?? []}
+      updateDocumentAccess={{
+        mutate: () => mutations.updateDocumentAccess.mutate(),
+        isPending: mutations.updateDocumentAccess.isPending,
+        data: mutations.updateDocumentAccess.data,
+        isError: mutations.updateDocumentAccess.isError,
+        error: mutations.updateDocumentAccess.error,
+      }}
+    />
   )
 }
