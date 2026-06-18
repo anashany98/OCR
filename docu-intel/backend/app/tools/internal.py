@@ -5,7 +5,7 @@ import re
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (  # noqa: E402  (intentional — logger depends on this module)
@@ -13,6 +13,7 @@ from app.models import (  # noqa: E402  (intentional — logger depends on this 
     BudgetLine,
     Document,
     DocumentBlock,
+    DocumentChunk,
     DocumentEntity,
     Invoice,
     Order,
@@ -80,6 +81,482 @@ def search_orders(db: Session, query: str):
 
 def get_order_by_number(db: Session, order_number: str):
     return db.scalar(select(Order).where(Order.order_number == order_number).limit(1))
+
+
+# ---------------------------------------------------------------------------
+# CTX-6 — Structured business tools (SQL-first).
+#
+# Each function returns a small dataclass-like ``dict`` so the
+# orchestrator can decide whether the answer is grounded (a real
+# number was found) or has to fall back to RAG. The dicts are also
+# serialised into the AIAnswer ``resolved_document_json`` snapshot so
+# the admin UI can render the structured answer without an extra
+# request.
+# ---------------------------------------------------------------------------
+
+
+def _budget_by_number_or_id(db: Session, budget_number: str | None, budget_id: int | None) -> Budget | None:
+    """Resolve a :class:`Budget` by number or by id, whichever is set.
+
+    Returns ``None`` when neither is provided or when no row matches.
+    Falls back to the pre-normalised column (``budget_number_normalized``)
+    when the exact match fails so a search for ``"260009"`` still finds
+    a budget stored as ``" 260 009 "``.
+    """
+    import unicodedata
+
+    if budget_id is not None:
+        return db.get(Budget, int(budget_id))
+    if not budget_number:
+        return None
+    budget = db.scalar(
+        select(Budget).where(Budget.budget_number == budget_number).limit(1)
+    )
+    if budget is not None:
+        return budget
+    # Fallback: normalised lookup (whitespace / hyphen insensitive).
+    raw = unicodedata.normalize("NFKD", budget_number)
+    raw = raw.encode("ascii", "ignore").decode("ascii")
+    norm = re.sub(r"[\s\-_/.,]", "", raw).lower()
+    if not norm:
+        return None
+    return db.scalar(
+        select(Budget).where(Budget.budget_number_normalized == norm).limit(1)
+    )
+
+
+def get_budget_total(
+    db: Session,
+    *,
+    budget_number: str | None = None,
+    budget_id: int | None = None,
+) -> dict:
+    """Return a small dict with the budget's total + the line evidence.
+
+    Response shape::
+
+        {
+            "found": True/False,
+            "budget_number": "260009",
+            "document_id": 123,
+            "total_amount": 1234.5,
+            "currency": "EUR",
+            "line_count": 4,
+            "lines_total": 1234.5,  # sum of line totals when available
+            "lines_match_total": True/False,  # do the lines add up to the total?
+            "status": "aceptado",
+            "accepted": True/False,
+            "confidence": 0.9,
+            "client_name": "ALEJANDRA ...",
+        }
+
+    The orchestrator uses ``found`` + ``confidence`` to decide
+    whether the answer is grounded or has to fall back to RAG.
+    """
+    budget = _budget_by_number_or_id(db, budget_number, budget_id)
+    if budget is None:
+        return {
+            "found": False,
+            "budget_number": budget_number,
+            "budget_id": budget_id,
+            "reason": "presupuesto no encontrado",
+        }
+    lines = list(
+        db.scalars(
+            select(BudgetLine).where(BudgetLine.budget_id == budget.id).order_by(BudgetLine.id.asc())
+        ).all()
+    )
+    lines_total = 0.0
+    for ln in lines:
+        if ln.total_price is not None:
+            lines_total += float(ln.total_price)
+    match = (
+        budget.total_amount is not None
+        and lines
+        and abs(lines_total - float(budget.total_amount)) <= max(1.0, float(budget.total_amount) * 0.01)
+    )
+    return {
+        "found": True,
+        "budget_number": budget.budget_number,
+        "budget_id": budget.id,
+        "document_id": budget.document_id,
+        "client_name": budget.client_name,
+        "total_amount": budget.total_amount,
+        "currency": budget.currency,
+        "status": budget.status,
+        "accepted": bool(budget.accepted_detected),
+        "confidence": budget.confidence,
+        "line_count": len(lines),
+        "lines_total": round(lines_total, 2) if lines else None,
+        "lines_match_total": bool(match) if lines else None,
+    }
+
+
+def get_budget_lines(
+    db: Session,
+    *,
+    budget_number: str | None = None,
+    budget_id: int | None = None,
+    limit: int = 25,
+) -> dict:
+    """Return the budget's line items as a list of small dicts.
+
+    Empty list when the budget does not exist or has no lines. The
+    shape mirrors what the LLM needs: ``reference``, ``description``,
+    ``quantity``, ``unit``, ``unit_price``, ``total_price`` and the
+    line-level ``confidence``.
+    """
+    budget = _budget_by_number_or_id(db, budget_number, budget_id)
+    if budget is None:
+        return {
+            "found": False,
+            "budget_number": budget_number,
+            "budget_id": budget_id,
+            "lines": [],
+        }
+    lines = list(
+        db.scalars(
+            select(BudgetLine)
+            .where(BudgetLine.budget_id == budget.id)
+            .order_by(BudgetLine.id.asc())
+            .limit(limit)
+        ).all()
+    )
+    return {
+        "found": True,
+        "budget_number": budget.budget_number,
+        "budget_id": budget.id,
+        "client_name": budget.client_name,
+        "total_amount": budget.total_amount,
+        "currency": budget.currency,
+        "lines": [
+            {
+                "reference": ln.reference,
+                "description": (ln.description or "").strip(),
+                "quantity": ln.quantity,
+                "unit": ln.unit,
+                "unit_price": ln.unit_price,
+                "total_price": ln.total_price,
+                "confidence": ln.confidence,
+            }
+            for ln in lines
+        ],
+    }
+
+
+def get_invoiced_amount_for_budget(
+    db: Session,
+    *,
+    budget_number: str | None = None,
+    budget_id: int | None = None,
+) -> dict:
+    """Sum the invoice totals for the orders linked to a budget.
+
+    The path is ``Budget → related Orders → related Invoices → total``.
+    Budgets with no orders or no invoices return ``invoiced=0`` so the
+    user gets an honest "todavia no se ha facturado nada" answer
+    instead of a hallucinated amount.
+    """
+    budget = _budget_by_number_or_id(db, budget_number, budget_id)
+    if budget is None:
+        return {
+            "found": False,
+            "budget_number": budget_number,
+            "budget_id": budget_id,
+            "invoiced": 0.0,
+            "invoice_count": 0,
+        }
+    order_ids = list(
+        db.scalars(select(Order.id).where(Order.related_budget_id == budget.id)).all()
+    )
+    if not order_ids:
+        return {
+            "found": True,
+            "budget_number": budget.budget_number,
+            "budget_id": budget.id,
+            "order_count": 0,
+            "invoiced": 0.0,
+            "invoice_count": 0,
+            "orders": [],
+        }
+    invoices = list(
+        db.scalars(select(Invoice).where(Invoice.related_order_id.in_(order_ids))).all()
+    )
+    invoiced = sum(float(inv.total_amount or 0.0) for inv in invoices)
+    return {
+        "found": True,
+        "budget_number": budget.budget_number,
+        "budget_id": budget.id,
+        "order_count": len(order_ids),
+        "invoice_count": len(invoices),
+        "invoiced": round(invoiced, 2),
+        "orders": [
+            {"order_id": oid, "invoiced": False} for oid in order_ids
+        ],
+        "invoices": [
+            {
+                "invoice_number": inv.invoice_number,
+                "total_amount": inv.total_amount,
+                "currency": inv.currency,
+                "date": inv.date.isoformat() if inv.date else None,
+            }
+            for inv in invoices
+        ],
+    }
+
+
+def list_recent_accepted_budgets(db: Session, limit: int = 10) -> dict:
+    """Recent accepted budgets, newest first.
+
+    Used by the ``accepted_budgets`` intent ("últimos presupuestos
+    aceptados"). Excludes duplicates / failed documents so the
+    result is a clean list the user can pick from.
+    """
+    budgets = list(
+        db.scalars(
+            select(Budget)
+            .where(Budget.accepted_detected.is_(True))
+            .order_by(Budget.created_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    return {
+        "found": bool(budgets),
+        "count": len(budgets),
+        "budgets": [
+            {
+                "budget_number": b.budget_number,
+                "client_name": b.client_name,
+                "total_amount": b.total_amount,
+                "currency": b.currency,
+                "date": b.date.isoformat() if b.date else None,
+                "status": b.status,
+                "document_id": b.document_id,
+                "confidence": b.confidence,
+            }
+            for b in budgets
+        ],
+    }
+
+
+def get_invoice_origin_order(
+    db: Session,
+    *,
+    invoice_number: str | None = None,
+    invoice_id: int | None = None,
+) -> dict:
+    """Find the order that originated an invoice.
+
+    Returns the order + the budget it traces back to (when known) so
+    the assistant can answer "esta factura viene del pedido X que
+    deriva del presupuesto Y" in one shot.
+    """
+    if invoice_id is not None:
+        invoice = db.get(Invoice, int(invoice_id))
+    elif invoice_number:
+        invoice = db.scalar(
+            select(Invoice).where(Invoice.invoice_number == invoice_number).limit(1)
+        )
+    else:
+        invoice = None
+    if invoice is None:
+        return {"found": False, "invoice_number": invoice_number, "invoice_id": invoice_id}
+    order = (
+        db.get(Order, invoice.related_order_id) if invoice.related_order_id else None
+    )
+    budget = (
+        db.get(Budget, order.related_budget_id)
+        if order is not None and order.related_budget_id
+        else None
+    )
+    return {
+        "found": True,
+        "invoice_number": invoice.invoice_number,
+        "invoice_id": invoice.id,
+        "document_id": invoice.document_id,
+        "total_amount": invoice.total_amount,
+        "currency": invoice.currency,
+        "date": invoice.date.isoformat() if invoice.date else None,
+        "order": (
+            {
+                "order_number": order.order_number,
+                "order_id": order.id,
+                "supplier_name": order.supplier_name,
+                "total_amount": order.total_amount,
+            }
+            if order
+            else None
+        ),
+        "budget": (
+            {
+                "budget_number": budget.budget_number,
+                "budget_id": budget.id,
+                "client_name": budget.client_name,
+            }
+            if budget
+            else None
+        ),
+    }
+
+
+def find_delivery_note_in_scope(
+    db: Session,
+    *,
+    budget_number: str | None = None,
+    folder_path: str | None = None,
+    source_path_like: str | None = None,
+) -> dict:
+    """Search for a delivery note (albaran) inside the active scope.
+
+    The search is by document_type (albaran / delivery_note) and by
+    filename pattern (the words ``albaran``, ``albaran``, ``entrega``).
+    The scope filter is mandatory: when no budget / folder hint is
+    given, the function returns an empty list (refusing to look
+    outside an active scope) so a follow-up like "dispones del albaran
+    de entrega" can never silently jump to a different budget.
+
+    The shape mirrors what the orchestrator needs::
+
+        {
+            "found": bool,
+            "matches": [{"document_id", "filename", "source_path",
+                         "page_number", "confidence", "score"}],
+            "scope": "...",
+        }
+    """
+    pattern = "%albaran%"
+    candidates: list[Document] = []
+    stmt = select(Document).where(Document.deleted_at.is_(None))
+    if source_path_like:
+        stmt = stmt.where(Document.source_path.ilike(source_path_like))
+    elif folder_path:
+        stmt = stmt.where(Document.source_path.ilike(f"%{folder_path}%"))
+    elif budget_number:
+        stmt = stmt.where(Document.source_path.ilike(f"%Presupuesto {budget_number}%"))
+    else:
+        # No scope: refuse to guess.
+        return {
+            "found": False,
+            "matches": [],
+            "scope": None,
+            "reason": "no se ha indicado ambito (presupuesto o carpeta)",
+        }
+    candidates = list(
+        db.scalars(
+            stmt.where(
+                (Document.document_type.in_(["albaran", "delivery_note"]))
+                | (Document.original_filename.ilike(pattern))
+            )
+            .order_by(Document.id.desc())
+            .limit(10)
+        ).all()
+    )
+    return {
+        "found": bool(candidates),
+        "scope": (
+            f"Presupuesto {budget_number}"
+            if budget_number
+            else folder_path
+            or source_path_like
+        ),
+        "matches": [
+            {
+                "document_id": d.id,
+                "filename": d.original_filename,
+                "source_path": d.source_path,
+                "document_type": d.document_type,
+                "status": d.status,
+                "confidence": d.confidence,
+            }
+            for d in candidates
+        ],
+    }
+
+
+# Keywords that signal a shipping/transport cost. Kept in a module
+# constant so tests can assert against it without importing the
+# tools module.
+SHIPPING_KEYWORDS: tuple[str, ...] = (
+    "envio",
+    "envio",
+    "transporte",
+    "portes",
+    "flete",
+    "fletes",
+    "freight",
+    "shipping",
+    "logistica",
+    "entrega",
+)
+
+
+def find_shipping_cost_in_scope(
+    db: Session,
+    *,
+    budget_number: str | None = None,
+    folder_path: str | None = None,
+    source_path_like: str | None = None,
+    limit: int = 5,
+) -> dict:
+    """Find the shipping cost inside the active scope.
+
+    The search is restricted to documents in the scope and looks for
+    the SHIPPING_KEYWORDS in chunk text + line descriptions. Returns
+    a list of small dicts with the candidate amount, the document it
+    came from, and the keyword that matched so the LLM can cite the
+    evidence and the user can verify it.
+    """
+    if not (budget_number or folder_path or source_path_like):
+        return {
+            "found": False,
+            "candidates": [],
+            "scope": None,
+            "reason": "no se ha indicado ambito (presupuesto o carpeta)",
+        }
+    like = (
+        source_path_like
+        or (f"%{folder_path}%" if folder_path else None)
+        or f"%Presupuesto {budget_number}%"
+    )
+    # ILIKE any of the shipping keywords against chunk_text.
+    keyword_ors = [
+        DocumentChunk.chunk_text.ilike(f"%{kw}%") for kw in SHIPPING_KEYWORDS
+    ]
+    stmt = (
+        select(DocumentChunk, Document)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .where(Document.deleted_at.is_(None))
+        .where(Document.source_path.ilike(like))
+        .where(or_(*keyword_ors))
+        .order_by(DocumentChunk.confidence.desc().nullslast())
+        .limit(limit)
+    )
+    rows = db.execute(stmt).all()
+    candidates: list[dict] = []
+    for chunk, doc in rows:
+        if not chunk.chunk_text:
+            continue
+        candidates.append(
+            {
+                "document_id": doc.id,
+                "filename": doc.original_filename,
+                "source_path": doc.source_path,
+                "page_number": chunk.page_number,
+                "excerpt": (chunk.chunk_text or "")[:240],
+                "chunk_confidence": chunk.confidence,
+                "document_confidence": doc.confidence,
+            }
+        )
+    return {
+        "found": bool(candidates),
+        "scope": (
+            f"Presupuesto {budget_number}"
+            if budget_number
+            else folder_path
+            or source_path_like
+        ),
+        "candidates": candidates,
+    }
 
 
 # ---------------------------------------------------------------------------

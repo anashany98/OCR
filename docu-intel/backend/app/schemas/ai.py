@@ -8,6 +8,13 @@ from pydantic import BaseModel, Field, model_validator
 class AskRequest(BaseModel):
     question: str
     mode: str | None = None
+    # Optional session id for in-conversation state. When the same id
+    # is sent on consecutive turns, the assistant keeps the active
+    # context (current budget / document / client) and the scope guard
+    # can avoid cross-budget contamination. When omitted, the request
+    # is treated as stateless and behaves exactly like the previous
+    # version. Format: opaque string (typically a UUID4).
+    session_id: str | None = None
 
 
 class AIAnswerSourceRead(BaseModel):

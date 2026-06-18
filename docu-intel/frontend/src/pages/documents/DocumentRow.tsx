@@ -1,13 +1,10 @@
 /**
  * F8: extracted row component for the operations documents table.
  *
- * Pulled out of ``DocumentsPage.tsx`` so the page itself focuses on
- * orchestration (state + queries + filters) and the row rendering
- * lives in a focused, testable file. The component is intentionally
- * pure: it receives the document, the selected flag and the two
- * callbacks the parent owns. The parent owns the selection state
- * and the reprocess mutation so the row stays decoupled from the
- * TanStack Query client and the upload state.
+ * F8b: state and quality badges are stacked in one cell (column 3)
+ * to reduce the table from 9 columns to 7, with size+date merged
+ * into a single cell. Selection, navigation, reprocess and download
+ * stay as inline icon buttons to keep the row scannable.
  */
 import { Link } from "react-router-dom"
 import { Download, Eye, FileSpreadsheet, RefreshCcw } from "lucide-react"
@@ -16,7 +13,7 @@ import { downloadUrl } from "@/api/client"
 import { StatusBadge } from "@/components/layout/StatusBadge"
 import { Button } from "@/components/ui/button"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { formatBytes, formatDate } from "@/lib/utils"
+import { cn, formatBytes, formatDate } from "@/lib/utils"
 import type { Document } from "@/types/api"
 
 type DocumentRowProps = {
@@ -27,9 +24,20 @@ type DocumentRowProps = {
 }
 
 export function DocumentRow({ document, selected, onToggle, onReprocess }: DocumentRowProps) {
+  const confidencePct =
+    document.confidence != null ? Math.round(document.confidence * 100) : null
+  const confidenceTone =
+    confidencePct == null
+      ? "bg-muted-foreground/30"
+      : confidencePct < 50
+        ? "bg-red-500"
+        : confidencePct < 70
+          ? "bg-amber-500"
+          : "bg-emerald-500"
+
   return (
-    <TableRow className={selected ? "bg-cyan-50/60" : undefined}>
-      <TableCell>
+    <TableRow className={cn(selected && "bg-cyan-50/60 hover:bg-cyan-50/80")}>
+      <TableCell className="py-3">
         <input
           type="checkbox"
           aria-label={`Seleccionar ${document.original_filename}`}
@@ -37,32 +45,53 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
           onChange={onToggle}
         />
       </TableCell>
-      <TableCell className="min-w-[260px]">
-        <div className="flex items-center gap-2">
-          <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+      <TableCell className="min-w-[280px] py-3">
+        <div className="flex items-center gap-2.5">
+          <FileSpreadsheet className="h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <p className="truncate font-medium">{document.original_filename}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {document.source_path ?? document.file_hash}
+            <Link
+              to={`/documents/${document.id}`}
+              className="block truncate text-sm font-medium text-foreground hover:underline"
+              title={document.original_filename}
+            >
+              {document.original_filename}
+            </Link>
+            <p className="truncate text-[11px] text-muted-foreground" title={document.source_path ?? undefined}>
+              {document.source_path ?? document.file_hash?.slice(0, 16)}
             </p>
           </div>
         </div>
       </TableCell>
-      <TableCell>{document.document_type}</TableCell>
-      <TableCell>
-        <StatusBadge status={document.status} />
+      <TableCell className="py-3">
+        <div className="flex flex-col gap-1.5">
+          <StatusBadge status={document.status} />
+          <StatusBadge status={document.quality_status ?? "-"} />
+        </div>
       </TableCell>
-      <TableCell>
-        <StatusBadge status={document.quality_status ?? "-"} />
+      <TableCell className="py-3 text-xs text-muted-foreground">
+        {document.document_type}
       </TableCell>
-      <TableCell>
-        {document.confidence != null ? `${Math.round(document.confidence * 100)}%` : "-"}
+      <TableCell className="py-3 text-right tabular-nums">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={cn("h-1.5 w-1.5 rounded-full", confidenceTone)} aria-hidden="true" />
+          <span className="text-sm">{confidencePct == null ? "—" : `${confidencePct}%`}</span>
+        </span>
       </TableCell>
-      <TableCell>{formatBytes(document.file_size)}</TableCell>
-      <TableCell>{formatDate(document.created_at)}</TableCell>
-      <TableCell>
+      <TableCell className="py-3 text-xs tabular-nums text-muted-foreground">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-foreground">{formatBytes(document.file_size)}</span>
+          <span>{formatDate(document.created_at)}</span>
+        </div>
+      </TableCell>
+      <TableCell className="py-3">
         <div className="flex justify-end gap-1">
-          <Button asChild variant="ghost" size="icon" title="Ver documento" aria-label={`Ver ${document.original_filename}`}>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            title="Ver documento"
+            aria-label={`Ver ${document.original_filename}`}
+          >
             <Link to={`/documents/${document.id}`}>
               <Eye aria-hidden="true" />
             </Link>

@@ -121,6 +121,18 @@ from .validation import (
 
 logger = logging.getLogger("app.ai.agent")
 
+
+def _format_gate_blocked_answer(gate_eval, active_context) -> str:
+    """Thin wrapper around :func:`app.ai.confidence_gates.format_gate_blocked_answer`.
+
+    Kept here as a private alias so the orchestrator code stays short
+    and so a future refactor of the gate helper does not break the
+    call site.
+    """
+    from .confidence_gates import format_gate_blocked_answer
+
+    return format_gate_blocked_answer(gate_eval, active_context)
+
 # ``DetectorFactory.seed = 0`` is set inside validation.py at
 # import time. We re-import the module to make the dependency
 # explicit (so a test that imports agent.py also imports the
@@ -166,6 +178,7 @@ async def answer_question(
     user: User,
     question: str,
     mode: str | None = None,
+    session_id: str | None = None,
 ) -> AIAnswer:
     """End-to-end: cache lookup, tool selection, context collection,
     memory injection, grounded fallback, optional LLM call, and
@@ -173,10 +186,40 @@ async def answer_question(
 
     This is the function the API endpoint (``app.api.routes.ai``)
     calls. Everything else in the agent package is a helper.
+
+    ``session_id`` (CTX-2) is the optional opaque identifier the
+    client passes to keep an in-conversation state (current budget,
+    current document, last intent, …) between turns. When omitted the
+    call is stateless and the behaviour is identical to the previous
+    version.
     """
+    from .active_context import (
+        ActiveContext,
+        load_active_context,
+        save_active_context,
+    )
+
+    # CTX-3: load the active conversation context and resolve any
+    # follow-up references in the question ("este presupuesto" → the
+    # active budget). The rewritten question is what the tool
+    # selector and the LLM prompt see; the resolution is what the
+    # scope guard and the intent router consume. When the request is
+    # stateless (no session_id) we still build an empty context so
+    # the downstream code path is identical.
+    active_context: ActiveContext = (
+        load_active_context(db, user, session_id) if session_id else ActiveContext()
+    )
+    from .reference_resolver import resolve_references
+
+    resolved_question, reference_resolution = resolve_references(
+        question, active_context
+    )
+
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
-    cached = await get_cached_answer_async(question, user.id, mode, scope_key=scope_key)
+    cached = await get_cached_answer_async(
+        question, user.id, mode, scope_key=scope_key, session_id=session_id
+    )
     if cached:
         # Return cached answer as AIAnswer object
         question_row = AIQuestion(user_id=user.id, question=question)
@@ -207,16 +250,66 @@ async def answer_question(
         db.refresh(answer_row)
         return answer_row
 
+    # CTX-3: from this point on, the rest of the orchestrator sees the
+    # *resolved* question so the tool selector and the LLM prompt
+    # receive the [Contexto: ...] block when the user used a follow-up
+    # reference. The original question was already used for the cache
+    # key above and is preserved in the AIQuestion row.
+    question = resolved_question
+
     # Generate new answer
     question_row = AIQuestion(user_id=user.id, question=question)
     db.add(question_row)
     db.flush()
+
+    # CTX-5: classify the business intent before any tool is called.
+    # The classification is stored in the active context (for the
+    # next turn) and also used as a hint in the answer header so the
+    # admin UI can show "estoy respondiendo a la pregunta X".
+    from .intent_router import classify_intent
+
+    intent_cls = classify_intent(question, active_context)
+    # Surface the needs_state warning via the orchestrator's log so
+    # operators can audit when the router thought the user was
+    # following up on an entity that the context no longer carries.
+    if intent_cls.needs_state:
+        logger.info(
+            "Intent %s needs active context but state is empty; "
+            "the assistant will ask for clarification.",
+            intent_cls.intent,
+        )
 
     # Always run the smart tool selector so the LLM gets the document's
     # entities and relations when the user mentions a specific file or
     # number. The `mode` is just a hint about which search strategy to
     # prefer when multiple are viable.
     tools = select_tools_for_question(question)
+
+    # CTX-6: structured-first path. The intent router may have
+    # classified the question as one of the business intents that has
+    # a dedicated SQL tool. Prepend those tool calls so they run
+    # first; the orchestrator still falls back to the regular RAG
+    # path when the structured tool returns ``found=False``.
+    from .tools import select_structured_tools
+
+    structured_tools = select_structured_tools(question, active_context=active_context)
+    if structured_tools:
+        tools = structured_tools + tools
+
+    # CTX-4: apply the budget scope guard. When the active context
+    # pins a specific budget (and the user did not ask for a global
+    # view) the tool arguments are mutated to keep the retrieval
+    # inside the active budget folder.
+    from .scope_guard import enforce_budget_scope
+
+    scope_outcome = enforce_budget_scope(
+        question=question, state=active_context, tools=tools
+    )
+    tools = scope_outcome.tools
+    # The scope guard warnings are folded into the orchestrator-level
+    # warnings so they reach both the LLM prompt and the grounded
+    # fallback.
+    scope_warnings: list[str] = list(scope_outcome.warnings)
     if mode == "semantic":
         # Replace the hybrid_search with a more semantic-friendly call by
         # asking the LLM to think about entities first.
@@ -228,6 +321,24 @@ async def answer_question(
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
     )
+    # CTX-4: prepend the scope guard warnings so the fallback mentions
+    # the active budget explicitly when nothing was found inside it.
+    warnings = scope_warnings + warnings
+
+    # CTX-8: evaluate the confidence gates. When a gate is open and
+    # the question expects an amount, the orchestrator will skip the
+    # LLM call and produce a safe fallback that lists the amount
+    # candidates so the user can verify the answer themselves.
+    from .confidence_gates import evaluate_gates_for_turn
+
+    gate_eval, gate_warning = evaluate_gates_for_turn(
+        db,
+        question=question,
+        context_items=context_items,
+        resolved_doc_id=resolved_doc_id,
+    )
+    if gate_warning:
+        warnings.append(gate_warning)
 
     # Inject conversation memory: if the question is a short follow-up
     # (e.g. "y las facturas?", "y del mismo proveedor?"), prepend a memory
@@ -258,7 +369,17 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    if context_items:
+    # CTX-8: when the gate blocks an amount question, build a safe
+    # answer that lists the amount candidates and skip the LLM call
+    # so the model cannot override the safety message with a
+    # fabricated number. The candidate list also gets attached to
+    # the AIAnswer row so the UI can render a verification table.
+    amount_candidates_payload: list[dict] = []
+    if gate_eval.is_blocked and gate_eval.requires_amount:
+        answer_text = _format_gate_blocked_answer(gate_eval, active_context)
+        model_name = "backend_grounded_fallback"
+        amount_candidates_payload = gate_eval.amount_candidates
+    elif context_items:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
@@ -371,6 +492,22 @@ async def answer_question(
         },
         mode=mode,
         scope_key=scope_key,
+        session_id=session_id,
+    )
+
+    # CTX-2: persist the active context (current budget, current
+    # document, last intent, …) so the next turn in the same session
+    # can resolve "este presupuesto" / "este pedido" against the same
+    # entity. Best-effort: a failure here must not break the answer.
+    from .active_context import persist_context_after_answer
+
+    persist_context_after_answer(
+        db,
+        user=user,
+        session_id=session_id,
+        intent=intent_cls.intent,
+        resolved_doc_id=resolved_doc_id,
+        context_items=context_items,
     )
 
     return answer_row

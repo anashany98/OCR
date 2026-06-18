@@ -47,7 +47,13 @@ async def ask(
 ) -> AIAnswerRead:
     """Non-streaming endpoint. Kept for backward compatibility and for
     quick smoke tests. The UI should prefer `/ask/stream`."""
-    answer_row = await answer_question(db, user=user, question=payload.question, mode=payload.mode)
+    answer_row = await answer_question(
+        db,
+        user=user,
+        question=payload.question,
+        mode=payload.mode,
+        session_id=payload.session_id,
+    )
     # Compute follow-ups from the same context the streaming endpoint
     # would have, so the two responses are consistent.
     from app.ai.agent import _suggest_followups  # local import
@@ -82,6 +88,7 @@ async def ask_stream(
     """
     question = payload.question
     mode = payload.mode
+    session_id = payload.session_id
 
     # 1) build the same context the non-streaming path builds.
     tools = select_tools_for_question(question)
@@ -263,6 +270,7 @@ async def ask_stream(
                 },
                 mode=mode,
                 scope_key=access_scope_cache_key(access_scope),
+                session_id=session_id,
             )
         except Exception as exc:
             logger.debug("Cache write failed: %s", exc)

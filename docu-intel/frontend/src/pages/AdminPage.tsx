@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router-dom"
 
 import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
-import { ADMIN_TABS } from "@/routes/adminTabs"
+import { ADMIN_TABS } from "@/navigation/config"
 
 import { AdminReprocessConfirmDialog } from "./admin/useAdminOperationalData"
 import { AdminReprocessContext, useAdminReprocess } from "./admin/useAdminReprocess"

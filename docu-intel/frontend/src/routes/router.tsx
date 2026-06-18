@@ -1,97 +1,87 @@
 import { lazy, Suspense, type ReactNode } from "react"
-import {
-  Navigate,
-  createBrowserRouter,
-  isRouteErrorResponse,
-  useRouteError,
-} from "react-router-dom"
+import { Navigate, createBrowserRouter, isRouteErrorResponse, useRouteError } from "react-router-dom"
 
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { AppShell } from "@/components/layout/AppShell"
 import { LoadingState } from "@/components/layout/LoadingState"
 import { PermissionGate } from "@/components/layout/PermissionGate"
 import { useAuth } from "@/hooks/useAuth"
-
-const AdminPage = lazy(() =>
-  import("@/pages/AdminPage").then((module) => ({ default: module.AdminPage })),
-)
-const AdminOperationalRoute = lazy(() =>
-  import("@/pages/admin/AdminOperationalRoute").then((module) => ({
-    default: module.AdminOperationalRoute,
-  })),
-)
-const AdminSystemRoute = lazy(() =>
-  import("@/pages/admin/AdminSystemRoute").then((module) => ({ default: module.AdminSystemRoute })),
-)
-const AdminIntegrationsRoute = lazy(() =>
-  import("@/pages/admin/AdminIntegrationsRoute").then((module) => ({
-    default: module.AdminIntegrationsRoute,
-  })),
-)
-const AdminAccessRoute = lazy(() =>
-  import("@/pages/admin/AdminAccessRoute").then((module) => ({ default: module.AdminAccessRoute })),
-)
-const AdminQualityRoute = lazy(() =>
-  import("@/pages/admin/AdminQualityRoute").then((module) => ({
-    default: module.AdminQualityRoute,
-  })),
-)
-const AdminLearningRoute = lazy(() =>
-  import("@/pages/admin/AdminLearningRoute").then((module) => ({
-    default: module.AdminLearningRoute,
-  })),
-)
-const BudgetsPage = lazy(() =>
-  import("@/pages/BudgetsPage").then((module) => ({ default: module.BudgetsPage })),
-)
-const ChatPage = lazy(() =>
-  import("@/pages/ChatPage").then((module) => ({ default: module.ChatPage })),
-)
-const DashboardPage = lazy(() =>
-  import("@/pages/DashboardPage").then((module) => ({ default: module.DashboardPage })),
-)
-const DocumentDetailPage = lazy(() =>
-  import("@/pages/DocumentDetailPage").then((module) => ({ default: module.DocumentDetailPage })),
-)
-const DocumentsPage = lazy(() =>
-  import("@/pages/DocumentsPage").then((module) => ({ default: module.DocumentsPage })),
-)
-const InvoicesPage = lazy(() =>
-  import("@/pages/InvoicesPage").then((module) => ({ default: module.InvoicesPage })),
-)
-const JobsPage = lazy(() =>
-  import("@/pages/JobsPage").then((module) => ({ default: module.JobsPage })),
-)
-const LoginPage = lazy(() =>
-  import("@/pages/LoginPage").then((module) => ({ default: module.LoginPage })),
-)
-const NotFoundPage = lazy(() =>
-  import("@/pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })),
-)
-const OrdersPage = lazy(() =>
-  import("@/pages/OrdersPage").then((module) => ({ default: module.OrdersPage })),
-)
-const OcrReviewPage = lazy(() =>
-  import("@/pages/OcrReviewPage").then((module) => ({ default: module.OcrReviewPage })),
-)
-const PlanoAnnotationPage = lazy(() =>
-  import("@/pages/PlanoAnnotationPage").then((module) => ({ default: module.PlanoAnnotationPage })),
-)
-const PlansPage = lazy(() =>
-  import("@/pages/PlansPage").then((module) => ({ default: module.PlansPage })),
-)
-const ReconciliationPage = lazy(() =>
-  import("@/pages/ReconciliationPage").then((module) => ({ default: module.ReconciliationPage })),
-)
-const SearchPage = lazy(() =>
-  import("@/pages/SearchPage").then((module) => ({ default: module.SearchPage })),
-)
-const WorkInboxPage = lazy(() =>
-  import("@/pages/WorkInboxPage").then((module) => ({ default: module.WorkInboxPage })),
-)
+import { ADMIN_TABS, type AdminTab } from "@/navigation/config"
 
 const ADMIN_ROLES = ["admin"]
 const MANAGER_ROLES = ["admin", "gestor"]
+
+// ---------------------------------------------------------------------------
+// Lazy page registry.
+//
+// Every page exports a default React component; the loader returns
+// a module with that component. The ``page`` / ``protectedPage`` helpers
+// wrap a loader in ``<Suspense>`` so the route declaration stays a
+// single line.
+// ---------------------------------------------------------------------------
+
+type PageLoader = () => Promise<unknown>
+
+/**
+ * Wrap a module loader so the resolved promise exposes the named
+ * export as ``default``. React.lazy() reads ``module.default``;
+ * our pages only have named exports (``export function Foo``), so
+ * without this wrapper the lazy component receives ``undefined``.
+ */
+function lazyNamed<T>(loader: () => Promise<T>, exportName: keyof T): PageLoader {
+  return () =>
+    loader().then((module) => ({ default: module[exportName] as React.ComponentType<unknown> }))
+}
+
+const pages = {
+  AdminPage: lazyNamed(() => import("@/pages/AdminPage"), "AdminPage"),
+  AdminOperationalRoute: lazyNamed(() => import("@/pages/admin/AdminOperationalPage"), "AdminOperationalPage"),
+  AdminSystemRoute: lazyNamed(() => import("@/pages/admin/AdminSystemPage"), "AdminSystemPage"),
+  AdminIntegrationsRoute: lazyNamed(() => import("@/pages/admin/AdminIntegrationsPage"), "AdminIntegrationsPage"),
+  AdminAccessRoute: lazyNamed(() => import("@/pages/admin/AdminAccessPage"), "AdminAccessPage"),
+  AdminQualityRoute: lazyNamed(() => import("@/pages/admin/AdminQualityPage"), "AdminQualityPage"),
+  AdminLearningRoute: lazyNamed(() => import("@/pages/admin/AdminLearningPage"), "AdminLearningPage"),
+  BudgetsPage: lazyNamed(() => import("@/pages/BudgetsPage"), "BudgetsPage"),
+  ChatPage: lazyNamed(() => import("@/pages/chat/ChatPage"), "ChatPage"),
+  DashboardPage: lazyNamed(() => import("@/pages/dashboard/DashboardPage"), "DashboardPage"),
+  DocumentDetailPage: lazyNamed(() => import("@/pages/document/DocumentDetailPage"), "DocumentDetailPage"),
+  DocumentsPage: lazyNamed(() => import("@/pages/documents/DocumentsPage"), "DocumentsPage"),
+  InvoicesPage: lazyNamed(() => import("@/pages/InvoicesPage"), "InvoicesPage"),
+  JobsPage: lazyNamed(() => import("@/pages/JobsPage"), "JobsPage"),
+  LoginPage: lazyNamed(() => import("@/pages/LoginPage"), "LoginPage"),
+  NotFoundPage: lazyNamed(() => import("@/pages/NotFoundPage"), "NotFoundPage"),
+  OrdersPage: lazyNamed(() => import("@/pages/OrdersPage"), "OrdersPage"),
+  OcrReviewPage: lazyNamed(() => import("@/pages/ocr-review/OcrReviewPage"), "OcrReviewPage"),
+  PlanoAnnotationPage: lazyNamed(() => import("@/pages/plano/PlanoAnnotationPage"), "PlanoAnnotationPage"),
+  PlansPage: lazyNamed(() => import("@/pages/plans/PlansPage"), "PlansPage"),
+  ReconciliationPage: lazyNamed(() => import("@/pages/ReconciliationPage"), "ReconciliationPage"),
+  SearchPage: lazyNamed(() => import("@/pages/search/SearchPage"), "SearchPage"),
+  WorkInboxPage: lazyNamed(() => import("@/pages/work-inbox/WorkInboxPage"), "WorkInboxPage"),
+}
+
+function page(loader: PageLoader): ReactNode {
+  const Component = lazy(loader as () => Promise<{ default: React.ComponentType<unknown> }>)
+  return (
+    <Suspense fallback={<LoadingState label="Cargando página..." />}>
+      <Component />
+    </Suspense>
+  )
+}
+
+function protectedPage(loader: PageLoader, roles: string[]): ReactNode {
+  const Component = lazy(loader as () => Promise<{ default: React.ComponentType<unknown> }>)
+  return (
+    <Suspense fallback={<LoadingState label="Cargando página..." />}>
+      <RequireRole roles={roles}>
+        <Component />
+      </RequireRole>
+    </Suspense>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Auth + error boundaries
+// ---------------------------------------------------------------------------
 
 function RequireAuth() {
   const { user, loading } = useAuth()
@@ -124,18 +114,6 @@ function RequireRole({ roles, children }: { roles: string[]; children: ReactNode
   )
 }
 
-function RouteSuspense({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<LoadingState label="Cargando página..." />}>{children}</Suspense>
-}
-
-function page(element: ReactNode) {
-  return <RouteSuspense>{element}</RouteSuspense>
-}
-
-function protectedPage(element: ReactNode, roles: string[]) {
-  return page(<RequireRole roles={roles}>{element}</RequireRole>)
-}
-
 function RouteErrorElement() {
   return (
     <ErrorBoundary>
@@ -162,116 +140,63 @@ function RouteErrorFallback() {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Admin sub-routes (generated from ADMIN_TABS so the sidebar, router
+// and admin shell can never drift apart).
+// ---------------------------------------------------------------------------
+
+const adminChildLoaders: Record<AdminTab, PageLoader> = {
+  operativa: pages.AdminOperationalRoute,
+  sistema: pages.AdminSystemRoute,
+  integraciones: pages.AdminIntegrationsRoute,
+  acceso: pages.AdminAccessRoute,
+  calidad: pages.AdminQualityRoute,
+  aprendizaje: pages.AdminLearningRoute,
+}
+
+function adminRoute(tab: (typeof ADMIN_TABS)[number]) {
+  const Component = lazy(adminChildLoaders[tab.id] as () => Promise<{ default: React.ComponentType<unknown> }>)
+  return {
+    path: tab.id,
+    element: (
+      <Suspense fallback={<LoadingState label="Cargando sección..." />}>
+        <Component />
+      </Suspense>
+    ),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Router
+// ---------------------------------------------------------------------------
+
 export const router = createBrowserRouter([
-  { path: "/login", element: page(<LoginPage />), errorElement: <RouteErrorElement /> },
+  { path: "/login", element: page(pages.LoginPage), errorElement: <RouteErrorElement /> },
   {
     path: "/",
     element: <RequireAuth />,
     errorElement: <RouteErrorElement />,
     children: [
-      { index: true, element: page(<DashboardPage />), handle: { title: "Dashboard" } },
-      { path: "documents", element: page(<DocumentsPage />), handle: { title: "Documentos" } },
-      {
-        path: "documents/:id",
-        element: page(<DocumentDetailPage />),
-        handle: { title: "Detalle de documento" },
-      },
-      {
-        path: "documents/:id/annotate-plan",
-        element: protectedPage(<PlanoAnnotationPage />, MANAGER_ROLES),
-        handle: { title: "Anotar plano" },
-      },
-      { path: "work-inbox", element: page(<WorkInboxPage />), handle: { title: "Tareas" } },
-      { path: "ocr-review", element: page(<OcrReviewPage />), handle: { title: "Revisión OCR" } },
-      { path: "search", element: page(<SearchPage />), handle: { title: "Buscar" } },
-      {
-        path: "jobs",
-        element: protectedPage(<JobsPage />, ADMIN_ROLES),
-        handle: { title: "Procesamiento" },
-      },
-      { path: "budgets", element: page(<BudgetsPage />), handle: { title: "Presupuestos" } },
-      { path: "orders", element: page(<OrdersPage />), handle: { title: "Pedidos" } },
-      { path: "invoices", element: page(<InvoicesPage />), handle: { title: "Facturas" } },
-      {
-        path: "reconciliation",
-        element: page(<ReconciliationPage />),
-        handle: { title: "Incidencias" },
-      },
-      {
-        path: "plans",
-        element: protectedPage(<PlansPage />, MANAGER_ROLES),
-        handle: { title: "Planos" },
-      },
-      { path: "chat", element: page(<ChatPage />), handle: { title: "Preguntar a documentos" } },
+      { index: true, element: page(pages.DashboardPage) },
+      { path: "documents", element: page(pages.DocumentsPage) },
+      { path: "documents/:id", element: page(pages.DocumentDetailPage) },
+      { path: "documents/:id/annotate-plan", element: protectedPage(pages.PlanoAnnotationPage, MANAGER_ROLES) },
+      { path: "work-inbox", element: page(pages.WorkInboxPage) },
+      { path: "ocr-review", element: page(pages.OcrReviewPage) },
+      { path: "search", element: page(pages.SearchPage) },
+      { path: "jobs", element: protectedPage(pages.JobsPage, ADMIN_ROLES) },
+      { path: "budgets", element: page(pages.BudgetsPage) },
+      { path: "orders", element: page(pages.OrdersPage) },
+      { path: "invoices", element: page(pages.InvoicesPage) },
+      { path: "reconciliation", element: page(pages.ReconciliationPage) },
+      { path: "plans", element: protectedPage(pages.PlansPage, MANAGER_ROLES) },
+      { path: "chat", element: page(pages.ChatPage) },
       {
         path: "admin",
-        element: protectedPage(<AdminPage />, ADMIN_ROLES),
-        handle: { title: "Administración" },
-        children: [
-          // F4b - each admin tab is now its own lazy route. The
-          // shell (``AdminPage``) renders the page header, the inner
-          // tab nav and an ``<Outlet />``; the child route pulls
-          // the data it needs from ``useAdminData`` on demand. The
-          // shell still owns the cross-cutting reprocess confirm
-          // dialog, but no other state or queries are shared.
-          { index: true, element: <Navigate to="operativa" replace /> },
-          {
-            path: "operativa",
-            element: (
-              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
-                <AdminOperationalRoute />
-              </Suspense>
-            ),
-            handle: { title: "Administración · Operativa" },
-          },
-          {
-            path: "sistema",
-            element: (
-              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
-                <AdminSystemRoute />
-              </Suspense>
-            ),
-            handle: { title: "Administración · Estado técnico" },
-          },
-          {
-            path: "integraciones",
-            element: (
-              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
-                <AdminIntegrationsRoute />
-              </Suspense>
-            ),
-            handle: { title: "Administración · Integraciones" },
-          },
-          {
-            path: "acceso",
-            element: (
-              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
-                <AdminAccessRoute />
-              </Suspense>
-            ),
-            handle: { title: "Administración · Usuarios y permisos" },
-          },
-          {
-            path: "calidad",
-            element: (
-              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
-                <AdminQualityRoute />
-              </Suspense>
-            ),
-            handle: { title: "Administración · Calidad" },
-          },
-          {
-            path: "aprendizaje",
-            element: (
-              <Suspense fallback={<LoadingState label="Cargando sección..." />}>
-                <AdminLearningRoute />
-              </Suspense>
-            ),
-            handle: { title: "Administración · Aprendizaje IA" },
-          },
-        ],
+        element: protectedPage(pages.AdminPage, ADMIN_ROLES),
+        children: [{ index: true, element: <Navigate to="operativa" replace /> }, ...ADMIN_TABS.map(adminRoute)],
       },
-      { path: "*", element: page(<NotFoundPage />), handle: { title: "No encontrado" } },
+      { path: "*", element: page(pages.NotFoundPage) },
     ],
   },
 ])

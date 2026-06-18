@@ -4,7 +4,7 @@ import { Command } from "cmdk"
 import { Search, ShieldAlert } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
-import { NAV_GROUPS, type NavItem } from "@/components/layout/Sidebar"
+import { NAV_GROUPS, type NavItem } from "@/navigation/config"
 import { cn } from "@/lib/utils"
 
 type CommandItem = NavItem & { group: string }

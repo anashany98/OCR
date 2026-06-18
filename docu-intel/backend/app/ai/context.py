@@ -153,6 +153,134 @@ def collect_context(
     resolved_doc_id: int | None = None
 
     for tool in tools:
+        if tool.name == "get_budget_total":
+            payload = internal.get_budget_total(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                budget_id=tool.arguments.get("budget_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Total presupuesto {payload.get('budget_number')}"
+                        if payload.get("found")
+                        else "Total presupuesto (no encontrado)"
+                    ),
+                )
+            )
+            if not payload.get("found"):
+                warnings.append(
+                    f"No he encontrado el presupuesto "
+                    f"{payload.get('budget_number') or 'indicado'} en las tablas estructuradas."
+                )
+        elif tool.name == "get_budget_lines":
+            payload = internal.get_budget_lines(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                budget_id=tool.arguments.get("budget_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Lineas presupuesto {payload.get('budget_number')} "
+                        f"({len(payload.get('lines') or [])} lineas)"
+                    ),
+                )
+            )
+        elif tool.name == "get_invoiced_amount_for_budget":
+            payload = internal.get_invoiced_amount_for_budget(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                budget_id=tool.arguments.get("budget_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Facturado presupuesto {payload.get('budget_number')}"
+                        if payload.get("found")
+                        else "Facturado presupuesto (no encontrado)"
+                    ),
+                )
+            )
+        elif tool.name == "list_recent_accepted_budgets":
+            payload = internal.list_recent_accepted_budgets(
+                db, limit=int(tool.arguments.get("limit") or 10)
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Presupuestos aceptados recientes ({payload.get('count')})"
+                    ),
+                )
+            )
+        elif tool.name == "get_invoice_origin_order":
+            payload = internal.get_invoice_origin_order(
+                db,
+                invoice_number=tool.arguments.get("invoice_number") or None,
+                invoice_id=tool.arguments.get("invoice_id"),
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Origen factura {payload.get('invoice_number')}"
+                        if payload.get("found")
+                        else "Origen factura (no encontrada)"
+                    ),
+                )
+            )
+        elif tool.name == "find_delivery_note_in_scope":
+            payload = internal.find_delivery_note_in_scope(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                folder_path=tool.arguments.get("folder_path") or None,
+                source_path_like=tool.arguments.get("source_path_like") or None,
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Albaranes en ambito {payload.get('scope')}"
+                        if payload.get("scope")
+                        else "Albaranes en ambito activo"
+                    ),
+                )
+            )
+            if not payload.get("found"):
+                warnings.append(
+                    "No he encontrado un albaran dentro del ambito activo. "
+                    "Si quieres buscar en todos los documentos dilo explicitamente."
+                )
+        elif tool.name == "find_shipping_cost_in_scope":
+            payload = internal.find_shipping_cost_in_scope(
+                db,
+                budget_number=tool.arguments.get("budget_number") or None,
+                folder_path=tool.arguments.get("folder_path") or None,
+                source_path_like=tool.arguments.get("source_path_like") or None,
+            )
+            context.append(
+                _structured_context_item(
+                    tool_name=tool.name,
+                    payload=payload,
+                    label=(
+                        f"Costes de envio en ambito {payload.get('scope')}"
+                    ),
+                )
+            )
+            if not payload.get("found"):
+                warnings.append(
+                    "No he encontrado conceptos de envio dentro del ambito activo."
+                )
         if tool.name == "find_document_by_filename":
             query = tool.arguments.get("query") or ""
             documents = internal.find_document_by_filename(db, query)
@@ -613,6 +741,15 @@ def build_grounded_response(
     The text is intentionally conversational: the system prompt
     tells the LLM to talk the same way, so the user cannot tell
     whether the answer was generated by the backend or the model.
+
+    CTX-7: when the top context item is a document we could resolve
+    (a filename mention, a plan lookup) we detect the four business
+    failure modes the user listed and produce a friendly explanation
+    instead of the raw "Tipo: desconocido | Estado: duplicate |
+    Confianza: None | Paginas: None" string the old code emitted.
+    The friendly text is produced by :func:`_build_friendly_fallback`
+    which is also called directly from the LLM path when the LLM
+    output is rejected.
     """
     if not context_items:
         warning_text = (
@@ -632,6 +769,14 @@ def build_grounded_response(
             confidence=0.0,
             model_name="backend_grounded_fallback",
         )
+
+    # CTX-7: detect business failure modes (duplicate, unknown type,
+    # low OCR, no text) and produce a friendly explanation. The
+    # friendly text replaces the raw metadata dump the previous
+    # version emitted.
+    friendly = _build_friendly_fallback(context_items, warnings)
+    if friendly is not None:
+        return friendly
 
     warnings = _warnings_with_low_ocr_notice(context_items, warnings)
     confidence = _average_confidence(context_items)
@@ -672,6 +817,175 @@ def build_grounded_response(
         confidence=confidence,
         model_name="backend_grounded_fallback",
     )
+
+
+# ---------------------------------------------------------------------------
+# CTX-7 — friendly fallback for business failure modes
+# ---------------------------------------------------------------------------
+
+
+def _build_friendly_fallback(
+    context_items: list[ContextItem],
+    warnings: list[str],
+) -> GroundedResponse | None:
+    """Return a business-language explanation when the top context
+    item is a document in a known bad state.
+
+    Returns ``None`` when the context is healthy and the regular
+    fallback should be used. The detection rules:
+
+    * ``status == "duplicate"`` → explain the duplicate + suggest the
+      original document; mention related documents the user can jump
+      to.
+    * ``document_type == "desconocido"`` (or ``unknown``) → say the
+      file is not classified yet, suggest reprocess.
+    * OCR confidence below :data:`LOW_OCR_CONFIDENCE_THRESHOLD` → warn
+      that the reading is unreliable and ask the user to reprocess.
+    * No text extracted at all → say the OCR produced no usable text.
+    """
+    if not context_items:
+        return None
+    top = context_items[0]
+
+    # Only trigger the friendly path when the top item is a resolved
+    # document (we have a filename and the summary carries the
+    # "Tipo: ... | Estado: ... | Confianza: ..." metadata the old
+    # code emitted). Structured tools and pure text items pass
+    # through to the regular fallback.
+    summary = top.summary or ""
+    is_resolved_document = (
+        "Tipo:" in summary
+        and "Estado:" in summary
+        and top.document_id is not None
+    )
+    if not is_resolved_document:
+        return None
+
+    # Parse the metadata out of the summary produced by
+    # ``collect_context``'s find_document_by_filename branch.
+    meta = _parse_resolved_metadata(summary)
+
+    # Duplicate document: the most common UX trap the user listed.
+    if meta.get("status") == "duplicate":
+        related = _related_filenames(context_items[1:6])
+        related_text = (
+            f" En la misma carpeta hay otros documentos que pueden "
+            f"ser el original: {', '.join('**' + r + '**' for r in related)}."
+            if related
+            else " No he encontrado documentos relacionados para enlazarte el original."
+        )
+        answer = (
+            f"Este documento esta marcado como **duplicado** dentro del sistema, "
+            f"asi que no tiene una extraccion de OCR propia. "
+            f"Su contenido util esta en el documento original del que procede."
+            f"{related_text} "
+            f"Recomiendo abrir el original en lugar de este PDF."
+        )
+        return GroundedResponse(
+            answer=answer,
+            confidence=0.2,
+            model_name="backend_grounded_fallback",
+        )
+
+    # Document not yet classified.
+    if meta.get("document_type") in {"desconocido", "unknown"}:
+        answer = (
+            f"Todavia no he clasificado este documento (sigue marcado como "
+            f"tipo \"desconocido\"). No puedo decirte de que trata hasta que se "
+            f"procese y se le asigne un tipo. Recomiendo re-procesarlo desde "
+            f"la ficha del documento para que el sistema lo catalogue y le "
+            f"aplique la extraccion correspondiente."
+        )
+        return GroundedResponse(
+            answer=answer,
+            confidence=0.15,
+            model_name="backend_grounded_fallback",
+        )
+
+    # Low OCR confidence.
+    if meta.get("confidence_low") or _is_low_ocr_context(top):
+        conf_pct = (
+            int(round(float(top.confidence or 0) * 100))
+            if top.confidence is not None
+            else None
+        )
+        conf_text = f" ({conf_pct}% de confianza OCR)" if conf_pct is not None else ""
+        answer = (
+            f"He abierto el documento pero la lectura OCR es de baja calidad{conf_text}. "
+            f"No puedo confirmar el contenido con seguridad. Recomiendo re-procesar "
+            f"este PDF con el motor OCR avanzado (PaddleOCR v3 / PP-Structure) desde "
+            f"la ficha del documento y volver a preguntarme despues."
+        )
+        return GroundedResponse(
+            answer=answer,
+            confidence=0.2,
+            model_name="backend_grounded_fallback",
+        )
+
+    # No text extracted at all.
+    if not (top.excerpt or top.summary or "").strip():
+        answer = (
+            f"He encontrado el documento pero no tiene texto OCR extraido. "
+            f"Puede que el PDF sea solo imagen o que el OCR haya fallado. "
+            f"Recomiendo re-procesar este archivo desde su ficha para que se "
+            f"le aplique una nueva extraccion."
+        )
+        return GroundedResponse(
+            answer=answer,
+            confidence=0.1,
+            model_name="backend_grounded_fallback",
+        )
+
+    return None
+
+
+def _parse_resolved_metadata(summary: str) -> dict:
+    """Parse the ``Tipo: X | Estado: Y | Confianza: Z | ...`` summary
+    emitted by :func:`collect_context`'s find_document_by_filename branch.
+
+    The parser is intentionally tolerant: missing keys become
+    ``None``. The parser never raises.
+    """
+    out: dict = {
+        "document_type": None,
+        "status": None,
+        "confidence": None,
+        "page_count": None,
+        "confidence_low": False,
+    }
+    if not summary:
+        return out
+    parts = [segment.strip() for segment in summary.split("|")]
+    for segment in parts:
+        if ":" not in segment:
+            continue
+        key, _, value = segment.partition(":")
+        key = key.strip().lower()
+        value = value.strip()
+        if key == "tipo":
+            out["document_type"] = value.lower()
+        elif key == "estado":
+            out["status"] = value.lower()
+        elif key == "confianza":
+            try:
+                out["confidence"] = float(value)
+            except (TypeError, ValueError):
+                out["confidence"] = value
+            if out["confidence"] is not None and isinstance(out["confidence"], float):
+                out["confidence_low"] = out["confidence"] < LOW_OCR_CONFIDENCE_THRESHOLD
+        elif key == "paginas":
+            out["page_count"] = value
+    return out
+
+
+def _related_filenames(items: list[ContextItem]) -> list[str]:
+    """Return the filenames of related context items (after the first)."""
+    out: list[str] = []
+    for item in items:
+        name = item.document_filename or item.title
+        if name and name not in out:
+            out.append(name)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -741,6 +1055,37 @@ def document_context(document: Document, prefix: str) -> ContextItem:
         relevance_score=document.confidence,
         confidence=document.confidence,
         source_path=document.source_path,
+    )
+
+
+def _structured_context_item(
+    *,
+    tool_name: str,
+    payload: dict,
+    label: str,
+) -> ContextItem:
+    """Render a structured-tool payload as a :class:`ContextItem`.
+
+    The payload is JSON-serialised into the ``excerpt`` and the
+    ``title`` carries a short label so the LLM can cite the source.
+    The relevance score is 1.0 because structured data is always
+    authoritative when present.
+    """
+    import json
+
+    excerpt = json.dumps(payload, default=str, ensure_ascii=False)
+    found = bool(payload.get("found", True))
+    confidence = float(payload.get("confidence") or (0.95 if found else 0.2))
+    return ContextItem(
+        title=f"[Estructurado] {label}",
+        summary=excerpt,
+        document_id=payload.get("document_id"),
+        document_filename=None,
+        page_number=None,
+        relevance_score=1.0,
+        excerpt=excerpt,
+        confidence=confidence,
+        source_path=None,
     )
 
 
