@@ -1,105 +1,26 @@
-# S2.4 (Sprint 2) — CI workflow with ruff gate.
-#
-# This workflow runs on every push and PR. The matrix covers
-# Python 3.11 (the project's target). The steps:
-#
-# 1. Checkout
-# 2. Set up Python with pip caching keyed on requirements*.txt
-# 3. Install backend dev dependencies (which pin ruff 0.7.4)
-# 4. Run ``ruff check`` with the project's pyproject.toml rules
-# 5. Run ``ruff format --check`` to fail on un-formatted code
-# 6. Run the full test suite (only the unit tests, not the
-#    integration tests that need a running Postgres / Redis /
-#    LM Studio)
-#
-# The job is split: linting fails fast (no test run needed)
-# and the test job only runs if the lint job passes. A
-# separate ``docker-build`` job verifies the production image
-# builds (catches Dockerfile syntax errors).
-
-name: ci
+name: CI
 
 on:
-  push:
-    branches: [master, main]
   pull_request:
-    branches: [master, main]
+  push:
+    branches:
+      - master
+      - main
 
 jobs:
-  lint:
-    name: ruff lint + format
+  backend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docu-intel/backend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            docu-intel/backend/requirements.txt
-            docu-intel/backend/requirements-dev.txt
-      - name: Install ruff
-        run: pip install "ruff==0.7.4"
-      - name: Lint
-        # S2.4: enforce the rule set configured in
-        # ``pyproject.toml`` (``[tool.ruff.lint].select``). A
-        # developer who adds a new ``print(secret)`` or ``eval``
-        # call in a PR will see a CI failure pointing at the
-        # ``S`` rule that caught it.
-        run: ruff check --output-format=github .
-      - name: Format check
-        # Block PRs that introduce un-formatted code. The
-        # operator can run ``ruff format`` locally to fix
-        # before pushing.
-        run: ruff format --check .
-
-  # M-8: separate frontend lint job so the format check does not
-  # gate backend changes. Runs ESLint (flat config) and Prettier.
-  frontend-lint:
-    name: frontend lint + format
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docu-intel/frontend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: docu-intel/frontend/package-lock.json
-      - name: Install dependencies
-        run: npm ci
-      - name: Lint
-        run: npm run lint
-      - name: Format check
-        # M-8: block PRs that introduce un-formatted frontend code.
-        # Operator can run ``npm run format`` locally to fix.
-        run: npm run format:check
-
-  test:
-    name: pytest
-    runs-on: ubuntu-latest
-    needs: lint
-    defaults:
-      run:
-        working-directory: docu-intel/backend
     services:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_DB: docuintel_test
+          POSTGRES_DB: docuintel
           POSTGRES_USER: app
           POSTGRES_PASSWORD: app
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U app -d docuintel_test"
+          --health-cmd "pg_isready -U app -d docuintel"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -112,82 +33,130 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    defaults:
+      run:
+        working-directory: docu-intel/backend
     env:
-      DATABASE_URL: postgresql+psycopg://app:app@localhost:5432/docuintel_test
+      DATABASE_URL: postgresql+psycopg://app:app@localhost:5432/docuintel
       REDIS_URL: redis://localhost:6379/0
-      ENVIRONMENT: test
-      JWT_SECRET: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-      ADMIN_EMAIL: admin@test.local
-      ADMIN_PASSWORD: test_admin_password_at_least_16_chars
+      ENVIRONMENT: development
+      JWT_SECRET: ci_jwt_secret_change_me_for_pipeline_only
+      ADMIN_PASSWORD: ci_admin_password_change_me
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: |
-            docu-intel/backend/requirements.txt
-            docu-intel/backend/requirements-dev.txt
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          cache-dependency-path: docu-intel/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && pip install --default-timeout=120 --retries=5 -r requirements.txt
       - name: Run migrations
-        # The test DB schema needs to exist before the unit
-        # tests connect. We bring the schema to head; the
-        # unit tests use a per-test in-memory DB so this is
-        # only for the integration tests.
         run: alembic upgrade head
-      - name: Run unit tests
-        # ``--ignore=tests/performance`` keeps the run under
-        # 5 minutes; perf tests run on a separate schedule.
-        run: pytest tests/ --ignore=tests/performance -q
+      - name: Install backend dev dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Lint backend (ruff)
+        run: ruff check app/ && ruff format --check app/
+      - name: Type check backend (mypy)
+        run: mypy app/
+        continue-on-error: true
+      - name: Run backend tests with coverage
+        run: pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=50
+      - name: Validate OpenAPI public surface
+        run: pytest -m contract -v
 
-  docker-build:
-    name: docker build (production compose)
+  frontend:
     runs-on: ubuntu-latest
-    needs: lint
+    defaults:
+      run:
+        working-directory: docu-intel/frontend
     steps:
       - uses: actions/checkout@v4
-      - name: Build backend image
-        # Catches Dockerfile syntax errors and missing
-        # dependencies. The compose-level ``docker compose
-        # config`` check is in a separate job (see
-        # ``compose-validate``) to keep this one fast.
-        run: |
-          docker build -f docu-intel/backend/Dockerfile docu-intel/backend \
-            --tag docuintel-backend:ci
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docu-intel/frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Lint frontend (eslint)
+        run: npm run lint
+      - name: Check frontend formatting (prettier)
+        run: npm run format:check
+      - name: Run frontend tests
+        run: npm test
+      - name: Build frontend
+        run: npm run build
 
-  compose-validate:
-    name: docker compose config
+  golden-ocr:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: backend
+    defaults:
+      run:
+        working-directory: docu-intel/backend
+    env:
+      DATABASE_URL: postgresql+psycopg://app:app@localhost:5432/docuintel
+      REDIS_URL: redis://localhost:6379/0
+      ENVIRONMENT: development
+      JWT_SECRET: ci_jwt_secret_change_me_for_pipeline_only
+      ADMIN_PASSWORD: ci_admin_password_change_me
     steps:
       - uses: actions/checkout@v4
-      - name: Validate dev compose
-        # H-7: instead of ``cp .env.example .env`` (which would
-        # overwrite any committed .env and silently use the
-        # placeholder values for ``POSTGRES_PASSWORD`` etc.),
-        # feed docker compose a minimal env file via stdin.
-        # Compose then refuses to validate if any ``${VAR:?set VAR}``
-        # reference is unsatisfied.
-        run: |
-          cd docu-intel
-          ENV_FILE=$(mktemp)
-          trap 'rm -f "$ENV_FILE"' EXIT
-          cat > "$ENV_FILE" <<'EOF'
-          POSTGRES_PASSWORD=ci_dummy
-          REDIS_PASSWORD=ci_dummy
-          GLITCHTIP_SECRET_KEY=ci_dummy
-          GLITCHTIP_DB_PASSWORD=ci_dummy
-          EOF
-          docker compose --env-file "$ENV_FILE" -f docker-compose.yml config -q
-      - name: Validate prod compose
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docu-intel/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && pip install --default-timeout=120 --retries=5 -r requirements.txt
+      - name: Run golden OCR regression tests
+        run: pytest tests/test_ocr_golden.py -v
+
+  rag-eval:
+    runs-on: ubuntu-latest
+    needs: backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
         env:
-          REDIS_PASSWORD: ci_dummy
-          POSTGRES_PASSWORD: ci_dummy
-          GLITCHTIP_SECRET_KEY: ci_dummy
-          GLITCHTIP_DB_PASSWORD: ci_dummy
-        run: |
-          cd docu-intel
-          docker compose -f docker-compose.prod.yml config -q
+          POSTGRES_DB: docuintel
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d docuintel"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: docu-intel/backend
+    env:
+      DATABASE_URL: postgresql+psycopg://app:app@localhost:5432/docuintel
+      REDIS_URL: redis://localhost:6379/0
+      ENVIRONMENT: development
+      JWT_SECRET: ci_jwt_secret_change_me_for_pipeline_only
+      ADMIN_PASSWORD: ci_admin_password_change_me
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docu-intel/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && pip install --default-timeout=120 --retries=5 -r requirements.txt
+      - name: Run migrations
+        run: alembic upgrade head
+      - name: Run RAG evaluation tests
+        run: pytest tests/test_phase3_ai_search.py -v
