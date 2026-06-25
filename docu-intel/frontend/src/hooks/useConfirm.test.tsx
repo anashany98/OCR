@@ -12,24 +12,10 @@ import { describe, expect, it } from "vitest"
 
 import { ConfirmDialogHost, useConfirm } from "@/hooks/useConfirm"
 
-function ConfirmHarness() {
-  const confirm = useConfirm()
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        void confirm({
-          title: "Eliminar presupuesto",
-          description: "Esta acción no se puede deshacer.",
-          confirmLabel: "Eliminar",
-          tone: "danger",
-        })
-      }}
-    >
-      abrir
-    </button>
-  )
-}
+// Note: an earlier draft of this file declared a top-level
+// ``ConfirmHarness`` helper that nobody rendered. The tests below
+// each define their own inline ``Probe`` / ``OpenButton`` component
+// instead, so the harness was deleted (eslint flagged it as unused).
 
 describe("useConfirm (F9)", () => {
   it("returns true when the user clicks confirm", async () => {

@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { Download, ExternalLink, FileSpreadsheet, FileText, Search } from "lucide-react"
+import { Download, ExternalLink, FileText, Search } from "lucide-react"
 
 import { api } from "@/api/client"
 import { EmptyState } from "@/components/layout/EmptyState"
 import { PageHeader } from "@/components/layout/PageHeader"
-import { StatusBadge } from "@/components/layout/StatusBadge"
 import { MetricTile } from "@/components/layout/MetricTile"
 import { EmptyInvoicesIllustration } from "@/components/illustrations/EditorialIllustrations"
 import { Badge } from "@/components/ui/badge"
@@ -34,7 +33,11 @@ export function InvoicesPage() {
     queryFn: () => api.invoices({ q: query || undefined, limit: 200 }),
   })
 
-  const items = data ?? []
+  // ``data`` from react-query is referentially stable while the same
+  // queryKey is in flight; ``data ?? []`` would otherwise allocate a
+  // fresh array on every render and invalidate the ``useMemo`` below.
+  // Wrapping in its own ``useMemo`` keeps the deps array honest.
+  const items = useMemo(() => data ?? [], [data])
 
   // Client-side derived metrics
   const metrics = useMemo(() => deriveMetrics(items), [items])

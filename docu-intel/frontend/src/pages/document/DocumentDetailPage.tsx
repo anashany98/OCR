@@ -9,11 +9,10 @@ import {
   RefreshCcw,
   RotateCcw,
   Save,
-  Search,
   ShieldAlert,
 } from "lucide-react"
 
-import { api, pageImageUrl, thumbnailUrl, downloadUrl } from "@/api/client"
+import { pageImageUrl, thumbnailUrl, downloadUrl } from "@/api/client"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { DocumentProgressBar, StatusBadge } from "@/components/layout/StatusBadge"

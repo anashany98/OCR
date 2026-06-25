@@ -287,7 +287,7 @@ const statusRegistry: Record<string, StatusConfig> = {
   },
 }
 
-function getStatusConfig(status: string | null | undefined): StatusConfig {
+function getStatusConfig(status: DocStatus | string | null | undefined): StatusConfig {
   const normalized = String(status ?? "")
     .trim()
     .toLowerCase()
@@ -309,7 +309,7 @@ export function StatusBadge({
   size = "sm",
   className,
 }: {
-  status: string
+  status: DocStatus | string
   showAction?: boolean
   size?: "sm" | "md"
   className?: string
@@ -346,7 +346,7 @@ export function StatusBadge({
  * Shows a visual progress bar for document pipeline stages. Editorial style:
  * rounded pills connected by hairline dividers.
  */
-export function DocumentProgressBar({ status }: { status: string }) {
+export function DocumentProgressBar({ status }: { status: DocStatus | string }) {
   const stages = [
     { key: "uploaded", label: "Subido" },
     { key: "queued", label: "En cola" },

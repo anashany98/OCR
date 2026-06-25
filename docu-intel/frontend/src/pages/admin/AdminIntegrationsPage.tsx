@@ -62,7 +62,11 @@ function IntegrationsView({
   createIntegrationClient,
   rotateIntegrationClientKey,
   latestApiKey,
-  setLatestApiKey,
+  // `setLatestApiKey` is forwarded but not consumed inside this
+  // view. Prefix with `_` so eslint's unused-args rule (which allows
+  // names matching /^_/u) lets it through without us having to widen
+  // the rule's config.
+  setLatestApiKey: _setLatestApiKey,
   sandboxClientId,
   setSandboxClientId,
   sandboxTechnicianId,

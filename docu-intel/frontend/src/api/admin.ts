@@ -6,7 +6,6 @@ import type {
   AdminStats,
   AdminUser,
   AuditLog,
-  BulkReprocessResponse,
   BulkTagsResponse,
   Document,
   DocumentGraph,
