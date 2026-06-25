@@ -92,7 +92,7 @@ def reprocess_document_page(
 
 
 def soft_delete_document(db: Session, *, document: Document, user: User) -> Document:
-    document.deleted_at = datetime.utcnow()
+    document.deleted_at = datetime.now(timezone.utc)
     document.deleted_by_id = user.id
     write_audit(
         db,

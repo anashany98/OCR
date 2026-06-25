@@ -68,7 +68,7 @@ def cancel_pending_job(db: Session, job: ExtractionJob) -> ExtractionJob:
         raise ValueError("Only pending or failed jobs can be cancelled safely")
     document = job.document or db.get(Document, job.document_id)
     job.status = "cancelled"
-    job.finished_at = datetime.utcnow()
+    job.finished_at = datetime.now(timezone.utc)
     job.error_message = "Cancelled by admin"
     if document and _should_restore_document_after_cancel(db, document, job):
         if document.quality_status == "needs_human_review":

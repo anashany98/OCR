@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import DocumentEntity
-from app.services.search_service import search_hybrid as run_hybrid_search
+from app.services.search_service import _escape_ilike_wildcards, search_hybrid as run_hybrid_search
 
 
 def search_entities(db: Session, entity_type: str, value: str):
@@ -17,7 +17,7 @@ def search_entities(db: Session, entity_type: str, value: str):
         db.scalars(
             select(DocumentEntity)
             .where(DocumentEntity.entity_type == entity_type)
-            .where(DocumentEntity.entity_value.ilike(f"%{value}%"))
+            .where(DocumentEntity.entity_value.ilike(f"%{_escape_ilike_wildcards(value)}%"))
             .limit(50)
         ).all()
     )

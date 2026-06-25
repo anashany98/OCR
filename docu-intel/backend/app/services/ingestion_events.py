@@ -30,7 +30,7 @@ def upsert_watched_file(
     error_message: str | None = None,
 ) -> WatchedFile:
     watched = db.scalar(select(WatchedFile).where(WatchedFile.path == path))
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if not watched:
         watched = WatchedFile(path=path, first_seen_at=now)
         db.add(watched)

@@ -62,7 +62,7 @@ def create_ocr_revision(
             description=payload.reason,
             actor_user_id=user.id,
             details_json={"page_id": page.id, "page_number": page.page_number},
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
     )
     write_audit(

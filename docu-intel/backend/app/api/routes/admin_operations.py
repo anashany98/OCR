@@ -541,7 +541,7 @@ def work_inbox_action(
         for page in pages:
             page.review_status = "approved"
             page.review_notes = "Aprobado por accion en lote."
-            page.reviewed_at = datetime.utcnow()
+            page.reviewed_at = datetime.now(timezone.utc)
             page.reviewed_by_id = user.id
             updated += 1
         write_audit(

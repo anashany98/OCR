@@ -996,8 +996,10 @@ def _extract_lines_for_document(
        data nor bounding boxes are available.
     """
     if _has_table_blocks(pages):
+        # ``_has_table_blocks`` guarantees ``pages`` is a non-empty
+        # sequence; assert is dead code and would be stripped by
+        # ``python -O`` so we no-op it here.
         table_lines: list[ExtractedLine] = []
-        assert pages is not None
         for page in pages:
             for block in page.blocks:
                 if block.block_type == "table" and block.text:

@@ -118,7 +118,7 @@ def update_ocr_review(
     document = _get_or_404(db, Document, page.document_id, "Document not found")
     page.review_status = payload.review_status
     page.review_notes = payload.review_notes
-    page.reviewed_at = datetime.utcnow()
+    page.reviewed_at = datetime.now(timezone.utc)
     page.reviewed_by_id = user.id
     if payload.review_status == "rejected":
         document.status = "needs_review"

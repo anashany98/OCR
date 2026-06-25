@@ -55,7 +55,7 @@ def _reclassify_document(db: Session, document: Document, learned_rules: list[Le
 
     document.document_type = result.document_type
     document.confidence = result.confidence
-    document.processed_at = datetime.utcnow()
+    document.processed_at = datetime.now(timezone.utc)
     return True
 
 
@@ -107,7 +107,7 @@ def process_approved_suggestions() -> dict:
                         existing.status = "active"
                         existing.confidence = max(existing.confidence, suggestion.confidence)
                         existing.source_suggestion_id = suggestion.id
-                        existing.updated_at = datetime.utcnow()
+                        existing.updated_at = datetime.now(timezone.utc)
                     else:
                         pattern = LearnedPattern(
                             pattern_type="keyword",
@@ -136,12 +136,12 @@ def process_approved_suggestions() -> dict:
                             document.confidence = max(
                                 suggestion.confidence, document.confidence or 0.0
                             )
-                            document.processed_at = datetime.utcnow()
+                            document.processed_at = datetime.now(timezone.utc)
                             directly_corrected_ids.add(document.id)
                             reclassified += 1
 
                 suggestion.status = "applied"
-                suggestion.applied_at = datetime.utcnow()
+                suggestion.applied_at = datetime.now(timezone.utc)
 
             except Exception as exc:
                 logger.exception(

@@ -240,7 +240,8 @@ class CascadingOCREngine:
         model is heavy, so we keep the try/except tight: any failure
         falls back to whichever of Tier 1 / Tier 2 is better.
         """
-        assert self.pp_structure is not None  # caller-guaranteed
+        if self.pp_structure is None:  # caller-guaranteed (see __init__)
+            raise RuntimeError("PP-Structure engine not initialised")
         start = time.perf_counter()
         try:
             tier3_result = self.pp_structure.extract(image_path)
@@ -271,7 +272,8 @@ class CascadingOCREngine:
         return self._record_winner(tier, result)
 
     def _try_tier4(self, image_path: Path, best_prior: OCRResult) -> OCRResult | None:
-        assert self.vlm_ocr is not None
+        if self.vlm_ocr is None:  # caller-guaranteed (see __init__)
+            raise RuntimeError("VLM OCR engine not initialised")
         start = time.perf_counter()
         try:
             tier4_result = self.vlm_ocr.extract(image_path)

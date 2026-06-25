@@ -26,7 +26,7 @@ class NotificationService:
                         "job_id": job_id,
                         "document_id": document_id,
                         "error": error[:500],
-                        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+                        "timestamp": __import__("datetime").datetime.now(timezone.utc).isoformat(),
                     }
                 ),
             )
@@ -43,7 +43,7 @@ class NotificationService:
                         "type": "document_processed",
                         "document_id": document_id,
                         "filename": filename,
-                        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+                        "timestamp": __import__("datetime").datetime.now(timezone.utc).isoformat(),
                     }
                 ),
             )

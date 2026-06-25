@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Budget, Invoice, Order
+from app.services.search_service import _escape_ilike_wildcards
 from app.services.tenant_access import AccessScope, filter_records_by_document_scope
 
 
@@ -100,7 +101,7 @@ def _budget_aggregate(
         # Budgets don't link to suppliers directly; skip supplier filter.
         pass
     if filters.get("client"):
-        stmt = stmt.where(Budget.client_name.ilike(f"%{filters['client']}%"))
+        stmt = stmt.where(Budget.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%"))
     if filters.get("amount_min") is not None:
         stmt = stmt.where(Budget.total_amount >= filters["amount_min"])
     if filters.get("amount_max") is not None:
@@ -160,9 +161,9 @@ def _order_aggregate(
 ) -> list[dict[str, Any]]:
     stmt = select(Order)
     if filters.get("supplier"):
-        stmt = stmt.where(Order.supplier_name.ilike(f"%{filters['supplier']}%"))
+        stmt = stmt.where(Order.supplier_name.ilike(f"%{_escape_ilike_wildcards(filters['supplier'])}%"))
     if filters.get("client"):
-        stmt = stmt.where(Order.client_name.ilike(f"%{filters['client']}%"))
+        stmt = stmt.where(Order.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%"))
     if filters.get("amount_min") is not None:
         stmt = stmt.where(Order.total_amount >= filters["amount_min"])
     if filters.get("amount_max") is not None:
@@ -238,9 +239,9 @@ def _invoice_aggregate(
 ) -> list[dict[str, Any]]:
     stmt = select(Invoice)
     if filters.get("supplier"):
-        stmt = stmt.where(Invoice.supplier_name.ilike(f"%{filters['supplier']}%"))
+        stmt = stmt.where(Invoice.supplier_name.ilike(f"%{_escape_ilike_wildcards(filters['supplier'])}%"))
     if filters.get("client"):
-        stmt = stmt.where(Invoice.client_name.ilike(f"%{filters['client']}%"))
+        stmt = stmt.where(Invoice.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%"))
     if filters.get("amount_min") is not None:
         stmt = stmt.where(Invoice.total_amount >= filters["amount_min"])
     if filters.get("amount_max") is not None:

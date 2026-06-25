@@ -282,7 +282,7 @@ def _maybe_attach_vision_description(details: dict, document: Document) -> None:
         details["vision"] = {
             "model": settings.vision_model,
             "description": description,
-            "applied_at": datetime.utcnow().isoformat() + "Z",
+            "applied_at": datetime.now(timezone.utc).isoformat() + "Z",
         }
         # Schedule a delayed unload so the GPU memory is released
         # when no more image work is pending.

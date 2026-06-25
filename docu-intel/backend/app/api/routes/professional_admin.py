@@ -85,7 +85,7 @@ def update_work_item(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
     if item.status in {"resolved", "ignored"} and not item.resolved_at:
-        item.resolved_at = datetime.utcnow()
+        item.resolved_at = datetime.now(timezone.utc)
     write_audit(
         db, user=user, action="work_item_updated", entity_type="work_item", entity_id=item.id
     )

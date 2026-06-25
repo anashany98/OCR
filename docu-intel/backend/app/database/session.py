@@ -50,13 +50,15 @@ def get_engine() -> Engine:
                 _session_factory = sessionmaker(
                     bind=_engine, autocommit=False, autoflush=False, expire_on_commit=False
                 )
-    assert _engine is not None
+    if _engine is None:  # pragma: no cover - guarded by the lock above
+        raise RuntimeError("Database engine was not initialised; call get_engine() first")
     return _engine
 
 
 def get_session_factory():
     get_engine()
-    assert _session_factory is not None
+    if _session_factory is None:  # pragma: no cover - same invariant
+        raise RuntimeError("Session factory was not initialised; call get_engine() first")
     return _session_factory
 
 

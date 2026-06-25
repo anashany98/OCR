@@ -10,6 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Document, DocumentChunk
+from app.services.search_service import _escape_ilike_wildcards
 
 
 # Keywords that signal a shipping/transport cost. Kept in a module
@@ -59,11 +60,20 @@ def find_delivery_note_in_scope(
     candidates: list[Document] = []
     stmt = select(Document).where(Document.deleted_at.is_(None))
     if source_path_like:
-        stmt = stmt.where(Document.source_path.ilike(source_path_like))
+        # ``source_path_like`` is user-supplied (it can be a path
+        # substring); escape the ILIKE wildcards so a user typing
+        # ``%245`` or ``_foo`` does not get wildcard expansion.
+        stmt = stmt.where(Document.source_path.ilike(_escape_ilike_wildcards(source_path_like)))
     elif folder_path:
-        stmt = stmt.where(Document.source_path.ilike(f"%{folder_path}%"))
+        stmt = stmt.where(Document.source_path.ilike(f"%{_escape_ilike_wildcards(folder_path)}%"))
     elif budget_number:
-        stmt = stmt.where(Document.source_path.ilike(f"%Presupuesto {budget_number}%"))
+        # ``budget_number`` is a number we look up in our own DB
+        # (e.g. ``245745``); it is not user-typed text, so escaping is
+        # not strictly required but we do it anyway for defense in
+        # depth.
+        stmt = stmt.where(
+            Document.source_path.ilike(f"%Presupuesto {_escape_ilike_wildcards(budget_number)}%")
+        )
     else:
         # No scope: refuse to guess.
         return {
@@ -129,8 +139,8 @@ def find_shipping_cost_in_scope(
         }
     like = (
         source_path_like
-        or (f"%{folder_path}%" if folder_path else None)
-        or f"%Presupuesto {budget_number}%"
+        or (f"%{_escape_ilike_wildcards(folder_path)}%" if folder_path else None)
+        or f"%Presupuesto {_escape_ilike_wildcards(budget_number)}%"
     )
     # ILIKE any of the shipping keywords against chunk_text.
     keyword_ors = [
@@ -140,7 +150,7 @@ def find_shipping_cost_in_scope(
         select(DocumentChunk, Document)
         .join(Document, Document.id == DocumentChunk.document_id)
         .where(Document.deleted_at.is_(None))
-        .where(Document.source_path.ilike(like))
+        .where(Document.source_path.ilike(_escape_ilike_wildcards(like)))
         .where(or_(*keyword_ors))
         .order_by(DocumentChunk.confidence.desc().nullslast())
         .limit(limit)
