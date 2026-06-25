@@ -1,14 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import {
-  Check,
-  ExternalLink,
-  FileText,
-  RefreshCcw,
-  RotateCw,
-  Sparkles,
-  X,
-} from "lucide-react"
+import { Check, ExternalLink, FileText, RefreshCcw, RotateCw, Sparkles, X } from "lucide-react"
 
 import { pageImageUrl } from "@/api/client"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
@@ -136,7 +128,10 @@ export function OcrReviewFilters({ data }: { data: OcrReviewData }) {
         disabled={queries.review.isFetching}
         title="Actualizar lista"
       >
-        <RotateCw data-icon={queries.review.isFetching ? "inline-start" : undefined} className={cn(queries.review.isFetching && "animate-spin")} />
+        <RotateCw
+          data-icon={queries.review.isFetching ? "inline-start" : undefined}
+          className={cn(queries.review.isFetching && "animate-spin")}
+        />
       </Button>
     </div>
   )
@@ -196,9 +191,7 @@ export function OcrReviewQueue({ data }: { data: OcrReviewData }) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-medium">
-                          {item.original_filename}
-                        </p>
+                        <p className="truncate text-sm font-medium">{item.original_filename}</p>
                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                           pág. {item.page_number}
                         </span>
@@ -368,7 +361,11 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
         items={[
           { value: "preview", label: "Preview", icon: <FileText className="h-3.5 w-3.5" /> },
           { value: "text", label: "Texto OCR", icon: <FileText className="h-3.5 w-3.5" /> },
-          { value: "blocks", label: `Bloques (${selected.blocks?.length ?? 0})`, icon: <FileText className="h-3.5 w-3.5" /> },
+          {
+            value: "blocks",
+            label: `Bloques (${selected.blocks?.length ?? 0})`,
+            icon: <FileText className="h-3.5 w-3.5" />,
+          },
         ]}
       />
 
@@ -422,7 +419,7 @@ function TextPane({ selected }: { selected: SelectedPage }) {
 }
 
 function BlocksPane({ selected }: { selected: SelectedPage }) {
-  const blocks: NonNullable<SelectedPage["blocks"]> = selected.blocks ?? [] 
+  const blocks: NonNullable<SelectedPage["blocks"]> = selected.blocks ?? []
   if (blocks.length === 0) {
     return (
       <div className="flex h-full min-h-[200px] items-center justify-center p-8 text-sm text-muted-foreground">
@@ -469,14 +466,21 @@ function BlocksPane({ selected }: { selected: SelectedPage }) {
 function ConfidenceDot({ value, withLabel }: { value: number | null; withLabel?: boolean }) {
   if (value == null) {
     return (
-      <span className="inline-flex h-2 w-2 rounded-full bg-muted-foreground/30" aria-label="Sin dato" />
+      <span
+        className="inline-flex h-2 w-2 rounded-full bg-muted-foreground/30"
+        aria-label="Sin dato"
+      />
     )
   }
   const tone = value < 0.5 ? "bg-red-500" : value < 0.7 ? "bg-amber-500" : "bg-emerald-500"
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={cn("h-2 w-2 rounded-full", tone)} aria-hidden="true" />
-      {withLabel && <span className="text-xs tabular-nums text-muted-foreground">{Math.round(value * 100)}%</span>}
+      {withLabel && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {Math.round(value * 100)}%
+        </span>
+      )}
     </span>
   )
 }

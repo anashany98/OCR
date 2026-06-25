@@ -24,8 +24,7 @@ type DocumentRowProps = {
 }
 
 export function DocumentRow({ document, selected, onToggle, onReprocess }: DocumentRowProps) {
-  const confidencePct =
-    document.confidence != null ? Math.round(document.confidence * 100) : null
+  const confidencePct = document.confidence != null ? Math.round(document.confidence * 100) : null
   const confidenceTone =
     confidencePct == null
       ? "bg-muted-foreground/30"
@@ -56,7 +55,10 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
             >
               {document.original_filename}
             </Link>
-            <p className="truncate text-[11px] text-muted-foreground" title={document.source_path ?? undefined}>
+            <p
+              className="truncate text-[11px] text-muted-foreground"
+              title={document.source_path ?? undefined}
+            >
               {document.source_path ?? document.file_hash?.slice(0, 16)}
             </p>
           </div>
@@ -68,9 +70,7 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
           <StatusBadge status={document.quality_status ?? "-"} />
         </div>
       </TableCell>
-      <TableCell className="py-3 text-xs text-muted-foreground">
-        {document.document_type}
-      </TableCell>
+      <TableCell className="py-3 text-xs text-muted-foreground">{document.document_type}</TableCell>
       <TableCell className="py-3 text-right tabular-nums">
         <span className="inline-flex items-center gap-1.5">
           <span className={cn("h-1.5 w-1.5 rounded-full", confidenceTone)} aria-hidden="true" />

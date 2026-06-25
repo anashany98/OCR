@@ -302,7 +302,13 @@ export function canSeeNavItem(item: NavItem, role: string | undefined): boolean 
 // Admin tabs (consumed by the admin shell + the /admin router tree)
 // ---------------------------------------------------------------------------
 
-export type AdminTab = "operativa" | "sistema" | "integraciones" | "acceso" | "calidad" | "aprendizaje"
+export type AdminTab =
+  | "operativa"
+  | "sistema"
+  | "integraciones"
+  | "acceso"
+  | "calidad"
+  | "aprendizaje"
 
 export const ADMIN_TABS: ReadonlyArray<{
   id: AdminTab

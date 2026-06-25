@@ -47,7 +47,7 @@ export function SidebarNav({
   }, [recentPaths, user?.role])
 
   function isActive(to: string): boolean {
-    const path = to.split("?")[0].split("#")[0]  // drop the unused hash fragment
+    const path = to.split("?")[0].split("#")[0] // drop the unused hash fragment
     const targetHash = to.includes("#") ? to.split("#")[1] : undefined
     if (path === "/") return location.pathname === "/" && !location.hash
     if (location.pathname !== path) return false

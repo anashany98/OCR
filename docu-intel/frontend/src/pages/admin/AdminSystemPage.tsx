@@ -133,13 +133,7 @@ const SECTIONS: SectionDef[] = [
   },
 ]
 
-function SectionNav({
-  sections,
-  activeId,
-}: {
-  sections: SectionDef[]
-  activeId: string
-}) {
+function SectionNav({ sections, activeId }: { sections: SectionDef[]; activeId: string }) {
   return (
     <nav aria-label="Secciones de sistema" className="space-y-1">
       <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -168,7 +162,11 @@ function SectionNav({
                   }
                 />
                 <span className="min-w-0">
-                  <span className={"block font-medium leading-tight " + (active ? "text-foreground" : "")}>
+                  <span
+                    className={
+                      "block font-medium leading-tight " + (active ? "text-foreground" : "")
+                    }
+                  >
                     {s.title}
                   </span>
                   <span className="block truncate text-[11px] leading-tight text-muted-foreground">
@@ -200,20 +198,19 @@ function SectionHeader({
       </div>
       <div className="min-w-0">
         <h3 className="text-base font-semibold leading-tight">{title}</h3>
-        {description ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-        ) : null}
+        {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
       </div>
     </div>
   )
 }
 
 function StatusBadge({ status, fallback = "sin datos" }: { status?: string; fallback?: string }) {
-  const variant = status === "ok" || status === "ready" || status === "operativo"
-    ? "success"
-    : status
-      ? "warning"
-      : "neutral"
+  const variant =
+    status === "ok" || status === "ready" || status === "operativo"
+      ? "success"
+      : status
+        ? "warning"
+        : "neutral"
   return <Badge variant={variant}>{status ?? fallback}</Badge>
 }
 
@@ -283,11 +280,7 @@ function SystemView(props: SystemViewProps) {
           let best: { id: string; ratio: number; order: number } | null = null
           for (const [id, ratio] of visible) {
             const order = ids.indexOf(id)
-            if (
-              !best ||
-              ratio > best.ratio ||
-              (ratio === best.ratio && order < best.order)
-            ) {
+            if (!best || ratio > best.ratio || (ratio === best.ratio && order < best.order)) {
               best = { id, ratio, order }
             }
           }
@@ -371,7 +364,9 @@ function SystemView(props: SystemViewProps) {
           aria-labelledby="postgres-title"
           className="scroll-mt-6 space-y-4"
         >
-          <h4 id="postgres-title" className="sr-only">PostgreSQL</h4>
+          <h4 id="postgres-title" className="sr-only">
+            PostgreSQL
+          </h4>
           <SectionHeader
             icon={Database}
             title="PostgreSQL"
@@ -418,7 +413,9 @@ function SystemView(props: SystemViewProps) {
           aria-labelledby="redis-workers-title"
           className="scroll-mt-6 space-y-4"
         >
-          <h4 id="redis-workers-title" className="sr-only">Redis y Workers</h4>
+          <h4 id="redis-workers-title" className="sr-only">
+            Redis y Workers
+          </h4>
           <SectionHeader
             icon={Server}
             title="Redis y Workers"
@@ -481,7 +478,9 @@ function SystemView(props: SystemViewProps) {
           aria-labelledby="storage-title"
           className="scroll-mt-6 space-y-4"
         >
-          <h4 id="storage-title" className="sr-only">Disco y almacenamiento</h4>
+          <h4 id="storage-title" className="sr-only">
+            Disco y almacenamiento
+          </h4>
           <SectionHeader
             icon={HardDrive}
             title="Disco y almacenamiento"
@@ -531,7 +530,9 @@ function SystemView(props: SystemViewProps) {
           aria-labelledby="readiness-title"
           className="scroll-mt-6 space-y-4"
         >
-          <h4 id="readiness-title" className="sr-only">Readiness y producción</h4>
+          <h4 id="readiness-title" className="sr-only">
+            Readiness y producción
+          </h4>
           <SectionHeader
             icon={ShieldCheck}
             title="Readiness y producción"
@@ -542,9 +543,7 @@ function SystemView(props: SystemViewProps) {
               <CardContent className="space-y-4 p-6">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">Readiness productivo</p>
-                  <Badge
-                    variant={productionReadiness?.status === "ready" ? "success" : "warning"}
-                  >
+                  <Badge variant={productionReadiness?.status === "ready" ? "success" : "warning"}>
                     {productionReadiness?.status ?? "sin datos"}
                   </Badge>
                 </div>
@@ -610,7 +609,9 @@ function SystemView(props: SystemViewProps) {
           aria-labelledby="access-title"
           className="scroll-mt-6 space-y-4"
         >
-          <h4 id="access-title" className="sr-only">Usuarios y notificaciones</h4>
+          <h4 id="access-title" className="sr-only">
+            Usuarios y notificaciones
+          </h4>
           <SectionHeader
             icon={UserPlus}
             title="Usuarios y notificaciones"
@@ -666,11 +667,10 @@ function SystemView(props: SystemViewProps) {
                   />
                   <div className="md:col-span-2 flex items-center justify-between gap-2">
                     <p className="text-[11px] text-muted-foreground">
-                      Mínimo 12 caracteres. El usuario recibirá acceso inmediato al rol seleccionado.
+                      Mínimo 12 caracteres. El usuario recibirá acceso inmediato al rol
+                      seleccionado.
                     </p>
-                    <Button
-                      disabled={createAdminUser.isPending || adminUserPassword.length < 12}
-                    >
+                    <Button disabled={createAdminUser.isPending || adminUserPassword.length < 12}>
                       Crear usuario
                     </Button>
                   </div>
@@ -811,7 +811,9 @@ function SystemView(props: SystemViewProps) {
           aria-labelledby="ai-config-title"
           className="scroll-mt-6 space-y-4"
         >
-          <h4 id="ai-config-title" className="sr-only">Configuración IA/OCR</h4>
+          <h4 id="ai-config-title" className="sr-only">
+            Configuración IA/OCR
+          </h4>
           <SectionHeader
             icon={Layers}
             title="Configuración IA/OCR"

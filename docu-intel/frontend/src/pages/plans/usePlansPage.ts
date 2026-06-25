@@ -36,10 +36,7 @@ export function usePlansPage() {
 
   const plans = useQuery({ queryKey: ["plans"], queryFn: api.plans })
   const selectedPlan = useMemo(
-    () =>
-      plans.data?.find((plan) => plan.id === selectedId) ??
-      plans.data?.[0] ??
-      null,
+    () => plans.data?.find((plan) => plan.id === selectedId) ?? plans.data?.[0] ?? null,
     [plans.data, selectedId],
   )
 
@@ -74,13 +71,8 @@ export function usePlansPage() {
   })
 
   const roomMutation = useMutation({
-    mutationFn: ({
-      id,
-      payload,
-    }: {
-      id: number
-      payload: Record<string, unknown>
-    }) => api.updatePlanRoom(id, payload),
+    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) =>
+      api.updatePlanRoom(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans", selectedPlan?.id, "rooms"] })
     },

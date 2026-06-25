@@ -1,13 +1,6 @@
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
-import {
-  Download,
-  FileWarning,
-  MapPin,
-  RefreshCcw,
-  RotateCcw,
-  Save,
-} from "lucide-react"
+import { Download, FileWarning, MapPin, RefreshCcw, RotateCcw, Save } from "lucide-react"
 
 import { downloadUrl } from "@/api/client"
 import { PermissionGate } from "@/components/layout/PermissionGate"
@@ -29,11 +22,7 @@ import { useDocumentDetail } from "./useDocumentDetail"
  * the message is announced through the standard accessible toast
  * channel (F9).
  */
-export function DocumentActionToolbar({
-  d,
-}: {
-  d: ReturnType<typeof useDocumentDetail>
-}) {
+export function DocumentActionToolbar({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const id = d.document?.id
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -103,11 +92,7 @@ export function DocumentActionToolbar({
  * identical to the original OCR text (so an empty save does not
  * pollute the revision log).
  */
-export function DocumentOcrRevisionEditor({
-  d,
-}: {
-  d: ReturnType<typeof useDocumentDetail>
-}) {
+export function DocumentOcrRevisionEditor({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const page = d.selectedPage
   if (!page) return null
   return (
@@ -127,7 +112,8 @@ export function DocumentOcrRevisionEditor({
           }
           onClick={() => d.saveRevision.mutate()}
         >
-          <Save className="mr-1 h-3 w-3" />Guardar
+          <Save className="mr-1 h-3 w-3" />
+          Guardar
         </Button>
       </div>
       <textarea

@@ -1,12 +1,7 @@
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
 import { PageHeader } from "@/components/layout/PageHeader"
 
-import {
-  NeedsReembeddingBanner,
-  OcrDetails,
-  OcrReviewFilters,
-  OcrReviewQueue,
-} from "./components"
+import { NeedsReembeddingBanner, OcrDetails, OcrReviewFilters, OcrReviewQueue } from "./components"
 import { useOcrReviewPage } from "./useOcrReviewPage"
 
 /**

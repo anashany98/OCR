@@ -1,5 +1,10 @@
 import { lazy, Suspense, type ReactNode } from "react"
-import { Navigate, createBrowserRouter, isRouteErrorResponse, useRouteError } from "react-router-dom"
+import {
+  Navigate,
+  createBrowserRouter,
+  isRouteErrorResponse,
+  useRouteError,
+} from "react-router-dom"
 
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { AppShell } from "@/components/layout/AppShell"
@@ -35,16 +40,28 @@ function lazyNamed<T>(loader: () => Promise<T>, exportName: keyof T): PageLoader
 
 const pages = {
   AdminPage: lazyNamed(() => import("@/pages/AdminPage"), "AdminPage"),
-  AdminOperationalRoute: lazyNamed(() => import("@/pages/admin/AdminOperationalPage"), "AdminOperationalPage"),
+  AdminOperationalRoute: lazyNamed(
+    () => import("@/pages/admin/AdminOperationalPage"),
+    "AdminOperationalPage",
+  ),
   AdminSystemRoute: lazyNamed(() => import("@/pages/admin/AdminSystemPage"), "AdminSystemPage"),
-  AdminIntegrationsRoute: lazyNamed(() => import("@/pages/admin/AdminIntegrationsPage"), "AdminIntegrationsPage"),
+  AdminIntegrationsRoute: lazyNamed(
+    () => import("@/pages/admin/AdminIntegrationsPage"),
+    "AdminIntegrationsPage",
+  ),
   AdminAccessRoute: lazyNamed(() => import("@/pages/admin/AdminAccessPage"), "AdminAccessPage"),
   AdminQualityRoute: lazyNamed(() => import("@/pages/admin/AdminQualityPage"), "AdminQualityPage"),
-  AdminLearningRoute: lazyNamed(() => import("@/pages/admin/AdminLearningPage"), "AdminLearningPage"),
+  AdminLearningRoute: lazyNamed(
+    () => import("@/pages/admin/AdminLearningPage"),
+    "AdminLearningPage",
+  ),
   BudgetsPage: lazyNamed(() => import("@/pages/BudgetsPage"), "BudgetsPage"),
   ChatPage: lazyNamed(() => import("@/pages/chat/ChatPage"), "ChatPage"),
   DashboardPage: lazyNamed(() => import("@/pages/dashboard/DashboardPage"), "DashboardPage"),
-  DocumentDetailPage: lazyNamed(() => import("@/pages/document/DocumentDetailPage"), "DocumentDetailPage"),
+  DocumentDetailPage: lazyNamed(
+    () => import("@/pages/document/DocumentDetailPage"),
+    "DocumentDetailPage",
+  ),
   DocumentsPage: lazyNamed(() => import("@/pages/documents/DocumentsPage"), "DocumentsPage"),
   InvoicesPage: lazyNamed(() => import("@/pages/InvoicesPage"), "InvoicesPage"),
   JobsPage: lazyNamed(() => import("@/pages/JobsPage"), "JobsPage"),
@@ -52,7 +69,10 @@ const pages = {
   NotFoundPage: lazyNamed(() => import("@/pages/NotFoundPage"), "NotFoundPage"),
   OrdersPage: lazyNamed(() => import("@/pages/OrdersPage"), "OrdersPage"),
   OcrReviewPage: lazyNamed(() => import("@/pages/ocr-review/OcrReviewPage"), "OcrReviewPage"),
-  PlanoAnnotationPage: lazyNamed(() => import("@/pages/plano/PlanoAnnotationPage"), "PlanoAnnotationPage"),
+  PlanoAnnotationPage: lazyNamed(
+    () => import("@/pages/plano/PlanoAnnotationPage"),
+    "PlanoAnnotationPage",
+  ),
   PlansPage: lazyNamed(() => import("@/pages/plans/PlansPage"), "PlansPage"),
   ReconciliationPage: lazyNamed(() => import("@/pages/ReconciliationPage"), "ReconciliationPage"),
   SearchPage: lazyNamed(() => import("@/pages/search/SearchPage"), "SearchPage"),
@@ -155,7 +175,9 @@ const adminChildLoaders: Record<AdminTab, PageLoader> = {
 }
 
 function adminRoute(tab: (typeof ADMIN_TABS)[number]) {
-  const Component = lazy(adminChildLoaders[tab.id] as () => Promise<{ default: React.ComponentType<unknown> }>)
+  const Component = lazy(
+    adminChildLoaders[tab.id] as () => Promise<{ default: React.ComponentType<unknown> }>,
+  )
   return {
     path: tab.id,
     element: (
@@ -180,7 +202,10 @@ export const router = createBrowserRouter([
       { index: true, element: page(pages.DashboardPage) },
       { path: "documents", element: page(pages.DocumentsPage) },
       { path: "documents/:id", element: page(pages.DocumentDetailPage) },
-      { path: "documents/:id/annotate-plan", element: protectedPage(pages.PlanoAnnotationPage, MANAGER_ROLES) },
+      {
+        path: "documents/:id/annotate-plan",
+        element: protectedPage(pages.PlanoAnnotationPage, MANAGER_ROLES),
+      },
       { path: "work-inbox", element: page(pages.WorkInboxPage) },
       { path: "ocr-review", element: page(pages.OcrReviewPage) },
       { path: "search", element: page(pages.SearchPage) },
@@ -194,7 +219,10 @@ export const router = createBrowserRouter([
       {
         path: "admin",
         element: protectedPage(pages.AdminPage, ADMIN_ROLES),
-        children: [{ index: true, element: <Navigate to="operativa" replace /> }, ...ADMIN_TABS.map(adminRoute)],
+        children: [
+          { index: true, element: <Navigate to="operativa" replace /> },
+          ...ADMIN_TABS.map(adminRoute),
+        ],
       },
       { path: "*", element: page(pages.NotFoundPage) },
     ],

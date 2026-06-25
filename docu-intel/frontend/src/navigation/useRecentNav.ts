@@ -23,7 +23,10 @@ function readRecent(userId: string | number | undefined): string[] {
 function writeRecent(userId: string | number | undefined, paths: string[]) {
   if (typeof window === "undefined" || !userId) return
   try {
-    window.localStorage.setItem(RECENT_KEY_PREFIX + userId, JSON.stringify(paths.slice(0, MAX_RECENT)))
+    window.localStorage.setItem(
+      RECENT_KEY_PREFIX + userId,
+      JSON.stringify(paths.slice(0, MAX_RECENT)),
+    )
   } catch {
     /* ignore quota errors */
   }

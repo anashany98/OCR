@@ -3,7 +3,14 @@ import { Ruler, Save } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 import { numberOrNull } from "./scales"
 import type { PlansData } from "./usePlansPage"
@@ -50,16 +57,14 @@ function ScaleSection({ data }: { data: PlansData }) {
           placeholder="1:50"
           value={state.scaleText}
         />
-        <Button
-          disabled={mutations.scale.isPending}
-          onClick={() => mutations.scale.mutate()}
-        >
+        <Button disabled={mutations.scale.isPending} onClick={() => mutations.scale.mutate()}>
           <Save data-icon="inline-start" />
           Guardar
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Sin escala válida no se convierten geometrías de píxeles a metros. Las superficies OCR se conservan como texto fuente.
+        Sin escala válida no se convierten geometrías de píxeles a metros. Las superficies OCR se
+        conservan como texto fuente.
       </p>
     </div>
   )

@@ -355,7 +355,8 @@ export function DocumentsPage() {
             </Button>
           }
         >
-          Error al subir: {upload.error?.message ?? uploadBatch.error?.message ?? "fallo desconocido"}
+          Error al subir:{" "}
+          {upload.error?.message ?? uploadBatch.error?.message ?? "fallo desconocido"}
         </StatusBanner>
       ) : null}
 
@@ -394,9 +395,7 @@ export function DocumentsPage() {
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 border-b bg-muted/20 px-5 py-3">
           <div className="flex items-center gap-3">
             <CardTitle className="text-sm font-semibold">Listado</CardTitle>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {total} documentos
-            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">{total} documentos</span>
           </div>
           <div className="flex items-center gap-2">
             {selected.length > 0 ? (
@@ -571,7 +570,10 @@ function StatusBanner({
       role={tone === "danger" ? "alert" : "status"}
       aria-live={tone === "danger" ? "assertive" : "polite"}
     >
-      <div className="flex min-w-0 items-center gap-2">{icon}<span className="truncate">{children}</span></div>
+      <div className="flex min-w-0 items-center gap-2">
+        {icon}
+        <span className="truncate">{children}</span>
+      </div>
       {action}
     </div>
   )

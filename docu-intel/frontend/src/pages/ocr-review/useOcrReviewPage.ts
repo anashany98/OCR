@@ -55,9 +55,7 @@ export function useOcrReviewPage() {
   })
   const reviewItems = reviewQuery.data ?? []
   const selected =
-    reviewItems.find((item) => reviewKey(item) === selectedKey) ??
-    reviewItems[0] ??
-    null
+    reviewItems.find((item) => reviewKey(item) === selectedKey) ?? reviewItems[0] ?? null
 
   // Re-seed the notes textarea when the user picks a different
   // page. Using ``page_id`` (instead of the whole ``selected``
