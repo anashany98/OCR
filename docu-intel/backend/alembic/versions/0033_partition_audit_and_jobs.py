@@ -86,6 +86,7 @@ def _month_bounds(reference: datetime, offset_months: int) -> tuple[datetime, da
 def _create_monthly_partitions(
     parent: str,
     *,
+    columns: tuple[str, ...],
     now: datetime,
     lookahead: int,
 ) -> None:
@@ -93,6 +94,16 @@ def _create_monthly_partitions(
     future months. Idempotent: the migration can be re-applied
     without erroring on a deployment that already has the
     partitions.
+
+    ``columns`` enumerates the per-partition indexes to (re)create.
+    Each parent table has a different set of indexed columns so we
+    cannot share one hard-coded tuple: ``audit_logs`` has
+    ``user_id`` / ``action`` / ``entity_type`` / ``entity_id`` /
+    ``created_at`` while ``extraction_jobs`` has only
+    ``document_id`` / ``status`` / ``job_type`` / ``created_at``.
+    Hard-coding both sets used to make the migration fail with
+    ``column "user_id" does not exist`` on the extraction_jobs
+    partitions (CI failure).
     """
     bind = op.get_bind()
     for offset in range(lookahead + 1):
@@ -109,7 +120,7 @@ def _create_monthly_partitions(
         # single-table version had. The new partition
         # inherits the parent's ``UNIQUE`` index
         # automatically but not the per-column ones.
-        for column in ("user_id", "action", "entity_type", "entity_id", "created_at"):
+        for column in columns:
             bind.execute(  # type: ignore[attr-defined]
                 sa.text(
                     f"CREATE INDEX IF NOT EXISTS ix_{partition}_{column} "
@@ -265,8 +276,18 @@ def upgrade() -> None:
         """
     )
 
-    _create_monthly_partitions("audit_logs", now=now, lookahead=_LOOKAHEAD_MONTHS)
-    _create_monthly_partitions("extraction_jobs", now=now, lookahead=_LOOKAHEAD_MONTHS)
+    _create_monthly_partitions(
+        "audit_logs",
+        columns=("user_id", "action", "entity_type", "entity_id", "created_at"),
+        now=now,
+        lookahead=_LOOKAHEAD_MONTHS,
+    )
+    _create_monthly_partitions(
+        "extraction_jobs",
+        columns=("document_id", "job_type", "status", "created_at"),
+        now=now,
+        lookahead=_LOOKAHEAD_MONTHS,
+    )
 
 
 def downgrade() -> None:

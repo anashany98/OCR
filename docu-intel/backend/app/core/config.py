@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Docu-Intel"
-    environment: Literal["local", "development", "staging", "production"] = "local"
+    environment: Literal["local", "development", "test", "staging", "production"] = "local"
     # Versioned API mount point. All user-facing routers live under this prefix.
     # Integrations API has its own /integrations/v1 prefix (external contract).
     # Set to "" to disable versioning (legacy mode, not recommended).
@@ -487,34 +487,45 @@ class Settings(BaseSettings):
     @field_validator("jwt_secret", mode="after")
     @classmethod
     def validate_jwt_secret(cls, value: str, info: ValidationInfo) -> str:
+        # ``test`` and ``development`` are treated like ``local`` for
+        # the dev-only prefix / length rules so the CI integration
+        # suite (which sets ``ENVIRONMENT=test`` and inherits the
+        # dev defaults) can boot without bespoke secret generation.
+        # ``staging`` and ``production`` still get the strict checks.
         environment = info.data.get("environment", "local")
+        is_dev_like = environment in {"local", "development", "test"}
         if value in {
             "change_me",
             "CHANGE_ME_GENERATE_SECURE_TOKEN_MIN_64_CHARS",
             "CHANGE_IN_PRODUCTION_USE_64_CHARS_MIN_SECURE",
         }:
             raise ValueError("JWT_SECRET must be changed from default value for security")
-        if environment != "local" and value.startswith("dev_only_"):
+        if not is_dev_like and value.startswith("dev_only_"):
             raise ValueError(f"JWT_SECRET must be set explicitly in '{environment}' environment")
-        if environment != "local" and len(value) < 64:
+        if not is_dev_like and len(value) < 64:
             raise ValueError(
                 "JWT_SECRET must be at least 64 characters long in non-local environments"
             )
-        if environment == "local" and len(value) < 32:
+        if is_dev_like and len(value) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters long")
         return value
 
     @field_validator("admin_password", mode="after")
     @classmethod
     def validate_admin_password(cls, value: str, info: ValidationInfo) -> str:
+        # See ``validate_jwt_secret`` for the rationale: dev-like
+        # environments (``local`` / ``development`` / ``test``) keep
+        # the ``dev_only_*`` admin default so the test fixtures and
+        # ``docker compose up`` can boot out of the box.
         environment = info.data.get("environment", "local")
+        is_dev_like = environment in {"local", "development", "test"}
         if value in {
             "admin123",
             "CHANGE_ME_MIN_16_CHARS_SECURE_PASSWORD",
             "CHANGE_IN_PRODUCTION_MIN_16_CHARS",
         }:
             raise ValueError("ADMIN_PASSWORD must be changed from default value for security")
-        if environment != "local" and value.startswith("dev_only_"):
+        if not is_dev_like and value.startswith("dev_only_"):
             raise ValueError(
                 f"ADMIN_PASSWORD must be set explicitly in '{environment}' environment"
             )
@@ -524,7 +535,21 @@ class Settings(BaseSettings):
 
     @field_validator("database_url", mode="after")
     @classmethod
-    def validate_db_password(cls, value: str) -> str:
+    def validate_db_password(cls, value: str, info: ValidationInfo) -> str:
+        # The CI integration test job spins up a throwaway pgvector
+        # container with the ``app:app`` user the pgvector image ships
+        # with by default. We must not refuse to boot in that
+        # environment just because the password is in the well-known
+        # weak set, otherwise ``alembic upgrade head`` cannot even
+        # construct :data:`Settings` and the test job fails at
+        # settings import rather than at the actual schema upgrade.
+        # ``development`` and ``local`` are explicitly skipped so that
+        # ``docker compose up`` against a throwaway stack still boots.
+        # Production and ``staging`` environments still get the strict
+        # check via :meth:`_validate_production_hardening`.
+        environment = info.data.get("environment", "local")
+        if environment in {"local", "development", "test"}:
+            return value
         weak_passwords = {"app", "password", "postgres", "admin", "123456", "changeme", "docuintel"}
         try:
             from urllib.parse import urlparse
