@@ -33,7 +33,6 @@ from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 
-
 # Skip the HuggingFace connectivity probe that adds ~2 s to first init.
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 

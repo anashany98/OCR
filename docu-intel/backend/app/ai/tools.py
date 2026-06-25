@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 # Re-exported so other code in the project that imports
 # ``app.ai.agent._money_filters`` still works (this is the alias the
 # original agent.py used).
 from app.tools.internal import _money_filters  # noqa: F401
-
 
 # ---------------------------------------------------------------------------
 # Multi-language intent lexicon (AI-007)
@@ -70,17 +70,14 @@ _BUDGET_HINTS: frozenset[str] = frozenset(
         "bids",
         # French
         "devis",
-        "budget",
         # German
         "angebot",
         "kostenvoranschlag",
-        "budget",
         # Italian
         "preventivo",
         "preventivi",
         "offerta",
         "offerte",
-        "budget",
         # Portuguese
         "orcamento",
         "orcamentos",
@@ -118,8 +115,6 @@ _ORDER_HINTS: frozenset[str] = frozenset(
         "ordini",
         "ordine di acquisto",
         # Portuguese
-        "pedido",
-        "pedidos",
         "ordem de compra",
         "encomenda",
         "encomendas",
@@ -162,8 +157,6 @@ _INVOICE_HINTS: frozenset[str] = frozenset(
         # Portuguese
         "fatura",
         "faturas",
-        "recibo",
-        "recibos",
         "conta",
         "contas",
     }
@@ -189,10 +182,7 @@ _PLAN_HINTS: frozenset[str] = frozenset(
         "layout",
         "layouts",
         # French
-        "plan",
-        "plans",
         # German
-        "plan",
         "plaene",
         "grundriss",
         "grundrisse",
@@ -203,8 +193,6 @@ _PLAN_HINTS: frozenset[str] = frozenset(
         "disegno",
         "disegni",
         # Portuguese
-        "planta",
-        "plantas",
         "desenho",
         "desenhos",
     }
@@ -229,7 +217,6 @@ _AGGREGATION_HINTS: frozenset[str] = frozenset(
         # English
         "how much",
         "how many",
-        "total",
         "sum",
         "amount",
         "spent",
@@ -257,14 +244,11 @@ _AGGREGATION_HINTS: frozenset[str] = frozenset(
         "totale",
         "somma",
         "importo",
-        "media",
         # Portuguese
-        "quanto",
         "quantos",
         "quantas",
         "soma",
         "faturado",
-        "media",
         # Ranking hints (cross-language)
         "top",
         "mayor",
@@ -690,9 +674,6 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
 # ---------------------------------------------------------------------------
 
 
-from typing import Any
-
-
 def select_structured_tools(
     question: str,
     *,
@@ -735,7 +716,6 @@ def select_structured_tools(
     budget_id = (active_context.current_budget_id if active_context else None) or None
     folder_path = (active_context.current_folder_path if active_context else None) or None
     invoice_number = (active_context.current_invoice_number if active_context else None) or None
-    order_number = (active_context.current_order_number if active_context else None) or None
 
     # If the user named a budget number in the question, it wins.
     explicit_budget = _extract_document_number(question)
@@ -748,36 +728,66 @@ def select_structured_tools(
         budget_id = None
 
     if intent == INTENT_BUDGET_TOTAL:
-        return [ToolCall("get_budget_total", {
-            "budget_number": budget_number or "",
-            "budget_id": budget_id,
-        })]
+        return [
+            ToolCall(
+                "get_budget_total",
+                {
+                    "budget_number": budget_number or "",
+                    "budget_id": budget_id,
+                },
+            )
+        ]
     if intent == INTENT_BUDGET_LINES:
-        return [ToolCall("get_budget_lines", {
-            "budget_number": budget_number or "",
-            "budget_id": budget_id,
-        })]
+        return [
+            ToolCall(
+                "get_budget_lines",
+                {
+                    "budget_number": budget_number or "",
+                    "budget_id": budget_id,
+                },
+            )
+        ]
     if intent == INTENT_INVOICED_AMOUNT:
-        return [ToolCall("get_invoiced_amount_for_budget", {
-            "budget_number": budget_number or "",
-            "budget_id": budget_id,
-        })]
+        return [
+            ToolCall(
+                "get_invoiced_amount_for_budget",
+                {
+                    "budget_number": budget_number or "",
+                    "budget_id": budget_id,
+                },
+            )
+        ]
     if intent == INTENT_ACCEPTED_BUDGETS:
         return [ToolCall("list_recent_accepted_budgets", {"limit": 10})]
     if intent == INTENT_INVOICE_ORIGIN_ORDER:
-        return [ToolCall("get_invoice_origin_order", {
-            "invoice_number": invoice_number or "",
-        })]
+        return [
+            ToolCall(
+                "get_invoice_origin_order",
+                {
+                    "invoice_number": invoice_number or "",
+                },
+            )
+        ]
     if intent == INTENT_DELIVERY_NOTE:
-        return [ToolCall("find_delivery_note_in_scope", {
-            "budget_number": budget_number or "",
-            "folder_path": folder_path or "",
-        })]
+        return [
+            ToolCall(
+                "find_delivery_note_in_scope",
+                {
+                    "budget_number": budget_number or "",
+                    "folder_path": folder_path or "",
+                },
+            )
+        ]
     if intent == INTENT_SHIPPING_COST:
-        return [ToolCall("find_shipping_cost_in_scope", {
-            "budget_number": budget_number or "",
-            "folder_path": folder_path or "",
-        })]
+        return [
+            ToolCall(
+                "find_shipping_cost_in_scope",
+                {
+                    "budget_number": budget_number or "",
+                    "folder_path": folder_path or "",
+                },
+            )
+        ]
     if intent == INTENT_PLAN_SUMMARY:
         # Plan summaries still go through RAG (the structured data
         # does not have a "summary" field), but we tag the tool

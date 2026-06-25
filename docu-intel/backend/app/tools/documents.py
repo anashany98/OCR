@@ -7,8 +7,7 @@ rest of the project, instead of just returning text snippets.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -282,7 +281,7 @@ def _maybe_attach_vision_description(details: dict, document: Document) -> None:
         details["vision"] = {
             "model": settings.vision_model,
             "description": description,
-            "applied_at": datetime.now(timezone.utc).isoformat() + "Z",
+            "applied_at": datetime.now(UTC).isoformat() + "Z",
         }
         # Schedule a delayed unload so the GPU memory is released
         # when no more image work is pending.
@@ -486,35 +485,34 @@ def get_related_documents(db: Session, document_id: int, hops: int = 1) -> list[
 
         # ---- factura -> pedido -> presupuesto ----
         invoice = db.scalar(select(Invoice).where(Invoice.document_id == doc_id).limit(1))
-        if invoice:
-            if invoice.related_order_id:
-                related_order = db.get(Order, invoice.related_order_id)
-                if related_order:
-                    order_doc = (
-                        db.get(Document, related_order.document_id)
-                        if related_order.document_id
-                        else None
-                    )
-                    _add(
-                        order_doc,
-                        "factura_to_pedido",
-                        f"Pedido {related_order.order_number or related_order.id} que origina esta factura",
-                        depth,
-                    )
-                    if related_order.related_budget_id:
-                        related_budget = db.get(Budget, related_order.related_budget_id)
-                        if related_budget:
-                            budget_doc = (
-                                db.get(Document, related_budget.document_id)
-                                if related_budget.document_id
-                                else None
-                            )
-                            _add(
-                                budget_doc,
-                                "factura_to_presupuesto",
-                                f"Presupuesto {related_budget.budget_number or related_budget.id} en el origen de esta factura",
-                                depth,
-                            )
+        if invoice and invoice.related_order_id:  # noqa: SIM102 - kept nested for readability
+            related_order = db.get(Order, invoice.related_order_id)
+            if related_order:
+                order_doc = (
+                    db.get(Document, related_order.document_id)
+                    if related_order.document_id
+                    else None
+                )
+                _add(
+                    order_doc,
+                    "factura_to_pedido",
+                    f"Pedido {related_order.order_number or related_order.id} que origina esta factura",
+                    depth,
+                )
+                if related_order.related_budget_id:
+                    related_budget = db.get(Budget, related_order.related_budget_id)
+                    if related_budget:
+                        budget_doc = (
+                            db.get(Document, related_budget.document_id)
+                            if related_budget.document_id
+                            else None
+                        )
+                        _add(
+                            budget_doc,
+                            "factura_to_presupuesto",
+                            f"Presupuesto {related_budget.budget_number or related_budget.id} en el origen de esta factura",
+                            depth,
+                        )
 
         # ---- plan -> related plans same project ----
         plan = db.scalar(select(Plan).where(Plan.document_id == doc_id).limit(1))

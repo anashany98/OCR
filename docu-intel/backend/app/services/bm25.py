@@ -43,8 +43,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.services.search_service import SearchResult
 from app.services.metrics import track_search_strategy_used
+from app.services.search_service import SearchResult
 
 logger = logging.getLogger("app.services.bm25")
 
@@ -220,7 +220,7 @@ def search_bm25(
             rank=float(row["rank"] or 0.0),
             chunk_text=str(row["chunk_text"] or ""),
         )
-        setattr(result, "_chunk_type", "text")  # the BM25 query does not return chunk_type yet
+        result._chunk_type = "text"  # the BM25 query does not return chunk_type yet
         results.append(result)
 
     # E3 — apply the chunk-level filter (block_type,

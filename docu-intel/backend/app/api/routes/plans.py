@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from pathlib import Path
@@ -516,7 +517,7 @@ def suggest_rooms(
                 # the other explicitly).
                 _VM.ensure_loaded(target_model)
         except Exception:
-            pass
+            logger.debug("vision_model_load_failed", exc_info=True)
 
     # Non-thinking variant for JSON output.
     client = LocalVisionClient(use_structured_model=True)
@@ -588,8 +589,9 @@ async def _describe_plan_page(client: LocalVisionClient, pdf_path: Path, page_in
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom * scale, zoom * scale), alpha=False)
         from tempfile import NamedTemporaryFile
 
-        tmp = Path(NamedTemporaryFile(suffix=".png", delete=False).name)
-        pix.save(str(tmp))
+        with NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+            pix.save(tmp_file.name)
+        tmp = Path(tmp_file.name)
     try:
         # Qwen3-VL is a "thinking" model: it spends a lot of tokens
         # reasoning before the final answer. We need max_tokens high
@@ -598,10 +600,8 @@ async def _describe_plan_page(client: LocalVisionClient, pdf_path: Path, page_in
         # thinking + ~2k for the JSON body.
         return await client.describe(tmp, prompt=_VISION_PROMPT, max_tokens=8000)
     finally:
-        try:
+        with contextlib.suppress(OSError):
             tmp.unlink()
-        except OSError:
-            pass
 
 
 def _run_plan_vision_sync(client: LocalVisionClient, pdf_path: Path, page_index: int) -> str:

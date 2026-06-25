@@ -6,7 +6,6 @@ from typing import Any
 from app.models import Budget, BudgetLine, Invoice, Order, OrderLine, ReconciliationIssue
 from app.services.tenant_access import AccessScope
 
-
 PRICE_FIELD_NAMES = {
     "total_amount",
     "unit_price",

@@ -34,7 +34,6 @@ from dataclasses import dataclass, field
 
 from app.services.metrics import track_ocr_postprocess
 
-
 # ---------------------------------------------------------------------------
 # OCR character substitution table (context-sensitive)
 # ---------------------------------------------------------------------------

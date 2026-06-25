@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -274,7 +274,7 @@ def apply_chunk_weights(
     chunk weight is left unchanged to avoid one user swaying
     the retriever.
     """
-    since = datetime.now(timezone.utc) - timedelta(days=settings.feedback_rebalance_window_days)
+    since = datetime.now(UTC) - timedelta(days=settings.feedback_rebalance_window_days)
     vote_rows = (
         db.execute(
             select(AIAnswerFeedback.vote).where(

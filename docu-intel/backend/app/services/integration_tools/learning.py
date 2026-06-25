@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models import ClassificationSuggestion, Document
 from app.schemas.integration import IntegrationToolExecuteResponse
 from app.services.audit import write_audit
+from app.services.integration_security import IntegrationContext
 from app.services.integration_tools.common import (
     GetImprovementCandidatesArgs,
     ProposeClassificationCorrectionArgs,
@@ -19,7 +20,6 @@ from app.services.integration_tools.common import (
     _filter_document_ids_for_context,
     _response,
 )
-from app.services.integration_security import IntegrationContext
 
 logger = logging.getLogger(__name__)
 

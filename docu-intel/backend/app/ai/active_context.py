@@ -28,12 +28,15 @@ The dataclass fields are the ones the user asked for in the task brief:
 * ``last_user_intent``
 * ``last_retrieved_document_ids``
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -77,7 +80,7 @@ class ActiveContext:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | None) -> "ActiveContext":
+    def from_dict(cls, payload: dict[str, Any] | None) -> ActiveContext:
         if not payload:
             return cls()
         # Be defensive: the JSON column may contain unexpected keys
@@ -156,9 +159,7 @@ def get_or_create_session(
     return row, True
 
 
-def load_active_context(
-    db: Session, user: User | None, session_uuid: str | None
-) -> ActiveContext:
+def load_active_context(db: Session, user: User | None, session_uuid: str | None) -> ActiveContext:
     """Return the :class:`ActiveContext` for the session, or empty one."""
     if not session_uuid:
         return ActiveContext()
@@ -286,12 +287,16 @@ def record_message(
         logger.debug("record_message failed: %s", exc)
         # Return a transient unsaved instance so the caller can keep
         # using the value without an AttributeError.
-        return msg if "msg" in locals() else ChatMessage(  # type: ignore[has-type]
-            session_id=session.id,
-            role=role,
-            content=content,
-            intent=intent,
-            was_structured_hit=was_structured_hit,
+        return (
+            msg
+            if "msg" in locals()
+            else ChatMessage(  # type: ignore[has-type]
+                session_id=session.id,
+                role=role,
+                content=content,
+                intent=intent,
+                was_structured_hit=was_structured_hit,
+            )
         )
 
 
@@ -327,9 +332,7 @@ def persist_context_after_answer(
             # avoid a circular dependency with :mod:`app.tools.internal`.
             from app.tools import internal
 
-            resolved_doc_payload = internal.get_document_full_details(
-                db, resolved_doc_id
-            )
+            resolved_doc_payload = internal.get_document_full_details(db, resolved_doc_id)
         update_after_answer(
             ctx,
             intent=intent,
@@ -349,16 +352,11 @@ def persist_context_after_answer(
                 if resolved_doc_payload
                 else None
             ),
-            retrieved_document_ids=[
-                getattr(src, "document_id", None)
-                for src in context_items
-            ],
+            retrieved_document_ids=[getattr(src, "document_id", None) for src in context_items],
         )
         save_active_context(db, user, session_id, ctx)
         db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.debug("active_context save failed: %s", exc)
-        try:
+        with contextlib.suppress(Exception):  # noqa: BLE001
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass

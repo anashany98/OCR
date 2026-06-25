@@ -38,9 +38,10 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 logger = logging.getLogger("app.services.golden_ocr")
 
@@ -74,7 +75,7 @@ class GoldenSample:
     keywords: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GoldenSample":
+    def from_dict(cls, data: dict[str, Any]) -> GoldenSample:
         return cls(
             id=str(data["id"]),
             source_filename=str(data["source_filename"]),
@@ -380,7 +381,7 @@ def score_fixture(
     # page-level gate; pages that were skipped because they have no
     # GT are excluded.
     pages_with_gt_passed = all(
-        p.passed for p, gt in zip(page_scores, fixture.pages) if gt.text.strip()
+        p.passed for p, gt in zip(page_scores, fixture.pages, strict=False) if gt.text.strip()
     )
     passed = pages_with_gt_passed and kr >= min_keyword_recall
     detail = ""
@@ -389,7 +390,7 @@ def score_fixture(
         if not pages_with_gt_passed:
             failed_pages = [
                 p.page_number
-                for p, gt in zip(page_scores, fixture.pages)
+                for p, gt in zip(page_scores, fixture.pages, strict=False)
                 if gt.text.strip() and not p.passed
             ]
             reasons.append(f"pages {failed_pages} failed CER/recall gate")
@@ -402,10 +403,12 @@ def score_fixture(
 
     if pages_with_gt:
         mean_cer = sum(
-            p.text_cer for p, gt in zip(page_scores, fixture.pages) if gt.text.strip()
+            p.text_cer for p, gt in zip(page_scores, fixture.pages, strict=False) if gt.text.strip()
         ) / len(pages_with_gt)
         mean_recall = sum(
-            p.text_recall for p, gt in zip(page_scores, fixture.pages) if gt.text.strip()
+            p.text_recall
+            for p, gt in zip(page_scores, fixture.pages, strict=False)
+            if gt.text.strip()
         ) / len(pages_with_gt)
     else:
         # No per-page GT at all; we are scoring on keywords only.

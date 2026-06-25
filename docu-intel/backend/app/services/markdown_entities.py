@@ -157,7 +157,7 @@ def extract_line_items(md: str) -> list[dict[str, Any]]:
         # returns list of dicts. Re-align using original row order.
         cells = list(r.values())
         line: dict[str, Any] = {}
-        for header, role, idx in classified:
+        for _header, role, idx in classified:
             if idx >= len(cells):
                 continue
             raw = cells[idx]

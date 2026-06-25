@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import DocumentEntity
-from app.services.search_service import _escape_ilike_wildcards, search_hybrid as run_hybrid_search
+from app.services.search_service import _escape_ilike_wildcards
+from app.services.search_service import search_hybrid as run_hybrid_search
 
 
 def search_entities(db: Session, entity_type: str, value: str):

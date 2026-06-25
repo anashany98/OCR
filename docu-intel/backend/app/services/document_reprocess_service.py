@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -36,8 +36,8 @@ def reprocess_document(
     db.commit()
     db.refresh(job)
     if enqueue:
-        from app.workers.tasks import process_document_task
         from app.workers.routing import queue_for_document
+        from app.workers.tasks import process_document_task
 
         cache_service.invalidate_search_cache()
         process_document_task.apply_async(
@@ -81,8 +81,8 @@ def reprocess_document_page(
     db.commit()
     db.refresh(job)
     if enqueue:
-        from app.workers.tasks import process_document_task
         from app.workers.routing import queue_for_document
+        from app.workers.tasks import process_document_task
 
         cache_service.invalidate_search_cache()
         process_document_task.apply_async(
@@ -92,7 +92,7 @@ def reprocess_document_page(
 
 
 def soft_delete_document(db: Session, *, document: Document, user: User) -> Document:
-    document.deleted_at = datetime.now(timezone.utc)
+    document.deleted_at = datetime.now(UTC)
     document.deleted_by_id = user.id
     write_audit(
         db,

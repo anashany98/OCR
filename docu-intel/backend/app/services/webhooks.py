@@ -31,7 +31,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any
 
@@ -94,7 +94,7 @@ def enqueue_webhook(
         signature_header=signature,
         idempotency_key=idempotency_key,
         max_attempts=settings.webhook_outbox_max_attempts,
-        next_attempt_at=datetime.now(timezone.utc),
+        next_attempt_at=datetime.now(UTC),
     )
     db.add(row)
     return row

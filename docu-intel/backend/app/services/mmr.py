@@ -95,7 +95,7 @@ def jaccard_ngram_similarity(left: str, right: str, *, n: int = _DEFAULT_NGRAM_L
     return len(intersection) / len(union)
 
 
-def _excerpt_similarity(left: "SearchResult", right: "SearchResult") -> float:
+def _excerpt_similarity(left: SearchResult, right: SearchResult) -> float:
     """Default similarity function: n-gram Jaccard on the chunk
     excerpts. Falls back to ``0.0`` when either excerpt is empty
     (e.g. a chunk whose text is only a heading or only a
@@ -132,13 +132,13 @@ class MMRResult:
             ``"empty"`` when the input was empty.
     """
 
-    results: list["SearchResult"]
+    results: list[SearchResult]
     avg_pairwise_similarity: float
     outcome: str
 
 
 def mmr_rerank(
-    candidates: Iterable["SearchResult"],
+    candidates: Iterable[SearchResult],
     *,
     top_k: int = 5,
     lambda_param: float = 0.7,
@@ -194,7 +194,7 @@ def mmr_rerank(
         # Greedy: pick the first element as the seed (by
         # relevance), then add the one with the *lowest* max
         # similarity to the selected set, until we have ``top_k``.
-        selected: list["SearchResult"] = [pool[0]]
+        selected: list[SearchResult] = [pool[0]]
         remaining = pool[1:]
         while len(selected) < top_k and remaining:
             # Find the candidate with the minimum max-similarity
@@ -218,7 +218,7 @@ def mmr_rerank(
     # to be respected).
     n = len(pool)
     relevance = [1.0 / (i + 1) for i in range(n)]
-    selected: list["SearchResult"] = []
+    selected: list[SearchResult] = []
     selected_indices: list[int] = []
     remaining_indices = list(range(n))
 
@@ -245,7 +245,7 @@ def mmr_rerank(
 
 
 def _average_pairwise_similarity(
-    results: list["SearchResult"],
+    results: list[SearchResult],
     sim: SimilarityFn,
 ) -> float:
     """Return the average pairwise similarity across the chosen

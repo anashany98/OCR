@@ -20,7 +20,7 @@ IGNORED_SUFFIXES = {".tmp", ".part", ".crdownload", ".download", ".swp"}
 # ``ingestion_max_file_size_mb`` setting (default 500 MB to
 # match the HTTP cap). Set to 0 to disable (NOT recommended).
 def get_max_file_size_bytes() -> int:
-    mb = int(getattr(settings, "ingestion_max_file_size_mb", 500) or 0)
+    mb = settings.ingestion_max_file_size_mb or 0
     if mb <= 0:
         return 0  # 0 = disabled
     return mb * 1024 * 1024

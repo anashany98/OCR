@@ -139,7 +139,7 @@ def get_request_nonce(scope: Scope) -> str | None:
 
 
 def is_nonce_enabled() -> bool:
-    return bool(getattr(settings, "csp_nonce_enabled", True))
+    return settings.csp_nonce_enabled
 
 
 __all__ = [

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Budget, BudgetLine
 from app.schemas.integration import IntegrationSource, IntegrationToolExecuteResponse
+from app.services.integration_security import IntegrationContext
 from app.services.integration_tools.common import (
     GetBudgetByNumberArgs,
     SearchBudgetsArgs,
@@ -16,7 +17,6 @@ from app.services.integration_tools.common import (
     _redactions_for_policy,
     _response,
 )
-from app.services.integration_security import IntegrationContext
 from app.tools import internal
 
 

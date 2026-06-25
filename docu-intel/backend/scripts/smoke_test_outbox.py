@@ -4,6 +4,7 @@ Starts a tiny HTTP server, enqueues a webhook via the outbox path, drains
 the worker, and asserts the receiver got the request and the DB row is
 marked delivered.
 """
+
 import json
 import os
 import sys
@@ -60,11 +61,10 @@ def main():
         sys.exit(1)
     print("receiver verified")
 
-    from app.services import webhooks as webhooks_service
-    from app.database.session import SessionLocal
-
     # Patch the worker to use our SessionLocal
     import app.workers.webhooks_tasks as wht
+    from app.database.session import SessionLocal
+    from app.services import webhooks as webhooks_service
 
     wht._get_session = lambda: SessionLocal()
 
@@ -81,8 +81,9 @@ def main():
 
     time.sleep(1.0)
 
-    from app.models import WebhookOutbox
     from sqlalchemy import select
+
+    from app.models import WebhookOutbox
 
     db = SessionLocal()
     try:
@@ -100,9 +101,7 @@ def main():
     if RECEIVED and any(r.get("path") == "/hook" for r in RECEIVED):
         body = json.loads(RECEIVED[0]["body"])
         print(f"OK: receiver got event={body.get('event')} payload={body.get('payload')}")
-        print(
-            f"OK: signature header present: {'X-Docuintel-Signature' in RECEIVED[0]['headers']}"
-        )
+        print(f"OK: signature header present: {'X-Docuintel-Signature' in RECEIVED[0]['headers']}")
         sys.exit(0)
     else:
         print(f"FAIL: receiver got {len(RECEIVED)} requests")

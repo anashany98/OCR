@@ -34,9 +34,7 @@ def get_invoice_origin_order(
         invoice = None
     if invoice is None:
         return {"found": False, "invoice_number": invoice_number, "invoice_id": invoice_id}
-    order = (
-        db.get(Order, invoice.related_order_id) if invoice.related_order_id else None
-    )
+    order = db.get(Order, invoice.related_order_id) if invoice.related_order_id else None
     budget = (
         db.get(Budget, order.related_budget_id)
         if order is not None and order.related_budget_id

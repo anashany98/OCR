@@ -17,7 +17,6 @@ from app.models import Budget, Invoice, Order
 from app.services.search_service import _escape_ilike_wildcards
 from app.services.tenant_access import AccessScope, filter_records_by_document_scope
 
-
 PRICE_AGGREGATE_KINDS = {"total", "top", "by_supplier", "period"}
 
 
@@ -101,7 +100,9 @@ def _budget_aggregate(
         # Budgets don't link to suppliers directly; skip supplier filter.
         pass
     if filters.get("client"):
-        stmt = stmt.where(Budget.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%"))
+        stmt = stmt.where(
+            Budget.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%")
+        )
     if filters.get("amount_min") is not None:
         stmt = stmt.where(Budget.total_amount >= filters["amount_min"])
     if filters.get("amount_max") is not None:
@@ -161,9 +162,13 @@ def _order_aggregate(
 ) -> list[dict[str, Any]]:
     stmt = select(Order)
     if filters.get("supplier"):
-        stmt = stmt.where(Order.supplier_name.ilike(f"%{_escape_ilike_wildcards(filters['supplier'])}%"))
+        stmt = stmt.where(
+            Order.supplier_name.ilike(f"%{_escape_ilike_wildcards(filters['supplier'])}%")
+        )
     if filters.get("client"):
-        stmt = stmt.where(Order.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%"))
+        stmt = stmt.where(
+            Order.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%")
+        )
     if filters.get("amount_min") is not None:
         stmt = stmt.where(Order.total_amount >= filters["amount_min"])
     if filters.get("amount_max") is not None:
@@ -239,9 +244,13 @@ def _invoice_aggregate(
 ) -> list[dict[str, Any]]:
     stmt = select(Invoice)
     if filters.get("supplier"):
-        stmt = stmt.where(Invoice.supplier_name.ilike(f"%{_escape_ilike_wildcards(filters['supplier'])}%"))
+        stmt = stmt.where(
+            Invoice.supplier_name.ilike(f"%{_escape_ilike_wildcards(filters['supplier'])}%")
+        )
     if filters.get("client"):
-        stmt = stmt.where(Invoice.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%"))
+        stmt = stmt.where(
+            Invoice.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%")
+        )
     if filters.get("amount_min") is not None:
         stmt = stmt.where(Invoice.total_amount >= filters["amount_min"])
     if filters.get("amount_max") is not None:
@@ -294,7 +303,7 @@ def aggregate_business(
     importe". Returns a list of result rows plus the parsed filters so the
     LLM can show its work."""
     filters, price_redacted = _filters_for_price_scope(
-        _money_filters(entity if not query else query, query or entity),
+        _money_filters(query if query else entity, query or entity),
         access_scope,
     )
     if (

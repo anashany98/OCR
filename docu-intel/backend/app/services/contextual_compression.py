@@ -29,8 +29,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 logger = logging.getLogger("app.services.contextual_compression")
 

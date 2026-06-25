@@ -19,6 +19,7 @@ in ``app.services.search_service``. It is *not* safe to run while the
 FastAPI app is up (it opens its own DB session per question) but it
 does not require the API server.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -154,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.json_out:
         out_path = Path(args.json_out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        out_path.write_text(
+            json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         logger.info("Wrote JSON report to %s", out_path)
 
     if args.fail_on_gate and report.failed:

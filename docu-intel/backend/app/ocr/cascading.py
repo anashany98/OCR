@@ -44,7 +44,6 @@ from app.services.metrics import (
 )
 from app.services.ocr_language import LanguageThresholds, thresholds_for
 
-
 logger = logging.getLogger("app.ocr.cascading")
 QUALITY_EPSILON = 0.01
 
@@ -302,9 +301,7 @@ class CascadingOCREngine:
         thresholds = self._thresholds_for_current_page()
         if not result.text or len(result.text.strip()) < thresholds.min_chars:
             return False
-        if result.confidence is not None and result.confidence < thresholds.min_confidence:
-            return False
-        return True
+        return not (result.confidence is not None and result.confidence < thresholds.min_confidence)
 
     def _thresholds_for_current_page(self) -> LanguageThresholds:
         """Return the thresholds to use for the current page.

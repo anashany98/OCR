@@ -27,6 +27,7 @@ brief and the Spanish business jargon we see in real conversations
 are matched after :func:`_normalize` so accents and casing are
 irrelevant.
 """
+
 from __future__ import annotations
 
 import re
@@ -34,7 +35,6 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from .active_context import ActiveContext
-
 
 # ---------------------------------------------------------------------------
 # Reference lexicon
@@ -48,10 +48,18 @@ from .active_context import ActiveContext
 
 _REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     # Budgets
-    (re.compile(r"\b(este|el|ese|ese mismo|el mismo)\s+presupuesto\b"), "budget", "current_budget_number"),
+    (
+        re.compile(r"\b(este|el|ese|ese mismo|el mismo)\s+presupuesto\b"),
+        "budget",
+        "current_budget_number",
+    ),
     (re.compile(r"\bde\s+este\s+presupuesto\b"), "budget", "current_budget_number"),
     (re.compile(r"\bpor\s+cuanto\s+esta\s+presupuestad[oa]\b"), "budget", "current_budget_number"),
-    (re.compile(r"\bcuanto\s+(se\s+)?ha\s+facturad[oa]\s+(de|del)\b"), "budget", "current_budget_number"),
+    (
+        re.compile(r"\bcuanto\s+(se\s+)?ha\s+facturad[oa]\s+(de|del)\b"),
+        "budget",
+        "current_budget_number",
+    ),
     (re.compile(r"\bque\s+lineas\s+tiene\s+(este|el)\b"), "budget", "current_budget_number"),
     (re.compile(r"\bimporte\s+total\s+del\s+presupuesto\b"), "budget", "current_budget_number"),
     # Orders
@@ -64,7 +72,11 @@ _REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     # Delivery notes (albaranes)
     (re.compile(r"\bel\s+albaran\b"), "delivery_note", "current_delivery_note_number"),
     (re.compile(r"\bel\s+envio\b"), "delivery_note", "current_delivery_note_number"),
-    (re.compile(r"\bdispon(es|es)\s+del\s+albaran\b"), "delivery_note", "current_delivery_note_number"),
+    (
+        re.compile(r"\bdispon(es|es)\s+del\s+albaran\b"),
+        "delivery_note",
+        "current_delivery_note_number",
+    ),
     (re.compile(r"\b(este|el|ese)\s+albaran\b"), "delivery_note", "current_delivery_note_number"),
     # Plans / drawings
     (re.compile(r"\b(este|el|ese)\s+plano\b"), "plan", "current_document_path"),
@@ -234,7 +246,5 @@ def resolve_references(
     if not context_parts:
         return original, ResolvedReference(referenced_entity="none")
 
-    rewritten = (
-        f"[Contexto: {', '.join(context_parts)}] {original}"
-    )
+    rewritten = f"[Contexto: {', '.join(context_parts)}] {original}"
     return rewritten, replace(resolution, rewrote=True)

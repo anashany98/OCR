@@ -34,8 +34,8 @@ library call without touching the callers.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import date
-from typing import Iterable
 
 # Numeric forms accepted by the parser. The first capture group is
 # always the day, the second the month, the third the year (2 or

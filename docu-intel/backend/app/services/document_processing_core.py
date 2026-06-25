@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import delete, select
@@ -223,7 +223,7 @@ def process_document(
     previous_status = document.status
     apply_folder_rules_to_document(db, document)
     job.status = "processing"
-    job.started_at = datetime.now(timezone.utc)
+    job.started_at = datetime.now(UTC)
     job.error_message = None
     document.status = "processing"
     document.error_message = None
@@ -264,9 +264,9 @@ def process_document(
             needs_review = _process_full_parse(db, document)
             document.status = "needs_review" if needs_review else "processed"
 
-        document.processed_at = datetime.now(timezone.utc)
+        document.processed_at = datetime.now(UTC)
         job.status = "processed"
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.error_message = None
         track_document_processed()
         cache_service.invalidate_search_cache()
@@ -307,7 +307,7 @@ def _handle_process_failure(
     job = db.get(ExtractionJob, job_id)
     document = db.get(Document, document_id)
     if job:
-        job.finished_at = datetime.now(timezone.utc) if final_failure else None
+        job.finished_at = datetime.now(UTC) if final_failure else None
         job.error_message = str(error)
         job.status = "failed" if final_failure else "retrying"
     if document:

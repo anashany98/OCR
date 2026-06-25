@@ -41,11 +41,10 @@ invisible to the rest of the codebase.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import AsyncIterator
 
 import httpx
 from sqlalchemy.orm import Session
@@ -65,8 +64,13 @@ from app.tools import internal
 # Public surface re-exports (kept for backward compatibility — see
 # the module docstring).
 from .context import (
+    LOW_OCR_CONFIDENCE_THRESHOLD,
+    LOW_OCR_MARKER,
     ContextItem,
     GroundedResponse,
+    _average_confidence,
+    _is_low_ocr_context,
+    _warnings_with_low_ocr_notice,
     budget_context,
     build_grounded_response,
     clip_excerpt,
@@ -80,31 +84,26 @@ from .context import (
     render_document_details,
     warning_lines,
 )
-from .context import (
-    LOW_OCR_CONFIDENCE_THRESHOLD,
-    LOW_OCR_MARKER,
-    _average_confidence,
-    _is_low_ocr_context,
-    _warnings_with_low_ocr_notice,
-)
 from .prompts import (
     _build_ai_messages,
-    _build_user_prompt as _build_user_prompt_unused,  # noqa: F401  (kept for tests)
     _context_line_for_ai,
     build_ai_messages,
     build_context_text,
 )
+from .prompts import (
+    _build_user_prompt as _build_user_prompt_unused,  # noqa: F401  (kept for tests)
+)
 from .tools import (
     ToolCall,
+    _classify_aggregation,
     _extract_document_number,
     _extract_filenames,
     _extract_reference,
     _extract_room_name,
     _is_aggregation_question,
-    _classify_aggregation,
     _maybe_apply_relevance_filter,
-    _normalize,
     _money_filters,
+    _normalize,
     select_tools_for_question,
 )
 from .validation import (
@@ -117,7 +116,6 @@ from .validation import (
     response_looks_spanish,
     suggest_followups,
 )
-
 
 logger = logging.getLogger("app.ai.agent")
 
@@ -132,6 +130,7 @@ def _format_gate_blocked_answer(gate_eval, active_context) -> str:
     from .confidence_gates import format_gate_blocked_answer
 
     return format_gate_blocked_answer(gate_eval, active_context)
+
 
 # ``DetectorFactory.seed = 0`` is set inside validation.py at
 # import time. We re-import the module to make the dependency
@@ -196,7 +195,6 @@ async def answer_question(
     from .active_context import (
         ActiveContext,
         load_active_context,
-        save_active_context,
     )
 
     # CTX-3: load the active conversation context and resolve any
@@ -211,9 +209,7 @@ async def answer_question(
     )
     from .reference_resolver import resolve_references
 
-    resolved_question, reference_resolution = resolve_references(
-        question, active_context
-    )
+    resolved_question, reference_resolution = resolve_references(question, active_context)
 
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
@@ -302,9 +298,7 @@ async def answer_question(
     # inside the active budget folder.
     from .scope_guard import enforce_budget_scope
 
-    scope_outcome = enforce_budget_scope(
-        question=question, state=active_context, tools=tools
-    )
+    scope_outcome = enforce_budget_scope(question=question, state=active_context, tools=tools)
     tools = scope_outcome.tools
     # The scope guard warnings are folded into the orchestrator-level
     # warnings so they reach both the LLM prompt and the grounded
@@ -374,11 +368,9 @@ async def answer_question(
     # so the model cannot override the safety message with a
     # fabricated number. The candidate list also gets attached to
     # the AIAnswer row so the UI can render a verification table.
-    amount_candidates_payload: list[dict] = []
     if gate_eval.is_blocked and gate_eval.requires_amount:
         answer_text = _format_gate_blocked_answer(gate_eval, active_context)
         model_name = "backend_grounded_fallback"
-        amount_candidates_payload = gate_eval.amount_candidates
     elif context_items:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
@@ -549,7 +541,7 @@ async def _try_local_ai_answer(
         # unchanged and the inner timeout / retry handles the
         # slow / flaky cases instead.
         answer = await client.chat(messages, temperature=0.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("AI answer timed out for question: %s", question[:100])
         return None
     except (httpx.HTTPError, httpx.TimeoutException) as exc:
@@ -614,7 +606,7 @@ async def _stream_local_ai_answer(
                 continue
             accumulated.append(piece)  # type: ignore[arg-type]
             yield piece  # type: ignore[misc]
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("AI stream timed out for question: %s", question[:100])
         aborted = True
     except (httpx.HTTPError, httpx.TimeoutException) as exc:

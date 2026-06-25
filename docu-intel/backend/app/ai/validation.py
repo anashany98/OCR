@@ -36,7 +36,6 @@ from app.models import AIAnswer, AIQuestion, User
 
 from .context import ContextItem
 
-
 # ---------------------------------------------------------------------------
 # Module-level setup
 # ---------------------------------------------------------------------------

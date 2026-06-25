@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -275,6 +275,7 @@ def _persist_plan_symbols(db: Session, plan: Plan, document_id: int) -> int:
         # absolute path. We try the literal value first, then fall
         # back to joining with ``settings.files_dir``.
         from pathlib import Path
+
         from app.core.config import settings
 
         candidate = Path(image_path)
@@ -326,7 +327,7 @@ def _current_source_model() -> str:
     try:
         from app.core.config import settings
 
-        return str(getattr(settings, "plan_symbols_model_path", "yolov8n"))
+        return settings.plan_symbols_model_path
     except Exception:  # pragma: no cover - defensive
         return "unknown"
 

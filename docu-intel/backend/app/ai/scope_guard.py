@@ -49,12 +49,12 @@ recognises both ``budget_scope_id`` and ``source_path_like`` (the
 ``_apply_source_path_like`` in the same module so the search service
 stays backward compatible).
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from dataclasses import dataclass
-from typing import Iterable
 
 from .active_context import ActiveContext
 from .tools import ToolCall
@@ -70,7 +70,10 @@ logger = logging.getLogger("app.ai.scope_guard")
 _GLOBAL_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bglobal(es)?\b"), "global"),
     (re.compile(r"\ben\s+general\b"), "general"),
-    (re.compile(r"\btodos?\s+los?\s+(presupuestos|pedidos|facturas|documentos|archivos)\b"), "todos"),
+    (
+        re.compile(r"\btodos?\s+los?\s+(presupuestos|pedidos|facturas|documentos|archivos)\b"),
+        "todos",
+    ),
     (re.compile(r"\bbusca(r)?\s+en\s+todos\b"), "todos"),
     (re.compile(r"\b(compara|comparacion|comparar)\b"), "compara"),
     (re.compile(r"\b(otros?|las\s+otras)\s+presupuestos?\b"), "otros_presupuestos"),
@@ -258,7 +261,7 @@ def apply_source_path_filter(
     stmt,
     source_path_like: str | None,
     column,
-) -> "object":
+) -> object:
     """Optional helper for callers that build a SELECT against a
     column containing the document's source path. Kept here so the
     scope guard owns both the policy AND its application."""

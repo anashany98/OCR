@@ -28,7 +28,7 @@ import shutil
 import subprocess
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("app.services.vision_manager")
 
@@ -41,12 +41,12 @@ class VisionManager:
     racing an unload.
     """
 
-    _unload_timer: Optional[threading.Timer] = None
+    _unload_timer: threading.Timer | None = None
     _ops_lock = threading.Lock()
     _last_action_ts: float = 0.0
     # Cache the "is loaded" answer for a few seconds to avoid hitting
     # the shim on every single call.
-    _loaded_cache: Optional[bool] = None
+    _loaded_cache: bool | None = None
     _loaded_cache_ts: float = 0.0
     _LOADED_CACHE_TTL = 5.0
 
@@ -65,11 +65,11 @@ class VisionManager:
     # Transport: HTTP shim (preferred) or direct lms subprocess (fallback)
     # ------------------------------------------------------------------
     @classmethod
-    def _shim_url(cls) -> Optional[str]:
+    def _shim_url(cls) -> str | None:
         return os.environ.get("LMS_SHIM_URL") or "http://host.docker.internal:1235"
 
     @classmethod
-    def _find_lms(cls) -> Optional[str]:
+    def _find_lms(cls) -> str | None:
         from app.core.config import settings
 
         override = os.environ.get("LMS_CLI_PATH") or settings.lms_cli_path
@@ -137,7 +137,7 @@ class VisionManager:
             return False, {"ok": False, "error": str(exc)}
 
     @classmethod
-    def is_loaded(cls, model: Optional[str] = None) -> bool:
+    def is_loaded(cls, model: str | None = None) -> bool:
         """Return True if the vision model is currently loaded in LM Studio."""
         from app.core.config import settings
 
@@ -174,7 +174,7 @@ class VisionManager:
         return loaded
 
     @classmethod
-    def ensure_loaded(cls, model: Optional[str] = None) -> bool:
+    def ensure_loaded(cls, model: str | None = None) -> bool:
         """Idempotently load the vision model. Returns True on success."""
         from app.core.config import settings
 
@@ -202,7 +202,7 @@ class VisionManager:
             return True
 
     @classmethod
-    def schedule_unload(cls, delay: Optional[int] = None) -> None:
+    def schedule_unload(cls, delay: int | None = None) -> None:
         """Schedule a delayed unload. Multiple calls reset the timer.
 
         ``delay`` seconds after the last call, the vision model is

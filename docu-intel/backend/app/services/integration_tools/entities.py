@@ -3,13 +3,13 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.schemas.integration import IntegrationToolExecuteResponse
+from app.services.integration_security import IntegrationContext
 from app.services.integration_tools.common import (
     EntitySearchArgs,
     _filter_document_ids_for_context,
     _model_dict,
     _response,
 )
-from app.services.integration_security import IntegrationContext
 from app.tools import internal
 
 

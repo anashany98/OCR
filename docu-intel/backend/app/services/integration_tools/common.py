@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select

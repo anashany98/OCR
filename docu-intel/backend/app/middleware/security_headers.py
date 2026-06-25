@@ -40,11 +40,9 @@ third-party content the operator cannot control:
 
 from __future__ import annotations
 
-
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.config import settings
-
 
 # Paths that must NOT receive the strict CSP. The list is small on
 # purpose: every entry is a maintenance burden. Add new paths only

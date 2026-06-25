@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Order
 from app.schemas.integration import IntegrationToolExecuteResponse
+from app.services.integration_security import IntegrationContext
 from app.services.integration_tools.common import (
     OrderNumberArgs,
     QueryArgs,
@@ -12,7 +13,6 @@ from app.services.integration_tools.common import (
     _filter_records_for_context,
     _response,
 )
-from app.services.integration_security import IntegrationContext
 from app.tools import internal
 
 

@@ -100,7 +100,7 @@ class LocalSentenceTransformerReranker:
         return [float(s) for s in raw]
 
 
-_local_reranker: "LocalSentenceTransformerReranker | None" = None
+_local_reranker: LocalSentenceTransformerReranker | None = None
 _local_reranker_lock = threading.Lock()
 
 
@@ -227,7 +227,7 @@ async def rerank(
 
         return reranked[:top_k]
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.debug("Reranker timed out for query: %s", query[:100])
         return candidates[:top_k]
     except (httpx.HTTPError, httpx.TimeoutException) as exc:

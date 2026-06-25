@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
+from app.api.routes.admin_helpers import _get_or_404, _new_api_key, _normalize_scopes
 from app.database.session import get_db
 from app.models import (
     ApiClientBudgetScope,
@@ -21,14 +22,12 @@ from app.schemas.admin import (
     IntegrationClientUpdate,
     IntegrationSandboxExecuteRequest,
 )
-from app.services.audit import write_audit
 from app.services.access_policy import resolve_access_policy
+from app.services.audit import write_audit
 from app.services.budget_scope import ensure_budget_scope
 from app.services.integration_security import IntegrationContext, hash_integration_api_key
 from app.services.integration_tools import execute_integration_tool
 from app.services.tenant_access import resolve_technician_access_scope
-
-from app.api.routes.admin_helpers import _get_or_404, _new_api_key, _normalize_scopes
 
 router = APIRouter(prefix="/admin")
 

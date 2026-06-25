@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import io
 import random
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator
 
 import httpx
 
@@ -165,48 +166,50 @@ class LocalOpenAICompatibleClient:
         for attempt in range(self.max_retries + 1):
             self._raise_if_circuit_open()
             try:
-                async with httpx.AsyncClient(
-                    timeout=request_timeout,
-                    transport=self.transport,
-                ) as client:
-                    async with client.stream(
+                async with (
+                    httpx.AsyncClient(
+                        timeout=request_timeout,
+                        transport=self.transport,
+                    ) as client,
+                    client.stream(
                         "POST",
                         f"{self.base_url}/chat/completions",
                         headers=headers,
                         json=json_payload,
-                    ) as response:
-                        response.raise_for_status()
-                        self._record_success()
-                        async for line in response.aiter_lines():
-                            if not line:
-                                continue
-                            if line.startswith("data:"):
-                                data = line[len("data:") :].strip()
-                                if data == "[DONE]":
-                                    break
-                                try:
-                                    import json
+                    ) as response,
+                ):
+                    response.raise_for_status()
+                    self._record_success()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data:"):
+                            data = line[len("data:") :].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                import json
 
-                                    payload = json.loads(data)
-                                except Exception:
-                                    continue
-                                choices = payload.get("choices") or []
-                                if not choices:
-                                    continue
-                                delta = (choices[0] or {}).get("delta") or {}
-                                # Qwen3 (and other reasoning models) stream their
-                                # internal reasoning in `reasoning_content`. We
-                                # surface it as a separate event so the UI can
-                                # show "razonando..." while the model is thinking.
-                                thinking = delta.get("reasoning_content")
-                                if thinking:
-                                    yield ("thinking", thinking)
-                                piece = delta.get("content")
-                                if piece:
-                                    yield piece
-                        # Stream completed cleanly: exit the retry
-                        # loop without raising.
-                        return
+                                payload = json.loads(data)
+                            except Exception:
+                                continue
+                            choices = payload.get("choices") or []
+                            if not choices:
+                                continue
+                            delta = (choices[0] or {}).get("delta") or {}
+                            # Qwen3 (and other reasoning models) stream their
+                            # internal reasoning in `reasoning_content`. We
+                            # surface it as a separate event so the UI can
+                            # show "razonando..." while the model is thinking.
+                            thinking = delta.get("reasoning_content")
+                            if thinking:
+                                yield ("thinking", thinking)
+                            piece = delta.get("content")
+                            if piece:
+                                yield piece
+                    # Stream completed cleanly: exit the retry
+                    # loop without raising.
+                    return
             except Exception as exc:
                 last_exc = exc
                 # The stream was already producing chunks when
@@ -458,8 +461,9 @@ class LocalVisionClient:
         """Render a specific PDF page to a PNG and ask the vision model
         to transcribe the table. Used as a recovery path when the text
         pipeline (PyMuPDF + pdfplumber) returns no structured table."""
-        import fitz  # PyMuPDF
         from tempfile import NamedTemporaryFile
+
+        import fitz  # PyMuPDF
 
         # Render the page at higher zoom for better OCR of small text.
         zoom = 2.0
@@ -473,13 +477,12 @@ class LocalVisionClient:
                 tmp = output_dir / f"vision_page_{page_index + 1}.png"
                 pix.save(str(tmp))
             else:
-                tmp = Path(NamedTemporaryFile(suffix=".png", delete=False).name)
-                pix.save(str(tmp))
+                with NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+                    pix.save(tmp_file.name)
+                tmp = Path(tmp_file.name)
         try:
             return await self.transcribe_table(tmp, timeout=timeout)
         finally:
             if output_dir is None and tmp.exists():
-                try:
+                with contextlib.suppress(Exception):
                     tmp.unlink()
-                except Exception:
-                    pass

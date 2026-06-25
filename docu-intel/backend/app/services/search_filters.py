@@ -42,10 +42,12 @@ compatibility.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
-from typing import Any, Iterable
+from datetime import UTC, date, datetime
+from typing import Any
 
 from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.sql import Select
@@ -68,9 +70,9 @@ def _coerce_datetime(value: Any) -> datetime | None:
     if value is None or value == "":
         return None
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, date):
-        return datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
+        return datetime(value.year, value.month, value.day, tzinfo=UTC)
     if isinstance(value, str):
         try:
             cleaned = value.strip()
@@ -78,7 +80,7 @@ def _coerce_datetime(value: Any) -> datetime | None:
                 parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
             else:
                 parsed = datetime.fromisoformat(cleaned)
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
         except ValueError:
             logger.debug("search_filters: cannot parse %r as datetime", value)
             return None
@@ -119,10 +121,8 @@ def normalise_filters(filters: dict[str, Any] | None) -> dict[str, Any]:
     out: dict[str, Any] = {}
 
     if "budget_scope_id" in filters:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             out["budget_scope_id"] = int(filters["budget_scope_id"])
-        except (TypeError, ValueError):
-            pass
     if filters.get("document_type"):
         out["document_type"] = str(filters["document_type"])
     if filters.get("status"):

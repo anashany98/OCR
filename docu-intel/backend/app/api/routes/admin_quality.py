@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
+from app.api.routes.admin_helpers import _get_or_404, _ocr_review_payload
 from app.database.session import get_db
 from app.models import (
     Document,
@@ -27,8 +28,6 @@ from app.services.audit import write_audit
 from app.services.data_quality import quality_rules_payload, quality_summary, recalculate_quality
 from app.services.document_service import reprocess_document_page
 from app.services.quality import refresh_quality_from_existing_pages
-
-from app.api.routes.admin_helpers import _get_or_404, _ocr_review_payload
 
 router = APIRouter(prefix="/admin")
 
@@ -118,7 +117,7 @@ def update_ocr_review(
     document = _get_or_404(db, Document, page.document_id, "Document not found")
     page.review_status = payload.review_status
     page.review_notes = payload.review_notes
-    page.reviewed_at = datetime.now(timezone.utc)
+    page.reviewed_at = datetime.now(UTC)
     page.reviewed_by_id = user.id
     if payload.review_status == "rejected":
         document.status = "needs_review"

@@ -16,6 +16,7 @@ The generated file is intended for:
 CI runs this script and diffs the output against the committed snapshot
 (see ``tests/test_openapi_contract.py``).
 """
+
 from __future__ import annotations
 
 import argparse

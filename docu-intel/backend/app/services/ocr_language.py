@@ -330,7 +330,7 @@ class LanguageProfile:
         *,
         default_tesseract_lang: str = "spa+eng",
         default_paddle_lang: str = "es",
-    ) -> "LanguageProfile":
+    ) -> LanguageProfile:
         code = detect_language(text)
         return cls(
             detected=code,

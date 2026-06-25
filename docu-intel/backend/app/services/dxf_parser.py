@@ -173,9 +173,9 @@ def _render_dxf_to_png(doc, output_dir: Path, stem: str) -> str | None:
     drawing. Returns the path to the PNG or ``None`` on
     failure."""
     try:
-        from ezdxf.addons.drawing import RenderContext, Frontend
-        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
         import matplotlib.pyplot as plt
+        from ezdxf.addons.drawing import Frontend, RenderContext
+        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
 
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / f"{stem}.png"

@@ -1,10 +1,16 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
+from app.api.routes.admin_helpers import (
+    _document_operation_payload,
+    _ingestion_event_payload,
+    _severity_rank,
+    _watched_file_payload,
+)
 from app.core.config import settings
 from app.database.session import get_db
 from app.models import (
@@ -29,6 +35,7 @@ from app.schemas.admin import (
     WorkInboxItemRead,
 )
 from app.services.audit import write_audit
+from app.services.document_service import reprocess_document
 from app.services.maintenance import build_operations_overview, build_operations_status
 from app.services.production_readiness import storage_integrity
 from app.services.queue_control import (
@@ -44,14 +51,6 @@ from app.services.tenant_access import (
     filter_documents_for_scope,
     filter_records_by_document_scope,
     resolve_user_access_scope,
-)
-from app.services.document_service import reprocess_document
-
-from app.api.routes.admin_helpers import (
-    _document_operation_payload,
-    _ingestion_event_payload,
-    _severity_rank,
-    _watched_file_payload,
 )
 
 router = APIRouter(prefix="/admin")
@@ -541,7 +540,7 @@ def work_inbox_action(
         for page in pages:
             page.review_status = "approved"
             page.review_notes = "Aprobado por accion en lote."
-            page.reviewed_at = datetime.now(timezone.utc)
+            page.reviewed_at = datetime.now(UTC)
             page.reviewed_by_id = user.id
             updated += 1
         write_audit(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -79,7 +79,7 @@ def approve_classification_suggestion(
         )
     suggestion.status = "approved"
     suggestion.reviewed_by_user_id = user.id
-    suggestion.reviewed_at = datetime.now(timezone.utc)
+    suggestion.reviewed_at = datetime.now(UTC)
     write_audit(
         db,
         user=user,
@@ -115,7 +115,7 @@ def reject_classification_suggestion(
         )
     suggestion.status = "rejected"
     suggestion.reviewed_by_user_id = user.id
-    suggestion.reviewed_at = datetime.now(timezone.utc)
+    suggestion.reviewed_at = datetime.now(UTC)
     write_audit(
         db,
         user=user,
@@ -162,7 +162,7 @@ def disable_learned_pattern(
     if pattern.status == "disabled":
         return pattern
     pattern.status = "disabled"
-    pattern.updated_at = datetime.now(timezone.utc)
+    pattern.updated_at = datetime.now(UTC)
     write_audit(
         db,
         user=user,
@@ -186,7 +186,7 @@ def enable_learned_pattern(
     if not pattern:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pattern not found")
     pattern.status = "active"
-    pattern.updated_at = datetime.now(timezone.utc)
+    pattern.updated_at = datetime.now(UTC)
     write_audit(
         db,
         user=user,

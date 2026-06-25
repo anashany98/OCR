@@ -36,9 +36,10 @@ from __future__ import annotations
 import json
 import logging
 import statistics
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 logger = logging.getLogger("app.services.rag_evaluator")
 
@@ -76,7 +77,7 @@ class GoldenQA:
     min_context_recall: float = 0.5
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GoldenQA":
+    def from_dict(cls, data: dict[str, Any]) -> GoldenQA:
         try:
             return cls(
                 id=str(data["id"]),

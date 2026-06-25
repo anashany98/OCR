@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.models import Budget, Document, DocumentPage, Order, Plan, SensitiveTag
 from app.services.quality import LOW_OCR_THRESHOLD, refresh_quality_from_existing_pages
 
-
 RULE_DEFINITIONS = {
     "ocr_low": "Paginas con OCR por debajo del umbral operativo.",
     "page_without_text": "Documentos sin texto extraido.",

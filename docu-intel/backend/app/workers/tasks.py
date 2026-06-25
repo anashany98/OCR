@@ -73,7 +73,7 @@ def process_document_task(self, document_id: int, job_id: int) -> None:
                     document_id=document_id,
                     exc=exc,
                 )
-                raise Reject(exc, requeue=False)
+                raise Reject(exc, requeue=False) from exc
             # Retryable: log + re-raise so Celery's autoretry_for
             # kicks in. We do NOT mark the job as failed here; the
             # final attempt (after max_retries) is what triggers

@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AccessGroup, AccessGroupMember, User
 from app.services.access_policy import (
-    policy_allows_prices,
     policy_allows_budget_search,
+    policy_allows_prices,
     resolve_access_policy,
 )
 from app.services.integration_tools import REDACTED_BUDGET_FIELDS

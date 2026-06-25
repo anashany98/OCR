@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import shutil
@@ -47,8 +48,6 @@ def copy_to_storage(
     # land with very restrictive perms (0600 root) that prevent the
     # appuser from reading them. Loosen to 0644 so the OCR worker, the
     # vision client, and the thumbnail generator can all read the file.
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(target, 0o644)
-    except OSError:
-        pass
     return relative_path

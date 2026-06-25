@@ -15,6 +15,7 @@ Run inside the backend container::
     docker compose cp backend/scripts/cascade_smoke.py backend:/tmp/
     docker compose exec -T backend bash -lc "PYTHONPATH=/app python /tmp/cascade_smoke.py"
 """
+
 from __future__ import annotations
 
 import random
@@ -125,9 +126,7 @@ def main() -> int:
     result = cascade.extract(blank)
     _summarise("BLANK (expect tesseract, empty)", result)
     assert result.text.strip() == "", "blank image should yield empty text"
-    assert result.engine == "tesseract", (
-        f"blank cascade should keep primary, got {result.engine}"
-    )
+    assert result.engine == "tesseract", f"blank cascade should keep primary, got {result.engine}"
 
     print("\nALL SCENARIOS PASSED.")
     return 0

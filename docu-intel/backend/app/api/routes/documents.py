@@ -1,5 +1,5 @@
-from pathlib import Path
 import logging
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -79,8 +79,10 @@ def upload_batch(
 
     try:
         parsed_paths = _json.loads(relative_paths) if relative_paths else []
-    except _json.JSONDecodeError:
-        raise HTTPException(status_code=422, detail="relative_paths must be a JSON list of strings")
+    except _json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=422, detail="relative_paths must be a JSON list of strings"
+        ) from exc
 
     if parsed_paths and len(parsed_paths) != len(files):
         raise HTTPException(

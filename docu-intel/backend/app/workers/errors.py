@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 import socket
 import ssl
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import (
@@ -118,8 +118,8 @@ def truncate_error(exc: BaseException, *, limit: int = 500) -> str:
 
 
 def mark_job_as_failed(
-    db: "Session",
-    job: "ExtractionJob | None",
+    db: Session,
+    job: ExtractionJob | None,
     exc: BaseException,
 ) -> None:
     """Mark ``job`` as ``failed`` with a truncated error message.
@@ -133,7 +133,7 @@ def mark_job_as_failed(
     try:
         job.status = "failed"
         job.error_message = truncate_error(exc)
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         db.add(job)
     except Exception:  # pragma: no cover - defensive
         # If the job itself can't be updated (e.g. the session is

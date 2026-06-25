@@ -37,6 +37,7 @@ Usage (from backend/):
     # doing — this is a manual baseline reset).
     python -m scripts.update_golden_ocr --force --accept
 """
+
 from __future__ import annotations
 
 import argparse
@@ -86,9 +87,11 @@ def _extract_page_with_pipeline(
         # save the rendered PNG so a human reviewer (or a future GPU
         # run) can use it as the source of truth without re-rendering.
         try:
+            import io
+
             import pytesseract
             from PIL import Image
-            import io
+
             zoom = 300 / 72.0
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
             png_bytes = pix.tobytes("png")
@@ -100,7 +103,8 @@ def _extract_page_with_pipeline(
         except pytesseract.TesseractNotFoundError:
             logger.debug(
                 "Tesseract binary not found for %s p%d; rendered PNG only",
-                pdf_path, page_number,
+                pdf_path,
+                page_number,
             )
             # Best-effort: still render the PNG so a reviewer / GPU
             # worker can OCR it later.

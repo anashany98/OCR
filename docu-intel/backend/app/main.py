@@ -1,5 +1,5 @@
-from contextlib import asynccontextmanager
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +18,6 @@ from app.middleware.performance_monitor import PerformanceMonitorMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.services.metrics import register_metrics_endpoint
-
 
 setup_logging()
 init_sentry()

@@ -30,6 +30,7 @@ a budget (because the previous turn resolved one) the patterns that
 implicitly point at a budget (``"por cuanto esta presupuestado"``)
 match the corresponding intent.
 """
+
 from __future__ import annotations
 
 import re
@@ -38,7 +39,6 @@ from typing import Any
 
 from .active_context import ActiveContext
 from .reference_resolver import detect_reference
-
 
 # Intent identifiers (string constants — they show up in metrics + logs)
 INTENT_ACCEPTED_BUDGETS = "accepted_budgets"
@@ -116,7 +116,9 @@ _PATTERN_BANK: tuple[tuple[str, re.Pattern[str], float, str], ...] = (
     # --- accepted / latest budgets ---
     (
         INTENT_ACCEPTED_BUDGETS,
-        re.compile(r"\b(ultim[oa]s?|las?\s+ultim[oa]s?|recientes?)\s+presupuestos?\s+aceptad[oa]s?\b"),
+        re.compile(
+            r"\b(ultim[oa]s?|las?\s+ultim[oa]s?|recientes?)\s+presupuestos?\s+aceptad[oa]s?\b"
+        ),
         0.95,
         "ultimos presupuestos aceptados",
     ),
@@ -135,7 +137,9 @@ _PATTERN_BANK: tuple[tuple[str, re.Pattern[str], float, str], ...] = (
     # --- budget summary / status / total / lines ---
     (
         INTENT_BUDGET_TOTAL,
-        re.compile(r"\b(por cuanto|cuanto|cual es el importe|cu[a]nto)\s+(esta\s+presupuestad[oa]|importa|sale|cuesta|asciende)\b"),
+        re.compile(
+            r"\b(por cuanto|cuanto|cual es el importe|cu[a]nto)\s+(esta\s+presupuestad[oa]|importa|sale|cuesta|asciende)\b"
+        ),
         0.9,
         "por cuanto esta presupuestado",
     ),
@@ -153,13 +157,17 @@ _PATTERN_BANK: tuple[tuple[str, re.Pattern[str], float, str], ...] = (
     ),
     (
         INTENT_BUDGET_LINES,
-        re.compile(r"\b(desglose|desglosa|detalle|descomponer)\s+(del|de|este|el)?\s*presupuesto\b"),
+        re.compile(
+            r"\b(desglose|desglosa|detalle|descomponer)\s+(del|de|este|el)?\s*presupuesto\b"
+        ),
         0.85,
         "desglose del presupuesto",
     ),
     (
         INTENT_BUDGET_STATUS,
-        re.compile(r"\b(esta|se)\s+(aceptad[oa]|aprobad[oa]|rechazad[oa]|pendiente)\b.*\b(presupuesto)?\b"),
+        re.compile(
+            r"\b(esta|se)\s+(aceptad[oa]|aprobad[oa]|rechazad[oa]|pendiente)\b.*\b(presupuesto)?\b"
+        ),
         0.8,
         "estado del presupuesto",
     ),
@@ -223,13 +231,17 @@ _PATTERN_BANK: tuple[tuple[str, re.Pattern[str], float, str], ...] = (
     # --- supplier breakdown / time filter ---
     (
         INTENT_SUPPLIER_BREAKDOWN,
-        re.compile(r"\b(desglosad[oa]|desglose|agrupad[oa]|por\s+proveedor|por\s+cada\s+proveedor)\b"),
+        re.compile(
+            r"\b(desglosad[oa]|desglose|agrupad[oa]|por\s+proveedor|por\s+cada\s+proveedor)\b"
+        ),
         0.85,
         "desglose por proveedor",
     ),
     (
         INTENT_TIME_FILTERED,
-        re.compile(r"\b(este\s+ano|este\s+año|ultimo\s+trimestre|ultim[oa]s?\s+\d+\s+meses?|en\s+\d{4}|del\s+ano|este\s+mes)\b"),
+        re.compile(
+            r"\b(este\s+ano|este\s+año|ultimo\s+trimestre|ultim[oa]s?\s+\d+\s+meses?|en\s+\d{4}|del\s+ano|este\s+mes)\b"
+        ),
         0.8,
         "filtro temporal",
     ),
@@ -307,9 +319,7 @@ def classify_intent(
     """
     text = (question or "").strip()
     if not text:
-        return IntentClassification(
-            intent=INTENT_GENERIC, confidence=0.0, reason="empty question"
-        )
+        return IntentClassification(intent=INTENT_GENERIC, confidence=0.0, reason="empty question")
 
     normalised = _normalize(text)
     for intent, pattern, base_conf, reason in _PATTERN_BANK:
@@ -371,18 +381,28 @@ def _finalize(
 
 def _has_state_for(intent: str, state: ActiveContext) -> bool:
     """True when the active context carries the entity the intent needs."""
-    if intent in {INTENT_BUDGET_TOTAL, INTENT_BUDGET_LINES,
-                  INTENT_BUDGET_SUMMARY, INTENT_BUDGET_STATUS,
-                  INTENT_INVOICED_AMOUNT}:
+    if intent in {
+        INTENT_BUDGET_TOTAL,
+        INTENT_BUDGET_LINES,
+        INTENT_BUDGET_SUMMARY,
+        INTENT_BUDGET_STATUS,
+        INTENT_INVOICED_AMOUNT,
+    }:
         return bool(state.current_budget_number or state.current_budget_id)
     if intent == INTENT_INVOICE_ORIGIN_ORDER:
         return bool(state.current_invoice_number or state.current_order_number)
     if intent == INTENT_DELIVERY_NOTE:
-        return bool(state.has_budget_scope or state.current_delivery_note_number or state.current_folder_path)
+        return bool(
+            state.has_budget_scope
+            or state.current_delivery_note_number
+            or state.current_folder_path
+        )
     if intent == INTENT_SHIPPING_COST:
         return bool(state.has_budget_scope or state.current_folder_path)
     if intent == INTENT_RELATED_DOCUMENTS:
-        return bool(state.current_document_id or state.has_budget_scope or state.current_folder_path)
+        return bool(
+            state.current_document_id or state.has_budget_scope or state.current_folder_path
+        )
     return True
 
 

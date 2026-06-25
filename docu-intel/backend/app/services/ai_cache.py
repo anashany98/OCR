@@ -16,7 +16,6 @@ from typing import Any
 
 from app.services.cache import cache_service
 
-
 logger = logging.getLogger("app.services.ai_cache")
 AI_CACHE_TTL = 3600  # 1 hour
 AI_CACHE_PREFIX = "ai:answer:"
@@ -57,7 +56,7 @@ def _semantic_key(user_id: int) -> str:
 def _cosine(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(x * x for x in b))
     if na == 0 or nb == 0:
@@ -190,16 +189,10 @@ def get_cache_stats() -> dict[str, Any]:
             "enabled": True,
         }
     except Exception:
+        logger.debug("ai_cache_stats_failed", exc_info=True)
         return {
             "ai_cache_entries": 0,
             "ai_semantic_indexes": 0,
-            "ttl_seconds": AI_CACHE_TTL,
-            "enabled": False,
-            "error": "Unable to connect to cache",
-        }
-    except Exception:
-        return {
-            "ai_cache_entries": 0,
             "ttl_seconds": AI_CACHE_TTL,
             "enabled": False,
             "error": "Unable to connect to cache",

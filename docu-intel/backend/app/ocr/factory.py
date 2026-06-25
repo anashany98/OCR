@@ -16,9 +16,10 @@ symbol on the ``app.services.document_service`` module to inject a fake.
 
 from __future__ import annotations
 
+import contextlib
 import logging
-from functools import lru_cache
 import threading
+from functools import lru_cache
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine
@@ -175,9 +176,9 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
     if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:
         _warm_ocr_engine(engine.vlm_ocr)
     if hasattr(engine, "_engine"):
-        getattr(engine, "_engine")
+        _ = engine._engine  # noqa: B018 - intentional touch to warm any lazy init
     if hasattr(engine, "_pipeline"):
-        getattr(engine, "_pipeline")
+        _ = engine._pipeline  # noqa: B018 - intentional touch to warm any lazy init
 
 
 def _exercise(engine: BaseOCREngine) -> None:
@@ -226,10 +227,8 @@ def _exercise(engine: BaseOCREngine) -> None:
     except Exception as exc:
         logger.debug("OCR preload exercise failed (best-effort): %s", exc)
     finally:
-        try:
+        with contextlib.suppress(OSError):
             image_path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 __all__ = ["get_ocr_engine_class", "get_ocr_engine", "preload_ocr_engine", "clear_ocr_engine_cache"]

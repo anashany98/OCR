@@ -19,7 +19,7 @@ from app.services.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerOpen,
 )
-from app.services.metrics import track_embedding_latency, track_cache_hit, track_cache_miss
+from app.services.metrics import track_cache_hit, track_cache_miss, track_embedding_latency
 
 if TYPE_CHECKING:
     pass
@@ -70,8 +70,8 @@ def _get_embedding_breaker() -> CircuitBreaker:
     with _embedding_breaker_lock:
         if _embedding_breaker is None:
             _embedding_breaker = CircuitBreaker(
-                fail_max=int(getattr(settings, "ai_circuit_breaker_failures", 3)),
-                reset_timeout=float(getattr(settings, "ai_circuit_breaker_reset_seconds", 30.0)),
+                fail_max=settings.ai_circuit_breaker_failures,
+                reset_timeout=settings.ai_circuit_breaker_reset_seconds,
                 name="embeddings",
             )
     return _embedding_breaker
@@ -141,10 +141,10 @@ class OpenAICompatibleEmbeddingClient:
 
         try:
             response_payload = breaker.call(_call)
-        except CircuitBreakerOpen:
+        except CircuitBreakerOpen as exc:
             # Service is known-down; surface as a provider error so the
             # caller's existing fallback-to-hash path handles it.
-            raise EmbeddingProviderError(f"Embedding circuit '{breaker.name}' is OPEN")
+            raise EmbeddingProviderError(f"Embedding circuit '{breaker.name}' is OPEN") from exc
         return self._parse_payload(response_payload, texts)
 
     async def embed_many_async(self, texts: list[str]) -> list[list[float]]:
@@ -171,8 +171,8 @@ class OpenAICompatibleEmbeddingClient:
             # but the HTTP call is the slow part, so doing both in the
             # worker thread keeps the event loop responsive.
             response_payload = await asyncio.to_thread(breaker.call, _call)
-        except CircuitBreakerOpen:
-            raise EmbeddingProviderError(f"Embedding circuit '{breaker.name}' is OPEN")
+        except CircuitBreakerOpen as exc:
+            raise EmbeddingProviderError(f"Embedding circuit '{breaker.name}' is OPEN") from exc
         return self._parse_payload(response_payload, texts)
 
 
@@ -276,7 +276,7 @@ def embed_many(texts: Iterable[str], dimensions: int | None = None) -> list[list
     if uncached_texts:
         embeddings = _generate_embeddings_batch(uncached_texts, provider, vector_dimensions)
         start = time.perf_counter()
-        for idx, emb in zip(uncached_indices, embeddings):
+        for idx, emb in zip(uncached_indices, embeddings, strict=False):
             cached[idx] = emb
             cache_key = _embedding_cache_key(text_list[idx], vector_dimensions, role="passage")
             cache_service.set(cache_key, emb, EMBEDDING_CACHE_TTL)
@@ -320,7 +320,7 @@ async def embed_many_async(
         )
         track_embedding_latency(time.perf_counter() - start)
 
-        for idx, emb in zip(uncached_indices, embeddings):
+        for idx, emb in zip(uncached_indices, embeddings, strict=False):
             cached[idx] = emb
             cache_key = _embedding_cache_key(text_list[idx], vector_dimensions, role="passage")
             cache_service.set(cache_key, emb, EMBEDDING_CACHE_TTL)
@@ -560,7 +560,9 @@ class LocalSentenceTransformerEmbeddingClient:
             if self._init_error is not None:
                 raise self._init_error
             try:
-                from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+                from sentence_transformers import (
+                    SentenceTransformer,  # type: ignore[import-not-found]
+                )
 
                 self._model = SentenceTransformer(
                     self.model_name,

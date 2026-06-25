@@ -761,21 +761,24 @@ def _validate_extraction(
     # 2) Subtotal: Σ(line.total_price) ≈ total_amount (or taxable_base
     #    for invoices, where total = base + VAT).
     line_sum = round(
-        sum((ln.total_price for ln in lines if ln.total_price is not None)),
+        sum(ln.total_price for ln in lines if ln.total_price is not None),
         2,
     )
     total_amount = getattr(extraction, "total_amount", None)
-    if total_amount is not None and line_sum > 0:
-        if not _approx_eq(line_sum, total_amount, abs_tol=0.5, rel_tol=0.01):
-            issues.append(
-                ValidationIssue(
-                    check="subtotal_vs_total",
-                    field="total_amount",
-                    expected=line_sum,
-                    actual=total_amount,
-                    detail=f"sum(line.total_price)={line_sum} but total_amount={total_amount}",
-                )
+    if (
+        total_amount is not None
+        and line_sum > 0
+        and not _approx_eq(line_sum, total_amount, abs_tol=0.5, rel_tol=0.01)
+    ):
+        issues.append(
+            ValidationIssue(
+                check="subtotal_vs_total",
+                field="total_amount",
+                expected=line_sum,
+                actual=total_amount,
+                detail=f"sum(line.total_price)={line_sum} but total_amount={total_amount}",
             )
+        )
 
     # 3) Invoice coherence: base + VAT ≈ total.
     if isinstance(extraction, InvoiceExtraction):

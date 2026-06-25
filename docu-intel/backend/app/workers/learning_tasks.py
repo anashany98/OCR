@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -55,7 +55,7 @@ def _reclassify_document(db: Session, document: Document, learned_rules: list[Le
 
     document.document_type = result.document_type
     document.confidence = result.confidence
-    document.processed_at = datetime.now(timezone.utc)
+    document.processed_at = datetime.now(UTC)
     return True
 
 
@@ -107,7 +107,7 @@ def process_approved_suggestions() -> dict:
                         existing.status = "active"
                         existing.confidence = max(existing.confidence, suggestion.confidence)
                         existing.source_suggestion_id = suggestion.id
-                        existing.updated_at = datetime.now(timezone.utc)
+                        existing.updated_at = datetime.now(UTC)
                     else:
                         pattern = LearnedPattern(
                             pattern_type="keyword",
@@ -130,18 +130,19 @@ def process_approved_suggestions() -> dict:
                     and suggestion.suggested_document_type
                 ):
                     document = db.get(Document, suggestion.document_id)
-                    if document and not document.deleted_at:
-                        if document.document_type != suggestion.suggested_document_type:
-                            document.document_type = suggestion.suggested_document_type
-                            document.confidence = max(
-                                suggestion.confidence, document.confidence or 0.0
-                            )
-                            document.processed_at = datetime.now(timezone.utc)
-                            directly_corrected_ids.add(document.id)
-                            reclassified += 1
+                    if (
+                        document
+                        and not document.deleted_at
+                        and document.document_type != suggestion.suggested_document_type
+                    ):
+                        document.document_type = suggestion.suggested_document_type
+                        document.confidence = max(suggestion.confidence, document.confidence or 0.0)
+                        document.processed_at = datetime.now(UTC)
+                        directly_corrected_ids.add(document.id)
+                        reclassified += 1
 
                 suggestion.status = "applied"
-                suggestion.applied_at = datetime.now(timezone.utc)
+                suggestion.applied_at = datetime.now(UTC)
 
             except Exception as exc:
                 logger.exception(

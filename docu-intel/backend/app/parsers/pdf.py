@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import Awaitable, TypeVar
+from typing import TypeVar
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine
@@ -312,9 +314,7 @@ def _ocr_with_dpi_ladder(
         text = (ocr.text or "").strip()
         conf = ocr.confidence if ocr.confidence is not None else 0.0
 
-        if best_image is None:
-            best_image, best_ocr, best_engine = image_file, ocr, actual_engine
-        elif _ocr_is_usable(text, conf):
+        if best_image is None or _ocr_is_usable(text, conf):
             best_image, best_ocr, best_engine = image_file, ocr, actual_engine
 
         if prev_dpi > 0 and dpi > prev_dpi:
@@ -621,13 +621,11 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
             # additionally labels the tier with the document
             # type so the admin UI can see which document types
             # lean on which tier.
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover - defensive
                 track_ocr_tier_used(
                     ocr_engine.name,
                     document_type=_guess_document_type_for_metrics(path),
                 )
-            except Exception:  # pragma: no cover - defensive
-                pass
 
             # Tell the cascade the current page's language so the
             # per-language thresholds apply. We use ``getattr`` /
@@ -637,10 +635,8 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
             # the interface contract. Non-cascading engines (single
             # Tesseract, single PaddleOCR) will simply ignore the
             # attribute set.
-            try:
-                setattr(ocr_engine, "current_language", effective_profile.detected)
-            except Exception:  # pragma: no cover - defensive
-                pass
+            with contextlib.suppress(Exception):  # pragma: no cover - defensive
+                ocr_engine.current_language = effective_profile.detected
 
             # --- Digital fast path: embedded text is enough ----------
             if len(text) >= 30:

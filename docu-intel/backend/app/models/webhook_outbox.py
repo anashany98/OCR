@@ -10,14 +10,13 @@ moved to ``dead_letter`` for manual inspection and replay.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
-
 
 # BigInteger primary key with SQLite-friendly Integer fallback so the test
 # suite (which uses in-memory SQLite) can still create the table.
@@ -37,7 +36,7 @@ class WebhookOutbox(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
     next_attempt_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -46,7 +45,7 @@ class WebhookOutbox(Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     dead_lettered_at: Mapped[datetime | None] = mapped_column(

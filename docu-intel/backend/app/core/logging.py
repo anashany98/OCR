@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -12,7 +12,7 @@ from app.core.config import settings
 
 def _utc_timestamp(*, utc: bool = True) -> str:
     """Return ISO 8601 UTC timestamp with millisecond precision."""
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def setup_logging() -> None:

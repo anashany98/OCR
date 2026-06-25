@@ -29,6 +29,18 @@ app.services.metrics import track_ocr_duration`` still works
 
 from __future__ import annotations
 
+from .embedding import (
+    track_embedding_duration,
+    track_embedding_fallback,
+    track_embedding_latency,
+)
+from .endpoint import (
+    get_metrics,
+    register_metrics_endpoint,
+    render_metrics,
+)
+from .labels import escape_label, metric_key
+
 # Re-export the public surface. The original ``services/metrics.py``
 # exposed these names; we keep them importable from
 # ``app.services.metrics`` (the package) so no caller has to
@@ -42,18 +54,6 @@ from .ocr import (
     track_ocr_postprocess,
     track_ocr_skip_tier2,
     track_ocr_tier_used,
-)
-from .embedding import (
-    track_embedding_duration,
-    track_embedding_fallback,
-    track_embedding_latency,
-)
-from .search import (
-    track_cache_hit,
-    track_cache_miss,
-    track_search_latency,
-    track_search_strategy_used,
-    update_cache_hit_rate,
 )
 from .pipeline import (
     document_status_counts,
@@ -72,12 +72,13 @@ from .rag import (
     track_prompt_injection_attempts,
     track_query_transform,
 )
-from .endpoint import (
-    get_metrics,
-    register_metrics_endpoint,
-    render_metrics,
+from .search import (
+    track_cache_hit,
+    track_cache_miss,
+    track_search_latency,
+    track_search_strategy_used,
+    update_cache_hit_rate,
 )
-from .labels import escape_label, metric_key
 
 # Backward-compatible aliases for the legacy underscore-prefixed
 # names the original ``services/metrics.py`` exposed.

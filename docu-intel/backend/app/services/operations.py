@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, replace
 from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-
-import shutil
 
 from app.core.config import settings
 from app.models import AuditLog, Budget, Document, ExtractionJob, Order, Plan, User

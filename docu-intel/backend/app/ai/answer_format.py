@@ -20,14 +20,14 @@ the assistant is just citing a quote). When ``direct`` is ``None``
 the function falls back to the existing quote-style lead text so
 the legacy behaviour is preserved.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
 
 from .active_context import ActiveContext
 from .context import ContextItem, _format_source
-
 
 # ---------------------------------------------------------------------------
 # Section dataclass
@@ -47,24 +47,17 @@ class GroundedAnswerSections:
         if self.direct:
             paragraphs.append(self.direct)
         if self.evidence:
-            paragraphs.append(
-                "**Evidencia:**\n" + "\n".join(f"- {line}" for line in self.evidence)
-            )
+            paragraphs.append("**Evidencia:**\n" + "\n".join(f"- {line}" for line in self.evidence))
         if self.sources:
             paragraphs.append(
-                "**Documentos usados:**\n"
-                + "\n".join(f"- {line}" for line in self.sources)
+                "**Documentos usados:**\n" + "\n".join(f"- {line}" for line in self.sources)
             )
         if self.warnings:
             paragraphs.append(
-                "**Advertencias:**\n"
-                + "\n".join(f"- {line}" for line in self.warnings)
+                "**Advertencias:**\n" + "\n".join(f"- {line}" for line in self.warnings)
             )
         if self.missing:
-            paragraphs.append(
-                "**Que falta:**\n"
-                + "\n".join(f"- {line}" for line in self.missing)
-            )
+            paragraphs.append("**Que falta:**\n" + "\n".join(f"- {line}" for line in self.missing))
         return paragraphs
 
 
@@ -187,13 +180,10 @@ def _one_line_evidence_from_structured(item: ContextItem) -> str | None:
         currency = payload.get("currency") or ""
         if amount is None:
             return f"{label}: no se ha detectado un importe total."
-        return (
-            f"{label}: {amount:.2f} {currency}".strip()
-            + (
-                f" — {int(round(float(payload.get('confidence') or 0) * 100))}% confianza"
-                if payload.get("confidence")
-                else ""
-            )
+        return f"{label}: {amount:.2f} {currency}".strip() + (
+            f" — {int(round(float(payload.get('confidence') or 0) * 100))}% confianza"
+            if payload.get("confidence")
+            else ""
         )
 
     # get_invoiced_amount_for_budget
@@ -212,8 +202,7 @@ def _one_line_evidence_from_structured(item: ContextItem) -> str | None:
         if not items:
             return f"{label}: sin resultados."
         sample = ", ".join(
-            f"{b.get('budget_number')} ({b.get('client_name') or 'cliente ?'})"
-            for b in items[:3]
+            f"{b.get('budget_number')} ({b.get('client_name') or 'cliente ?'})" for b in items[:3]
         )
         return f"{label}: {len(items)} resultado(s). Ejemplo: {sample}."
 
@@ -230,9 +219,7 @@ def _one_line_evidence_from_structured(item: ContextItem) -> str | None:
         candidates = payload.get("candidates") or []
         if not candidates:
             return f"{label}: sin coincidencias en el ambito activo."
-        sample = ", ".join(
-            (c.get("excerpt") or "")[:80] for c in candidates[:2]
-        )
+        sample = ", ".join((c.get("excerpt") or "")[:80] for c in candidates[:2])
         return f"{label}: {len(candidates)} candidato(s) con palabras clave de envio."
 
     # get_invoice_origin_order
@@ -253,8 +240,7 @@ def _one_line_evidence_from_structured(item: ContextItem) -> str | None:
         if not lines:
             return f"{label}: sin lineas extraidas."
         sample = "; ".join(
-            (ln.get("description") or ln.get("reference") or "?")[:60]
-            for ln in lines[:3]
+            (ln.get("description") or ln.get("reference") or "?")[:60] for ln in lines[:3]
         )
         return f"{label}: {len(lines)} linea(s) — {sample}."
 

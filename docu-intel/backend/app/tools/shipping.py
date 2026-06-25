@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.models import Document, DocumentChunk
 from app.services.search_service import _escape_ilike_wildcards
 
-
 # Keywords that signal a shipping/transport cost. Kept in a module
 # constant so tests can assert against it without importing the
 # tools module.
@@ -95,10 +94,7 @@ def find_delivery_note_in_scope(
     return {
         "found": bool(candidates),
         "scope": (
-            f"Presupuesto {budget_number}"
-            if budget_number
-            else folder_path
-            or source_path_like
+            f"Presupuesto {budget_number}" if budget_number else folder_path or source_path_like
         ),
         "matches": [
             {
@@ -143,9 +139,7 @@ def find_shipping_cost_in_scope(
         or f"%Presupuesto {_escape_ilike_wildcards(budget_number)}%"
     )
     # ILIKE any of the shipping keywords against chunk_text.
-    keyword_ors = [
-        DocumentChunk.chunk_text.ilike(f"%{kw}%") for kw in SHIPPING_KEYWORDS
-    ]
+    keyword_ors = [DocumentChunk.chunk_text.ilike(f"%{kw}%") for kw in SHIPPING_KEYWORDS]
     stmt = (
         select(DocumentChunk, Document)
         .join(Document, Document.id == DocumentChunk.document_id)
@@ -174,10 +168,7 @@ def find_shipping_cost_in_scope(
     return {
         "found": bool(candidates),
         "scope": (
-            f"Presupuesto {budget_number}"
-            if budget_number
-            else folder_path
-            or source_path_like
+            f"Presupuesto {budget_number}" if budget_number else folder_path or source_path_like
         ),
         "candidates": candidates,
     }

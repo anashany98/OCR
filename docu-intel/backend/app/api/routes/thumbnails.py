@@ -6,6 +6,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.database.session import get_db
 from app.models import Document, User
+from app.services.tenant_access import can_access_document, resolve_user_access_scope
 from app.services.thumbnail import (
     generate_excel_thumbnail,
     generate_image_thumbnail,
@@ -13,7 +14,6 @@ from app.services.thumbnail import (
     generate_pdf_thumbnail,
     get_thumbnail_path,
 )
-from app.services.tenant_access import can_access_document, resolve_user_access_scope
 
 router = APIRouter()
 

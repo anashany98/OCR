@@ -1,7 +1,17 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Computed, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Computed,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 try:
@@ -55,12 +65,12 @@ class Document(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -124,7 +134,7 @@ class DocumentPage(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     document = relationship("Document", back_populates="pages")
@@ -151,7 +161,7 @@ class DocumentBlock(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
     source_engine: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     document = relationship("Document", back_populates="blocks")
@@ -174,7 +184,7 @@ class DocumentEntity(Base):
         ForeignKey("document_blocks.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     document = relationship("Document", back_populates="entities")
@@ -225,7 +235,7 @@ class DocumentChunk(Base):
         String(120), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     document = relationship("Document", back_populates="chunks")

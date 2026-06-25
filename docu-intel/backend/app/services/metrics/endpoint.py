@@ -35,7 +35,6 @@ from .pipeline import (
 )
 from .search import update_cache_hit_rate
 
-
 # ---------------------------------------------------------------------------
 # Legacy flat-dict output (for the admin UI)
 # ---------------------------------------------------------------------------

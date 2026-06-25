@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 import statistics
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.parsers.types import ExtractedBlock, ExtractedPage
 from app.services.business_extraction import ExtractedLine, _extract_lines, _parse_amount
@@ -115,9 +115,12 @@ def _cluster_rows(blocks: list[ExtractedBlock], tolerance: float) -> list[list[E
     rows: list[list[ExtractedBlock]] = []
     for block in ordered:
         cy = _block_center(block)[1]
-        if rows and abs(cy - statistics.median(_block_center(b)[1] for b in rows[-1])) <= tolerance:
-            rows[-1].append(block)
-        elif rows and abs(cy - _block_center(rows[-1][-1])[1]) <= tolerance:
+        if (
+            rows
+            and abs(cy - statistics.median(_block_center(b)[1] for b in rows[-1])) <= tolerance
+            or rows
+            and abs(cy - _block_center(rows[-1][-1])[1]) <= tolerance
+        ):
             rows[-1].append(block)
         else:
             rows.append([block])

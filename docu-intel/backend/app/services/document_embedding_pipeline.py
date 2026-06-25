@@ -131,11 +131,11 @@ def prepare_document_chunks(
         # migration is in 0020 but a deployment that has not
         # migrated would 500 on assignment). We set it via
         # ``setattr`` so the legacy code path still works.
-        setattr(chunk, "chunk_type", chunk_type)
+        chunk.chunk_type = chunk_type
         # E4 — record which model version produced this embedding
         # so the periodic re-embed sweep can find chunks that need
         # updating when the operator changes EMBEDDING_MODEL.
-        setattr(chunk, "embedding_model_version", settings.embedding_model)
+        chunk.embedding_model_version = settings.embedding_model
         chunks.append(chunk)
     return chunks
 

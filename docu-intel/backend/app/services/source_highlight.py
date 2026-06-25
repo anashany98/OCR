@@ -90,16 +90,15 @@ def get_source_highlight(
     # If the source has a block_id, look up the block's bbox.
     if source.block_id is not None:
         block = db.get(DocumentBlock, source.block_id)
-        if block is not None:
-            if all(
-                v is not None for v in (block.bbox_x1, block.bbox_y1, block.bbox_x2, block.bbox_y2)
-            ):
-                bbox = (
-                    float(block.bbox_x1),
-                    float(block.bbox_y1),
-                    float(block.bbox_x2),
-                    float(block.bbox_y2),
-                )
+        if block is not None and all(
+            v is not None for v in (block.bbox_x1, block.bbox_y1, block.bbox_x2, block.bbox_y2)
+        ):
+            bbox = (
+                float(block.bbox_x1),
+                float(block.bbox_y1),
+                float(block.bbox_x2),
+                float(block.bbox_y2),
+            )
 
     return SourceHighlight(
         document_id=source.document_id or 0,

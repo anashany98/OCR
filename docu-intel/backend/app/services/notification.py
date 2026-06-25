@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC
 
 import redis
 
@@ -26,7 +27,7 @@ class NotificationService:
                         "job_id": job_id,
                         "document_id": document_id,
                         "error": error[:500],
-                        "timestamp": __import__("datetime").datetime.now(timezone.utc).isoformat(),
+                        "timestamp": __import__("datetime").datetime.now(UTC).isoformat(),
                     }
                 ),
             )
@@ -43,7 +44,7 @@ class NotificationService:
                         "type": "document_processed",
                         "document_id": document_id,
                         "filename": filename,
-                        "timestamp": __import__("datetime").datetime.now(timezone.utc).isoformat(),
+                        "timestamp": __import__("datetime").datetime.now(UTC).isoformat(),
                     }
                 ),
             )

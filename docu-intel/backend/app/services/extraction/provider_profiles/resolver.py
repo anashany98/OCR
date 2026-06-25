@@ -21,9 +21,9 @@ The :func:`resolve_profile` function is the public entry point.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 

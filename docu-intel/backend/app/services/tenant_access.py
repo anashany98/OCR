@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
-import fnmatch
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session
@@ -261,9 +262,7 @@ def metadata_allows_scope(metadata: DocumentAccessMetadata | None, scope: Access
         return True
     if metadata.hotel_id is not None and metadata.hotel_id in scope.hotel_ids:
         return True
-    if metadata.chain_id is not None and metadata.chain_id in scope.chain_ids:
-        return True
-    return False
+    return bool(metadata.chain_id is not None and metadata.chain_id in scope.chain_ids)
 
 
 def filter_documents_for_scope(

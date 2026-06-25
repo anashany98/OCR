@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Document, DocumentBlock
 from app.schemas.integration import IntegrationToolExecuteResponse
+from app.services.integration_security import IntegrationContext
 from app.services.integration_tools.common import (
     DocumentIdArgs,
     _can_access_document_for_context,
@@ -11,7 +12,6 @@ from app.services.integration_tools.common import (
     _document_source,
     _response,
 )
-from app.services.integration_security import IntegrationContext
 from app.services.redaction import redact_sensitive_text
 from app.tools import internal
 

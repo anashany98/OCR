@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import io
 from pathlib import Path
 
@@ -219,10 +220,8 @@ def generate_msg_thumbnail(msg_path: Path, document_hash: str) -> Path | None:
         finally:
             close = getattr(msg, "close", None)
             if callable(close):
-                try:
+                with contextlib.suppress(Exception):
                     close()
-                except Exception:
-                    pass
 
         W, H = THUMBNAIL_SIZE
         scale = 2

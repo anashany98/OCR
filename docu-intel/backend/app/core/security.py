@@ -15,7 +15,6 @@ except ImportError:
 
 from app.core.config import settings
 
-
 # Token-type claim values used to keep access tokens and integration
 # tokens (budget sessions) on separate rails, even when they share
 # the same algorithm. AUTH-JWT-1 (Sprint 1) added these so a stolen
@@ -94,8 +93,8 @@ def create_access_token(subject: str, expires_in_seconds: int | None = None) -> 
 def decode_access_token(token: str) -> dict[str, Any]:
     try:
         header_b64, payload_b64, signature_b64 = token.split(".")
-    except ValueError:
-        raise ValueError("Invalid token format")
+    except ValueError as exc:
+        raise ValueError("Invalid token format") from exc
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
     expected = _sign(signing_input, secret=_user_jwt_secret())
     if not hmac.compare_digest(expected, signature_b64):
@@ -145,8 +144,8 @@ def decode_integration_token(token: str) -> dict[str, Any]:
     """
     try:
         header_b64, payload_b64, signature_b64 = token.split(".")
-    except ValueError:
-        raise ValueError("Invalid token format")
+    except ValueError as exc:
+        raise ValueError("Invalid token format") from exc
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
     expected = _sign(signing_input, secret=_integration_jwt_secret())
     if not hmac.compare_digest(expected, signature_b64):

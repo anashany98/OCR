@@ -188,7 +188,7 @@ def _ensure_model_loaded():
 
     from app.core.config import settings
 
-    if not getattr(settings, "plan_symbols_enabled", True):
+    if not settings.plan_symbols_enabled:
         return None
 
     if _model_loaded:
@@ -200,7 +200,7 @@ def _ensure_model_loaded():
         try:
             from ultralytics import YOLO  # type: ignore[import-not-found]
 
-            model_path = getattr(settings, "plan_symbols_model_path", "yolov8n.pt")
+            model_path = settings.plan_symbols_model_path
             logger.info("Loading YOLO plan-symbols model: %s", model_path)
             _model = YOLO(model_path)
             _model_loaded = True
@@ -288,11 +288,11 @@ def detect_symbols(
     threshold = (
         confidence_threshold
         if confidence_threshold is not None
-        else float(getattr(settings, "plan_symbols_confidence_threshold", 0.35))
+        else settings.plan_symbols_confidence_threshold
     )
-    iou = float(getattr(settings, "plan_symbols_iou_threshold", 0.45))
-    imgsz = int(getattr(settings, "plan_symbols_image_size", 640))
-    device = str(getattr(settings, "plan_symbols_device", "cpu"))
+    iou = settings.plan_symbols_iou_threshold
+    imgsz = settings.plan_symbols_image_size
+    device = settings.plan_symbols_device
 
     try:
         # ``predict`` returns a list (one result per image). We pass a

@@ -47,7 +47,7 @@ import hmac
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -59,7 +59,6 @@ from app.services.access_policy import resolve_access_policy
 from app.services.budget_scope import BudgetSessionClaims, decode_budget_session_token
 from app.services.integration_rate_limit import enforce_integration_rate_limit
 from app.services.tenant_access import AccessScope, resolve_technician_access_scope
-
 
 # Process-local throttle for ``last_used_at`` updates. A multi-worker
 # deployment can have N workers; this dict is Nx the writes we'd

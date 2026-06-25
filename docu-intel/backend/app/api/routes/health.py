@@ -23,6 +23,7 @@ def _redis_client():
 
         return Redis.from_url(settings.redis_url, socket_timeout=2)
     except Exception:
+        logger.debug("redis_client_init_failed", exc_info=True)
         return None
 
 

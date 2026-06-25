@@ -23,11 +23,14 @@ compact email-style preview.
 
 from __future__ import annotations
 
+import logging
 import re
 from html.parser import HTMLParser
 from pathlib import Path
 
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
+
+logger = logging.getLogger(__name__)
 
 # Hard cap on the body we surface into the OCR panel. Forwarded threads can
 # easily be a few MB; the panel is not the place to dump the whole thing.
@@ -218,6 +221,7 @@ def _html_to_markdown(html: str) -> str:
     try:
         parser.feed(html)
     except Exception:
+        logger.debug("html_to_markdown_parse_failed, falling back to regex", exc_info=True)
         return re.sub(r"<[^>]+>", " ", html)
     return parser.close()
 
@@ -232,6 +236,7 @@ def _extract_html_tables_markdown(html: str) -> str:
     try:
         parser.feed(html)
     except Exception:
+        logger.debug("html_tables_extract_failed", exc_info=True)
         return ""
     return parser.close()
 
@@ -261,6 +266,10 @@ def parse_msg(path: Path) -> ExtractedDocument:
 
                     body_clean = _clean_body(BeautifulSoup(html_body, "html.parser").get_text("\n"))
                 except Exception:
+                    logger.debug(
+                        "beautifulsoup_parse_failed, falling back to html_to_markdown",
+                        exc_info=True,
+                    )
                     body_clean = _html_to_markdown(html_body) or body_clean
             if _looks_like_mapi_blob(body_clean):
                 body_clean = (
@@ -296,14 +305,14 @@ def parse_msg(path: Path) -> ExtractedDocument:
                 )
                 attachment_names.append(name)
         except Exception:
-            pass
+            logger.debug("attachment_list_failed", exc_info=True)
     finally:
         close = getattr(msg, "close", None)
         if callable(close):
             try:
                 close()
             except Exception:
-                pass
+                logger.debug("msg_close_failed", exc_info=True)
 
     header_lines = [
         f"Asunto: {subject}",

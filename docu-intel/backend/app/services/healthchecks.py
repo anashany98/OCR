@@ -137,7 +137,7 @@ def check_embeddings() -> DependencyStatus:
 
     start = _now_ms()
     try:
-        from app.services.embeddings import embed_text, EmbeddingProviderError
+        from app.services.embeddings import EmbeddingProviderError, embed_text
 
         vec = embed_text("healthcheck", dimensions=None)
         latency = _now_ms() - start
@@ -174,8 +174,8 @@ def check_reranker() -> DependencyStatus:
 
     start = _now_ms()
     try:
-        from app.services.search_service import SearchResult
         from app.services.reranker import rerank_sync
+        from app.services.search_service import SearchResult
 
         candidate = SearchResult(
             document_id=0,

@@ -13,8 +13,8 @@ from app.models import Document, ExtractionJob, User
 from app.services.audit import write_audit
 from app.services.budget_scope import assign_document_budget_scope
 from app.services.cache import cache_service
-from app.services.file_storage import calculate_sha256, copy_to_storage
 from app.services.file_security import inspect_file_for_ingestion
+from app.services.file_storage import calculate_sha256, copy_to_storage
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
 from app.services.tenant_access import apply_folder_rules_to_document
 
@@ -201,8 +201,8 @@ def register_existing_file(
     if job:
         db.refresh(job)
         if enqueue:
-            from app.workers.tasks import process_document_task
             from app.workers.routing import queue_for_document
+            from app.workers.tasks import process_document_task
 
             cache_service.invalidate_search_cache()
             queue = queue_for_document(document, job.job_type)

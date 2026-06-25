@@ -176,7 +176,7 @@ class CircuitBreaker:
     # ------------------------------------------------------------------
     # Context-manager sugar for ``with breaker: ...`` blocks.
     # ------------------------------------------------------------------
-    def __enter__(self) -> "CircuitBreaker":
+    def __enter__(self) -> CircuitBreaker:
         with self._lock:
             self._maybe_recover_locked()
             if self._state == STATE_OPEN:

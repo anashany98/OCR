@@ -1,7 +1,6 @@
 from app.models.ai import AIAnswer, AIAnswerFeedback, AIAnswerSource, AIQuestion
 from app.models.audit import AuditLog
 from app.models.budget_scope import ApiClientBudgetScope, BudgetScope
-from app.models.chat_session import ChatMessage, ChatSession
 from app.models.business import (
     Budget,
     BudgetLine,
@@ -12,6 +11,7 @@ from app.models.business import (
     PlanRoom,
     PlanSymbol,
 )
+from app.models.chat_session import ChatMessage, ChatSession
 from app.models.document import (
     Document,
     DocumentBlock,

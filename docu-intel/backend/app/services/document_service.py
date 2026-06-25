@@ -17,14 +17,9 @@ from app.core.config import settings  # noqa: F401
 from app.ocr.factory import get_ocr_engine, get_ocr_engine_class  # noqa: F401
 from app.parsers.router import parse_document  # noqa: F401
 from app.services.business_extraction import persist_business_extraction  # noqa: F401
-from app.services.document_registration_service import (  # noqa: F401
-    register_existing_file,
-    register_upload,
-)
-from app.services.document_reprocess_service import (  # noqa: F401
-    reprocess_document,
-    reprocess_document_page,
-    soft_delete_document,
+from app.services.document_embedding_pipeline import (  # noqa: F401
+    embed_many_with_metadata,
+    prepare_document_chunks,
 )
 from app.services.document_processing_core import (  # noqa: F401
     _emit_document_webhooks,
@@ -35,9 +30,14 @@ from app.services.document_processing_core import (  # noqa: F401
     reprocess_page_number_from_job_type,
     sanitize_text_for_database,
 )
-from app.services.document_embedding_pipeline import (  # noqa: F401
-    embed_many_with_metadata,
-    prepare_document_chunks,
+from app.services.document_registration_service import (  # noqa: F401
+    register_existing_file,
+    register_upload,
+)
+from app.services.document_reprocess_service import (  # noqa: F401
+    reprocess_document,
+    reprocess_document_page,
+    soft_delete_document,
 )
 from app.services.embeddings import embed_many, should_create_embeddings  # noqa: F401
 from app.services.file_security import inspect_file_for_ingestion  # noqa: F401

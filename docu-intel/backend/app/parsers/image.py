@@ -58,9 +58,10 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extr
         and (not result.text or len(result.text.strip()) < 30 or (result.confidence or 0) < 0.4)
     ):
         try:
-            from app.services.vision_manager import VisionManager
-            from app.ai.local_client import LocalVisionClient
             import asyncio
+
+            from app.ai.local_client import LocalVisionClient
+            from app.services.vision_manager import VisionManager
 
             VisionManager.cancel_pending_unload()
             if not VisionManager.is_loaded():

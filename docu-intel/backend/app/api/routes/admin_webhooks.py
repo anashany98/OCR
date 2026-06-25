@@ -10,7 +10,7 @@ Mounted by the admin router. Exposes:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -122,8 +122,6 @@ def outbox_stats(
             for status_name in ("pending", "sending", "delivered", "dead_letter")
         },
         "oldest_pending_age_seconds": (
-            (datetime.now(timezone.utc) - oldest_pending).total_seconds()
-            if oldest_pending
-            else None
+            (datetime.now(UTC) - oldest_pending).total_seconds() if oldest_pending else None
         ),
     }

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 try:
     import redis
@@ -30,6 +33,7 @@ class CacheService:
                 return None
             return json.loads(data)
         except Exception:
+            logger.debug("cache_get_failed key=%s", key, exc_info=True)
             return None
 
     def set(self, key: str, value: Any, ttl_seconds: int = 300) -> bool:
@@ -37,6 +41,7 @@ class CacheService:
             self.client.setex(key, ttl_seconds, json.dumps(value))
             return True
         except Exception:
+            logger.debug("cache_set_failed key=%s", key, exc_info=True)
             return False
 
     def delete(self, key: str) -> bool:
@@ -44,6 +49,7 @@ class CacheService:
             self.client.delete(key)
             return True
         except Exception:
+            logger.debug("cache_delete_failed key=%s", key, exc_info=True)
             return False
 
     def delete_pattern(self, pattern: str) -> int:
@@ -59,6 +65,7 @@ class CacheService:
                 deleted += self.client.delete(*batch)
             return deleted
         except Exception:
+            logger.debug("cache_delete_pattern_failed pattern=%s", pattern, exc_info=True)
             return 0
 
     def invalidate_search_cache(self) -> int:

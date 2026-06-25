@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -10,14 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.agent import (
-    _stream_local_ai_answer,
     StreamOutcome,
+    _build_memory_block,
+    _stream_local_ai_answer,
     answer_question,
     build_grounded_response,
     collect_context,
     redact_context_items_for_scope,
     select_tools_for_question,
-    _build_memory_block,
 )
 from app.ai.local_client import LocalOpenAICompatibleClient  # noqa: F401
 from app.api.deps import get_current_user

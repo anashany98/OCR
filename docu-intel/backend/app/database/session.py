@@ -8,7 +8,6 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
 
-
 _engine: Engine | None = None
 _engine_url: str | None = None
 _session_factory = None

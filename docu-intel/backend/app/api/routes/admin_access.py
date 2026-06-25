@@ -6,6 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
+from app.api.routes.admin_helpers import (
+    _get_or_404,
+    _normalize_preview_path,
+    _normalized_tags,
+    _validate_hotel_assignment,
+)
 from app.database.session import get_db
 from app.models import (
     AccessGroup,
@@ -60,15 +66,8 @@ from app.services.redaction import redact_sensitive_text
 from app.services.tenant_access import (
     apply_folder_rules_to_all_documents,
     ensure_document_access_metadata,
-    resolve_user_access_scope,
     resolve_technician_access_scope,
-)
-
-from app.api.routes.admin_helpers import (
-    _get_or_404,
-    _normalize_preview_path,
-    _normalized_tags,
-    _validate_hotel_assignment,
+    resolve_user_access_scope,
 )
 
 router = APIRouter(prefix="/admin")

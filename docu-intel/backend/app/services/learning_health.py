@@ -18,7 +18,7 @@ would risk blocking legitimate clients during an integration rollout.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -38,7 +38,7 @@ def _as_naive_utc(dt: datetime) -> datetime:
     """
     if dt.tzinfo is None:
         return dt
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.astimezone(UTC).replace(tzinfo=None)
 
 
 def mark_stale_suggestions(db: Session) -> int:
@@ -49,7 +49,7 @@ def mark_stale_suggestions(db: Session) -> int:
     """
     if settings.learning_stale_pending_days <= 0:
         return 0
-    cutoff_aware = datetime.now(timezone.utc) - timedelta(days=settings.learning_stale_pending_days)
+    cutoff_aware = datetime.now(UTC) - timedelta(days=settings.learning_stale_pending_days)
     cutoff_naive = _as_naive_utc(cutoff_aware)
     stmt = (
         update(ClassificationSuggestion)
@@ -73,7 +73,7 @@ def auto_reject_stale_suggestions(db: Session) -> dict[str, int]:
     if settings.learning_stale_pending_days <= 0:
         return {"rejected": 0, "remaining": 0}
 
-    now_naive = _as_naive_utc(datetime.now(timezone.utc))
+    now_naive = _as_naive_utc(datetime.now(UTC))
     # Re-mark fresh stale (in case the threshold was shortened since the last run)
     mark_stale_suggestions(db)
 
@@ -113,7 +113,7 @@ def client_recent_pending_count(db: Session, client_id: int) -> int:
     if settings.learning_per_client_max_pending <= 0:
         return 0
     window_start_naive = _as_naive_utc(
-        datetime.now(timezone.utc) - timedelta(seconds=settings.learning_per_client_window_seconds)
+        datetime.now(UTC) - timedelta(seconds=settings.learning_per_client_window_seconds)
     )
     return int(
         db.scalar(
@@ -155,8 +155,8 @@ def health_snapshot(db: Session) -> dict[str, Any]:
     if oldest is not None:
         # SQLite strips tzinfo; assume UTC for storage if naive.
         if oldest.tzinfo is None:
-            oldest = oldest.replace(tzinfo=timezone.utc)
-        oldest_pending_age_seconds = (datetime.now(timezone.utc) - oldest).total_seconds()
+            oldest = oldest.replace(tzinfo=UTC)
+        oldest_pending_age_seconds = (datetime.now(UTC) - oldest).total_seconds()
 
     # Stale count
     stale_count = int(
@@ -170,7 +170,7 @@ def health_snapshot(db: Session) -> dict[str, Any]:
 
     # Top clients by pending volume in the last window
     window_start_naive = _as_naive_utc(
-        datetime.now(timezone.utc) - timedelta(seconds=settings.learning_per_client_window_seconds)
+        datetime.now(UTC) - timedelta(seconds=settings.learning_per_client_window_seconds)
     )
     client_rows = db.execute(
         select(

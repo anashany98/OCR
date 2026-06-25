@@ -18,7 +18,7 @@ Runs every ``webhook_outbox_interval_seconds`` (default 30s). Each tick:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select
@@ -42,7 +42,7 @@ def deliver_pending_webhooks_task() -> dict:
     """Drain the webhook outbox once. Designed to be called every 30s by Beat."""
     db = _get_session()
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stmt = (
             select(WebhookOutbox)
             .where(WebhookOutbox.status == "pending")
@@ -75,7 +75,7 @@ def deliver_pending_webhooks_task() -> dict:
                 row.last_response_code = response.status_code
                 if 200 <= response.status_code < 300:
                     row.status = "delivered"
-                    row.delivered_at = datetime.now(timezone.utc)
+                    row.delivered_at = datetime.now(UTC)
                     row.last_error = None
                     delivered += 1
                 else:
@@ -128,7 +128,7 @@ def _schedule_retry_or_dead_letter(db, row: WebhookOutbox) -> None:
     """
     if row.attempts >= row.max_attempts:
         row.status = "dead_letter"
-        row.dead_lettered_at = datetime.now(timezone.utc)
+        row.dead_lettered_at = datetime.now(UTC)
         logger.warning(
             "webhook_dead_lettered row_id=%s event=%s attempts=%s",
             row.id,
@@ -137,9 +137,7 @@ def _schedule_retry_or_dead_letter(db, row: WebhookOutbox) -> None:
         )
     else:
         row.status = "pending"
-        row.next_attempt_at = datetime.now(timezone.utc) + webhooks_service.backoff_for_attempt(
-            row.attempts
-        )
+        row.next_attempt_at = datetime.now(UTC) + webhooks_service.backoff_for_attempt(row.attempts)
         logger.info(
             "webhook_retry_scheduled row_id=%s event=%s attempt=%s next_in=%s",
             row.id,
@@ -160,7 +158,7 @@ def manual_retry(row_id: int) -> WebhookOutbox | None:
         if row.status not in {"dead_letter", "pending"}:
             raise ValueError(f"Cannot retry row in status '{row.status}'")
         row.status = "pending"
-        row.next_attempt_at = datetime.now(timezone.utc)
+        row.next_attempt_at = datetime.now(UTC)
         row.dead_lettered_at = None
         # attempts is intentionally NOT reset: we keep evidence of how many
         # tries the row has had. The retry still counts towards max_attempts.

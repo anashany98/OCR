@@ -26,6 +26,7 @@ Usage (from the backend/ directory):
     python -m scripts.build_golden_ocr --out tests/fixtures/golden_ocr
     python -m scripts.build_golden_ocr --limit 5
 """
+
 from __future__ import annotations
 
 import argparse
@@ -101,11 +102,22 @@ def _infer_document_type(filename: str) -> str:
     lower = filename.lower()
     if "albaran" in lower:
         return "albaran"
-    if "presupuest" in lower or "precio" in lower or "hoja de confec" in lower or "memoria" in lower:
+    if (
+        "presupuest" in lower
+        or "precio" in lower
+        or "hoja de confec" in lower
+        or "memoria" in lower
+    ):
         return "presupuesto"
     if "pedido" in lower or "pv" in lower or "venta" in lower:
         return "pedido"
-    if "plano" in lower or "escritorio" in lower or "medici" in lower or "bancada" in lower or "dtm" in lower:
+    if (
+        "plano" in lower
+        or "escritorio" in lower
+        or "medici" in lower
+        or "bancada" in lower
+        or "dtm" in lower
+    ):
         return "plano"
     if "factura" in lower:
         return "factura"
@@ -120,9 +132,8 @@ def _extract_pages_with_pymupdf(pdf_path: Path) -> list[str]:
         import fitz  # PyMuPDF
     except ImportError as exc:  # pragma: no cover
         raise SystemExit(
-            "PyMuPDF is required: pip install pymupdf\n"
-            f"Original import error: {exc}"
-        )
+            "PyMuPDF is required: pip install pymupdf\n" f"Original import error: {exc}"
+        ) from exc
     pages: list[str] = []
     with fitz.open(pdf_path) as doc:
         for page in doc:
@@ -216,7 +227,9 @@ def main(argv: list[str] | None = None) -> int:
         summary.append((file_id, n_pages, len(kws), kws))
         logger.info(
             "  %s: %d pages, %d starter keywords",
-            file_id, n_pages, len(kws),
+            file_id,
+            n_pages,
+            len(kws),
         )
 
     print()

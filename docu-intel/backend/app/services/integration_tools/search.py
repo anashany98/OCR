@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.schemas.integration import IntegrationSource, IntegrationToolExecuteResponse
+from app.services.integration_security import IntegrationContext
 from app.services.integration_tools.common import (
     HybridSearchArgs,
     QueryArgs,
@@ -13,7 +14,6 @@ from app.services.integration_tools.common import (
     _response,
     _search_filters_for_context,
 )
-from app.services.integration_security import IntegrationContext
 from app.services.redaction import redact_sensitive_text
 from app.services.search_service import search_hybrid, search_text
 

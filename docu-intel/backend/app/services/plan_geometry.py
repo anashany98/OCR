@@ -139,11 +139,10 @@ def detect_rooms_from_image(
             if area_px <= 0:
                 continue
 
-            # Convert to m².
-            if px_per_m and px_per_m > 0:
-                area_m2 = area_px / (px_per_m * px_per_m)
-            else:
-                area_m2 = area_px  # fallback: pixel²
+            # Convert to m² (or stay in pixel² if the calibration is
+            # missing/zero — the same fallback the previous if/else
+            # block encoded).
+            area_m2 = area_px / (px_per_m * px_per_m) if px_per_m and px_per_m > 0 else area_px
 
             if area_m2 < _MIN_ROOM_AREA_M2 or area_m2 > _MAX_ROOM_AREA_M2:
                 continue

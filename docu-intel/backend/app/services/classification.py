@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Iterable
 
 
 @dataclass(frozen=True)

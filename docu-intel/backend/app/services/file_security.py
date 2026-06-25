@@ -5,7 +5,6 @@ from pathlib import Path
 
 from app.core.config import settings
 
-
 EXECUTABLE_SIGNATURES = {
     b"MZ": "windows_executable",
     b"\x7fELF": "linux_executable",

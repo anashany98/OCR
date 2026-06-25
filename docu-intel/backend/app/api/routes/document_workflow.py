@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -62,7 +62,7 @@ def create_ocr_revision(
             description=payload.reason,
             actor_user_id=user.id,
             details_json={"page_id": page.id, "page_number": page.page_number},
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
     )
     write_audit(

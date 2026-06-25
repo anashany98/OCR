@@ -9,7 +9,6 @@ from app.core.config import settings
 from app.models import Budget, Document, DocumentPage, Order, Plan
 from app.services.dates import DATE_PATTERN as _DATE_PATTERN
 
-
 LOW_OCR_THRESHOLD = 0.70
 MIN_TEXT_CHARS = 40
 

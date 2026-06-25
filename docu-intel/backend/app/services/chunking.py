@@ -39,7 +39,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-
 _PARAGRAPH_RE = re.compile(r"\n\s*\n+")
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 # Markdown heading: 1-6 ``#`` followed by space and the heading text.

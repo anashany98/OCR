@@ -14,14 +14,14 @@ concurrent workers.
 
 from __future__ import annotations
 
-import concurrent.futures
 import os
+import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager, nullcontext
 from functools import cached_property
 from pathlib import Path
-import sys
 
 from app.core.config import settings
 from app.ocr.base import OCRBlock, OCRResult
@@ -67,9 +67,15 @@ class PaddleOCREngine:
     def __init__(self, lang: str | None = None, device: str | None = None) -> None:
         self.lang = lang or settings.paddle_lang
         self.device = device or _format_paddle_device(_get_gpu_device())
+        # O6: when the lazy init fails or times out the engine is
+        # marked unavailable so subsequent calls raise a clear error
+        # instead of re-entering the broken state.
+        self._init_failed: bool = False
 
     @cached_property
     def _engine(self):
+        if getattr(self, "_init_failed", False):
+            raise RuntimeError("PaddleOCR engine is unavailable: previous init attempt failed")
         return self._init_engine_with_timeout()
 
     def _init_engine_with_timeout(self):
@@ -80,6 +86,11 @@ class PaddleOCREngine:
         run the heavy ``PaddleOCR(...)`` call inside a daemon thread
         and raise ``RuntimeError`` when it does not complete within
         ``_PADDLE_INIT_TIMEOUT_SECONDS``.
+
+        O6: when the timeout expires the thread is logged as orphan
+        so the operator can see it leaking, and the engine is marked
+        as unavailable to prevent subsequent calls from re-entering
+        the same broken state.
         """
         from paddleocr import PaddleOCR
 
@@ -91,24 +102,43 @@ class PaddleOCREngine:
         if self.device:
             kwargs["device"] = self.device
 
-        def _do_init():
-            with paddleocr_init_lock():
-                return PaddleOCR(**kwargs)
+        result: list[object] = []
+        init_error: list[BaseException] = []
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_do_init)
+        def _do_init():
             try:
-                return future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
-            except concurrent.futures.TimeoutError:
-                logger.error(
-                    "PaddleOCR init timed out after %.0fs (lang=%s, device=%s)",
-                    _PADDLE_INIT_TIMEOUT_SECONDS,
-                    self.lang,
-                    self.device,
-                )
-                raise RuntimeError(
-                    f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
-                ) from None
+                with paddleocr_init_lock():
+                    result.append(PaddleOCR(**kwargs))
+            except BaseException as exc:
+                init_error.append(exc)
+
+        init_thread = threading.Thread(target=_do_init, daemon=False, name="paddleocr-init")
+        init_thread.start()
+        init_thread.join(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
+
+        if init_thread.is_alive():
+            logger.error(
+                "PaddleOCR init timed out after %.0fs (lang=%s, device=%s). "
+                "Thread %s is still running and may leak memory/VRAM.",
+                _PADDLE_INIT_TIMEOUT_SECONDS,
+                self.lang,
+                self.device,
+                init_thread.name,
+            )
+            self._init_failed = True
+            raise RuntimeError(
+                f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
+            )
+
+        if init_error:
+            self._init_failed = True
+            raise init_error[0]
+
+        if not result:
+            self._init_failed = True
+            raise RuntimeError("PaddleOCR init returned no result")
+
+        return result[0]
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()

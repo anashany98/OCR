@@ -41,7 +41,9 @@ def get_accepted_budgets_without_order(db: Session):
     )
 
 
-def _budget_by_number_or_id(db: Session, budget_number: str | None, budget_id: int | None) -> Budget | None:
+def _budget_by_number_or_id(
+    db: Session, budget_number: str | None, budget_id: int | None
+) -> Budget | None:
     """Resolve a :class:`Budget` by number or by id, whichever is set.
 
     Returns ``None`` when neither is provided or when no row matches.
@@ -53,9 +55,7 @@ def _budget_by_number_or_id(db: Session, budget_number: str | None, budget_id: i
         return db.get(Budget, int(budget_id))
     if not budget_number:
         return None
-    budget = db.scalar(
-        select(Budget).where(Budget.budget_number == budget_number).limit(1)
-    )
+    budget = db.scalar(select(Budget).where(Budget.budget_number == budget_number).limit(1))
     if budget is not None:
         return budget
     # Fallback: normalised lookup (whitespace / hyphen insensitive).
@@ -64,9 +64,7 @@ def _budget_by_number_or_id(db: Session, budget_number: str | None, budget_id: i
     norm = re.sub(r"[\s\-_/.,]", "", raw).lower()
     if not norm:
         return None
-    return db.scalar(
-        select(Budget).where(Budget.budget_number_normalized == norm).limit(1)
-    )
+    return db.scalar(select(Budget).where(Budget.budget_number_normalized == norm).limit(1))
 
 
 def get_budget_total(
@@ -107,7 +105,9 @@ def get_budget_total(
         }
     lines = list(
         db.scalars(
-            select(BudgetLine).where(BudgetLine.budget_id == budget.id).order_by(BudgetLine.id.asc())
+            select(BudgetLine)
+            .where(BudgetLine.budget_id == budget.id)
+            .order_by(BudgetLine.id.asc())
         ).all()
     )
     lines_total = 0.0
@@ -117,7 +117,8 @@ def get_budget_total(
     match = (
         budget.total_amount is not None
         and lines
-        and abs(lines_total - float(budget.total_amount)) <= max(1.0, float(budget.total_amount) * 0.01)
+        and abs(lines_total - float(budget.total_amount))
+        <= max(1.0, float(budget.total_amount) * 0.01)
     )
     return {
         "found": True,
@@ -210,9 +211,7 @@ def get_invoiced_amount_for_budget(
             "invoiced": 0.0,
             "invoice_count": 0,
         }
-    order_ids = list(
-        db.scalars(select(Order.id).where(Order.related_budget_id == budget.id)).all()
-    )
+    order_ids = list(db.scalars(select(Order.id).where(Order.related_budget_id == budget.id)).all())
     if not order_ids:
         return {
             "found": True,
@@ -234,9 +233,7 @@ def get_invoiced_amount_for_budget(
         "order_count": len(order_ids),
         "invoice_count": len(invoices),
         "invoiced": round(invoiced, 2),
-        "orders": [
-            {"order_id": oid, "invoiced": False} for oid in order_ids
-        ],
+        "orders": [{"order_id": oid, "invoiced": False} for oid in order_ids],
         "invoices": [
             {
                 "invoice_number": inv.invoice_number,

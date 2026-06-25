@@ -23,7 +23,6 @@ from ._registry import (
     WORKER_INIT_FAILURES,
 )
 
-
 # Allow-list of ``stage`` values for ``track_worker_init_failure``.
 # Anything outside the list is bucketed to ``"other"`` so a
 # buggy caller cannot blow up the Prometheus label cardinality.

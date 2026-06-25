@@ -22,8 +22,8 @@ in the non-streaming path automatically applies to streaming.
 
 from __future__ import annotations
 
-from app.services.prompt_sanitizer import sanitize_text, wrap_in_xml_tags
 from app.core.config import settings
+from app.services.prompt_sanitizer import sanitize_text, wrap_in_xml_tags
 
 from .context import (
     LOW_OCR_MARKER,
@@ -31,7 +31,6 @@ from .context import (
     _format_source,
     _is_low_ocr_context,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -107,7 +106,7 @@ def build_context_text(context_items: list[ContextItem]) -> str:
     The budget accounts for the prompt overhead (system + question +
     warnings).
     """
-    max_tokens = getattr(settings, "ai_max_context_tokens", 0) or 0
+    max_tokens = settings.ai_max_context_tokens or 0
     budget = max_tokens - _PROMPT_OVERHEAD_TOKENS if max_tokens > 0 else 0
 
     lines: list[str] = []

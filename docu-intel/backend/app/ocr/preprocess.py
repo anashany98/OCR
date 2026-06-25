@@ -4,7 +4,6 @@ import logging
 import tempfile
 from pathlib import Path
 
-
 logger = logging.getLogger("app.ocr.preprocess")
 UPSCALE_MIN_SIDE = 1500
 
@@ -70,14 +69,14 @@ def preprocess_for_ocr(path: Path) -> Path:
 
 
 def _temporary_output_path(path: Path, engine: str) -> Path:
-    handle = tempfile.NamedTemporaryFile(
+    with tempfile.NamedTemporaryFile(
         prefix=f"{path.stem}.{engine}.",
         suffix=".png",
         dir=path.parent,
         delete=False,
-    )
-    handle.close()
-    return Path(handle.name)
+    ) as handle:
+        handle.close()
+        return Path(handle.name)
 
 
 def _correct_orientation(image):

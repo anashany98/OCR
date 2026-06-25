@@ -13,15 +13,18 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.database.session import SessionLocal
 from app.ingestion.scanner import DEFAULT_SUBFOLDERS, scan_input_folders
-from app.ingestion.stability import is_allowed_file_path, is_file_stable, is_ignored_path
+from app.ingestion.stability import (
+    is_allowed_file_path,
+    is_file_stable,
+    is_file_too_large,
+    is_ignored_path,
+)
 from app.models import Document
-from app.services.file_storage import calculate_sha256
 from app.services.document_service import register_existing_file
+from app.services.file_storage import calculate_sha256
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
 from app.services.metrics import track_watcher_error
 from app.services.queue_control import is_ingestion_paused, should_accept_more_jobs
-
-from app.ingestion.stability import is_file_too_large
 
 logger = logging.getLogger("app.ingestion.watcher")
 
@@ -110,7 +113,7 @@ def ingest_path_if_ready(db: Session, path: Path, *, enqueue: bool = True) -> di
             "ignored",
             details={
                 "reason": "file_too_large",
-                "limit_mb": getattr(settings, "ingestion_max_file_size_mb", 500),
+                "limit_mb": settings.ingestion_max_file_size_mb,
             },
         )
         db.commit()

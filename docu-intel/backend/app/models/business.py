@@ -1,7 +1,7 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -33,7 +33,7 @@ class Budget(Base):
     )
     confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     lines = relationship("BudgetLine", back_populates="budget", cascade="all, delete-orphan")
@@ -80,7 +80,7 @@ class Order(Base):
     )
     confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     lines = relationship("OrderLine", back_populates="order", cascade="all, delete-orphan")
@@ -128,7 +128,7 @@ class Plan(Base):
     project_phase: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     revision: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     rooms = relationship("PlanRoom", back_populates="plan", cascade="all, delete-orphan")
@@ -199,7 +199,7 @@ class PlanSymbol(Base):
     bbox_y2: Mapped[float | None] = mapped_column(Float, nullable=True)
     source_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
     plan = relationship("Plan", back_populates="symbols")

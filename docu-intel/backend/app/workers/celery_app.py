@@ -7,7 +7,6 @@ from celery.signals import worker_process_init
 
 from app.core.config import settings
 
-
 logger = logging.getLogger("app.workers.celery_app")
 
 celery_app = Celery(

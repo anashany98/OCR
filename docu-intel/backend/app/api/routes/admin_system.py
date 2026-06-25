@@ -7,6 +7,10 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
+from app.api.routes.admin_helpers import (
+    _checklist_item,
+    count_where,
+)
 from app.core.config import settings
 from app.database.session import get_db
 from app.models import Document, User, WatchedFile
@@ -24,11 +28,6 @@ from app.services.maintenance import build_maintenance_report
 from app.services.operations import build_admin_alerts, build_processing_metrics
 from app.services.production_readiness import production_readiness
 from app.services.queue_control import build_queue_control_status
-
-from app.api.routes.admin_helpers import (
-    _checklist_item,
-    count_where,
-)
 
 router = APIRouter(prefix="/admin")
 
@@ -177,8 +176,8 @@ def _reranker_health() -> dict:
     ):
         return {"status": "ok", "enabled": False, "detail": "No reranker configured"}
     try:
-        from app.services.search_service import SearchResult
         from app.services.reranker import rerank_sync
+        from app.services.search_service import SearchResult
 
         candidate = SearchResult(
             document_id=0,

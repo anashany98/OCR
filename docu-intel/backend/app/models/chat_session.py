@@ -14,9 +14,10 @@ to resolve follow-ups — that is what :class:`ChatSession.state_json`
 is for — but having the message log around makes debugging and auditing
 much easier.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
@@ -33,7 +34,7 @@ from app.database.base import Base
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ChatSession(Base):
@@ -47,9 +48,7 @@ class ChatSession(Base):
 
     __tablename__ = "chat_sessions"
     __table_args__ = (
-        UniqueConstraint(
-            "user_id", "session_uuid", name="uq_chat_sessions_user_uuid"
-        ),
+        UniqueConstraint("user_id", "session_uuid", name="uq_chat_sessions_user_uuid"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -59,9 +58,7 @@ class ChatSession(Base):
     # A stable opaque identifier the client can pass back via
     # ``AskRequest.session_id``. ``None`` = the call is stateless and
     # does not contribute to any active context.
-    session_uuid: Mapped[str] = mapped_column(
-        String(64), index=True, nullable=False
-    )
+    session_uuid: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     # The JSON snapshot of the active conversation context. Schema is
     # documented in :mod:`app.ai.active_context` (the ``ActiveContext``
     # dataclass). Keep the column NOT NULL with a default so old rows
@@ -103,7 +100,8 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
     __table_args__ = (
         UniqueConstraint(
-            "session_id", "question_id",
+            "session_id",
+            "question_id",
             name="uq_chat_messages_session_question",
         ),
     )
@@ -121,9 +119,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(16), default="user", nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    was_structured_hit: Mapped[bool] = mapped_column(
-        default=False, nullable=False
-    )
+    was_structured_hit: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

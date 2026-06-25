@@ -36,7 +36,6 @@ from ._registry import (
 )
 from .labels import escape_label
 
-
 # Allow-list of language codes we accept on the Prometheus label
 # side. Anything else buckets under ``"unknown"`` so the cardinality
 # cannot explode when the parser runs on a noisy 200-page PDF.

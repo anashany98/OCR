@@ -31,15 +31,14 @@ from app.services.redaction import redact_sensitive_text
 from app.services.tenant_access import (
     AccessScope,
     access_scope_cache_key,
+    filter_document_ids_for_scope,
     filter_documents_for_scope,
     filter_records_by_document_scope,
     filter_search_results_for_scope,
-    filter_document_ids_for_scope,
 )
 from app.tools import internal
 
 from .tools import ToolCall, _extract_document_number, _extract_room_name, _normalize
-
 
 # ---------------------------------------------------------------------------
 # Public dataclasses (re-exported by agent.py for backward compat)
@@ -216,9 +215,7 @@ def collect_context(
                 _structured_context_item(
                     tool_name=tool.name,
                     payload=payload,
-                    label=(
-                        f"Presupuestos aceptados recientes ({payload.get('count')})"
-                    ),
+                    label=(f"Presupuestos aceptados recientes ({payload.get('count')})"),
                 )
             )
         elif tool.name == "get_invoice_origin_order":
@@ -272,15 +269,11 @@ def collect_context(
                 _structured_context_item(
                     tool_name=tool.name,
                     payload=payload,
-                    label=(
-                        f"Costes de envio en ambito {payload.get('scope')}"
-                    ),
+                    label=(f"Costes de envio en ambito {payload.get('scope')}"),
                 )
             )
             if not payload.get("found"):
-                warnings.append(
-                    "No he encontrado conceptos de envio dentro del ambito activo."
-                )
+                warnings.append("No he encontrado conceptos de envio dentro del ambito activo.")
         if tool.name == "find_document_by_filename":
             query = tool.arguments.get("query") or ""
             documents = internal.find_document_by_filename(db, query)
@@ -854,9 +847,7 @@ def _build_friendly_fallback(
     # through to the regular fallback.
     summary = top.summary or ""
     is_resolved_document = (
-        "Tipo:" in summary
-        and "Estado:" in summary
-        and top.document_id is not None
+        "Tipo:" in summary and "Estado:" in summary and top.document_id is not None
     )
     if not is_resolved_document:
         return None
@@ -890,11 +881,11 @@ def _build_friendly_fallback(
     # Document not yet classified.
     if meta.get("document_type") in {"desconocido", "unknown"}:
         answer = (
-            f"Todavia no he clasificado este documento (sigue marcado como "
-            f"tipo \"desconocido\"). No puedo decirte de que trata hasta que se "
-            f"procese y se le asigne un tipo. Recomiendo re-procesarlo desde "
-            f"la ficha del documento para que el sistema lo catalogue y le "
-            f"aplique la extraccion correspondiente."
+            "Todavia no he clasificado este documento (sigue marcado como "
+            'tipo "desconocido"). No puedo decirte de que trata hasta que se '
+            "procese y se le asigne un tipo. Recomiendo re-procesarlo desde "
+            "la ficha del documento para que el sistema lo catalogue y le "
+            "aplique la extraccion correspondiente."
         )
         return GroundedResponse(
             answer=answer,
@@ -905,9 +896,7 @@ def _build_friendly_fallback(
     # Low OCR confidence.
     if meta.get("confidence_low") or _is_low_ocr_context(top):
         conf_pct = (
-            int(round(float(top.confidence or 0) * 100))
-            if top.confidence is not None
-            else None
+            int(round(float(top.confidence or 0) * 100)) if top.confidence is not None else None
         )
         conf_text = f" ({conf_pct}% de confianza OCR)" if conf_pct is not None else ""
         answer = (
@@ -925,10 +914,10 @@ def _build_friendly_fallback(
     # No text extracted at all.
     if not (top.excerpt or top.summary or "").strip():
         answer = (
-            f"He encontrado el documento pero no tiene texto OCR extraido. "
-            f"Puede que el PDF sea solo imagen o que el OCR haya fallado. "
-            f"Recomiendo re-procesar este archivo desde su ficha para que se "
-            f"le aplique una nueva extraccion."
+            "He encontrado el documento pero no tiene texto OCR extraido. "
+            "Puede que el PDF sea solo imagen o que el OCR haya fallado. "
+            "Recomiendo re-procesar este archivo desde su ficha para que se "
+            "le aplique una nueva extraccion."
         )
         return GroundedResponse(
             answer=answer,

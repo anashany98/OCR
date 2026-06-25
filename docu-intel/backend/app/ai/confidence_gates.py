@@ -16,24 +16,22 @@ The rules are intentionally coarse — they apply to "amount
 questions" detected by the intent router. For other intents the
 gates are advisory only.
 """
+
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
-from .context import ContextItem, LOW_OCR_CONFIDENCE_THRESHOLD
+from .context import LOW_OCR_CONFIDENCE_THRESHOLD, ContextItem
 from .intent_router import (
-    INTENT_BUDGET_LINES,
     INTENT_BUDGET_TOTAL,
-    INTENT_DOCUMENT_SUMMARY,
     INTENT_INVOICED_AMOUNT,
-    INTENT_PLAN_SUMMARY,
     INTENT_SHIPPING_COST,
     IntentClassification,
     classify_intent,
 )
-
 
 # Amount-style questions: intents that the user is most likely to
 # expect a concrete number from. When the gate is open, the
@@ -184,11 +182,7 @@ def evaluate_confidence_gates(
 
     reason = ""
     if gates_open:
-        reason = (
-            "No puedo confirmarlo con seguridad: "
-            + ", ".join(gates_open)
-            + "."
-        )
+        reason = "No puedo confirmarlo con seguridad: " + ", ".join(gates_open) + "."
 
     return GateEvaluation(
         gates_open=gates_open,
@@ -206,9 +200,7 @@ def evaluate_confidence_gates(
 def _is_low_ocr(item: ContextItem) -> bool:
     if item.ocr_confidence is not None and item.ocr_confidence < LOW_OCR_CONFIDENCE_THRESHOLD:
         return True
-    if item.confidence is not None and item.confidence < LOW_OCR_CONFIDENCE_THRESHOLD:
-        return True
-    return False
+    return bool(item.confidence is not None and item.confidence < LOW_OCR_CONFIDENCE_THRESHOLD)
 
 
 def _is_garbage_text(item: ContextItem) -> bool:
@@ -220,9 +212,7 @@ def _is_garbage_text(item: ContextItem) -> bool:
     return alnum / max(len(text), 1) < 0.5
 
 
-def _has_resolved_meta(
-    resolved_document: dict | None, key: str, value: str
-) -> bool:
+def _has_resolved_meta(resolved_document: dict | None, key: str, value: str) -> bool:
     if not resolved_document:
         return False
     actual = resolved_document.get(key)
@@ -259,7 +249,7 @@ def gate_warning_prompt_line(evaluation: GateEvaluation) -> str | None:
 
 def format_gate_blocked_answer(
     evaluation: GateEvaluation,
-    active_context: "Any | None" = None,
+    active_context: Any | None = None,
 ) -> str:
     """Render the standard answer when a confidence gate blocks the LLM.
 
@@ -280,9 +270,7 @@ def format_gate_blocked_answer(
         scope = f"del presupuesto {active_context.current_budget_number} "
     direct = (
         f"No puedo confirmarlo con seguridad para {scope}porque el documento "
-        f"tiene una o varias senales de baja calidad: "
-        + ", ".join(evaluation.gates_open)
-        + "."
+        f"tiene una o varias senales de baja calidad: " + ", ".join(evaluation.gates_open) + "."
     )
     evidence_items: list[ContextItem] = []
     for cand in evaluation.amount_candidates[:12]:
@@ -321,7 +309,7 @@ def format_gate_blocked_answer(
 
 
 def evaluate_gates_for_turn(
-    db: "Any | None",
+    db: Any | None,
     *,
     question: str,
     context_items: list,
@@ -340,9 +328,7 @@ def evaluate_gates_for_turn(
     if resolved_doc_id is not None and db is not None:
         from app.tools import internal
 
-        resolved_doc_payload = internal.get_document_full_details(
-            db, resolved_doc_id
-        )
+        resolved_doc_payload = internal.get_document_full_details(db, resolved_doc_id)
     evaluation = evaluate_confidence_gates(
         question=question,
         context_items=context_items,
