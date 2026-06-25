@@ -14,21 +14,23 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-# The full audit-recommended set ``["E", "F", "W", "I", "B",
-# "UP", "N", "SIM", "RUF"]`` reports ~950 lint issues against
-# the current codebase. The previous CI gate ``ruff check app/
-# && ruff format --check app/`` failed immediately on the
-# first push that ran it, which made the entire ``lint`` step
-# useless (developers learned to ignore it).
-#
-# We start with the minimum viable set (``E`` syntax errors +
-# ``F`` pyflakes) so the gate passes today. Each extra rule
-# family should be enabled one at a time, with a sweep to fix
-# the issues it surfaces, until we get back to the full audit
-# set. The progressive rollout is tracked in AUDIT_REPORT.md
-# (section E, item 8).
-select = ["E", "F"]
-ignore = ["E501"]
+# L-1: progressively wider rule set. The original
+# ``["E", "F"]`` was the minimum-viable set; we now enable
+# ``UP`` (pyupgrade: catches deprecated stdlib use like
+# ``datetime.utcnow()``), ``B`` (bugbear: catches real bugs
+# like mutable defaults and ``is``/``==`` confusion) and
+# ``SIM`` (simplify: catches redundant ``if``/``return`` etc.).
+# The previous full audit set still reports ~950 issues; we
+# add the high-signal rules in ``W`` and ``I`` and rely on
+# per-rule ``ignore`` lines for the rest. Each batch should
+# land behind a separate PR with a sweep to fix the new
+# warnings, so the gate never blocks everyone at once.
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",   # line length: handled by the formatter
+    "B008",   # function call in default argument (FastAPI uses this)
+    "UP038",  # isinstance tuple form: low value
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

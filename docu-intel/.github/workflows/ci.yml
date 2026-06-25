@@ -57,6 +57,31 @@ jobs:
         # before pushing.
         run: ruff format --check .
 
+  # M-8: separate frontend lint job so the format check does not
+  # gate backend changes. Runs ESLint (flat config) and Prettier.
+  frontend-lint:
+    name: frontend lint + format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docu-intel/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: docu-intel/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        # M-8: block PRs that introduce un-formatted frontend code.
+        # Operator can run ``npm run format`` locally to fix.
+        run: npm run format:check
+
   test:
     name: pytest
     runs-on: ubuntu-latest
@@ -140,18 +165,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate dev compose
-        # ``docker compose config`` parses the file, expands
-        # variables, and rejects unknown keys. Catches typos
-        # in service names, missing profiles, etc. before the
-        # operator sees them at deploy time.
+        # H-7: instead of ``cp .env.example .env`` (which would
+        # overwrite any committed .env and silently use the
+        # placeholder values for ``POSTGRES_PASSWORD`` etc.),
+        # feed docker compose a minimal env file via stdin.
+        # Compose then refuses to validate if any ``${VAR:?set VAR}``
+        # reference is unsatisfied.
         run: |
           cd docu-intel
-          cp .env.example .env 2>/dev/null || true
-          docker compose -f docker-compose.yml config -q
+          ENV_FILE=$(mktemp)
+          trap 'rm -f "$ENV_FILE"' EXIT
+          cat > "$ENV_FILE" <<'EOF'
+          POSTGRES_PASSWORD=ci_dummy
+          REDIS_PASSWORD=ci_dummy
+          GLITCHTIP_SECRET_KEY=ci_dummy
+          GLITCHTIP_DB_PASSWORD=ci_dummy
+          EOF
+          docker compose --env-file "$ENV_FILE" -f docker-compose.yml config -q
       - name: Validate prod compose
         env:
           REDIS_PASSWORD: ci_dummy
           POSTGRES_PASSWORD: ci_dummy
+          GLITCHTIP_SECRET_KEY: ci_dummy
+          GLITCHTIP_DB_PASSWORD: ci_dummy
         run: |
           cd docu-intel
           docker compose -f docker-compose.prod.yml config -q

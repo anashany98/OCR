@@ -134,29 +134,41 @@ def execute_tool(
 
 @router.post("/documents/upload", response_model=IntegrationUploadResponse)
 def upload_document(
-    budget_code: str | None = Form(default=None),
+    budget_code: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     context: IntegrationContext = Depends(get_integration_context),
 ) -> IntegrationUploadResponse:
     require_scope(context, "upload")
-    if budget_code:
-        scope = get_budget_scope_by_code(db, budget_code)
-        if not scope:
-            raise HTTPException(status_code=404, detail="Budget scope not found")
-        if context.budget_session and context.budget_session.budget_scope_id != scope.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Integration session cannot upload to this budget scope",
-            )
-        permission = get_client_budget_permission(
-            db, client_id=context.client.id, budget_scope_id=scope.id
+    # M-3: ``budget_code`` is now required. Uploads without a scope
+    # produced "orphan" documents that lived outside the audit /
+    # redaction envelope and could become invisible to the same
+    # integration client on the read paths (which filter by
+    # ``budget_session``). Operators who legitimately need a
+    # no-scope intake should create a dedicated ``intake`` budget
+    # scope and grant their integration client ``can_query`` on
+    # it.
+    if not budget_code or not budget_code.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="budget_code is required for /integrations/v1/documents/upload",
         )
-        if not permission or not permission.can_query:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Integration client cannot upload to this budget scope",
-            )
+    scope = get_budget_scope_by_code(db, budget_code)
+    if not scope:
+        raise HTTPException(status_code=404, detail="Budget scope not found")
+    if context.budget_session and context.budget_session.budget_scope_id != scope.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Integration session cannot upload to this budget scope",
+        )
+    permission = get_client_budget_permission(
+        db, client_id=context.client.id, budget_scope_id=scope.id
+    )
+    if not permission or not permission.can_query:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Integration client cannot upload to this budget scope",
+        )
     try:
         document, job = register_upload(
             db,
@@ -170,8 +182,9 @@ def upload_document(
         if "max_upload_size" in str(exc):
             raise HTTPException(status_code=413, detail=str(exc)) from exc
         raise
-    if budget_code:
-        assign_document_budget_scope(db, document, budget_code=budget_code)
+    # ``budget_code`` is required above, so we always assign the
+    # document to the scope.
+    assign_document_budget_scope(db, document, budget_code=budget_code)
     write_audit(
         db,
         user=None,

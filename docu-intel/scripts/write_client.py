@@ -1,6 +1,22 @@
-﻿import os
+"""M-9: write_client.py — generator for ``frontend/src/api/client.ts``.
 
-content = '''import type {
+The canonical client (``frontend/src/api/client.ts``) is committed and is
+the source of truth — the frontend imports from it. This script can be
+re-run to regenerate it when a new endpoint is added; it takes the
+target path as a CLI arg so it works on any platform.
+
+Usage:
+
+    python scripts/write_client.py frontend/src/api/client.ts
+
+The generated content is the same string the original script wrote.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+CONTENT = '''import type {
   AdminAlert,
   AdminStats,
   AccessGroup,
@@ -211,6 +227,21 @@ function buildSearchParams(params?: Record<string, unknown>) {
 }
 '''
 
-with open(r'C:\\Users\\PC\\Desktop\\PROYECTOS\\OCR\\docu-intel\\frontend\\src\\api\\client.ts', 'w', encoding='utf-8') as f:
-    f.write(content)
-print('client.ts written')
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print(
+            "usage: write_client.py <target_path>\n"
+            "  e.g. python scripts/write_client.py frontend/src/api/client.ts",
+            file=sys.stderr,
+        )
+        return 2
+    target = Path(sys.argv[1])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(CONTENT, encoding="utf-8")
+    print(f"client.ts written to {target}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -23,6 +23,28 @@
       timeout: 5s
       retries: 5
 
+  # H-1: dedicated one-shot migration sidecar. Run with
+  #   docker compose run --rm migrate
+  # before ``docker compose up -d`` the first time you deploy, and again
+  # every time the schema changes. ``restart: on-failure`` keeps it
+  # healthy across deploys but a future race between two ``migrate`` runs
+  # is no longer possible: this service exits 0 when done and does not
+  # stay running. The backend container now boots straight into uvicorn
+  # (see backend/Dockerfile) so a multi-replica scale-out no longer races
+  # on ``alembic upgrade head``.
+  migrate:
+    build:
+      context: ./backend
+    env_file: .env
+    command: alembic upgrade head
+    restart: on-failure
+    user: "0:0"  # migration needs CREATE/ALTER rights; appuser is read-only by design
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
@@ -49,13 +71,20 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      # Mount the host's lms CLI so the backend can manage the vision
-      # model lifecycle (load / unload) on demand. Note: this fallback
-      # is only useful on Linux hosts where lms is a native ELF binary;
-      # on Windows the container can't exec lms.exe and the backend
-      # falls back to the HTTP shim at LMS_SHIM_URL (see
+      # M-2: mount the host's lms CLI so the backend can manage the
+      # vision model lifecycle (load / unload) on demand. Only useful
+      # on Linux hosts where lms is a native ELF binary; on Windows
+      # the container can't exec lms.exe and the backend falls back
+      # to the HTTP shim at LMS_SHIM_URL (see
       # app/services/vision_manager.py).
-      - ${LMS_BIN_PATH:-${USERPROFILE}/.lmstudio/bin/lms.exe}:/usr/local/bin/lms:ro
+      #
+      # The previous default (``${USERPROFILE}/.lmstudio/bin/lms.exe``)
+      # broke on WSL because ``$USERPROFILE`` is empty there, leaving
+      # an empty source path that docker compose rejected at startup.
+      # Now the default is the lms_server.py shim that ships with the
+      # repo (always present) and the operator can override
+      # LMS_BIN_PATH to point at a real lms binary on Linux.
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -69,9 +98,13 @@
     build:
       context: ./backend
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2} -n worker-fast@%h
     restart: unless-stopped
-    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
+    # H-2: enabled. The image's ENTRYPOINT (docker-entrypoint.sh)
+    # chowns bind-mounts that are still owned by root, so the
+    # non-root appuser can write to /app/data/files and
+    # /app/data/input on Linux/Windows hosts.
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,12 +126,20 @@
       start_period: 90s
 
   worker-heavy:
+    # H-3: this service is the CPU-only OCR worker. It used to be
+    # gated behind ``profiles: ["ocr-cpu"]``, which meant a fresh
+    # ``docker compose up`` (no profile) would leave the ``ocr_heavy``
+    # queue with no consumer — scanned PDFs would pile up forever.
+    # It now lives in the default profile; the GPU workers below
+    # stay under ``profiles: ["ocr-gpu"]`` because they need an
+    # NVIDIA runtime.
     build:
       context: ./backend
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy@%h
     restart: unless-stopped
-    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
+    # H-2: enabled. See worker-fast for the bind-mount chown design.
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,13 +150,16 @@
       - ./data/input:/app/data/input
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # See note on worker-heavy-gpu-0: we use a process-alive check
-    # (`pgrep -f 'celery_app worker'`) because `inspect ping` flakes
-    # in this setup. The worker is functionally correct (verified:
-    # registers with broker, listens on ocr_heavy queue, processes
-    # tasks) but the docker healthcheck invocation is unreliable.
+    # M-5: instead of a ``pgrep`` (which passes even when the worker
+    # cannot reach the broker), ask Celery for the registered task
+    # names. The worker must be up, registered with Redis, and
+    # listening on ``ocr_heavy`` for the check to succeed. A worker
+    # that silently died on a broken Redis connection now fails the
+    # healthcheck and Docker restarts it.
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'celery_app worker' >/dev/null || exit 1"]
+      test:
+        - CMD-SHELL
+        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d celery@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -158,16 +202,15 @@
     # model upload to VRAM). Use 3-min start_period.
     # NOTE: celery's `inspect ping` (both targeted -d and broadcast)
     # is timing-sensitive in this environment and returns "No nodes
-    # replied" intermittently even when the worker is fully up and
-    # consuming tasks (verified manually: the worker registers and
-    # responds to broadcast ping from other containers, but the
-    # docker healthcheck invocation flakes). We use a process-alive
-    # check instead: `celery` is a long-running worker; if the
-    # command can introspect its own argv and find a celery worker
-    # process, the worker is alive. The functional check is done at
-    # task-dispatch time, not at the heartbeat level.
+    # M-5: replace the previous ``pgrep`` process-alive check with a
+    # functional one — ``inspect registered`` returns the task names
+    # the worker has registered with the broker. If the worker cannot
+    # reach Redis (the broker), it never registers, the grep misses,
+    # and Docker restarts the container.
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'celery_app worker' >/dev/null || exit 1"]
+      test:
+        - CMD-SHELL
+        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy-gpu-0@%h 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -210,11 +253,12 @@
       - "host.docker.internal:host-gateway"
     # GPU workers take longer to start (CUDA init + PaddleOCR/Paddle
     # model upload to VRAM). Use 3-min start_period.
-    # Same reasoning as worker-heavy-gpu-0: `inspect ping` flakes in
-    # this environment (returns "No nodes replied" intermittently even
-    # when the worker is fully up). Use a process-alive check.
+    # M-5: same functional check as worker-heavy-gpu-0; see comment
+    # there for the rationale.
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'celery_app worker' >/dev/null || exit 1"]
+      test:
+        - CMD-SHELL
+        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy-gpu-1@%h 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -224,9 +268,10 @@
     build:
       context: ./backend
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1} -n worker-maintenance@%h
     restart: unless-stopped
-    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
+    # H-2: enabled. See worker-fast.
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -250,7 +295,8 @@
     env_file: .env
     command: python -m app.ingestion.watcher
     restart: unless-stopped
-    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
+    # H-2: enabled. See worker-fast.
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -273,7 +319,8 @@
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
     restart: unless-stopped
-    # user: "${APP_UID:-10001}:${APP_GID:-10001}"  # disabled on Windows: 9p bind-mounts are owned by root, non-root user can't read
+    # H-2: enabled. See worker-fast.
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       redis:
         condition: service_healthy
@@ -326,15 +373,22 @@
   glitchtip:
     image: glitchtip/glitchtip:latest
     restart: unless-stopped
+    # H-6: require an explicit strong SECRET_KEY and DB password. The
+    # previous default ``change_me_generate_with_secrets_token_urlsafe_64``
+    # is a well-known placeholder that ships in the public Docker image;
+    # production operators who forgot to set the variable left the
+    # GlitchTip UI unauthenticated against anyone on the network.
     environment:
-      DATABASE_URL: postgresql://glitchtip:glitchtip@glitchtip-db/glitchtip
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-change_me_generate_with_secrets_token_urlsafe_64}
+      DATABASE_URL: postgresql://glitchtip:${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in .env}@glitchtip-db/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?set GLITCHTIP_SECRET_KEY in .env}
       EMAIL_URL: ""
       GLITCHTIP_ENVIRONMENT: ${ENVIRONMENT:-local}
       ALLOWED_HOSTS: "*"
       ENABLE_SIGNUP: "true"
+    # H-6: bind to loopback only by default; operators who need remote
+    # access should put GlitchTip behind an authenticated reverse proxy.
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     depends_on:
       glitchtip-db:
         condition: service_healthy
@@ -344,10 +398,15 @@
   glitchtip-db:
     image: postgres:16-alpine
     restart: unless-stopped
+    # H-6: require an explicit, strong GlitchTip DB password. The previous
+    # default of ``glitchtip`` made every error event (which can include
+    # stack traces with PII) trivially reachable by anyone on the
+    # network. The compose ``config`` check rejects empty or known-weak
+    # passwords; ``setup-env.ps1`` generates a secure one.
     environment:
       POSTGRES_DB: glitchtip
       POSTGRES_USER: glitchtip
-      POSTGRES_PASSWORD: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in .env}
     volumes:
       - glitchtip_data:/var/lib/postgresql/data
     healthcheck:

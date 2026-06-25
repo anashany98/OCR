@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,18 @@ _logging.getLogger("app.bootstrap").info(
     1000,
     _APPLIED_MAX_FILES,
 )
+
+# H-5: refuse to boot in non-local environments with a permissive
+# UVICORN_FORWARDED_ALLOW_IPS. The previous default (``*``) made every
+# IP-based rate limit and audit entry spoofable via X-Forwarded-For.
+if settings.environment != "local":
+    forwarded_allow = os.environ.get("UVICORN_FORWARDED_ALLOW_IPS", "")
+    if forwarded_allow.strip() in {"", "*"}:
+        raise RuntimeError(
+            "UVICORN_FORWARDED_ALLOW_IPS must be set to the reverse-proxy CIDR "
+            "(e.g. '10.0.0.5' or '10.0.0.0/8') in non-local environments. "
+            "Refusing to boot with '*' or empty (H-5)."
+        )
 
 
 @asynccontextmanager

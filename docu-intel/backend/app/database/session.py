@@ -22,7 +22,14 @@ def _build_engine(database_url: str) -> Engine:
         if ":memory:" in database_url:
             engine_kwargs["poolclass"] = StaticPool
     else:
-        engine_kwargs["pool_size"] = 20
+        # H-4: cap the per-process connection budget so a horizontally
+        # scaled deployment cannot blow past Postgres' default
+        # ``max_connections=100`` (each worker process reserves
+        # pool_size + max_overflow; the formula is documented in
+        # docs/production-runbook.md).
+        engine_kwargs["pool_size"] = 5
+        engine_kwargs["max_overflow"] = 5
+        engine_kwargs["pool_timeout"] = 10
         engine_kwargs["pool_recycle"] = 3600
     return create_engine(database_url, **engine_kwargs)
 

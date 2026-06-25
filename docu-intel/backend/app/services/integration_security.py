@@ -6,7 +6,7 @@ with a full table scan of ``integration_clients``:
     db.scalars(select(IntegrationClient).where(is_active=True)).all()
     for client in clients:
         if verify_integration_api_key(api_key, client.api_key_hash):
-            client.last_used_at = datetime.utcnow()
+    client.last_used_at = datetime.now(timezone.utc)
             db.flush()
             return client
 
@@ -47,7 +47,7 @@ import hmac
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select

@@ -40,29 +40,19 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/test/**", "src/main.tsx"],
       thresholds: {
-        // The original 50% global threshold was unreachable
-        // because most of the codebase is JSX render code
-        // (pages, components, layouts) that the test suite
-        // exercises indirectly but doesn't branch-cover.
-        // We split the budget per folder so the gate stays
-        // useful: hooks and API clients (pure logic, easy
-        // to unit-test) keep a high bar; pages and
-        // components (JSX-heavy) get a lower one that the
-        // existing tests already meet; the global floor is
-        // a sanity check that catches a full-suite
-        // regression.
-        //
-        // The 10% floor is intentionally below the current
-        // 11.79% so the gate is informational rather than
-        // blocking. Future PRs should raise it as the
-        // test suite grows; the per-folder breakdown in
-        // the coverage report makes the obvious gaps
-        // (e.g. ``src/api/admin.ts``) easy to spot.
-        lines: 10,
-        functions: 20,
-        branches: 10,
-        statements: 10,
-        perFile: false,
+        // M-7: per-folder targets with ``perFile: true`` so the
+        // gate actually catches regressions. The previous
+        // 10% global floor was informational (below the
+        // current 11.79% measured) and let a 50%→5% drop
+        // pass CI. We split the budget so the pure-logic
+        // surface (hooks, API clients) keeps a high bar
+        // and the JSX-heavy surface (pages, components)
+        // gets a realistic but still meaningful floor.
+        lines: 30,
+        functions: 30,
+        branches: 20,
+        statements: 30,
+        perFile: true,
       },
     },
   },

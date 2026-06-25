@@ -134,12 +134,6 @@ def build_webhook_test_payload() -> dict[str, Any]:
     }
 
 
-def _signature(payload: dict[str, Any]) -> str:
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    digest = hmac.new(settings.integration_webhook_secret.encode("utf-8"), raw, sha256).hexdigest()
-    return f"sha256={digest}"
-
-
 # ---------------------------------------------------------------------------
 # High-level helpers used by the rest of the app
 # ---------------------------------------------------------------------------

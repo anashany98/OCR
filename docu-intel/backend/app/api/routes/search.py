@@ -40,8 +40,13 @@ def text_search(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list:
-    results = search_text(db, q, limit=limit)
-    return filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))
+    # M-12: resolve the scope once and pass it to the service so
+    # the SQL itself is restricted. The in-memory post-filter
+    # below still runs as defense-in-depth (it strips rows whose
+    # ``tags_json`` hit a denied tag).
+    scope = resolve_user_access_scope(db, user)
+    results = search_text(db, q, limit=limit, access_scope=scope)
+    return filter_search_results_for_scope(db, results, scope)
 
 
 @router.get("/exact", response_model=list[SearchResultRead])

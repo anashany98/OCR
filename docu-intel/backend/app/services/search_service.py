@@ -71,8 +71,24 @@ def _escape_ilike_wildcards(text: str) -> str:
 
 
 def search_text(
-    db: Session, query: str, limit: int = 20, filters: dict | None = None
+    db: Session,
+    query: str,
+    limit: int = 20,
+    filters: dict | None = None,
+    access_scope=None,
 ) -> list[SearchResult]:
+    """ILIKE-based full-text search over ``DocumentPage.text`` and
+    ``DocumentBlock.text``.
+
+    M-12: ``access_scope`` is now optional but, when provided, is
+    pushed into the SQL via :func:`apply_access_predicates` so the
+    LIMIT-then-filter pattern is gone. The previous flow fetched
+    ``limit`` rows from SQL and filtered in memory; restricted users
+    with many out-of-scope documents at the top of the result set
+    would get empty pages even when a matching document existed
+    beyond the cap. The route handler still runs the
+    tag/allowed-type post-filter for defense in depth.
+    """
     start = time.perf_counter()
     try:
         normalized = query.strip()
@@ -92,6 +108,14 @@ def search_text(
             .where(Document.deleted_at.is_(None))
             .where(DocumentBlock.text.ilike(pattern))
         )
+        # M-12: scope at the SQL layer. ``access_scope`` is a
+        # no-op for admins (returns the same SELECT) so this is
+        # safe to wire unconditionally from the route handler.
+        if access_scope is not None:
+            from app.services.tenant_access import apply_access_predicates
+
+            page_stmt = apply_access_predicates(page_stmt, access_scope)
+            block_stmt = apply_access_predicates(block_stmt, access_scope)
         page_stmt = _apply_document_filters(page_stmt, filters).limit(limit)
         block_stmt = _apply_document_filters(block_stmt, filters).limit(limit)
 

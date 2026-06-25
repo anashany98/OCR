@@ -38,6 +38,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-core \
     libreoffice-writer \
     libreoffice-common \
+    # H-2: gosu is used by docker-entrypoint.sh to drop privileges
+    # from root (which performs the bind-mount chown) to the non-root
+    # appuser before exec'ing the actual worker / uvicorn process.
+    gosu \
     curl \
     tesseract-ocr \
     tesseract-ocr-spa \
@@ -51,13 +55,31 @@ RUN groupadd --system --gid 10001 appuser \
     && mkdir -p /app/data/files /app/data/input \
     && chown -R appuser:appuser /app
 
+# H-2: install the entrypoint that fixes bind-mount ownership on
+# Linux/Windows hosts and then drops to the non-root appuser. See
+# docker-entrypoint.sh for the full design.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 COPY app /app/app
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY scripts /app/scripts
 
-USER appuser
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
+# H-1: pull the alembic step OUT of the backend CMD. Running migrations
+# at container start is not race-safe when two backend replicas come up
+# at the same time (rolling deploy, autoscale); the previous behaviour
+# could corrupt ``alembic_version``. The migrations now live in a
+# dedicated ``migrate`` sidecar (see docker-compose.yml and
+# docker-compose.prod.yml) that operators run once per deploy.
+#
+# The CMD stays a one-shot ``uvicorn`` for backwards compatibility — if
+# the operator forgets to run ``migrate`` first, the backend will fail
+# fast at the first DB query with a clear "table does not exist" error
+# (no silent corruption).
+#
 # SEC-RL-1 (Sprint 0): pass --proxy-headers so uvicorn populates
 # ``request.client.host`` from a trusted reverse proxy. The list of
 # trusted proxy IPs is injected via the UVICORN_FORWARDED_ALLOW_IPS
@@ -68,4 +90,4 @@ USER appuser
 # NOTE: do NOT wrap ${UVICORN_FORWARDED_ALLOW_IPS:-*} in single quotes
 # inside this sh -c string — single quotes prevent shell variable
 # expansion, and uvicorn would receive the literal placeholder text.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-*}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-*}"]

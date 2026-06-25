@@ -1,4 +1,5 @@
 import logging
+import os
 
 from celery import Celery
 from celery.schedules import schedule
@@ -87,6 +88,19 @@ def preload_worker_ocr_engine(**_kwargs) -> None:
     (stack trace included) and emitted as a Prometheus counter
     so the operator can dashboard it.
     """
+    # M-4: only preload on workers that actually consume the
+    # ``ocr_heavy`` queue. ``worker-fast``, ``worker-maintenance``,
+    # ``scheduler`` and ``watcher`` do not need PaddleOCR in
+    # memory; loading it there just costs ~1-2 GB of RAM per
+    # process and slows down startup. The name is set by the
+    # ``-n`` / ``--hostname`` flag in docker-compose.yml.
+    worker_name = os.environ.get("WORKER_NAME") or ""
+    if "heavy" not in worker_name.lower() and "ocr" not in worker_name.lower():
+        logger.info(
+            "ocr_preload_skipped reason=not_ocr_worker worker_name=%s",
+            worker_name,
+        )
+        return
     try:
         from app.ocr.factory import preload_ocr_engine
 

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     # Auto-set to ``local_dev`` when ENVIRONMENT=local; otherwise
     # ``strict``.
     csp_mode: Literal["strict", "local_dev", "disabled"] | None = None
+    csp_nonce_enabled: bool = True
 
     @field_validator("csp_mode", mode="after")
     @classmethod
@@ -220,7 +221,12 @@ class Settings(BaseSettings):
     pp_structure_lang: str = "es"
     paddle_lang: str = "es"
 
-    embedding_provider: str = "local_hash"
+    # Default to the OpenAI-compatible path so a fresh deployment that
+    # forgets to set EMBEDDING_PROVIDER still tries to use a real model.
+    # Operators that want a pure-offline, no-server mode can set
+    # ``local_hash`` explicitly. ``embedding_fallback_to_hash`` is the
+    # per-request failure policy (see the prior H7 finding).
+    embedding_provider: str = "local_openai_compatible"
     embedding_base_url: str = ""
     embedding_model: str = "bge-m3"
     embedding_api_key: str = ""
@@ -380,9 +386,10 @@ class Settings(BaseSettings):
 
     max_upload_size_mb: int = 500  # Bumped for large architectural plans (up to 300 MB)
     # Max number of file parts in a single multipart upload (python-multipart's
-    # default is 1000). Bumped so a folder drag-and-drop or webkitdirectory
-    # pick with many files is not rejected before reaching the route.
-    max_upload_files: int = 10_000_000
+    # default is 1000). 2000 keeps per-request memory bounded while still
+    # allowing a folder drag-and-drop of a few hundred files. Raise only if
+    # you really need to upload thousands of files in a single request.
+    max_upload_files: int = 2000
     max_pdf_pages: int = 1000  # Bumped for large plan sets
     max_image_megapixels: float = 40.0
     max_excel_rows: int = 100_000
@@ -532,6 +539,29 @@ class Settings(BaseSettings):
             raise
         except Exception:
             pass
+        return value
+
+    @field_validator("cors_origins", mode="after")
+    @classmethod
+    def _validate_production_hardening(cls, value: list[str], info: ValidationInfo) -> list[str]:
+        """Cross-setting guards for non-local environments.
+
+        These run after every other field is validated; we read the
+        already-validated ``environment`` value from ``info.data``. The
+        goal is to fail-fast at startup if a production deployment
+        shipped with a permissive default that would let an attacker
+        spoof source IPs (uvicorn) or send cross-site credentials
+        (CORS).
+        """
+        environment = info.data.get("environment", "local")
+        if environment == "local":
+            return value
+        # The frontend's VITE_API_BASE_URL is the only proxy we expect in
+        # production; a wildcard CORS in production defeats the cookie
+        # SameSite policy and is a release blocker. CORS_ORIGINS was
+        # already validated above; this is a defensive second check.
+        if "*" in value:
+            raise ValueError("CORS_ORIGINS must not contain '*' in non-local environments")
         return value
 
 
