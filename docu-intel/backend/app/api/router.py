@@ -10,6 +10,7 @@ from app.api.routes import (
     document_workflow,
     documents,
     health,
+    hyperextract,
     ingestion,
     integrations,
     invoices,
@@ -29,6 +30,7 @@ api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(documents.router, prefix="/documents", tags=["documents"])
 api_router.include_router(document_workflow.router, prefix="/documents", tags=["documents"])
+api_router.include_router(hyperextract.router, prefix="/documents", tags=["hyperextract"])
 api_router.include_router(thumbnails.router, prefix="/documents", tags=["thumbnails"])
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])

@@ -20,6 +20,7 @@ from app.models.document import (
     DocumentPage,
     ExtractionJob,
 )
+from app.models.hyperextract import DocumentExtraction
 from app.models.integration import AccessPolicy, IntegrationClient, TechnicianAccessProfile
 from app.models.learning import ClassificationSuggestion, LearnedPattern
 from app.models.operations import IngestionEvent, WatchedFile
@@ -68,6 +69,7 @@ __all__ = [
     "DocumentBlock",
     "DocumentChunk",
     "DocumentEntity",
+    "DocumentExtraction",
     "DocumentPage",
     "DocumentTimelineEvent",
     "ExtractionJob",

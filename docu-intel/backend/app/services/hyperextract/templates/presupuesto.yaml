@@ -1,0 +1,65 @@
+# Hyper-Extract — quote ("presupuesto") template
+
+document_type: presupuesto
+description: Spanish quote (presupuesto) — provider, client, totals, validity.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de presupuestos en español.
+  Devuelve EXCLUSIVAMENTE JSON válido (sin texto alrededor, sin bloques
+  ```json). Si un campo no aparece, devuelve null. No inventes datos.
+
+fields:
+  - name: proveedor
+    type: string
+    description: Razón social del proveedor que emite el presupuesto.
+    required: true
+  - name: cliente
+    type: string
+    description: Razón social o nombre del cliente destinatario.
+    required: true
+  - name: numero_presupuesto
+    type: string
+    description: Número de presupuesto.
+    required: true
+  - name: fecha
+    type: date
+    description: Fecha de emisión (YYYY-MM-DD).
+    required: true
+  - name: validez
+    type: string
+    description: Plazo de validez (p.ej. "30 días", "válido hasta 2026-08-01").
+  - name: total
+    type: number
+    description: Importe total del presupuesto.
+    required: true
+  - name: moneda
+    type: string
+    description: Código ISO 4217.
+  - name: condiciones
+    type: string
+    description: Condiciones comerciales resumidas.
+  - name: estado_sugerido
+    type: string
+    description: Estado sugerido (p.ej. "pendiente", "aceptado", "rechazado").
+    enum:
+      - pendiente
+      - aceptado
+      - rechazado
+      - desconocido
+
+entities:
+  - name: proveedor
+    label: Supplier
+  - name: cliente
+    label: Customer
+  - name: numero_presupuesto
+    label: Quote number
+
+relations:
+  - source: presupuesto
+    type: emitido_por
+    target: proveedor
+  - source: presupuesto
+    type: dirigido_a
+    target: cliente

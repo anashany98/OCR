@@ -1,0 +1,63 @@
+# Hyper-Extract — delivery note ("albarán") template
+
+document_type: albaran
+description: Spanish delivery note (albarán) — supplier, customer, lines, signature.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de albaranes en español.
+  Devuelve EXCLUSIVAMENTE JSON válido (sin texto alrededor, sin bloques
+  ```json). Si un campo no aparece, devuelve null. No inventes datos.
+
+fields:
+  - name: proveedor
+    type: string
+    description: Razón social del proveedor.
+    required: true
+  - name: cliente
+    type: string
+    description: Razón social o nombre del cliente / destinatario.
+    required: true
+  - name: numero_albaran
+    type: string
+    description: Número de albarán.
+    required: true
+  - name: fecha
+    type: date
+    description: Fecha de entrega en formato ISO 8601 (YYYY-MM-DD).
+    required: true
+  - name: productos
+    type: array
+    description: Lista de productos / referencias entregadas.
+    items:
+      type: object
+      properties:
+        referencia: {type: string}
+        descripcion: {type: string}
+  - name: cantidades
+    type: array
+    description: Cantidades entregadas, alineadas con `productos`.
+    items:
+      type: number
+  - name: referencia_pedido
+    type: string
+    description: Número de pedido relacionado (si lo hay).
+  - name: firmado_por
+    type: string
+    description: Persona que firma la recepción.
+
+entities:
+  - name: proveedor
+    label: Supplier
+  - name: cliente
+    label: Customer
+  - name: numero_albaran
+    label: Delivery note number
+
+relations:
+  - source: albaran
+    type: emitido_por
+    target: proveedor
+  - source: albaran
+    type: entregado_a
+    target: cliente

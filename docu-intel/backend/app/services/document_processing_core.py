@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,8 @@ from app.workers.learning_tasks import _load_active_learned_rules
 # (10+ docs/second peak) and stays well under the latency an
 # operator expects between approving a rule and seeing it applied.
 _LEARNED_RULES_CACHE_TTL = 60.0
+
+logger = logging.getLogger(__name__)
 _learned_rules_cache: dict[str, object] = {"expires_at": 0.0, "rules": []}
 
 
@@ -586,4 +589,107 @@ def _apply_classification_and_extraction(
         plan_needs_review=plan_result.needs_review,
     )
     update_document_quality(db, document, quality)
+
+    # Hyper-Extract (optional structured-extraction layer). Runs
+    # *after* the OCR and the deterministic business extraction so we
+    # never gate the OCR pipeline on a third-party provider. The call
+    # is fully wrapped in try/except so any failure — provider outage,
+    # network timeout, malformed JSON — is contained here and logged
+    # for the operator; the document keeps the OCR result and the
+    # business extraction as if Hyper-Extract did not exist.
+    _maybe_run_hyperextract(
+        db,
+        document,
+        text=text,
+        document_type=document.document_type,
+    )
     return quality.needs_review
+
+
+def _maybe_run_hyperextract(
+    db: Session,
+    document: Document,
+    *,
+    text: str,
+    document_type: str | None,
+) -> None:
+    """Optionally invoke Hyper-Extract after the OCR is done.
+
+    Three short-circuits keep this call free in the default config:
+
+    1. ``HYPEREXTRACT_ENABLED=false`` — the service is fully bypassed,
+       no provider call, no DB write, no extra latency.
+    2. ``HYPEREXTRACT_RUN_IN_PIPELINE=false`` — the operator wants to
+       invoke Hyper-Extract only through the API (or the test script),
+       not on every OCR completion. Keeps the automatic path opt-in.
+    3. Empty OCR text — there is nothing to extract; we record a
+       ``skipped`` row only when the feature is otherwise enabled, so
+       the operator can see why no extraction ran.
+
+    The function never raises; any error is logged at WARNING level
+    and the document keeps its existing OCR / business state.
+    """
+    from app.models import DocumentExtraction
+    from app.services.hyperextract.service import get_hyperextract_service
+
+    service = get_hyperextract_service()
+    if not service.is_enabled():
+        return
+    if not settings.hyperextract_run_in_pipeline:
+        return
+    if not text or not text.strip():
+        # Persist a "skipped" row so the audit trail shows why nothing
+        # ran (otherwise operators cannot tell disabled from broken).
+        db.add(
+            DocumentExtraction(
+                document_id=document.id,
+                document_type=document_type,
+                provider=settings.hyperextract_provider,
+                model=settings.hyperextract_model,
+                status="skipped",
+                warnings_json=["no_ocr_text"],
+            )
+        )
+        db.commit()
+        return
+
+    try:
+        envelope = service.extract_from_text(
+            document_id=document.id,
+            text=text,
+            document_type=document_type,
+            metadata={
+                "filename": document.original_filename,
+                "document_type": document_type,
+                "page_count": document.page_count,
+            },
+        )
+    except Exception as exc:  # pragma: no cover - defensive, service swallows internally
+        logger.warning(
+            "hyperextract: unexpected exception during pipeline run (document_id=%s): %s",
+            document.id,
+            exc,
+        )
+        return
+
+    # The service already returns a typed envelope; persist it so the
+    # review panel and the API can find it later.
+    if envelope.get("status") == "disabled":
+        return
+    db.add(
+        DocumentExtraction(
+            document_id=document.id,
+            document_type=envelope.get("document_type"),
+            provider=envelope.get("provider"),
+            model=envelope.get("model"),
+            status=str(envelope.get("status") or "pending"),
+            fields_json=envelope.get("fields") or {},
+            entities_json=envelope.get("entities") or [],
+            relations_json=envelope.get("relations") or [],
+            warnings_json=envelope.get("warnings") or [],
+            raw_output_json=envelope.get("raw_output") or None,
+            error_message=envelope.get("error_message"),
+            latency_ms=int(envelope.get("latency_ms") or 0),
+        )
+    )
+    db.commit()

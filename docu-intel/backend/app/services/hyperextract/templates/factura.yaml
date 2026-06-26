@@ -1,0 +1,80 @@
+# Hyper-Extract — invoice ("factura") template
+# ---------------------------------------------------------------------------
+# This template guides the structured extraction of a Spanish "factura".
+# The provider is expected to fill the `fields` block with concrete values
+# and keep `warnings` empty unless something genuinely could not be parsed.
+#
+# Field names are kept stable: they map 1:1 to the JSON keys returned by
+# the service and to the columns we plan to expose in the review panel.
+
+document_type: factura
+description: Spanish invoice (factura) — supplier, tax base, VAT, total.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de facturas en español.
+  Devuelve EXCLUSIVAMENTE JSON válido (sin texto alrededor, sin bloques
+  ```json). Si un campo no aparece en el documento, devuelve null.
+  No inventes datos: si dudas, devuelve null y añade el campo a warnings.
+
+fields:
+  - name: proveedor
+    type: string
+    description: Razón social del proveedor (emisor de la factura).
+    required: true
+  - name: cif_nif
+    type: string
+    description: CIF o NIF del proveedor.
+  - name: numero_factura
+    type: string
+    description: Número de factura.
+    required: true
+  - name: fecha
+    type: date
+    description: Fecha de emisión en formato ISO 8601 (YYYY-MM-DD).
+    required: true
+  - name: base_imponible
+    type: number
+    description: Base imponible (subtotal sin IVA).
+  - name: iva
+    type: number
+    description: Cuota de IVA aplicada.
+  - name: total
+    type: number
+    description: Importe total de la factura (con IVA).
+    required: true
+  - name: moneda
+    type: string
+    description: Código ISO 4217 (EUR, USD, ...).
+  - name: vencimiento
+    type: date
+    description: Fecha de vencimiento del pago en formato ISO 8601.
+  - name: lineas
+    type: array
+    description: Líneas de detalle de la factura.
+    items:
+      type: object
+      properties:
+        descripcion: {type: string}
+        cantidad:    {type: number}
+        precio_unitario: {type: number}
+        total:       {type: number}
+
+entities:
+  - name: proveedor
+    label: Supplier
+  - name: cliente
+    label: Customer
+  - name: numero_factura
+    label: Invoice number
+
+relations:
+  - source: factura
+    type: emitida_por
+    target: proveedor
+  - source: factura
+    type: dirigida_a
+    target: cliente
+  - source: linea
+    type: pertenece_a
+    target: factura

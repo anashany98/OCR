@@ -79,6 +79,20 @@ OCR_SKIP_TIER2 = Counter(
     labelnames=("reason",),
 )
 
+# M1 (Sprint 3): Tier 4 (VLM) invocation reason. The cascade only
+# consults ``vlm_ocr`` when the best Tier 1-3 result is still below
+# ``tier4_quality_threshold``; this counter records *why* it fired
+# (under-threshold vs. explicit call) so the operator can see in
+# Grafana whether Tier 4 is being invoked because the rest of the
+# cascade is weak (the bad case) or because the page is genuinely
+# outside the OCR engines' coverage (the expected case). The
+# bounded label set is the ``reason`` enum passed by the caller.
+OCR_TIER4_INVOKED = Counter(
+    "docuintel_ocr_tier4_invoked_total",
+    "Tier 4 (VLM) invocations, by reason.",
+    labelnames=("reason",),
+)
+
 # Cascade fallback (O4 — error visibility).
 OCR_CASCADE_FALLBACK = Counter(
     "docuintel_ocr_cascade_fallback_total",

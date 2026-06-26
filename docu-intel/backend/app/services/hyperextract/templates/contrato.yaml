@@ -1,0 +1,64 @@
+# Hyper-Extract — contract ("contrato") template
+
+document_type: contrato
+description: Spanish contract (contrato) — parties, dates, amount, clauses.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de contratos en español.
+  Devuelve EXCLUSIVAMENTE JSON válido (sin texto alrededor, sin bloques
+  ```json). Si un campo no aparece, devuelve null. No inventes datos.
+
+fields:
+  - name: partes
+    type: array
+    description: Partes firmantes del contrato.
+    items:
+      type: object
+      properties:
+        nombre: {type: string}
+        rol:    {type: string}
+        nif:    {type: string}
+  - name: fecha_inicio
+    type: date
+    description: Fecha de inicio de la vigencia (YYYY-MM-DD).
+  - name: fecha_fin
+    type: date
+    description: Fecha de fin de la vigencia (YYYY-MM-DD).
+  - name: importe
+    type: number
+    description: Importe económico principal del contrato.
+  - name: moneda
+    type: string
+    description: Código ISO 4217.
+  - name: obligaciones
+    type: array
+    description: Lista resumida de obligaciones principales por parte.
+    items:
+      type: string
+  - name: penalizaciones
+    type: array
+    description: Cláusulas de penalización (resumen).
+    items:
+      type: string
+  - name: renovacion
+    type: string
+    description: Política de renovación (auto, manual, duración, etc.).
+  - name: clausulas_importantes
+    type: array
+    description: Cláusulas destacadas (rescindibilidad, confidencialidad, jurisdicción).
+    items:
+      type: string
+
+entities:
+  - name: parte
+    label: Contracting party
+  - name: fecha_inicio
+    label: Effective date
+  - name: fecha_fin
+    label: Expiry date
+
+relations:
+  - source: contrato
+    type: firmado_por
+    target: parte

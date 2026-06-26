@@ -110,6 +110,7 @@ def preload_ocr_engine() -> BaseOCREngine:
     """
     engine = get_ocr_engine()
     _warm_ocr_engine(engine)
+    _warn_if_gpu_requested_but_unavailable(engine)
     _exercise(engine)
     return engine
 
@@ -149,22 +150,51 @@ def _build_cascading_engine() -> BaseOCREngine:
     if settings.ocr_cascading_use_pp_structure:
         from app.ocr.pp_structure import PPStructureEngine
 
-        kwargs["pp_structure"] = PPStructureEngine(
-            device=settings.pp_structure_device,
-            lang=settings.pp_structure_lang,
-        )
+        # A2: a worker CPU booted with the GPU-only Tier 3 flag on
+        # should NOT abort startup — the cascade still has Tier 1+2
+        # available. ``PPStructureEngine.__init__`` refuses to build
+        # on CPU with ``RuntimeError("GPU-only")``; we catch and
+        # log so the worker degrades gracefully instead of taking
+        # the whole Celery boot down.
+        try:
+            kwargs["pp_structure"] = PPStructureEngine(
+                device=settings.pp_structure_device,
+                lang=settings.pp_structure_lang,
+            )
+        except RuntimeError as exc:
+            logger.warning(
+                "PP-Structure disabled at runtime: %s. "
+                "Cascade will run without Tier 3; check "
+                "OCR_CASCADING_USE_PP_STRUCTURE / PP_STRUCTURE_DEVICE.",
+                exc,
+            )
+            kwargs["pp_structure"] = None
     if settings.enable_dots_mocr:
         from app.ocr.dots_mocr import DotsMOCRConfig, DotsMOCREngine
 
-        kwargs["vlm_ocr"] = DotsMOCREngine(
-            DotsMOCRConfig(
-                enabled=True,
-                endpoint=settings.dots_mocr_endpoint,
-                api_key=settings.dots_mocr_api_key or None,
-                timeout_seconds=settings.dots_mocr_timeout_seconds,
+        # A2 (parallel): same idea for Tier 4. If the endpoint or API
+        # key is misconfigured, ``DotsMOCREngine`` is happy to
+        # instantiate (validation is lazy, on first ``extract``), but a
+        # defensive try keeps any future constructor-side validation
+        # from aborting boot. The cascade falls back to Tier 1-3.
+        try:
+            kwargs["vlm_ocr"] = DotsMOCREngine(
+                DotsMOCRConfig(
+                    enabled=True,
+                    endpoint=settings.dots_mocr_endpoint,
+                    api_key=settings.dots_mocr_api_key or None,
+                    timeout_seconds=settings.dots_mocr_timeout_seconds,
+                )
             )
-        )
-        kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
+        except Exception as exc:  # noqa: BLE001 - any constructor failure
+            logger.warning(
+                "DotsMOCR (Tier 4) disabled at runtime: %s. "
+                "Cascade will run without Tier 4; check DOTS_MOCR_* settings.",
+                exc,
+            )
+            kwargs["vlm_ocr"] = None
+        else:
+            kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
     return CascadingOCREngine(**kwargs)  # type: ignore[arg-type]
 
 
@@ -179,6 +209,64 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
         _ = engine._engine  # noqa: B018 - intentional touch to warm any lazy init
     if hasattr(engine, "_pipeline"):
         _ = engine._pipeline  # noqa: B018 - intentional touch to warm any lazy init
+
+
+def _warn_if_gpu_requested_but_unavailable(engine: BaseOCREngine) -> None:
+    """M2 (Sprint 3): log a WARNING if any sub-engine was built with a
+    GPU device string but the runtime CUDA stack is not actually
+    visible to this worker.
+
+    Without this check a worker booted with
+    ``PADDLE_DEVICE=gpu`` on a CPU-only container (or one where
+    the NVIDIA driver / CUDA libraries are missing) silently
+    falls back to CPU on the first Paddle call. The first job
+    still works, but it takes 10-50x longer than expected and
+    the operator has no signal that something is wrong.
+
+    We log at WARNING level and continue — the exercise path
+    will fail anyway and the operator will see the failure in
+    the logs, but this gives a precise, single-line message
+    that says exactly what is misconfigured.
+    """
+    devices = _collect_gpu_device_strings(engine)
+    if not devices:
+        return
+
+    try:
+        import torch  # type: ignore[import-untyped]
+    except ImportError:
+        # If torch isn't even installed we can't tell, so don't
+        # warn — the real failure will surface elsewhere.
+        return
+
+    if torch.cuda.is_available():
+        return
+
+    logger.warning(
+        "OCR engine requested GPU device(s) %s but torch.cuda.is_available() "
+        "is False. The engine will run on CPU; performance will be "
+        "10-50x slower than expected. Check the container's NVIDIA "
+        "driver and CUDA_VISIBLE_DEVICES.",
+        sorted(devices),
+    )
+
+
+def _collect_gpu_device_strings(engine: BaseOCREngine) -> set[str]:
+    """Walk an engine tree and return the set of non-None device strings
+    that look like GPU requests (``gpu``, ``gpu:0``, ``cuda``, …)."""
+    devices: set[str] = set()
+    candidates = [engine]
+    if hasattr(engine, "fallback"):
+        candidates.append(engine.fallback)
+    if hasattr(engine, "pp_structure") and engine.pp_structure is not None:
+        candidates.append(engine.pp_structure)
+    if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:
+        candidates.append(engine.vlm_ocr)
+    for cand in candidates:
+        device = getattr(cand, "device", None)
+        if isinstance(device, str) and device.lower().startswith(("gpu", "cuda")):
+            devices.add(device)
+    return devices
 
 
 def _exercise(engine: BaseOCREngine) -> None:
