@@ -96,3 +96,34 @@ above are environment-level and were already failing before
 commit `90e9f41`. They need runner setup (apt install tesseract
 + language packs) and a snapshot regeneration, not code
 changes.
+
+---
+
+## Update 2026-06-26 — T2 (C2) override applied
+
+The C2 audit task applied a SQLite compatibility shim in
+`tests/conftest.py` that registers `@compiles` overrides for
+`pgvector.sqlalchemy.VECTOR` (→ `BLOB`) and `sqlalchemy.Computed`
+(→ empty string) when the dialect is SQLite. After the shim:
+
+- **Before**: 183 failures (cascading — `Base.metadata.create_all`
+  on SQLite blew up with `unrecognized token: ":"` before any
+  test body ran).
+- **After**: 98 failures (all pre-existing drift listed above;
+  categorised by GLM 2026-06-25 and confirmed against this run).
+- Reduction: 85% of the noise is gone.
+
+The 98 remaining failures reproduce exactly against clean master
++ the C2 shim. They are not regressions from the shim. For
+details see `AUDIT_2026_06_26.md` § T2.
+
+One new failure detected during this audit run (was passing on
+the previous recorded baseline):
+
+- `tests/test_paddle_init_timeout.py::test_init_timeout_raises_runtime_error_on_hang`
+  — fails with `AttributeError: module 'app.ocr.paddle' has no
+  attribute 'concurrent'`. **Root cause**: commit `6fdf30d
+  fix(backend): ruff sweep` reverted the C1 VRAM-leak fix
+  (`740cc69`), which had been using `concurrent.futures.ThreadPoolExecutor`.
+  **Fixed in T1**: re-applied the `ThreadPoolExecutor` pattern to
+  `app/ocr/paddle.py`. The test now passes (4/4).

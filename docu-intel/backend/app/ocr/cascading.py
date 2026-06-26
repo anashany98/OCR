@@ -40,6 +40,7 @@ from app.services.metrics import (
     track_ocr_duration,
     track_ocr_language_threshold_used,
     track_ocr_skip_tier2,
+    track_ocr_tier4_invoked,
     track_ocr_tier_used,
 )
 from app.services.ocr_language import LanguageThresholds, thresholds_for
@@ -265,6 +266,11 @@ class CascadingOCREngine:
     def _finalize(self, image_path: Path, tier: str, result: OCRResult) -> OCRResult:
         if self.vlm_ocr is None or _quality(result) >= self.tier4_quality_threshold:
             return self._record_winner(tier, result)
+        # M1: Tier 4 was consulted because the best Tier 1-3 result
+        # is below the configured quality threshold. Track this so the
+        # operator can see how often Tier 4 fires and from which
+        # reasons (under-threshold vs. circuit_open vs. explicit).
+        track_ocr_tier4_invoked("under_threshold")
         tier4_result = self._try_tier4(image_path, result)
         if tier4_result is not None:
             return tier4_result

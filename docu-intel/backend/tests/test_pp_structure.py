@@ -279,8 +279,11 @@ def test_factory_cascading_without_pp_structure(monkeypatch):
 def test_factory_cascading_with_pp_structure(monkeypatch):
     """When ``ocr_cascading_use_pp_structure`` is on, the factory wires
     ``pp_structure`` into the cascade. On GPU containers the engine
-    instantiates fine; on CPU it raises ``RuntimeError("GPU-only")``
-    which is the cascade's fail-fast guard."""
+    instantiates fine. On CPU the factory used to abort the whole
+    worker boot with ``RuntimeError("GPU-only")``; since A2 it
+    instead logs a warning and degrades to Tier 1+2 with
+    ``pp_structure=None`` so the worker stays up.
+    """
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
@@ -288,16 +291,18 @@ def test_factory_cascading_with_pp_structure(monkeypatch):
     get_ocr_engine_class.cache_clear()
     try:
         cls = get_ocr_engine_class()
-        try:
-            instance = cls()
-        except RuntimeError as exc:
-            # CPU environment: PPStructureEngine refused to instantiate.
-            assert "GPU-only" in str(exc)
-            return
-        # GPU environment: pp_structure is wired in.
-        from app.ocr.pp_structure import PPStructureEngine
+        # A2: factory must NOT raise at boot time, even on CPU.
+        instance = cls()
+        if instance.pp_structure is None:
+            # CPU environment: PPStructureEngine refused to instantiate
+            # and the factory caught the RuntimeError, logged it, and
+            # left pp_structure=None. Cascade still has Tier 1+2.
+            assert True
+        else:
+            # GPU environment: pp_structure is wired in.
+            from app.ocr.pp_structure import PPStructureEngine
 
-        assert isinstance(instance.pp_structure, PPStructureEngine)
-        assert instance.pp_structure.device == "gpu"
+            assert isinstance(instance.pp_structure, PPStructureEngine)
+            assert instance.pp_structure.device == "gpu"
     finally:
         get_ocr_engine_class.cache_clear()

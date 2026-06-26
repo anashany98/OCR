@@ -96,6 +96,13 @@ class Document(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    # Hyper-Extract runs (one row per attempt). Cascade so deleting a
+    # document also wipes its extraction history.
+    extractions = relationship(
+        "DocumentExtraction",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
 
 
 class DocumentPage(Base):

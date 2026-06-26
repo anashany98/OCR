@@ -31,6 +31,7 @@ from ._registry import (
     OCR_LANGUAGE_THRESHOLD_USED,
     OCR_POSTPROCESS_CORRECTIONS,
     OCR_SKIP_TIER2,
+    OCR_TIER4_INVOKED,
     OCR_TIER_BY_DOC_TYPE,
     OCR_TIER_USED,
 )
@@ -135,6 +136,33 @@ def track_ocr_skip_tier2(reason: str) -> None:
     """
     clean = (reason or "unknown").lower().strip() or "unknown"
     OCR_SKIP_TIER2.labels(reason=clean).inc()
+
+
+# Allow-list of Tier 4 invocation reasons. Anything outside this set
+# buckets under ``"other"`` so the cardinality stays bounded (the
+# reason is set by the cascade in two well-defined places today; new
+# callers must add their reason here).
+_TIER4_REASONS = frozenset({"under_threshold", "circuit_open", "explicit_call"})
+
+
+def track_ocr_tier4_invoked(reason: str) -> None:
+    """Record that the cascade consulted Tier 4 (VLM) for a page.
+
+    M1 (Sprint 3): Tier 4 is expensive (an HTTP round-trip to the
+    VLM endpoint, ~1-3 s, plus the image payload in base64), and
+    it only fires when the best Tier 1-3 result is below
+    ``tier4_quality_threshold``. Tracking the *reason* tells the
+    operator whether Tier 4 is being invoked because the rest of
+    the cascade is genuinely weak (the bad case, indicates that
+    the previous tiers are degrading) or because the breaker is
+    open (the recovery case — Tier 4 was tried, then the breaker
+    tripped and the cascade fell back to Tier 1-3 for the next
+    page).
+    """
+    clean = (reason or "unknown").lower().strip() or "unknown"
+    if clean not in _TIER4_REASONS:
+        clean = "other"
+    OCR_TIER4_INVOKED.labels(reason=clean).inc()
 
 
 def track_ocr_language_detected(language: str, document_type: str) -> None:

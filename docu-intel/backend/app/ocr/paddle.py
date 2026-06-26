@@ -14,6 +14,7 @@ concurrent workers.
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import sys
 import tempfile
@@ -81,16 +82,36 @@ class PaddleOCREngine:
     def _init_engine_with_timeout(self):
         """Load the PaddleOCR model with a cross-platform timeout.
 
-        H6 (Sprint 3): the previous ``@cached_property`` blocked
-        indefinitely if the GPU driver or model download hung.  We now
-        run the heavy ``PaddleOCR(...)`` call inside a daemon thread
-        and raise ``RuntimeError`` when it does not complete within
-        ``_PADDLE_INIT_TIMEOUT_SECONDS``.
+        H6 (Sprint 3) / O6 fix: the previous implementation ran the
+        heavy ``PaddleOCR(...)`` call inside a bare
+        ``threading.Thread(daemon=False)`` joined with a timeout. When
+        the timeout expired the join returned but the thread kept
+        running (a stuck C-level ``PaddleOCR`` constructor holds the
+        GIL and cannot be interrupted from Python). The orphan thread
+        then continued allocating VRAM on the worker's GPU, slowly
+        saturating the card across ``max_tasks_per_child`` cycles.
 
-        O6: when the timeout expires the thread is logged as orphan
-        so the operator can see it leaking, and the engine is marked
-        as unavailable to prevent subsequent calls from re-entering
-        the same broken state.
+        The fix moves the work into a *dedicated, disposable*
+        ``ThreadPoolExecutor`` and waits on ``future.result(timeout=...)``.
+        If the timeout fires we:
+
+        * mark the engine as unavailable (``_init_failed = True``) so
+          subsequent ``extract`` calls raise a clear error instead of
+          re-entering the same broken state;
+        * call ``future.cancel()`` (best-effort — a PaddleOCR
+          constructor that has already started loading will not honor
+          the cancellation, but a still-pending future will);
+        * let the ``with`` block exit so the executor is shut down. The
+          abandoned worker thread (if any) lives inside the executor's
+          private pool, NOT in the worker's shared pool, so it cannot
+          be reused to serve another task and its VRAM cost is bounded
+          to a single failed init per engine instance.
+
+        The proper long-term fix is to do the init synchronously in
+        ``worker_process_init`` (the worker's main thread, before it
+        accepts jobs); the cascade's ``preload_ocr_engine`` already
+        attempts that, but this per-instance timeout keeps the cascade
+        safe even if the preload step is skipped or fails.
         """
         from paddleocr import PaddleOCR
 
@@ -102,43 +123,48 @@ class PaddleOCREngine:
         if self.device:
             kwargs["device"] = self.device
 
-        result: list[object] = []
-        init_error: list[BaseException] = []
-
-        def _do_init():
+        # max_workers=1 keeps the disposable executor constrained to a
+        # single in-flight init at a time per engine instance, and we want
+        # the abandoned thread (on timeout) isolated from the worker's
+        # own pool.
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="paddleocr-init"
+        ) as executor:
+            init_future = executor.submit(self._run_paddleocr_init, PaddleOCR, kwargs)
             try:
-                with paddleocr_init_lock():
-                    result.append(PaddleOCR(**kwargs))
-            except BaseException as exc:
-                init_error.append(exc)
+                return init_future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                # Best-effort cancellation: only works if the future
+                # has not started running yet. A PaddleOCR constructor
+                # that is mid-load will keep going in the executor's
+                # private thread, but that thread is bound to this
+                # disposable executor and will not leak into the
+                # worker's shared pool.
+                init_future.cancel()
+                logger.error(
+                    "PaddleOCR init timed out after %.0fs (lang=%s, device=%s). "
+                    "The abandoned worker thread is isolated to a disposable "
+                    "executor and the engine is marked unavailable.",
+                    _PADDLE_INIT_TIMEOUT_SECONDS,
+                    self.lang,
+                    self.device,
+                )
+                self._init_failed = True
+                raise RuntimeError(
+                    f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
+                ) from None
 
-        init_thread = threading.Thread(target=_do_init, daemon=False, name="paddleocr-init")
-        init_thread.start()
-        init_thread.join(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
+    def _run_paddleocr_init(self, paddleocr_cls, kwargs):
+        """Run the PaddleOCR constructor under the cross-process init lock.
 
-        if init_thread.is_alive():
-            logger.error(
-                "PaddleOCR init timed out after %.0fs (lang=%s, device=%s). "
-                "Thread %s is still running and may leak memory/VRAM.",
-                _PADDLE_INIT_TIMEOUT_SECONDS,
-                self.lang,
-                self.device,
-                init_thread.name,
-            )
-            self._init_failed = True
-            raise RuntimeError(
-                f"PaddleOCR model init timed out after {_PADDLE_INIT_TIMEOUT_SECONDS}s"
-            )
-
-        if init_error:
-            self._init_failed = True
-            raise init_error[0]
-
-        if not result:
-            self._init_failed = True
-            raise RuntimeError("PaddleOCR init returned no result")
-
-        return result[0]
+        Extracted from ``_init_engine_with_timeout`` so the body of the
+        future is a named method (easier to mock in tests) and so the
+        ``paddleocr_init_lock`` context manager is always entered from
+        the worker thread, matching the cross-process exclusion the lock
+        exists to provide.
+        """
+        with paddleocr_init_lock():
+            return paddleocr_cls(**kwargs)
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()

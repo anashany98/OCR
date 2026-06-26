@@ -53,6 +53,7 @@ from .ocr import (
     track_ocr_language_threshold_used,
     track_ocr_postprocess,
     track_ocr_skip_tier2,
+    track_ocr_tier4_invoked,
     track_ocr_tier_used,
 )
 from .pipeline import (
@@ -119,6 +120,7 @@ __all__ = [
     "track_ocr_postprocess",
     "track_ocr_tier_used",
     "track_ocr_skip_tier2",
+    "track_ocr_tier4_invoked",
     "track_ocr_language_detected",
     "track_ocr_language_threshold_used",
     # Embedding

@@ -459,6 +459,33 @@ class Settings(BaseSettings):
     # work; set ``OCR_REPROCESS_ON_VERSION_DRIFT=true`` to enable.
     ocr_reprocess_on_version_drift: bool = False
 
+    # =========================================================================
+    # Hyper-Extract — optional structured-extraction layer on top of OCR
+    # =========================================================================
+    # When ``hyperextract_enabled`` is False the entire module is bypassed
+    # (no provider call, no DB write, no extra latency). When True, the
+    # service is invoked *after* the OCR has produced clean text and the
+    # result is persisted in ``document_extractions``. Failure is contained
+    # so a Hyper-Extract outage never breaks the OCR pipeline.
+    hyperextract_enabled: bool = False
+    hyperextract_provider: str = "openai_compatible"
+    hyperextract_base_url: str = ""
+    hyperextract_model: str = ""
+    hyperextract_api_key: str = ""
+    hyperextract_timeout_seconds: float = 120.0
+    hyperextract_max_retries: int = 1
+    hyperextract_output_dir: str = "./storage/hyperextract"
+    # Default document_type to assume when the classifier is unsure or
+    # when the operator triggers an extract with no type. One of:
+    # ``factura``, ``albaran``, ``contrato``, ``presupuesto``.
+    hyperextract_default_type: str = "factura"
+    # Whether to persist the raw provider payload (audit / debugging).
+    hyperextract_persist_raw_output: bool = True
+    # When True, also call Hyper-Extract automatically as part of the
+    # standard ``process_document`` pipeline. When False, only explicit
+    # calls via the API or the test script trigger an extraction.
+    hyperextract_run_in_pipeline: bool = False
+
     admin_email: str = "admin@local"
     admin_password: str = "dev_only_admin_password_change_me"
     admin_name: str = "Administrador"
