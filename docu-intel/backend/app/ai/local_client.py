@@ -43,6 +43,21 @@ class _CircuitState:
 
 _LOCAL_AI_CIRCUITS: dict[tuple[str, str], _CircuitState] = {}
 
+# Concurrency limit: prevent too many simultaneous LLM calls from
+# exhausting VRAM or causing OOM. With 15 concurrent users this
+# keeps the LLM server responsive. Vision calls share the same
+# semaphore because they compete for the same GPU memory.
+_LLM_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _get_llm_semaphore() -> asyncio.Semaphore:
+    global _LLM_SEMAPHORE
+    if _LLM_SEMAPHORE is None:
+        _LLM_SEMAPHORE = asyncio.Semaphore(
+            settings.ai_max_concurrent_requests if settings.ai_max_concurrent_requests > 0 else 100
+        )
+    return _LLM_SEMAPHORE
+
 
 def reset_local_ai_circuit_breakers() -> None:
     _LOCAL_AI_CIRCUITS.clear()
@@ -108,21 +123,22 @@ class LocalOpenAICompatibleClient:
         messages: list[dict],
         temperature: float = 0.0,
         timeout: float | None = None,
-        max_tokens: int = 2000,
+        max_tokens: int = 4000,
     ) -> str:
         if not self.base_url or not self.model:
             raise RuntimeError("Local AI is not configured")
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        payload = await self._post_chat_completion(
-            headers=headers,
-            timeout=timeout or settings.ai_request_timeout_seconds,
-            json_payload={
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
-        )
+        async with _get_llm_semaphore():
+            payload = await self._post_chat_completion(
+                headers=headers,
+                timeout=timeout or settings.ai_request_timeout_seconds,
+                json_payload={
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                },
+            )
         return payload["choices"][0]["message"]["content"]
 
     async def chat_stream(
@@ -130,7 +146,7 @@ class LocalOpenAICompatibleClient:
         messages: list[dict],
         temperature: float = 0.0,
         timeout: float | None = None,
-        max_tokens: int = 2000,
+        max_tokens: int = 4000,
     ) -> AsyncIterator[str | tuple[str, str]]:
         """Yield text chunks as the LLM produces them.
 
@@ -163,75 +179,69 @@ class LocalOpenAICompatibleClient:
         # while we are already mid-stream propagate
         # immediately so the partial answer is preserved.
         last_exc: Exception | None = None
-        for attempt in range(self.max_retries + 1):
-            self._raise_if_circuit_open()
-            try:
-                async with (
-                    httpx.AsyncClient(
-                        timeout=request_timeout,
-                        transport=self.transport,
-                    ) as client,
-                    client.stream(
-                        "POST",
-                        f"{self.base_url}/chat/completions",
-                        headers=headers,
-                        json=json_payload,
-                    ) as response,
-                ):
-                    response.raise_for_status()
-                    self._record_success()
-                    async for line in response.aiter_lines():
-                        if not line:
-                            continue
-                        if line.startswith("data:"):
-                            data = line[len("data:") :].strip()
-                            if data == "[DONE]":
-                                break
-                            try:
-                                import json
+        async with _get_llm_semaphore():
+            for attempt in range(self.max_retries + 1):
+                self._raise_if_circuit_open()
+                try:
+                    async with (
+                        httpx.AsyncClient(
+                            timeout=request_timeout,
+                            transport=self.transport,
+                        ) as client,
+                        client.stream(
+                            "POST",
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=json_payload,
+                        ) as response,
+                    ):
+                        if response.status_code >= 400:
+                            import logging
+                            _log = logging.getLogger("app.ai.local_client")
+                            body = await response.aread()
+                            _log.warning(
+                                "LLM stream %s returned %s: %s",
+                                self.model,
+                                response.status_code,
+                                body[:2000].decode(errors="replace"),
+                            )
+                            response.raise_for_status()
+                        self._record_success()
+                        async for line in response.aiter_lines():
+                            if not line:
+                                continue
+                            if line.startswith("data:"):
+                                data = line[len("data:") :].strip()
+                                if data == "[DONE]":
+                                    break
+                                try:
+                                    import json
 
-                                payload = json.loads(data)
-                            except Exception:
-                                continue
-                            choices = payload.get("choices") or []
-                            if not choices:
-                                continue
-                            delta = (choices[0] or {}).get("delta") or {}
-                            # Qwen3 (and other reasoning models) stream their
-                            # internal reasoning in `reasoning_content`. We
-                            # surface it as a separate event so the UI can
-                            # show "razonando..." while the model is thinking.
-                            thinking = delta.get("reasoning_content")
-                            if thinking:
-                                yield ("thinking", thinking)
-                            piece = delta.get("content")
-                            if piece:
-                                yield piece
-                    # Stream completed cleanly: exit the retry
-                    # loop without raising.
-                    return
-            except Exception as exc:
-                last_exc = exc
-                # The stream was already producing chunks when
-                # this error fired (otherwise the
-                # ``raise_for_status`` / ``aiter_lines`` path
-                # would have raised before we yielded
-                # anything). Re-raise without consuming
-                # another retry so the caller keeps the
-                # partial answer it already saw.
-                if not _is_retryable_ai_error(exc) or attempt >= self.max_retries:
-                    self._record_failure()
-                    raise
-                await self._sleep_before_retry(attempt)
-                continue
-        # The loop only exits via the explicit ``return``
-        # above or the re-raise inside the except. If we ever
-        # land here it means a retry exhausted without an
-        # exception, which is a logic bug.
-        if last_exc is not None:
-            self._record_failure()
-            raise last_exc
-        raise RuntimeError("chat_stream retry loop exited without an exception")
+                                    payload = json.loads(data)
+                                except Exception:
+                                    continue
+                                choices = payload.get("choices") or []
+                                if not choices:
+                                    continue
+                                delta = (choices[0] or {}).get("delta") or {}
+                                thinking = delta.get("reasoning_content")
+                                if thinking:
+                                    yield ("thinking", thinking)
+                                piece = delta.get("content")
+                                if piece:
+                                    yield piece
+                        return
+                except Exception as exc:
+                    last_exc = exc
+                    if not _is_retryable_ai_error(exc) or attempt >= self.max_retries:
+                        self._record_failure()
+                        raise
+                    await self._sleep_before_retry(attempt)
+                    continue
+            if last_exc is not None:
+                self._record_failure()
+                raise last_exc
+            raise RuntimeError("chat_stream retry loop exited without an exception")
 
     async def _post_chat_completion(
         self,
@@ -253,6 +263,15 @@ class LocalOpenAICompatibleClient:
                         headers=headers,
                         json=json_payload,
                     )
+                    if response.status_code >= 400:
+                        import logging
+                        _log = logging.getLogger("app.ai.local_client")
+                        _log.warning(
+                            "LLM %s returned %s: %s",
+                            self.model,
+                            response.status_code,
+                            response.text[:2000],
+                        )
                     response.raise_for_status()
                     self._record_success()
                     return response.json()
@@ -411,15 +430,16 @@ class LocalVisionClient:
             "temperature": 0.0,
             "max_tokens": max_tokens,
         }
-        async with httpx.AsyncClient(timeout=timeout or settings.vision_timeout_seconds) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+        async with _get_llm_semaphore():
+            async with httpx.AsyncClient(timeout=timeout or settings.vision_timeout_seconds) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
 
     async def transcribe_table(
         self,

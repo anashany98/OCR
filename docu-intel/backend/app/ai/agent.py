@@ -319,10 +319,9 @@ async def answer_question(
     # the active budget explicitly when nothing was found inside it.
     warnings = scope_warnings + warnings
 
-    # CTX-8: evaluate the confidence gates. When a gate is open and
-    # the question expects an amount, the orchestrator will skip the
-    # LLM call and produce a safe fallback that lists the amount
-    # candidates so the user can verify the answer themselves.
+    # CTX-8: evaluate confidence gates as advisory warnings only.
+    # Internal workflow preference: always answer, even below the
+    # confidence threshold; the warning reaches both prompt and fallback.
     from .confidence_gates import evaluate_gates_for_turn
 
     gate_eval, gate_warning = evaluate_gates_for_turn(
@@ -363,15 +362,7 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    # CTX-8: when the gate blocks an amount question, build a safe
-    # answer that lists the amount candidates and skip the LLM call
-    # so the model cannot override the safety message with a
-    # fabricated number. The candidate list also gets attached to
-    # the AIAnswer row so the UI can render a verification table.
-    if gate_eval.is_blocked and gate_eval.requires_amount:
-        answer_text = _format_gate_blocked_answer(gate_eval, active_context)
-        model_name = "backend_grounded_fallback"
-    elif context_items:
+    if context_items:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
@@ -558,7 +549,35 @@ async def _try_local_ai_answer(
     if response_fabricates_documents(answer, context_items):
         logger.warning("AI response mentions documents not in context: %s", answer[:200])
         return fallback
-    return answer
+    return _polish_answer_text(answer)
+
+
+def _polish_answer_text(answer: str) -> str:
+    """Minimal cleanup of model output.
+
+    The previous version replaced natural phrases like "segun la fuente 1"
+    with "segun la fuente principal", which made the assistant sound
+    bureaucratic and stripped the LLM of its own voice. The new system
+    prompt tells the model to cite the actual filename inline, so we
+    leave phrasing alone and only do a couple of safe mechanical
+    cleanups:
+
+    - strip leading/trailing whitespace
+    - drop a stray ``[DONE]`` token that some servers append on the
+      non-streaming path
+    - collapse runs of more than two blank lines
+    """
+    text = (answer or "").strip()
+    if not text:
+        return text
+    # Defensive cleanup: stray SSE control tokens that should never
+    # have leaked into the answer text.
+    text = text.replace("[DONE]", "").strip()
+    # Collapse 3+ consecutive newlines to 2 (one paragraph break).
+    import re
+
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text
 
 
 @dataclass
@@ -583,7 +602,23 @@ async def _stream_local_ai_answer(
     ``("thinking", chunk)`` tuples for the model's internal
     reasoning (Qwen3 / reasoning models), and a final
     :class:`StreamOutcome` telling the caller whether to use the
-    streamed text or fall back to the grounded answer."""
+    streamed text or fall back to the grounded answer.
+
+    The previous version returned ``ok=False`` silently when the
+    model emitted only ``reasoning_content`` (Qwen3 thinking-mode
+    burning the entire ``max_tokens`` budget on internal reasoning
+    and never producing a visible answer). That left the user with
+    the grounded fallback and no clue why. This version:
+
+    1. Uses a larger ``max_tokens`` ceiling (4000) to leave room for
+       a real answer after the thinking trace.
+    2. Logs a clear "stream returned only reasoning" warning when
+       it happens, so the cause is observable in the backend logs.
+    3. Still returns ``ok=False`` so the SSE endpoint can fall back
+       to the grounded response - the LLM really did fail to answer
+       - but operators can now see the root cause instead of a
+       generic "no visible content" warning.
+    """
     if not settings.ai_base_url or not settings.ai_model:
         return
 
@@ -595,13 +630,19 @@ async def _stream_local_ai_answer(
     base_messages = build_ai_messages(question, context_text, warning_text)
 
     accumulated: list[str] = []
+    thinking_accumulated: list[str] = []
     aborted = False
     try:
         client = LocalOpenAICompatibleClient()
-        async for piece in client.chat_stream(base_messages, temperature=0.0, max_tokens=2000):
+        # 4000 tokens (was 2000) so Qwen3 thinking-mode can fit both its
+        # reasoning trace and a real answer in the same completion.
+        async for piece in client.chat_stream(
+            base_messages, temperature=0.0, max_tokens=4000
+        ):
             # Pass through ("thinking", ...) tuples unchanged so the SSE
             # endpoint can emit them as their own event type.
             if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
+                thinking_accumulated.append(piece[1])  # type: ignore[arg-type]
                 yield piece
                 continue
             accumulated.append(piece)  # type: ignore[arg-type]
@@ -618,6 +659,23 @@ async def _stream_local_ai_answer(
 
     full = "".join(accumulated)
     if aborted or not full:
+        if not full and thinking_accumulated:
+            # Distinguish the "model reasoned but said nothing visible"
+            # case from a generic network failure: the user/operator
+            # wants to know whether the model is the bottleneck.
+            logger.warning(
+                "AI stream produced only internal reasoning (%d thinking chunks, "
+                "0 visible chunks) for question: %s. Likely cause: Qwen3 "
+                "thinking-mode consuming the entire max_tokens budget. "
+                "Falling back to grounded response.",
+                len(thinking_accumulated),
+                question[:100],
+            )
+        elif not full:
+            logger.warning(
+                "AI stream produced no visible content for question: %s",
+                question[:100],
+            )
         yield StreamOutcome(text=full, ok=False)
         return
     if question_is_spanish(question) and not response_looks_spanish(full):
@@ -628,7 +686,7 @@ async def _stream_local_ai_answer(
         logger.warning("Streamed AI response mentions documents not in context")
         yield StreamOutcome(text=full, ok=False)
         return
-    yield StreamOutcome(text=full, ok=True)
+    yield StreamOutcome(text=_polish_answer_text(full), ok=True)
 
 
 # ---------------------------------------------------------------------------

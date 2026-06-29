@@ -20,7 +20,9 @@ without spinning up a full DB session.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -94,7 +96,14 @@ MAX_CONTEXT_ITEMS = 14
 # Confidence threshold below which an OCR page is flagged as
 # dubious. Used both in the prompt marker and in the warning
 # builder.
-LOW_OCR_CONFIDENCE_THRESHOLD = 0.70
+#
+# Lowered to 0.60 (was 0.70) per user request: a 70% threshold was
+# too aggressive in flagging real-world scans as "low quality" and
+# hiding useful context from the LLM. 0.60 keeps the dubious flag for
+# genuinely poor readings (photos of mobile screens, severely skewed
+# pages) without burying mid-confidence scans that still carry
+# recoverable text.
+LOW_OCR_CONFIDENCE_THRESHOLD = 0.60
 
 # Tag inserted into the context line when an item is below the OCR
 # confidence threshold. The LLM prompt is told to warn the user
@@ -411,10 +420,41 @@ def collect_context(
                 if budget.document_id:
                     resolved_doc_id = budget.document_id
             else:
-                warnings.append(
-                    f"No he encontrado ningun presupuesto con numero '{budget_number}'. "
-                    f"Prueba a buscar por nombre de archivo o por importe/cliente."
-                )
+                documents = internal.find_document_by_filename(db, budget_number)
+                if access_scope:
+                    documents = filter_documents_for_scope(db, documents, access_scope)
+                if documents:
+                    resolved = documents[0]
+                    resolved_doc_id = resolved.id
+                    context.append(
+                        ContextItem(
+                            title=f"Documento presupuesto: {resolved.original_filename}",
+                            summary=(
+                                f"No hay fila estructurada en presupuestos para '{budget_number}', "
+                                f"pero si hay un documento cuyo nombre/ruta coincide. "
+                                f"Tipo: {resolved.document_type} | Estado: {resolved.status} | "
+                                f"Confianza: {resolved.confidence} | Paginas: {resolved.page_count} | "
+                                f"Ruta: {resolved.source_path}"
+                            ),
+                            document_id=resolved.id,
+                            document_filename=resolved.original_filename,
+                            page_number=None,
+                            relevance_score=0.99,
+                            excerpt=None,
+                            confidence=resolved.confidence,
+                            source_path=resolved.source_path,
+                        )
+                    )
+                    warnings.append(
+                        f"El presupuesto '{budget_number}' no esta en la tabla estructurada; "
+                        "uso el documento coincidente por nombre/ruta."
+                    )
+                else:
+                    warnings.append(
+                        f"No he encontrado ningun presupuesto ni documento con numero "
+                        f"'{budget_number}'. Prueba a buscar por nombre de archivo o por "
+                        "importe/cliente."
+                    )
         elif tool.name == "aggregate_business":
             entity = tool.arguments.get("entity") or "order"
             kind = tool.arguments.get("kind") or "count"
@@ -432,25 +472,23 @@ def collect_context(
                 fl = ", ".join(f"{k}={v}" for k, v in filters.items())
                 summary_lines.append(f"Filtros aplicados: {fl}")
             summary_lines.append(f"Resultados: {len(rows)}")
-            for r in rows:
-                label = r.get("label") or r.get("metric")
-                val = r.get("value")
-                cnt = r.get("count")
-                if cnt is not None and val is not None:
-                    summary_lines.append(f"- {label}: {val} ({cnt} docs)")
-                elif val is not None:
-                    summary_lines.append(f"- {label}: {val}")
-                else:
-                    summary_lines.append(f"- {label}")
+            # Render the per-row data as a clean Markdown table so both
+            # the LLM and the grounded fallback see a structured form
+            # (not the legacy ``label - value - estado`` string).
+            table_md = _render_aggregate_table(entity, kind, rows)
+            if table_md:
+                summary_lines.append("")
+                summary_lines.append(table_md)
+            rendered = "\n".join(summary_lines)
             context.append(
                 ContextItem(
                     title=f"Agregado {entity}/{kind}",
-                    summary="\n".join(summary_lines),
+                    summary=rendered,
                     document_id=None,
                     document_filename=None,
                     page_number=None,
                     relevance_score=1.0,
-                    excerpt="\n".join(summary_lines),
+                    excerpt=rendered,
                     confidence=None,
                     source_path=None,
                 )
@@ -464,22 +502,59 @@ def collect_context(
             results = internal.hybrid_search(db, query, filters)
             if access_scope:
                 results = filter_search_results_for_scope(db, results, access_scope)
-            context.extend(
-                ContextItem(
-                    title=result.original_filename,
-                    summary=result.excerpt,
-                    document_id=result.document_id,
-                    document_filename=result.original_filename,
-                    page_number=result.page_number,
-                    block_id=result.block_id,
-                    relevance_score=result.score,
-                    excerpt=result.excerpt,
-                    confidence=result.ocr_confidence,
-                    ocr_confidence=result.ocr_confidence,
-                    source_path=result.source_path,
+            # Merge results that come from the same document: concatenate
+            # their excerpts so the LLM sees the full document body
+            # rather than a single chunk. This is critical for short
+            # documents (emails, single-page PDFs) where the
+            # top-ranked chunk is only a fraction of the relevant text.
+            per_doc_excerpts: dict[int, list[str]] = {}
+            per_doc_top: dict[int, Any] = {}
+            for r in results:
+                if r.document_id is None:
+                    continue
+                per_doc_top.setdefault(r.document_id, r)
+                excerpt = r.excerpt or ""
+                if excerpt and excerpt not in per_doc_excerpts.setdefault(r.document_id, []):
+                    per_doc_excerpts[r.document_id].append(excerpt)
+            for doc_id, top in per_doc_top.items():
+                chunks = per_doc_excerpts.get(doc_id, [])
+                # Filter out trivial/empty chunks that waste context space.
+                # Patterns: empty Excel sheets, pages with no extracted text.
+                _EMPTY_PATTERNS = ("(Hoja sin datos)", "(Sheet sin datos)", "Hoja sin datos")
+                chunks = [
+                    c for c in chunks
+                    if len(c.strip()) > 50 and not any(p in c for p in _EMPTY_PATTERNS)
+                ]
+                if not chunks:
+                    continue
+                # If the search only returned one chunk AND the
+                # document is short (< 1500 chars of text), fetch
+                # the full OCR text of the document and use that
+                # instead. This avoids the LLM only seeing the
+                # bottom of an email because the chunker split it
+                # unevenly.
+                if len(chunks) == 1:
+                    full_text = _fetch_full_document_text(db, doc_id, top.page_number)
+                    if full_text and len(full_text) > len(chunks[0]):
+                        chunks = [full_text]
+                combined = " | ".join(chunks[:4])
+                if len(combined) > 4000:
+                    combined = combined[:4000] + "…"
+                context.append(
+                    ContextItem(
+                        title=top.original_filename,
+                        summary=combined,
+                        document_id=top.document_id,
+                        document_filename=top.original_filename,
+                        page_number=top.page_number,
+                        block_id=top.block_id,
+                        relevance_score=top.score,
+                        excerpt=combined,
+                        confidence=top.ocr_confidence,
+                        ocr_confidence=top.ocr_confidence,
+                        source_path=top.source_path,
+                    )
                 )
-                for result in results
-            )
         elif tool.name == "get_duplicate_documents":
             documents = internal.get_duplicate_documents(db)
             if access_scope:
@@ -731,9 +806,11 @@ def build_grounded_response(
     improve on. When the LLM is unavailable or rejects the
     question, this is what the user sees.
 
-    The text is intentionally conversational: the system prompt
-    tells the LLM to talk the same way, so the user cannot tell
-    whether the answer was generated by the backend or the model.
+    Tono: estilo ChatGPT — amable, estructurado, directo. Sin secciones
+    obligatorias tipo "Respuesta/Datos/Fuentes/Confianza" (el frontend
+    ya muestra la ficha tecnica). Sin formuletas tipo "Lo mas claro
+    que he encontrado esta en...". La meta es que el usuario no
+    detecte si la respuesta la escribio el modelo o el backend.
 
     CTX-7: when the top context item is a document we could resolve
     (a filename mention, a plan lookup) we detect the four business
@@ -745,18 +822,21 @@ def build_grounded_response(
     output is rejected.
     """
     if not context_items:
-        warning_text = (
-            "\n".join(f"- {warning}" for warning in warnings)
-            if warnings
-            else "- No hay fuentes documentales recuperadas."
-        )
-        lead = (
-            "No he encontrado datos suficientes en los documentos para responder a tu pregunta con seguridad. "
-            "Si me das mas contexto (numero de presupuesto, proveedor, ejercicio, etc.) o subes el documento "
-            "relevante, lo reviso de nuevo."
-        )
         if warnings:
-            lead += f"\n\n_Avisos: {warning_text}_"
+            warn_bullets = "\n".join(f"- {w}" for w in warnings)
+            lead = (
+                "No he encontrado datos suficientes en los documentos disponibles "
+                "para responderte con seguridad.\n\n"
+                f"**Que he comprobado:**\n{warn_bullets}\n\n"
+                "Si me das mas contexto (numero de presupuesto, proveedor, ejercicio) "
+                "o subes el documento relevante, lo intento de nuevo."
+            )
+        else:
+            lead = (
+                "No he encontrado documentos que coincidan con tu busqueda. "
+                "Puedes darme mas contexto (numero de presupuesto, proveedor, ejercicio) "
+                "y vuelvo a intentarlo."
+            )
         return GroundedResponse(
             answer=lead,
             confidence=0.0,
@@ -775,21 +855,39 @@ def build_grounded_response(
     confidence = _average_confidence(context_items)
     top = context_items[0]
     file_label = top.document_filename or top.title or "el documento mas relevante"
-    page_label = f" (pagina {top.page_number})" if top.page_number else ""
+    page_label = f" (pag. {top.page_number})" if top.page_number else ""
 
-    raw_text = (top.excerpt or top.summary or "").strip()
+    raw_text = (top.summary or top.excerpt or "").strip()
+    # If the excerpt is already a Markdown table (e.g. from an
+    # ``aggregate_business`` tool result), render it directly without
+    # blockquote wrapping - tables look broken inside ``>``.
+    starts_table = raw_text.lstrip().startswith("|")
+    aggregate_header_then_table = (
+        raw_text.lstrip().startswith("Agregado:") and "\n|" in raw_text
+    )
+    is_table = starts_table or aggregate_header_then_table
     quote = clip_excerpt(raw_text, 600)
-    if quote:
-        lead = (
-            f"He mirado {len(context_items)} documento(s) que podrian encajar con tu pregunta. "
-            f"En **{file_label}**{page_label} aparece esto:\n\n"
-            f"> {quote}\n\n"
-        )
+
+    if is_table:
+        lead = f"Estos son los datos que cuadran con tu pregunta (fuente principal: **{file_label}**):\n\n{quote}\n\n"
+    elif quote:
+        if len(context_items) > 1:
+            intro = (
+                f"La fuente mas clara para tu pregunta es **{file_label}**{page_label}. "
+                f"Tambien hay {len(context_items) - 1} fuente(s) relacionada(s) que he "
+                f"usado para completar la respuesta."
+            )
+        else:
+            intro = f"Lo que he encontrado esta en **{file_label}**{page_label}."
+        # Indented quote (>) keeps the citation visually distinct
+        # without being a bureaucratic block. The intro is the
+        # assistant's voice; the quote is the source.
+        lead = f"{intro}\n\n> {quote}\n\n"
     else:
         lead = (
-            f"He mirado {len(context_items)} documento(s) que podrian encajar, pero el contenido no es "
-            f"lo bastante especifico para darte una respuesta detallada. Lo mas relevante que aparece es "
-            f"**{file_label}**{page_label}.\n\n"
+            f"He encontrado {len(context_items)} fuente(s) relacionada(s), pero el "
+            f"contenido recuperado no es lo bastante especifico para responder con "
+            f"seguridad. La fuente mas cercana es **{file_label}**{page_label}.\n\n"
         )
 
     # Cite 2-3 additional sources naturally, so the user can jump to them.
@@ -797,13 +895,13 @@ def build_grounded_response(
     for item in context_items[1:4]:
         label = item.document_filename or item.title or "doc"
         if item.page_number:
-            label += f" (p. {item.page_number})"
+            label += f" (pag. {item.page_number})"
         extras.append(label)
     if extras:
-        lead += "Tambien he mirado: " + ", ".join(f"**{x}**" for x in extras) + ".\n\n"
+        lead += "**Tambien he mirado:** " + ", ".join(f"**{x}**" for x in extras) + ".\n\n"
 
     if warnings:
-        lead += "_Avisos: " + "; ".join(warnings) + "_"
+        lead += "**Avisos:** " + "; ".join(warnings) + "\n"
 
     return GroundedResponse(
         answer=lead,
@@ -859,18 +957,19 @@ def _build_friendly_fallback(
     # Duplicate document: the most common UX trap the user listed.
     if meta.get("status") == "duplicate":
         related = _related_filenames(context_items[1:6])
-        related_text = (
-            f" En la misma carpeta hay otros documentos que pueden "
-            f"ser el original: {', '.join('**' + r + '**' for r in related)}."
-            if related
-            else " No he encontrado documentos relacionados para enlazarte el original."
-        )
+        if related:
+            related_text = (
+                f"\n\nHe encontrado estos candidatos a ser el original: "
+                + ", ".join(f"**{r}**" for r in related)
+                + "."
+            )
+        else:
+            related_text = ""
         answer = (
-            f"Este documento esta marcado como **duplicado** dentro del sistema, "
-            f"asi que no tiene una extraccion de OCR propia. "
-            f"Su contenido util esta en el documento original del que procede."
-            f"{related_text} "
-            f"Recomiendo abrir el original en lugar de este PDF."
+            f"Este documento esta marcado como **duplicado**, asi que no tiene una "
+            f"extraccion OCR propia. El contenido util esta en el documento original "
+            f"del que procede.{related_text} Te recomiendo abrir el original en lugar "
+            f"de este PDF."
         )
         return GroundedResponse(
             answer=answer,
@@ -881,11 +980,9 @@ def _build_friendly_fallback(
     # Document not yet classified.
     if meta.get("document_type") in {"desconocido", "unknown"}:
         answer = (
-            "Todavia no he clasificado este documento (sigue marcado como "
-            'tipo "desconocido"). No puedo decirte de que trata hasta que se '
-            "procese y se le asigne un tipo. Recomiendo re-procesarlo desde "
-            "la ficha del documento para que el sistema lo catalogue y le "
-            "aplique la extraccion correspondiente."
+            "Todavia no he clasificado este documento (sigue como tipo **desconocido**), "
+            "asi que no puedo decirte de que trata con seguridad. Si lo re-procesas desde "
+            "su ficha, el sistema lo catalogara y le aplicara la extraccion correspondiente."
         )
         return GroundedResponse(
             answer=answer,
@@ -900,10 +997,10 @@ def _build_friendly_fallback(
         )
         conf_text = f" ({conf_pct}% de confianza OCR)" if conf_pct is not None else ""
         answer = (
-            f"He abierto el documento pero la lectura OCR es de baja calidad{conf_text}. "
-            f"No puedo confirmar el contenido con seguridad. Recomiendo re-procesar "
-            f"este PDF con el motor OCR avanzado (PaddleOCR v3 / PP-Structure) desde "
-            f"la ficha del documento y volver a preguntarme despues."
+            f"He abierto el documento pero la lectura OCR es de baja calidad{conf_text}, "
+            f"asi que no puedo confirmar el contenido con seguridad. Si lo re-procesas con "
+            f"el motor OCR avanzado (PaddleOCR v3 / PP-Structure) desde su ficha, tendre "
+            f"mucho mejor material para responderte."
         )
         return GroundedResponse(
             answer=answer,
@@ -914,10 +1011,9 @@ def _build_friendly_fallback(
     # No text extracted at all.
     if not (top.excerpt or top.summary or "").strip():
         answer = (
-            "He encontrado el documento pero no tiene texto OCR extraido. "
-            "Puede que el PDF sea solo imagen o que el OCR haya fallado. "
-            "Recomiendo re-procesar este archivo desde su ficha para que se "
-            "le aplique una nueva extraccion."
+            "He encontrado el documento pero el OCR no ha extraido texto util "
+            "(puede que sea un PDF solo de imagen o que la extraccion haya fallado). "
+            "Si lo re-procesas desde su ficha, tendre contenido con el que trabajar."
         )
         return GroundedResponse(
             answer=answer,
@@ -980,6 +1076,34 @@ def _related_filenames(items: list[ContextItem]) -> list[str]:
 # ---------------------------------------------------------------------------
 # Per-entity ContextItem builders
 # ---------------------------------------------------------------------------
+
+
+def _fetch_full_document_text(
+    db: Session, document_id: int, page_number: int | None
+) -> str | None:
+    """Return the full OCR text of a document (or a single page).
+
+    Used as a fallback when the hybrid search only returned a partial
+    chunk for a short document: a one-page email or a single-page
+    contract often fits in a single chunk, but the chunking step
+    truncated the body to the last paragraph, hiding the From / To /
+    Subject headers. Falling back to the full page text makes the
+    LLM see the whole document.
+    """
+    try:
+        from app.models import DocumentPage
+
+        stmt = select(DocumentPage.text).where(DocumentPage.document_id == document_id)
+        if page_number is not None:
+            stmt = stmt.where(DocumentPage.page_number == page_number)
+        stmt = stmt.order_by(DocumentPage.page_number.asc())
+        rows = db.execute(stmt).all()
+    except Exception:
+        return None
+    parts = [text for (text,) in rows if text]
+    if not parts:
+        return None
+    return "\n\n".join(parts)
 
 
 def budget_context(db: Session, budget: Budget) -> ContextItem:
@@ -1055,27 +1179,108 @@ def _structured_context_item(
 ) -> ContextItem:
     """Render a structured-tool payload as a :class:`ContextItem`.
 
-    The payload is JSON-serialised into the ``excerpt`` and the
-    ``title`` carries a short label so the LLM can cite the source.
+    The payload is rendered as human-readable text for the ``summary``
+    (used in the grounded fallback) and kept as raw JSON in the
+    ``excerpt`` (used in the LLM prompt, where the model can parse it).
     The relevance score is 1.0 because structured data is always
     authoritative when present.
     """
     import json
 
-    excerpt = json.dumps(payload, default=str, ensure_ascii=False)
+    raw_json = json.dumps(payload, default=str, ensure_ascii=False)
+    human_readable = _render_structured_payload(tool_name, payload)
     found = bool(payload.get("found", True))
     confidence = float(payload.get("confidence") or (0.95 if found else 0.2))
     return ContextItem(
         title=f"[Estructurado] {label}",
-        summary=excerpt,
+        summary=human_readable,
         document_id=payload.get("document_id"),
         document_filename=None,
         page_number=None,
         relevance_score=1.0,
-        excerpt=excerpt,
+        excerpt=raw_json,
         confidence=confidence,
         source_path=None,
     )
+
+
+def _render_structured_payload(tool_name: str, payload: dict) -> str:
+    """Convert a structured-tool JSON payload into human-readable text.
+
+    This is used in the grounded fallback so users never see raw JSON.
+    The LLM still receives the raw JSON in the excerpt field.
+    """
+    if not payload.get("found", True):
+        return f" Datos no encontrados para {tool_name}."
+
+    parts: list[str] = []
+
+    if tool_name in ("get_budget_total", "get_budget_lines", "get_invoiced_amount_for_budget"):
+        num = payload.get("budget_number") or payload.get("budget_id") or "-"
+        if "total_amount" in payload:
+            amt = payload["total_amount"]
+            cur = payload.get("currency") or ""
+            parts.append(f"Presupuesto {num}: {amt} {cur}".strip())
+        if "lines" in payload:
+            lines = payload["lines"] or []
+            parts.append(f"Lineas: {len(lines)}")
+            for ln in lines[:8]:
+                ref = ln.get("reference") or "-"
+                desc = (ln.get("description") or "")[:60]
+                qty = ln.get("quantity")
+                tot = ln.get("total_price")
+                parts.append(f"  - {ref} {desc} x{qty or '-'} total {tot or '-'}")
+        if "client_name" in payload and payload["client_name"]:
+            parts.append(f"Cliente: {payload['client_name']}")
+        if "date" in payload and payload["date"]:
+            parts.append(f"Fecha: {payload['date']}")
+        if "status" in payload and payload["status"]:
+            parts.append(f"Estado: {payload['status']}")
+
+    elif tool_name == "list_recent_accepted_budgets":
+        budgets = payload.get("budgets") or []
+        parts.append(f"Presupuestos aceptados recientes: {len(budgets)}")
+        for b in budgets:
+            num = b.get("budget_number") or b.get("id") or "-"
+            client = b.get("client_name") or "-"
+            amt = b.get("total_amount")
+            cur = b.get("currency") or ""
+            date = b.get("date") or "-"
+            amt_str = f" | {amt} {cur}" if amt else ""
+            parts.append(f"  - {num} ({date}) cliente: {client}{amt_str}")
+
+    elif tool_name == "get_invoice_origin_order":
+        num = payload.get("invoice_number") or "-"
+        if "order_number" in payload and payload["order_number"]:
+            parts.append(f"Factura {num} proviene del pedido {payload['order_number']}")
+        elif "supplier" in payload and payload["supplier"]:
+            parts.append(f"Factura {num} de proveedor {payload['supplier']}")
+        else:
+            parts.append(f"Factura {num}: sin pedido de origen identificado")
+
+    elif tool_name in ("find_delivery_note_in_scope", "find_shipping_cost_in_scope"):
+        scope = payload.get("scope") or "-"
+        found_items = payload.get("items") or []
+        parts.append(f"Alcance: {scope} | Resultados: {len(found_items)}")
+        for item in found_items[:5]:
+            desc = item.get("description") or item.get("label") or str(item)[:100]
+            parts.append(f"  - {desc}")
+
+    else:
+        # Generic: show key=value pairs
+        for k, v in payload.items():
+            if k in ("found", "confidence", "document_id"):
+                continue
+            if v is not None and v != "" and v != []:
+                if isinstance(v, list) and len(v) > 3:
+                    parts.append(f"{k}: {len(v)} elementos")
+                elif isinstance(v, dict):
+                    inner = ", ".join(f"{ik}={iv}" for ik, iv in v.items() if iv)
+                    parts.append(f"{k}: {inner}")
+                else:
+                    parts.append(f"{k}: {v}")
+
+    return "\n".join(parts) if parts else json.dumps(payload, default=str, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1117,7 +1322,10 @@ def clip_excerpt(text: str, max_chars: int) -> str:
     don't end up with a tiny fragment."""
     if not text:
         return ""
-    text = text.strip().replace("\n", " ")
+    text = text.strip()
+    preserve_newlines = text.startswith("|") or (text.startswith("Agregado:") and "\n|" in text)
+    if not preserve_newlines:
+        text = text.replace("\n", " ")
     if len(text) <= max_chars:
         return text
     clipped = text[:max_chars]
@@ -1174,3 +1382,109 @@ def confidence_label(value: float) -> str:
     if value >= 0.5:
         return "Media"
     return "Baja"
+
+
+def _render_aggregate_table(entity: str, kind: str, rows: list[dict]) -> str:
+    """Render aggregate rows as a clean Markdown table.
+
+    Replaces the legacy ``"Presupuesto X - cliente - - 1234.56 - estado -"``
+    string formatting with structured columns. The table is the same
+    shape the LLM and the grounded fallback will both see, so the user
+    gets a readable answer whether the model succeeds or falls back.
+    """
+    if not rows:
+        return ""
+
+    # Pick the columns based on what the row carries.
+    sample = rows[0]
+
+    def _cell(value: Any) -> str:
+        if value is None:
+            return "-"
+        text = str(value).strip()
+        return text if text else "-"
+
+    # Detect kind="top" rows (label = human description, value = amount)
+    if kind == "top" and "label" in sample and "value" in sample:
+        # Try to extract structured fields from the label by splitting on " - "
+        headers = ["#", "Documento", "Cliente/Proveedor", "Importe", "Estado"]
+        out_lines = [
+            "| " + " | ".join(headers) + " |",
+            "| " + " | ".join(["---"] * len(headers)) + " |",
+        ]
+        for idx, r in enumerate(rows, start=1):
+            label = _cell(r.get("label"))
+            value = _cell(r.get("value"))
+            # Best-effort: split label by " - " to tease apart fields.
+            # Label shape: "Presupuesto 260039 - cliente ACME - 8864.80 EUR - estado aceptado"
+            # but missing values stay as bare "cliente", "estado", etc.
+            doc_id = "-"
+            party = "-"
+            amount = "-"
+            status = "-"
+            extra = []
+            for raw_part in label.split(" - "):
+                part = raw_part.strip()
+                if not part:
+                    continue
+                # Strip leading " -" dashes that landed here when the
+                # upstream label had empty fields back-to-back
+                # (e.g. "cliente - - 8864.80").
+                while part.startswith("-"):
+                    part = part.lstrip("- ").strip()
+                    if not part:
+                        break
+                if not part or part == "-":
+                    continue
+                low = part.lower()
+                # Field with empty value: bare "cliente", "estado", "proveedor"
+                if low in {"cliente", "proveedor", "estado"}:
+                    continue
+                # Field prefix with empty value, e.g. "cliente - " (already filtered above
+                # because the post-split " - " lands as a "-")
+                if low.startswith("cliente ") or low.startswith("proveedor ") or low.startswith("estado "):
+                    value_after = part.split(" ", 1)[1].strip()
+                    if value_after and value_after != "-":
+                        if low.startswith("cliente ") or low.startswith("proveedor "):
+                            party = value_after
+                        elif low.startswith("estado "):
+                            status = value_after
+                    continue
+                if low.startswith("presupuesto ") or low.startswith("pedido ") or low.startswith("factura "):
+                    doc_id = part
+                    continue
+                # Heuristic: amount-like (contains digits and '.' or ',')
+                if any(ch.isdigit() for ch in part) and ("." in part or "," in part):
+                    amount = part
+                    continue
+                extra.append(part)
+            if value not in {"-", ""} and amount == "-":
+                amount = value
+            if extra and party == "-":
+                party = " / ".join(extra)
+            out_lines.append(
+                f"| {idx} | {doc_id} | {party} | {amount} | {status} |"
+            )
+        return "\n".join(out_lines)
+
+    # Generic rows: key | value (and optional count)
+    if "label" in sample or "metric" in sample:
+        headers = ["#", "Etiqueta", "Valor"]
+        if any("count" in (r or {}) for r in rows):
+            headers.append("Docs")
+        out_lines = [
+            "| " + " | ".join(headers) + " |",
+            "| " + " | ".join(["---"] * len(headers)) + " |",
+        ]
+        for idx, r in enumerate(rows, start=1):
+            label = _cell(r.get("label") or r.get("metric"))
+            value = _cell(r.get("value"))
+            row = f"| {idx} | {label} | {value} |"
+            if "Docs" in headers:
+                cnt = _cell(r.get("count"))
+                row += f" {cnt} |"
+            out_lines.append(row)
+        return "\n".join(out_lines)
+
+    # Last resort: serialise rows as JSON lines
+    return "\n".join(f"- `{json.dumps(r, ensure_ascii=False)}`" for r in rows)
