@@ -24,8 +24,15 @@ def test_context_text_marks_low_ocr_sources_for_llm():
     context_text = agent._context_text_for_ai([item])
     messages = _build_ai_messages("Cual es el total?", context_text, "Sin advertencias previas.")
 
+    # The [OCR DUDOSO] marker is injected into the context line.
     assert "[OCR DUDOSO]" in context_text
-    assert "Si una fuente esta marcada como [OCR DUDOSO]" in messages[0]["content"]
+    # The system prompt must tell the LLM how to handle the marker
+    # (the exact wording drifted when the prompt was rewritten in
+    # ChatGPT style; we now check the marker itself is referenced
+    # along with a warn/contrast verb, not a specific sentence).
+    system = messages[0]["content"]
+    assert "[OCR DUDOSO]" in system
+    assert any(verb in system.lower() for verb in ("advierte", "menciona", "contrast"))
 
 
 def test_qwen3_prompt_disables_thinking_mode(monkeypatch):
