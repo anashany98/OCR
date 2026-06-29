@@ -39,6 +39,12 @@ _LEARNED_RULES_CACHE_TTL = 60.0
 
 logger = logging.getLogger(__name__)
 _learned_rules_cache: dict[str, object] = {"expires_at": 0.0, "rules": []}
+_ALLOWED_DOCUMENT_BLOCK_TYPES = {"text", "table", "figure", "header", "footer", "list"}
+
+
+def _normalise_document_block_type(block_type: str | None) -> str:
+    value = (block_type or "text").strip().lower()
+    return value if value in _ALLOWED_DOCUMENT_BLOCK_TYPES else "text"
 
 
 def _get_cached_learned_rules(db: Session) -> list:
@@ -144,7 +150,7 @@ def mode_requires_file_parse(mode_or_job_type: str | None) -> bool:
 def _page_status_from_confidence(ocr_confidence: float | None) -> str:
     if ocr_confidence is None:
         return "processed"
-    if ocr_confidence < 0.70:
+    if ocr_confidence < settings.low_ocr_confidence_threshold:
         return "processed_low_confidence"
     return "processed"
 
@@ -166,7 +172,7 @@ def _load_low_ocr_confidences(db: Session, document_id: int) -> list[float]:
             .where(DocumentPage.document_id == document_id)
             .where(Document.deleted_at.is_(None))
             .where(DocumentPage.ocr_confidence.is_not(None))
-            .where(DocumentPage.ocr_confidence < 0.70)
+            .where(DocumentPage.ocr_confidence < settings.low_ocr_confidence_threshold)
         ).all()
     )
 
@@ -362,7 +368,15 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     stored_path = settings.files_dir / document.stored_filename
     page_image_dir = settings.files_dir / document.file_hash[:2] / f"{document.file_hash}_pages"
     ocr_engine = get_ocr_engine_class()()
-    extracted = parse_document(stored_path, page_image_dir, ocr_engine)
+    # Extract folder hint from source_path for content routing.
+    # e.g. "/app/data/input/presupuestos/245745/foto.jpg" -> "presupuestos"
+    folder_hint = None
+    if document.source_path:
+        parts = Path(document.source_path).parts
+        input_dir_parts = Path(settings.input_dir).parts
+        if len(parts) > len(input_dir_parts):
+            folder_hint = parts[len(input_dir_parts)]
+    extracted = parse_document(stored_path, page_image_dir, ocr_engine, folder_hint=folder_hint)
     for extracted_page in extracted.pages:
         extracted_page.text = sanitize_text_for_database(extracted_page.text)
         for extracted_block in extracted_page.blocks:
@@ -403,7 +417,7 @@ def _process_full_parse(db: Session, document: Document) -> bool:
                 document_id=document.id,
                 page_id=page.id,
                 page_number=extracted_block.page_number,
-                block_type=extracted_block.block_type,
+                block_type=_normalise_document_block_type(extracted_block.block_type),
                 text=extracted_block.text,
                 bbox_x1=bbox[0],
                 bbox_y1=bbox[1],
@@ -420,11 +434,7 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         document,
         text=extracted.text,
         page_count=len(extracted.pages),
-        low_ocr_confidences=[
-            page.ocr_confidence
-            for page in extracted.pages
-            if page.ocr_confidence is not None and page.ocr_confidence < 0.70
-        ],
+        low_ocr_confidences=[page.ocr_confidence for page in extracted.pages if page.ocr_confidence is not None and page.ocr_confidence < settings.low_ocr_confidence_threshold],
         pages=extracted.pages,
     )
     _replace_document_chunks(
@@ -650,7 +660,7 @@ def _maybe_run_hyperextract(
                 warnings_json=["no_ocr_text"],
             )
         )
-        db.commit()
+        db.flush()
         return
 
     try:
@@ -692,4 +702,4 @@ def _maybe_run_hyperextract(
             latency_ms=int(envelope.get("latency_ms") or 0),
         )
     )
-    db.commit()
+    db.flush()

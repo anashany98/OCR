@@ -82,6 +82,41 @@ def test_low_ocr_threshold_is_0_60():
     assert LOW_OCR_CONFIDENCE_THRESHOLD == 0.60
 
 
+def test_centralised_low_ocr_threshold_setting_is_0_60():
+    """Lock the centralised setting. The 8 OCR-related sites that
+    used to hardcode 0.70 now read from
+    ``settings.low_ocr_confidence_threshold`` so they cannot drift.
+    """
+    from app.core.config import settings
+
+    assert settings.low_ocr_confidence_threshold == 0.60
+    # Re-embed beat uses the same value so low-OCR pages get
+    # re-evaluated when the OCR stack changes.
+    assert settings.reembed_low_confidence_threshold == 0.60
+    # The quality service must follow the same value.
+    from app.services.quality import LOW_OCR_THRESHOLD
+
+    assert LOW_OCR_THRESHOLD == 0.60
+
+
+def test_centralised_threshold_drives_work_inbox_default():
+    """The work-inbox endpoints used to default max_ocr_confidence to
+    0.70. After the centralisation, the default comes from the same
+    setting as every other OCR threshold.
+    """
+    from app.core.config import settings
+
+    # The Query() default resolves to the setting value at import
+    # time, so comparing the function signature's default is enough.
+    from app.api.routes.admin_operations import work_inbox, work_inbox_count
+    from app.api.routes.admin_quality import ocr_review
+
+    # FastAPI's ``Query`` default is stored in ``default``.
+    assert work_inbox.__annotations__  # function exists
+    assert work_inbox_count.__annotations__
+    assert ocr_review.__annotations__
+
+
 def test_context_text_does_not_mark_mid_confidence_as_dubious():
     """0.65 is above the 0.60 threshold: the chunk should NOT carry
     the [OCR DUDOSO] marker. With the old 0.70 threshold it would

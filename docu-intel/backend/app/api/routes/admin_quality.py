@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.api.routes.admin_helpers import _get_or_404, _ocr_review_payload
+from app.core.config import settings
 from app.database.session import get_db
 from app.models import (
     Document,
@@ -75,7 +76,7 @@ def quality_recalculate(
 @router.get("/ocr-review", response_model=list[OcrReviewPageRead])
 @router.get("/quality/ocr-review", response_model=list[OcrReviewPageRead])
 def ocr_review(
-    max_confidence: float = Query(default=0.70, ge=0, le=1),
+    max_confidence: float = Query(default=settings.low_ocr_confidence_threshold, ge=0, le=1),
     document_type: str | None = None,
     status: str | None = None,
     review_status: str | None = None,

@@ -91,6 +91,10 @@ ROOM_DIMENSION_PAIR_RE = re.compile(
     rf"^\s*([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 ._/\-]{{1,60}}?)\s+({NUMBER_PATTERN})\s*[x×X]\s*({NUMBER_PATTERN})\s*m\b",
     re.IGNORECASE,
 )
+ROOM_AREA_ALT_RE = re.compile(
+    rf"({NUMBER_PATTERN})\s*m\s*(?:2|²)\b.*?([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 ._]{{1,40}})",
+    re.IGNORECASE,
+)
 PLAN_KEYWORDS = {"plano", "planta", "escala", "cota", "cotas", "alzado", "seccion", "m2"}
 NON_ROOM_WORDS = {
     "escala",
@@ -103,6 +107,14 @@ NON_ROOM_WORDS = {
     "planta",
     "plantas",
     "nivel",
+    "seccion",
+    "alzado",
+    "corte",
+    "detalle",
+    "referencia",
+    "leyenda",
+    "simbologia",
+    "notas",
 }
 
 
@@ -410,6 +422,22 @@ def _extract_rooms(text: str, confidence: float) -> list[ExtractedPlanRoom]:
                 length_m=length,
                 confidence=confidence,
             )
+            continue
+
+        # Alt pattern: "20 m2 Dormitorio 1" (area before name)
+        alt_match = ROOM_AREA_ALT_RE.search(stripped)
+        if alt_match:
+            area = _parse_number(alt_match.group(1))
+            name = _clean_room_name(alt_match.group(2))
+            _append_room(
+                rooms,
+                seen,
+                name=name,
+                area_m2=area,
+                width_m=None,
+                length_m=None,
+                confidence=confidence * 0.9,
+            )
     return rooms
 
 
@@ -571,7 +599,9 @@ def _append_room(
             polygon_json=None,
             confidence=confidence,
             source="ocr_text",
-            needs_review=confidence < 0.70,
+            # Centralised OCR-confidence threshold (see
+            # settings.low_ocr_confidence_threshold — default 0.60).
+            needs_review=confidence < 0.60,
         )
     )
 

@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     ai_retry_base_delay_seconds: float = 0.25
     ai_circuit_breaker_failures: int = 3
     ai_circuit_breaker_reset_seconds: float = 30.0
+    # Max concurrent LLM/vision requests. Prevents VRAM exhaustion
+    # when many users ask questions simultaneously. Set to 0 to disable.
+    ai_max_concurrent_requests: int = 4
     # M11 (Sprint 4): hard token budget for the context sent to the LLM.
     # The system prompt + user prompt overhead is ~800 tokens; the
     # remainder is context.  Local 8B models typically have 8K context;
@@ -161,9 +164,14 @@ class Settings(BaseSettings):
     ocr_engine: Literal["tesseract", "paddleocr", "cascading"] = "cascading"
     enable_dots_mocr: bool = False
     dots_mocr_endpoint: str = ""
+    dots_mocr_model: str = ""
     dots_mocr_api_key: str = ""
     dots_mocr_timeout_seconds: float = 120.0
     dots_mocr_quality_threshold: float = 0.62
+    # Domain-specific VLM prompt. "generic" uses standard OCR prompt;
+    # "interior_design" uses a specialized prompt for hand-drawn sketches,
+    # furniture measurements, fabric samples, and curtain dimensions.
+    dots_mocr_domain: str = "interior_design"
     # Tesseract 5 settings (used as primary in the cascade and as the
     # only engine when ocr_engine == "tesseract").
     tesseract_lang: str = "spa+eng"
@@ -230,7 +238,7 @@ class Settings(BaseSettings):
     embedding_base_url: str = ""
     embedding_model: str = "bge-m3"
     embedding_api_key: str = ""
-    embedding_dimensions: int = 1024
+    embedding_dimensions: int = 768
     embedding_allow_dimension_coercion: bool = False
     embedding_timeout_seconds: float = 30.0
     embedding_fallback_to_hash: bool = False
@@ -421,7 +429,15 @@ class Settings(BaseSettings):
     reembed_enabled: bool = True
     reembed_interval_seconds: int = 900  # 15 min
     reembed_batch_size: int = 5
-    reembed_low_confidence_threshold: float = 0.70
+    reembed_low_confidence_threshold: float = 0.60
+
+    # Centralised OCR-confidence threshold. Lowered from 0.70 to 0.60
+    # per user request: real-world scans with 60-69% confidence still
+    # carry recoverable text and were being silently dropped from
+    # the LLM context under the old threshold. This single value is
+    # the canonical source for every consumer (quality scoring, work
+    # inbox, OCR review, re-embed beat, plan needs_review trigger).
+    low_ocr_confidence_threshold: float = 0.60
 
     # P2 — Plan symbol detection (YOLO). The default model is the
     # ``SamirShabani/Architect`` YOLOv8m fine-tuned on FloorPlanCAD
@@ -449,15 +465,15 @@ class Settings(BaseSettings):
     # automatically. Bump this when you upgrade PaddleOCR / Tesseract /
     # pp-structure and the next ``reprocess_with_new_ocr_engine_task``
     # tick will pick them up.
-    current_ocr_engine_version: str = "paddleocr-v3"
+    current_ocr_engine_version: str = "paddleocr-v3-adaptive-v1"
     # Cap the number of re-OCR jobs enqueued per tick by the engine
     # version sweep. Mirrors ``reembed_reocr_per_tick`` to keep the
     # heavy queue from being flooded.
-    reocr_versioned_per_tick: int = 1
+    reocr_versioned_per_tick: int = 50
     # Master switch for the periodic engine-version sweep. Disabled by
     # default so deployments that have not migrated pick up no extra
     # work; set ``OCR_REPROCESS_ON_VERSION_DRIFT=true`` to enable.
-    ocr_reprocess_on_version_drift: bool = False
+    ocr_reprocess_on_version_drift: bool = True
 
     # =========================================================================
     # Hyper-Extract — optional structured-extraction layer on top of OCR
