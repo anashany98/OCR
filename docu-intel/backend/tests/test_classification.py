@@ -22,3 +22,33 @@ def test_classifies_plan_from_folder_and_keywords():
     assert result.document_type == "plano"
     assert result.confidence >= 0.8
 
+
+def test_image_inside_planos_folder_stays_image_without_plan_signals():
+    result = classify_document(
+        filename="foto_sofa.jpg",
+        source_path="/data/input/planos/foto_sofa.jpg",
+        text="Foto de sofa tapizado y mesa auxiliar sin escala ni cotas tecnicas.",
+    )
+
+    assert result.document_type == "imagen"
+
+
+def test_image_inside_planos_folder_with_plan_filename_can_be_plan():
+    result = classify_document(
+        filename="plano_planta_baja.jpg",
+        source_path="/data/input/planos/plano_planta_baja.jpg",
+        text="",
+    )
+
+    assert result.document_type == "plano"
+
+
+def test_planos_folder_pdf_needs_real_plan_signal():
+    result = classify_document(
+        filename="catalogo_muebles.pdf",
+        source_path="/data/input/planos/catalogo_muebles.pdf",
+        text="Catalogo de muebles para salon con medidas de ancho y alto.",
+    )
+
+    assert result.document_type != "plano"
+

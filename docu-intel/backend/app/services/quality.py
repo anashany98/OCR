@@ -59,8 +59,12 @@ def evaluate_document_quality(
     if failed_page_id is not None:
         flags.add("page_failed")
 
-    if low_ocr_confidences:
+    low_ocr_count = len(low_ocr_confidences or [])
+    low_ocr_ratio = low_ocr_count / max(int(page_count or low_ocr_count or 1), 1)
+    if low_ocr_count and (page_count in {None, 0, 1} or low_ocr_ratio >= 0.50):
         flags.add("low_ocr_confidence")
+    elif low_ocr_count:
+        flags.add("partial_low_ocr_confidence")
 
     if document.document_type in {"desconocido", "", None}:
         flags.add("document_type_unknown")

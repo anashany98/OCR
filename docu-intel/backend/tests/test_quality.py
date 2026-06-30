@@ -172,6 +172,24 @@ class TestDigitalPdfAutoApprove:
         assert result.status == "processed_low_quality"
         assert result.needs_review
 
+    def test_multipage_pdf_with_one_low_ocr_page_stays_processed_when_text_is_good(self):
+        doc = _make_document(confidence=0.88, document_type="factura")
+        pages = _make_pages([0.91, 0.52, 0.93, 0.89])
+        db = _patch_db(pages)
+
+        result = evaluate_document_quality(
+            db,
+            doc,
+            text=LONG_TEXT * 4,
+            page_count=4,
+            low_ocr_confidences=[0.52],
+        )
+
+        assert "partial_low_ocr_confidence" in result.flags
+        assert "low_ocr_confidence" not in result.flags
+        assert result.status == "processed_ok"
+        assert not result.needs_review
+
     def test_digital_pdf_unknown_type_not_auto_approved(self):
         doc = _make_document(confidence=0.50, document_type="desconocido")
         pages = _make_pages([1.0])
