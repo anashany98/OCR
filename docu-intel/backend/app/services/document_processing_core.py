@@ -673,6 +673,7 @@ def _maybe_run_hyperextract(
                 "document_type": document_type,
                 "page_count": document.page_count,
             },
+            image_path=_first_page_image_path(document),
         )
     except Exception as exc:  # pragma: no cover - defensive, service swallows internally
         logger.warning(
@@ -703,3 +704,11 @@ def _maybe_run_hyperextract(
         )
     )
     db.flush()
+
+
+def _first_page_image_path(document: Document) -> str | None:
+    pages = sorted(document.pages or [], key=lambda page: page.page_number or 0)
+    for page in pages:
+        if page.image_path:
+            return page.image_path
+    return None

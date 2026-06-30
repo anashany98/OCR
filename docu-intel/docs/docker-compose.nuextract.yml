@@ -1,0 +1,17 @@
+services:
+  nuextract-vllm:
+    image: vllm/vllm-openai:latest
+    container_name: nuextract-vllm
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+    ports:
+      - "8010:8000"
+    command: >
+      --model numind/NuExtract3
+      --trust-remote-code
+      --limit-mm-per-prompt '{"image":4,"video":0}'
+      --chat-template-content-format openai
+      --generation-config vllm
+      --max-model-len 16384
+      --speculative-config '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'

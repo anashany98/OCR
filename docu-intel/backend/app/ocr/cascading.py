@@ -143,12 +143,14 @@ class CascadingOCREngine:
         min_confidence: float = 0.5,
         pp_structure: BaseOCREngine | None = None,
         vlm_ocr: BaseOCREngine | None = None,
+        tier4_fallback: BaseOCREngine | None = None,
         tier4_quality_threshold: float = 0.62,
     ) -> None:
         self.primary = primary
         self.fallback = fallback
         self.pp_structure = pp_structure
         self.vlm_ocr = vlm_ocr
+        self.tier4_fallback = tier4_fallback
         self.min_chars = min_chars
         self.min_confidence = min_confidence
         self.tier4_quality_threshold = tier4_quality_threshold
@@ -286,15 +288,38 @@ class CascadingOCREngine:
             raise RuntimeError("VLM OCR engine not initialised")
         start = time.perf_counter()
         try:
+            logger.info("OCR Tier 4 sending page to %s: image=%s", self.vlm_ocr.name, image_path.name)
             tier4_result = self.vlm_ocr.extract(image_path)
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.vlm_ocr.name, exc)
-            return None
+            if self.tier4_fallback is None:
+                return None
+            return self._try_tier4_fallback(image_path, best_prior, self.tier4_fallback)
         track_ocr_duration(time.perf_counter() - start)
 
         if self._is_better(tier4_result, best_prior):
             return self._record_winner(self.vlm_ocr.name, tier4_result)
+        return None
+
+    def _try_tier4_fallback(
+        self,
+        image_path: Path,
+        best_prior: OCRResult,
+        engine: BaseOCREngine,
+    ) -> OCRResult | None:
+        start = time.perf_counter()
+        try:
+            logger.info("OCR Tier 4 fallback sending page to %s: image=%s", engine.name, image_path.name)
+            tier4_result = engine.extract(image_path)
+        except Exception as exc:
+            track_ocr_duration(time.perf_counter() - start)
+            self._track_fallback_failure(engine.name, exc)
+            return None
+        track_ocr_duration(time.perf_counter() - start)
+        if self._is_better(tier4_result, best_prior):
+            logger.info("OCR Tier 4 fallback used: engine=%s image=%s", engine.name, image_path.name)
+            return self._record_winner(engine.name, tier4_result)
         return None
 
     def _is_acceptable(self, result: OCRResult) -> bool:

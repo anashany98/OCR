@@ -197,6 +197,22 @@ def _build_cascading_engine() -> BaseOCREngine:
             kwargs["vlm_ocr"] = None
         else:
             kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
+    if settings.nuextract_enabled and settings.nuextract_tier4_enabled:
+        try:
+            from app.ocr.nuextract_ocr import NuExtractOCREngine
+
+            nuextract = NuExtractOCREngine()
+        except Exception as exc:  # noqa: BLE001 - any constructor failure
+            logger.warning(
+                "NuExtract3 (Tier 4) disabled at runtime: %s. "
+                "Cascade will keep existing Tier 4 fallback if configured.",
+                exc,
+            )
+        else:
+            if kwargs.get("vlm_ocr") is not None:
+                kwargs["tier4_fallback"] = kwargs["vlm_ocr"]
+            kwargs["vlm_ocr"] = nuextract
+            kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
     return CascadingOCREngine(**kwargs)  # type: ignore[arg-type]
 
 
@@ -207,6 +223,8 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
         _warm_ocr_engine(engine.pp_structure)
     if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:
         _warm_ocr_engine(engine.vlm_ocr)
+    if hasattr(engine, "tier4_fallback") and engine.tier4_fallback is not None:
+        _warm_ocr_engine(engine.tier4_fallback)
     if hasattr(engine, "_engine"):
         _ = engine._engine  # noqa: B018 - intentional touch to warm any lazy init
     if hasattr(engine, "_pipeline"):
@@ -264,6 +282,8 @@ def _collect_gpu_device_strings(engine: BaseOCREngine) -> set[str]:
         candidates.append(engine.pp_structure)
     if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:
         candidates.append(engine.vlm_ocr)
+    if hasattr(engine, "tier4_fallback") and engine.tier4_fallback is not None:
+        candidates.append(engine.tier4_fallback)
     for cand in candidates:
         device = getattr(cand, "device", None)
         if isinstance(device, str) and device.lower().startswith(("gpu", "cuda")):

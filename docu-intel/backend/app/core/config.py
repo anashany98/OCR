@@ -172,6 +172,17 @@ class Settings(BaseSettings):
     # "interior_design" uses a specialized prompt for hand-drawn sketches,
     # furniture measurements, fabric samples, and curtain dimensions.
     dots_mocr_domain: str = "interior_design"
+    nuextract_enabled: bool = False
+    nuextract_base_url: str = "http://nuextract-vllm:8000/v1"
+    nuextract_model: str = "numind/NuExtract3"
+    nuextract_timeout_seconds: float = 120.0
+    nuextract_enable_thinking: bool = False
+    nuextract_max_concurrency: int = 1
+    nuextract_max_images: int = 4
+    nuextract_markdown_temperature: float = 0.2
+    nuextract_extraction_temperature: float = 0.2
+    nuextract_tier4_enabled: bool = False
+    nuextract_hyperextract_enabled: bool = False
     # Tesseract 5 settings (used as primary in the cascade and as the
     # only engine when ocr_engine == "tesseract").
     tesseract_lang: str = "spa+eng"
