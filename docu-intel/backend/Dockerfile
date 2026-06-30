@@ -60,7 +60,8 @@ RUN groupadd --system --gid 10001 appuser \
 # Linux/Windows hosts and then drops to the non-root appuser. See
 # docker-entrypoint.sh for the full design.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 COPY app /app/app
 COPY alembic /app/alembic
