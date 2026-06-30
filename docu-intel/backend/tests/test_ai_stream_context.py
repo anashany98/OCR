@@ -188,7 +188,7 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ai_stream_calls_llm_without_document_context(monkeypatch):
+async def test_ai_stream_without_document_context_uses_not_found_fallback(monkeypatch):
     from app.ai.active_context import ActiveContext
     from app.ai.agent import StreamOutcome
     from app.ai.tools import ToolCall
@@ -228,7 +228,6 @@ async def test_ai_stream_calls_llm_without_document_context(monkeypatch):
 
     async def fake_stream(question, context_items, warnings):
         called["stream"] = True
-        assert context_items == []
         yield "respuesta general"
         yield StreamOutcome(text="respuesta general", ok=True)
 
@@ -263,6 +262,7 @@ async def test_ai_stream_calls_llm_without_document_context(monkeypatch):
     )
     body = b"".join([chunk async for chunk in response.body_iterator]).decode()
 
-    assert called["stream"] is True
-    assert "respuesta general" in body
-    assert '"fallback": false' in body
+    assert called["stream"] is False
+    assert "respuesta general" not in body
+    assert '"fallback": true' in body
+    assert "No he encontrado" in body

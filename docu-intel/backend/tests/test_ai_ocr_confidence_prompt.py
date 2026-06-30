@@ -48,7 +48,7 @@ def test_qwen3_prompt_disables_thinking_mode(monkeypatch):
     assert messages[1]["content"].endswith("/no_think")
 
 
-def test_prompt_without_document_context_allows_general_chat():
+def test_prompt_without_document_context_refuses_general_answer():
     messages = _build_ai_messages(
         "ayudame a redactar un email",
         "",
@@ -57,9 +57,9 @@ def test_prompt_without_document_context_allows_general_chat():
 
     system = messages[0]["content"]
     user = messages[1]["content"]
-    assert "actua como ChatGPT" in system
+    assert "no contestes con conocimiento general" in system
     assert "Contexto documental disponible: ninguno" in user
-    assert "contesta sin forzar una estructura de fuentes" in user
+    assert "no encuentras en el sistema informacion suficiente" in user
 
 
 def test_grounded_response_warns_when_source_has_low_ocr_confidence():

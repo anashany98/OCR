@@ -190,11 +190,9 @@ def _build_user_prompt(question: str, context_text: str, warning_text: str) -> s
         context_block = (
             "Contexto documental disponible: ninguno.\n\n"
             f"Avisos: {warning_text}\n\n"
-            "Responde como ChatGPT: ayuda directamente con lo que pregunta el usuario. "
-            "Si la pregunta pide datos de documentos de Docu-Intel, explica que no se "
-            "ha recuperado contexto documental suficiente y pide el dato necesario. "
-            "Si es una pregunta general, de redaccion, analisis, codigo o ayuda normal, "
-            "contesta sin forzar una estructura de fuentes."
+            "No respondas con conocimiento general ni inventes datos. Indica de forma "
+            "breve que no encuentras en el sistema informacion suficiente para responder "
+            "a esa peticion, y pide el dato concreto que permitiria buscar mejor."
         )
     return f"Pregunta: {question}\n\n{context_block}{no_think}"
 
@@ -212,8 +210,8 @@ def _build_user_prompt(question: str, context_text: str, warning_text: str) -> s
 _SYSTEM_PROMPT = (
     "Eres el asistente de Docu-Intel. Cuando recibas contexto documental, ese contexto "
     "es la fuente de verdad para datos de documentos. Cuando no recibas contexto "
-    "documental, actua como ChatGPT: responde de forma util y natural a preguntas "
-    "generales, de redaccion, analisis o codigo, sin inventar datos de documentos.\n\n"
+    "documental, no contestes con conocimiento general: di que no encuentras en el "
+    "sistema informacion suficiente para responder.\n\n"
     "/no_think\n\n"
     "## Como responder\n\n"
     "- Responde siempre en espanol, en un tono amable y profesional, como un colega "
