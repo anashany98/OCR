@@ -52,7 +52,7 @@ from sqlalchemy.orm import Session
 from app.ai.local_client import LocalOpenAICompatibleClient
 from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
-from app.services.ai_cache import cache_answer_async, get_cached_answer_async
+from app.services.ai_cache import cache_answer_async
 from app.services.business_redaction import redact_business_payload_for_scope
 from app.services.tenant_access import (
     access_scope_cache_key,
@@ -166,6 +166,22 @@ _money_filters = _money_filters
 _context_text_for_ai = build_context_text
 
 
+def has_answer_context(context_items: list[ContextItem]) -> bool:
+    """True when the chat has real system context to answer from.
+
+    Conversation memory is useful for resolving follow-ups, but it is
+    not evidence. Do not let it trigger a free-form LLM answer on its own.
+    """
+    for item in context_items:
+        if item.title == "Memoria de la conversacion":
+            continue
+        if item.document_id is not None:
+            return True
+        if item.title.startswith("[Estructurado]"):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Public orchestrator
 # ---------------------------------------------------------------------------
@@ -179,8 +195,8 @@ async def answer_question(
     mode: str | None = None,
     session_id: str | None = None,
 ) -> AIAnswer:
-    """End-to-end: cache lookup, tool selection, context collection,
-    memory injection, grounded fallback, optional LLM call, and
+    """End-to-end: tool selection, context collection, memory injection,
+    grounded fallback, optional LLM call, and
     persistence to AIAnswer + AIAnswerSource rows.
 
     This is the function the API endpoint (``app.api.routes.ai``)
@@ -213,38 +229,6 @@ async def answer_question(
 
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
-    cached = await get_cached_answer_async(
-        question, user.id, mode, scope_key=scope_key, session_id=session_id
-    )
-    if cached:
-        # Return cached answer as AIAnswer object
-        question_row = AIQuestion(user_id=user.id, question=question)
-        db.add(question_row)
-        db.flush()
-
-        answer_row = AIAnswer(
-            question_id=question_row.id,
-            answer=cached["answer"],
-            confidence=cached["confidence"],
-            model_name=cached.get("model_name", "cached"),
-        )
-        db.add(answer_row)
-        db.flush()
-
-        for source in cached.get("sources", []):
-            answer_row.sources.append(
-                AIAnswerSource(
-                    document_id=source.get("document_id"),
-                    page_number=source.get("page_number"),
-                    block_id=source.get("block_id"),
-                    relevance_score=source.get("relevance_score"),
-                    excerpt=source.get("excerpt"),
-                )
-            )
-
-        db.commit()
-        db.refresh(answer_row)
-        return answer_row
 
     # CTX-3: from this point on, the rest of the orchestrator sees the
     # *resolved* question so the tool selector and the LLM prompt
@@ -362,7 +346,7 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    if context_items and settings.ai_base_url and settings.ai_model:
+    if has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
@@ -723,6 +707,7 @@ __all__ = [
     # Prompts
     "build_ai_messages",
     "build_context_text",
+    "has_answer_context",
     # Validation
     "response_looks_spanish",
     "question_is_spanish",

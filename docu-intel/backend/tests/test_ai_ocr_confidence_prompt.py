@@ -57,9 +57,9 @@ def test_prompt_without_document_context_refuses_general_answer():
 
     system = messages[0]["content"]
     user = messages[1]["content"]
-    assert "no contestes con conocimiento general" in system
+    assert "usa solo el contexto documental recibido" in system
     assert "Contexto documental disponible: ninguno" in user
-    assert "no encuentras en el sistema informacion suficiente" in user
+    assert "no encuentras informacion en el sistema" in user
 
 
 def test_grounded_response_warns_when_source_has_low_ocr_confidence():
@@ -179,8 +179,9 @@ def test_system_prompt_uses_chatgpt_style_no_rigid_sections():
     # The old template told the LLM to produce these exact sections.
     assert "FORMATO:" not in _SYSTEM_PROMPT
     assert "Respuesta EXCLUSIVAMENTE" not in _SYSTEM_PROMPT
-    # The new style names what to do, not a rigid schema.
-    assert "Markdown con criterio" in _SYSTEM_PROMPT
+    # The new style names the operating contract, not a rigid schema.
+    assert "conciso" in _SYSTEM_PROMPT
+    assert "Usar conocimiento externo" in _SYSTEM_PROMPT
     assert "no_think" in _SYSTEM_PROMPT
 
 
@@ -237,8 +238,6 @@ def test_grounded_response_no_context_friendly_chatgpt_style():
         warnings=["no hay coincidencias para cliente X"],
     )
     assert "No he encontrado" in response.answer
-    # The new style renders warnings as bullets under a header, not
-    # as a single sentence.
-    assert "Que he comprobado" in response.answer or "Que he comprobado" in response.answer
-    # And it asks for the missing data instead of just giving up.
-    assert "mas contexto" in response.answer.lower()
+    assert "He comprobado" in response.answer
+    # And it asks for concrete search data instead of just giving up.
+    assert "numero de documento" in response.answer.lower()

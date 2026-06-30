@@ -266,3 +266,83 @@ async def test_ai_stream_without_document_context_uses_not_found_fallback(monkey
     assert "respuesta general" not in body
     assert '"fallback": true' in body
     assert "No he encontrado" in body
+
+
+@pytest.mark.asyncio
+async def test_ai_stream_memory_only_does_not_call_llm(monkeypatch):
+    from app.ai.active_context import ActiveContext
+    from app.ai.agent import StreamOutcome
+    from app.ai.tools import ToolCall
+    from app.api.routes import ai as route
+    from app.schemas.ai import AskRequest
+
+    called = {"stream": False}
+
+    monkeypatch.setattr(route, "load_active_context", lambda db, user, session_id: ActiveContext())
+    monkeypatch.setattr(route, "resolve_references", lambda question, state: (question, None))
+    monkeypatch.setattr(
+        route,
+        "select_tools_for_question",
+        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+    )
+    monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
+    monkeypatch.setattr(
+        route,
+        "enforce_budget_scope",
+        lambda question, state, tools: SimpleNamespace(tools=tools, warnings=[]),
+    )
+    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: None)
+    monkeypatch.setattr(route, "collect_context", lambda db, tools, question, access_scope=None: ([], [], None))
+    monkeypatch.setattr(route, "redact_context_items_for_scope", lambda items, scope: items)
+    monkeypatch.setattr(
+        route,
+        "evaluate_gates_for_turn",
+        lambda db, question, context_items, resolved_doc_id: (
+            SimpleNamespace(is_blocked=False, requires_amount=False),
+            None,
+        ),
+    )
+    monkeypatch.setattr(route.settings, "ai_base_url", "http://fake")
+    monkeypatch.setattr(route.settings, "ai_model", "fake-model")
+    monkeypatch.setattr(route, "_build_memory_block", lambda db, user, question: "Resumen conversacion previa")
+    monkeypatch.setattr(route, "persist_context_after_answer", lambda *args, **kwargs: None)
+
+    async def fake_stream(question, context_items, warnings):
+        called["stream"] = True
+        yield "respuesta general"
+        yield StreamOutcome(text="respuesta general", ok=True)
+
+    monkeypatch.setattr(route, "_stream_local_ai_answer", fake_stream)
+
+    class DB:
+        def add(self, obj):
+            obj.id = getattr(obj, "id", None) or 1
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/ai/ask/stream",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+        }
+    )
+
+    response = await route.ask_stream(
+        request=request,
+        payload=AskRequest(question="y esto?", mode="hybrid", session_id="s1"),
+        db=DB(),
+        user=SimpleNamespace(id=1),
+    )
+    body = b"".join([chunk async for chunk in response.body_iterator]).decode()
+
+    assert called["stream"] is False
+    assert "respuesta general" not in body
+    assert "No he encontrado" in body

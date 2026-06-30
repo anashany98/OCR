@@ -821,22 +821,18 @@ def build_grounded_response(
     which is also called directly from the LLM path when the LLM
     output is rejected.
     """
+    context_items = [
+        item for item in context_items if item.title != "Memoria de la conversacion"
+    ]
     if not context_items:
+        details = ""
         if warnings:
-            warn_bullets = "\n".join(f"- {w}" for w in warnings)
-            lead = (
-                "No he encontrado datos suficientes en los documentos disponibles "
-                "para responderte con seguridad.\n\n"
-                f"**Que he comprobado:**\n{warn_bullets}\n\n"
-                "Si me das mas contexto (numero de presupuesto, proveedor, ejercicio) "
-                "o subes el documento relevante, lo intento de nuevo."
-            )
-        else:
-            lead = (
-                "No he encontrado documentos que coincidan con tu busqueda. "
-                "Puedes darme mas contexto (numero de presupuesto, proveedor, ejercicio) "
-                "y vuelvo a intentarlo."
-            )
+            details = "\n\nHe comprobado:\n" + "\n".join(f"- {w}" for w in warnings[:4])
+        lead = (
+            "No he encontrado informacion en el sistema para responder a eso."
+            f"{details}\n\n"
+            "Prueba con un numero de documento, proveedor, cliente, fecha o nombre de archivo."
+        )
         return GroundedResponse(
             answer=lead,
             confidence=0.0,
@@ -869,25 +865,13 @@ def build_grounded_response(
     quote = clip_excerpt(raw_text, 600)
 
     if is_table:
-        lead = f"Estos son los datos que cuadran con tu pregunta (fuente principal: **{file_label}**):\n\n{quote}\n\n"
+        lead = f"Datos encontrados en **{file_label}**:\n\n{quote}\n\n"
     elif quote:
-        if len(context_items) > 1:
-            intro = (
-                f"La fuente mas clara para tu pregunta es **{file_label}**{page_label}. "
-                f"Tambien hay {len(context_items) - 1} fuente(s) relacionada(s) que he "
-                f"usado para completar la respuesta."
-            )
-        else:
-            intro = f"Lo que he encontrado esta en **{file_label}**{page_label}."
-        # Indented quote (>) keeps the citation visually distinct
-        # without being a bureaucratic block. The intro is the
-        # assistant's voice; the quote is the source.
-        lead = f"{intro}\n\n> {quote}\n\n"
+        lead = f"En **{file_label}**{page_label} aparece esto:\n\n> {quote}\n\n"
     else:
         lead = (
-            f"He encontrado {len(context_items)} fuente(s) relacionada(s), pero el "
-            f"contenido recuperado no es lo bastante especifico para responder con "
-            f"seguridad. La fuente mas cercana es **{file_label}**{page_label}.\n\n"
+            f"He encontrado **{file_label}**{page_label}, pero el texto recuperado "
+            "no basta para responder con seguridad.\n\n"
         )
 
     # Cite 2-3 additional sources naturally, so the user can jump to them.
@@ -898,10 +882,10 @@ def build_grounded_response(
             label += f" (pag. {item.page_number})"
         extras.append(label)
     if extras:
-        lead += "**Tambien he mirado:** " + ", ".join(f"**{x}**" for x in extras) + ".\n\n"
+        lead += "Tambien he revisado: " + ", ".join(f"**{x}**" for x in extras) + ".\n\n"
 
     if warnings:
-        lead += "**Avisos:** " + "; ".join(warnings) + "\n"
+        lead += "Avisos: " + "; ".join(warnings[:4]) + "\n"
 
     return GroundedResponse(
         answer=lead,
@@ -997,10 +981,8 @@ def _build_friendly_fallback(
         )
         conf_text = f" ({conf_pct}% de confianza OCR)" if conf_pct is not None else ""
         answer = (
-            f"He abierto el documento pero la lectura OCR es de baja calidad{conf_text}, "
-            f"asi que no puedo confirmar el contenido con seguridad. Si lo re-procesas con "
-            f"el motor OCR avanzado (PaddleOCR v3 / PP-Structure) desde su ficha, tendre "
-            f"mucho mejor material para responderte."
+            f"He encontrado el documento, pero el OCR tiene baja calidad{conf_text}. "
+            "No puedo confirmar ese contenido con seguridad; re-procesalo y vuelvo a responder con la nueva lectura."
         )
         return GroundedResponse(
             answer=answer,

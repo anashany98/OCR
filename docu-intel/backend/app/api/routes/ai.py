@@ -16,6 +16,7 @@ from app.ai.agent import (
     answer_question,
     build_grounded_response,
     collect_context,
+    has_answer_context,
     redact_context_items_for_scope,
     select_tools_for_question,
 )
@@ -154,6 +155,7 @@ async def ask_stream(
     grounded = build_grounded_response(
         question=question, context_items=context_items, warnings=warnings
     )
+    answer_context_available = has_answer_context(context_items)
     # 3) serialise sources (deduped) for the end event.
     from app.ai.agent import _dedupe_sources  # local import
 
@@ -213,9 +215,14 @@ async def ask_stream(
 
     async def event_stream() -> AsyncIterator[bytes]:
         # start event: announce the model + that the LLM is running
+        start_model = (
+            settings.ai_model
+            if answer_context_available and settings.ai_base_url and settings.ai_model
+            else "backend_grounded_fallback"
+        )
         yield (
             b"event: start\ndata: "
-            + json.dumps({"model": settings.ai_model or "backend_grounded_fallback"}).encode()
+            + json.dumps({"model": start_model}).encode()
             + b"\n\n"
         )
 
@@ -224,7 +231,7 @@ async def ask_stream(
         confidence = grounded.confidence
         use_fallback = True
 
-        if context_items and settings.ai_base_url and settings.ai_model:
+        if answer_context_available and settings.ai_base_url and settings.ai_model:
             try:
                 async for chunk in _stream_local_ai_answer(question, context_items, warnings):
                     if isinstance(chunk, StreamOutcome):
@@ -232,20 +239,14 @@ async def ask_stream(
                             full_text = chunk.text
                             model_name = settings.ai_model
                             use_fallback = False
+                            yield (
+                                b"event: delta\ndata: "
+                                + json.dumps({"text": full_text}).encode()
+                                + b"\n\n"
+                            )
                         break
-                    # Reasoning-model pass-through: the agent yields
-                    # ("thinking", chunk) tuples for the model's internal
-                    # reasoning. Surface them as a separate SSE event so
-                    # the UI can show a "razonando..." indicator.
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "thinking":
-                        yield (
-                            b"event: thinking\ndata: "
-                            + json.dumps({"text": chunk[1]}).encode()
-                            + b"\n\n"
-                        )
                         continue
-                    full_text += chunk
-                    yield b"event: delta\ndata: " + json.dumps({"text": chunk}).encode() + b"\n\n"
             except Exception as exc:
                 logger.exception("Streaming failed: %s", exc)
 

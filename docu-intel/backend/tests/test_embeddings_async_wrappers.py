@@ -79,11 +79,12 @@ def test_get_cached_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPat
     value so the cache lookup semantics stay identical."""
     captured: dict[str, object] = {}
 
-    def fake_get(question, user_id, mode, scope_key):  # type: ignore[no-untyped-def]
+    def fake_get(question, user_id, mode, scope_key, session_id=None):  # type: ignore[no-untyped-def]
         captured["question"] = question
         captured["user_id"] = user_id
         captured["mode"] = mode
         captured["scope_key"] = scope_key
+        captured["session_id"] = session_id
         return {"answer": "cached!", "confidence": 0.9, "sources": []}
 
     monkeypatch.setattr(ai_cache, "get_cached_answer", fake_get)
@@ -103,6 +104,7 @@ def test_get_cached_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPat
         "user_id": 42,
         "mode": "default",
         "scope_key": "scope-x",
+        "session_id": None,
     }
 
 
@@ -111,13 +113,14 @@ def test_cache_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPatch) -
     return its boolean result."""
     captured: dict[str, object] = {}
 
-    def fake_cache_answer(question, user_id, answer, mode, scope_key, ttl):  # type: ignore[no-untyped-def]
+    def fake_cache_answer(question, user_id, answer, mode, scope_key, session_id=None, ttl=None):  # type: ignore[no-untyped-def]
         captured["question"] = question
         captured["user_id"] = user_id
         captured["answer"] = answer
         captured["mode"] = mode
         captured["scope_key"] = scope_key
         captured["ttl"] = ttl
+        captured["session_id"] = session_id
         return True
 
     monkeypatch.setattr(ai_cache, "cache_answer", fake_cache_answer)
@@ -142,24 +145,25 @@ def test_cache_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPatch) -
         "mode": "m",
         "scope_key": "s",
         "ttl": 123,
+        "session_id": None,
     }
 
 
 def test_agent_imports_async_cache_helpers() -> None:
-    """``app.ai.agent`` must import the async cache helpers so the FastAPI
-    request handlers can ``await`` them without blocking the event loop."""
+    """``app.ai.agent`` must not serve cached chat text.
+
+    Cache reads can preserve stale bad LLM answers after prompt fixes. The
+    agent may still write answers asynchronously, but every chat response is
+    rebuilt from current context.
+    """
     from app.ai import agent
 
-    # If the module imported the sync helpers by mistake, the async ones would
-    # not be available on the module namespace and this assertion would fail.
-    assert hasattr(agent, "get_cached_answer_async")
     assert hasattr(agent, "cache_answer_async")
-    # And the call-sites in agent.py must use the async variants.
     import inspect
 
     source = inspect.getsource(agent.answer_question)
-    assert "get_cached_answer_async" in source
     assert "cache_answer_async" in source
+    assert "get_cached_answer_async" not in source
     # The sync names must not be referenced inside the async coroutine.
     assert "get_cached_answer(" not in source.replace("get_cached_answer_async(", "")
     assert "cache_answer(" not in source.replace("cache_answer_async(", "")

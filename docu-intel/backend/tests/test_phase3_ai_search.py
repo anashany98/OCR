@@ -124,7 +124,7 @@ def test_ai_agent_selects_only_controlled_tools_for_common_intents():
 def test_grounded_response_uses_required_sections_and_refuses_without_data():
     response = build_grounded_response(question="Cuanto mide el salon?", context_items=[], warnings=[])
 
-    assert "Respuesta:" in response.answer
-    assert "No puedo confirmarlo con la informacion disponible" in response.answer
-    assert "Fuentes:" in response.answer
+    assert "No he encontrado informacion en el sistema" in response.answer
+    assert "Respuesta:" not in response.answer
+    assert "Fuentes:" not in response.answer
     assert response.confidence == 0.0
