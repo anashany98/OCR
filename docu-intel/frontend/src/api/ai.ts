@@ -17,10 +17,10 @@ export type AIStreamEvent =
     }
 
 export const aiApi = {
-  askAI: (question: string, mode?: string) =>
+  askAI: (question: string, mode?: string, sessionId?: string) =>
     request<AIAnswer>("/ai/ask", {
       method: "POST",
-      body: JSON.stringify({ question, mode }),
+      body: JSON.stringify({ question, mode, session_id: sessionId }),
     }),
   /**
    * Server-Sent Events stream. Yields one `AIStreamEvent` per server event.
@@ -29,6 +29,7 @@ export const aiApi = {
   askAIStream: async function* (
     question: string,
     mode?: string,
+    sessionId?: string,
     signal?: AbortSignal,
   ): AsyncGenerator<AIStreamEvent> {
     const base = import.meta.env.VITE_API_BASE_URL || "/api/v1"
@@ -36,7 +37,7 @@ export const aiApi = {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ question, mode }),
+      body: JSON.stringify({ question, mode, session_id: sessionId }),
       signal,
     })
     if (!res.ok || !res.body) {
@@ -62,6 +63,14 @@ export const aiApi = {
   },
   aiAnswer: (id: number) => request<AIAnswer>(`/ai/answers/` + id),
   aiHistory: () => request<AIQuestion[]>(`/ai/history`),
+  postFeedback: (answerId: number, vote: number, reason?: string, comment?: string) =>
+    request<{ accepted: boolean; reason: string; new_chunk_weight: number | null }>(
+      `/ai/answers/${answerId}/feedback`,
+      {
+        method: "POST",
+        body: JSON.stringify({ vote, reason, comment }),
+      },
+    ),
 }
 
 function parseSseEvent(raw: string): AIStreamEvent | null {

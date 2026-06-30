@@ -25,7 +25,7 @@ import pytesseract
 from PIL import Image
 
 from app.ocr.base import OCRBlock, OCRResult
-from app.ocr.preprocess import preprocess_for_tesseract
+from app.ocr.preprocess import preprocess_for_tesseract, preprocess_adaptive
 from app.services.metrics import track_ocr_duration
 
 
@@ -56,49 +56,53 @@ class TesseractOCREngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
-        ocr_path = preprocess_for_tesseract(image_path)
-        image = Image.open(ocr_path)
-        # ``image_to_data`` returns one row per detected token plus its
-        # bounding box and a 0-100 confidence. We turn the confidence
-        # into 0-1 to match what PaddleOCR returned and what the
-        # ``DocumentBlock.confidence`` column expects.
-        data = pytesseract.image_to_data(
-            image,
-            lang=self.lang,
-            output_type=pytesseract.Output.DICT,
-            config=f"--oem {self.oem} --psm {self.psm}",
-        )
-        blocks: list[OCRBlock] = []
-        confidences: list[float] = []
-        n = len(data.get("text", []))
-        for i in range(n):
-            text = (data["text"][i] or "").strip()
-            if not text:
-                continue
-            try:
-                conf_raw = float(data["conf"][i])
-            except (TypeError, ValueError):
-                conf_raw = -1.0
-            # Tesseract uses -1 to mark rows it could not classify (eg
-            # page-number regions in PSM=11). Drop them so they don't
-            # pollute the average confidence.
-            if conf_raw < 0:
-                continue
-            conf = conf_raw / 100.0
-            try:
-                x = float(data["left"][i])
-                y = float(data["top"][i])
-                w = float(data["width"][i])
-                h = float(data["height"][i])
-                bbox: tuple[float, float, float, float] | None = (x, y, x + w, y + h)
-            except (TypeError, ValueError):
-                bbox = None
-            blocks.append(OCRBlock(text=text, confidence=conf, bbox=bbox))
-            confidences.append(conf)
-        full_text = "\n".join(b.text for b in blocks if b.text)
-        avg_conf = sum(confidences) / len(confidences) if confidences else None
-        track_ocr_duration(time.perf_counter() - start)
-        return OCRResult(text=full_text, confidence=avg_conf, blocks=blocks, engine=self.name)
+        ocr_path = preprocess_adaptive(image_path, engine=self.name)
+        try:
+            image = Image.open(ocr_path)
+            # ``image_to_data`` returns one row per detected token plus its
+            # bounding box and a 0-100 confidence. We turn the confidence
+            # into 0-1 to match what PaddleOCR returned and what the
+            # ``DocumentBlock.confidence`` column expects.
+            data = pytesseract.image_to_data(
+                image,
+                lang=self.lang,
+                output_type=pytesseract.Output.DICT,
+                config=f"--oem {self.oem} --psm {self.psm}",
+            )
+            blocks: list[OCRBlock] = []
+            confidences: list[float] = []
+            n = len(data.get("text", []))
+            for i in range(n):
+                text = (data["text"][i] or "").strip()
+                if not text:
+                    continue
+                try:
+                    conf_raw = float(data["conf"][i])
+                except (TypeError, ValueError):
+                    conf_raw = -1.0
+                # Tesseract uses -1 to mark rows it could not classify (eg
+                # page-number regions in PSM=11). Drop them so they don't
+                # pollute the average confidence.
+                if conf_raw < 0:
+                    continue
+                conf = conf_raw / 100.0
+                try:
+                    x = float(data["left"][i])
+                    y = float(data["top"][i])
+                    w = float(data["width"][i])
+                    h = float(data["height"][i])
+                    bbox: tuple[float, float, float, float] | None = (x, y, x + w, y + h)
+                except (TypeError, ValueError):
+                    bbox = None
+                blocks.append(OCRBlock(text=text, confidence=conf, bbox=bbox))
+                confidences.append(conf)
+            full_text = "\n".join(b.text for b in blocks if b.text)
+            avg_conf = sum(confidences) / len(confidences) if confidences else None
+            track_ocr_duration(time.perf_counter() - start)
+            return OCRResult(text=full_text, confidence=avg_conf, blocks=blocks, engine=self.name)
+        finally:
+            if ocr_path != image_path:
+                ocr_path.unlink(missing_ok=True)
 
 
 __all__ = ["TesseractOCREngine"]

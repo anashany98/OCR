@@ -1,6 +1,7 @@
 import type { FormEvent } from "react"
 import { KeyRound } from "lucide-react"
 
+import { useConfirm } from "@/hooks/useConfirm"
 import type { IntegrationClient, IntegrationToolResponse } from "@/types/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -62,10 +63,6 @@ function IntegrationsView({
   createIntegrationClient,
   rotateIntegrationClientKey,
   latestApiKey,
-  // `setLatestApiKey` is forwarded but not consumed inside this
-  // view. Prefix with `_` so eslint's unused-args rule (which allows
-  // names matching /^_/u) lets it through without us having to widen
-  // the rule's config.
   setLatestApiKey: _setLatestApiKey,
   sandboxClientId,
   setSandboxClientId,
@@ -79,6 +76,7 @@ function IntegrationsView({
   roundTrip,
   setRoundTrip,
 }: IntegrationsViewProps) {
+  const confirmAction = useConfirm()
   return (
     <Card>
       <CardHeader>
@@ -143,9 +141,14 @@ function IntegrationsView({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      if (window.confirm('¿Rotar la API key del cliente "' + client.name + '"?'))
-                        rotateIntegrationClientKey.mutate(client.id)
+                    onClick={async () => {
+                      const ok = await confirmAction({
+                        title: "¿Rotar API key?",
+                        description: `Se generara una nueva key para "${client.name}". La anterior dejara de funcionar.`,
+                        confirmLabel: "Rotar",
+                        tone: "danger",
+                      })
+                      if (ok) rotateIntegrationClientKey.mutate(client.id)
                     }}
                   >
                     Rotar key
@@ -228,6 +231,7 @@ function IntegrationsView({
 /** F4b - Integrations admin sub-page. Lazy-loaded via the router. */
 export function AdminIntegrationsPage() {
   const { state, queries, mutations } = useAdminIntegrationsData()
+  const confirmAction = useConfirm()
 
   return (
     <IntegrationsView

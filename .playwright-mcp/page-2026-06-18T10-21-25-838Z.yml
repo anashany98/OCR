@@ -1,0 +1,898 @@
+- generic [ref=e2]:
+  - generic [ref=e9]:
+    - banner [ref=e10]:
+      - generic [ref=e11]:
+        - button "Abrir menú de navegación" [ref=e12] [cursor=pointer]:
+          - img [ref=e13]
+        - heading "Documentos" [level=1] [ref=e14]
+        - generic "105 tareas pendientes" [ref=e15] [cursor=pointer]:
+          - generic [ref=e16]: 105 tareas
+        - button "Abrir paleta de comandos" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+          - generic [ref=e20]: Buscar…
+          - generic [ref=e21]: ⌘K
+        - generic [ref=e24]: Sistema
+        - button "Cambiar a tema oscuro" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+        - button "Menú de usuario" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: A
+          - generic [ref=e31]: Administrador
+          - img [ref=e32]
+        - button "Cerrar sesión" [ref=e34] [cursor=pointer]:
+          - img [ref=e35]
+    - main [ref=e38]:
+      - generic [ref=e39]:
+        - navigation "Breadcrumb" [ref=e40]:
+          - list [ref=e41]:
+            - listitem [ref=e42]:
+              - link "Inicio" [ref=e43] [cursor=pointer]:
+                - /url: /
+                - img [ref=e44]
+                - generic [ref=e47]: Inicio
+            - listitem [ref=e48]:
+              - img [ref=e49]
+            - listitem [ref=e51]:
+              - generic [ref=e53]: Documentos
+        - generic [ref=e55]:
+          - generic [ref=e56]:
+            - heading "Documentos" [level=1] [ref=e57]
+            - generic [ref=e58]: Tabla operativa con filtros de servidor, vistas guardadas y acciones masivas.
+          - generic [ref=e59]:
+            - button "Escanear carpetas" [ref=e60] [cursor=pointer]:
+              - img [ref=e61]
+              - text: Escanear carpetas
+            - generic [ref=e66]:
+              - img [ref=e67]
+              - text: Subir
+            - generic [ref=e70]:
+              - img [ref=e71]
+              - text: Subir carpeta
+        - generic [ref=e74]:
+          - generic [ref=e75]:
+            - button "Todos" [ref=e76] [cursor=pointer]
+            - button "OCR pendiente" [ref=e77] [cursor=pointer]
+            - button "Fallidos" [ref=e78] [cursor=pointer]
+            - button "Planos sin escala" [ref=e79] [cursor=pointer]
+            - button "Últimos 7 días" [ref=e80] [cursor=pointer]
+          - generic [ref=e81]:
+            - img
+            - textbox "Archivo, proveedor, referencia..." [ref=e82]
+          - combobox [ref=e83]:
+            - option "Estado" [selected]
+            - option "pending"
+            - option "processing"
+            - option "processed"
+            - option "needs_review"
+            - option "failed"
+            - option "duplicate"
+          - combobox [ref=e84]:
+            - option "Tipo" [selected]
+            - option "presupuesto"
+            - option "pedido"
+            - option "factura"
+            - option "plano"
+            - option "imagen"
+            - option "excel"
+            - option "otro"
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - generic [ref=e88]:
+                - heading "Listado" [level=3] [ref=e89]
+                - paragraph [ref=e90]: 111 documentos encontrados
+              - generic [ref=e91]:
+                - button "Reprocesar" [disabled]:
+                  - img
+                  - text: Reprocesar
+            - generic [ref=e92]:
+              - table [ref=e95]:
+                - rowgroup [ref=e96]:
+                  - row "Seleccionar página Archivo Tipo Estado Calidad Conf. Tamaño Fecha" [ref=e97]:
+                    - columnheader "Seleccionar página" [ref=e98]:
+                      - checkbox "Seleccionar página" [ref=e99]
+                    - columnheader "Archivo" [ref=e100]
+                    - columnheader "Tipo" [ref=e101]
+                    - columnheader "Estado" [ref=e102]
+                    - columnheader "Calidad" [ref=e103]
+                    - columnheader "Conf." [ref=e104]
+                    - columnheader "Tamaño" [ref=e105]
+                    - columnheader "Fecha" [ref=e106]
+                    - columnheader [ref=e107]
+                - rowgroup [ref=e108]:
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg desconocido Revisión Revisión - 1.8 MB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e109]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e110]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e111]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e112]:
+                      - generic [ref=e113]:
+                        - img [ref=e114]
+                        - generic [ref=e117]:
+                          - paragraph [ref=e118]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg
+                          - paragraph [ref=e119]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg
+                    - cell "desconocido" [ref=e120]
+                    - cell "Revisión" [ref=e121]:
+                      - generic [ref=e123]:
+                        - img [ref=e124]
+                        - generic [ref=e126]: Revisión
+                    - cell "Revisión" [ref=e127]:
+                      - generic [ref=e129]:
+                        - img [ref=e130]
+                        - generic [ref=e132]: Revisión
+                    - cell "-" [ref=e133]
+                    - cell "1.8 MB" [ref=e134]
+                    - cell "17/6/26, 16:17" [ref=e135]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e136]:
+                      - generic [ref=e137]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e138] [cursor=pointer]:
+                          - /url: /documents/178
+                          - img [ref=e139]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e142] [cursor=pointer]:
+                          - img [ref=e143]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/CORREOS/OFCINAS ESCRIBANO RV_ PRESUPUESTO SKIN COVER FUSTE.msg" [ref=e148] [cursor=pointer]:
+                          - /url: /api/v1/documents/178/download
+                          - img [ref=e149]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx presupuesto Revisión Revisión 60% 41.8 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e152]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e153]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e154]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e155]:
+                      - generic [ref=e156]:
+                        - img [ref=e157]
+                        - generic [ref=e160]:
+                          - paragraph [ref=e161]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx
+                          - paragraph [ref=e162]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx
+                    - cell "presupuesto" [ref=e163]
+                    - cell "Revisión" [ref=e164]:
+                      - generic [ref=e166]:
+                        - img [ref=e167]
+                        - generic [ref=e169]: Revisión
+                    - cell "Revisión" [ref=e170]:
+                      - generic [ref=e172]:
+                        - img [ref=e173]
+                        - generic [ref=e175]: Revisión
+                    - cell "60%" [ref=e176]
+                    - cell "41.8 KB" [ref=e177]
+                    - cell "17/6/26, 16:17" [ref=e178]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e179]:
+                      - generic [ref=e180]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e181] [cursor=pointer]:
+                          - /url: /documents/176
+                          - img [ref=e182]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e185] [cursor=pointer]:
+                          - img [ref=e186]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e191] [cursor=pointer]:
+                          - /url: /api/v1/documents/176/download
+                          - img [ref=e192]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx presupuesto Revisión Revisión 60% 79.4 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e195]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e196]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e197]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e198]:
+                      - generic [ref=e199]:
+                        - img [ref=e200]
+                        - generic [ref=e203]:
+                          - paragraph [ref=e204]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx
+                          - paragraph [ref=e205]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx
+                    - cell "presupuesto" [ref=e206]
+                    - cell "Revisión" [ref=e207]:
+                      - generic [ref=e209]:
+                        - img [ref=e210]
+                        - generic [ref=e212]: Revisión
+                    - cell "Revisión" [ref=e213]:
+                      - generic [ref=e215]:
+                        - img [ref=e216]
+                        - generic [ref=e218]: Revisión
+                    - cell "60%" [ref=e219]
+                    - cell "79.4 KB" [ref=e220]
+                    - cell "17/6/26, 16:17" [ref=e221]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e222]:
+                      - generic [ref=e223]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e224] [cursor=pointer]:
+                          - /url: /documents/177
+                          - img [ref=e225]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e228] [cursor=pointer]:
+                          - img [ref=e229]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e234] [cursor=pointer]:
+                          - /url: /api/v1/documents/177/download
+                          - img [ref=e235]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg albaran Procesado Calidad OK 98% 170.0 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e238]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e239]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e240]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e241]:
+                      - generic [ref=e242]:
+                        - img [ref=e243]
+                        - generic [ref=e246]:
+                          - paragraph [ref=e247]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg
+                          - paragraph [ref=e248]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg
+                    - cell "albaran" [ref=e249]
+                    - cell "Procesado" [ref=e250]:
+                      - generic [ref=e252]:
+                        - img [ref=e253]
+                        - generic [ref=e256]: Procesado
+                    - cell "Calidad OK" [ref=e257]:
+                      - generic [ref=e259]:
+                        - img [ref=e260]
+                        - generic [ref=e263]: Calidad OK
+                    - cell "98%" [ref=e264]
+                    - cell "170.0 KB" [ref=e265]
+                    - cell "17/6/26, 16:17" [ref=e266]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e267]:
+                      - generic [ref=e268]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e269] [cursor=pointer]:
+                          - /url: /documents/175
+                          - img [ref=e270]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e273] [cursor=pointer]:
+                          - img [ref=e274]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e279] [cursor=pointer]:
+                          - /url: /api/v1/documents/175/download
+                          - img [ref=e280]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf presupuesto Revisión Revisión 40% 857.3 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e283]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e284]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e285]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e286]:
+                      - generic [ref=e287]:
+                        - img [ref=e288]
+                        - generic [ref=e291]:
+                          - paragraph [ref=e292]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf
+                          - paragraph [ref=e293]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf
+                    - cell "presupuesto" [ref=e294]
+                    - cell "Revisión" [ref=e295]:
+                      - generic [ref=e297]:
+                        - img [ref=e298]
+                        - generic [ref=e300]: Revisión
+                    - cell "Revisión" [ref=e301]:
+                      - generic [ref=e303]:
+                        - img [ref=e304]
+                        - generic [ref=e306]: Revisión
+                    - cell "40%" [ref=e307]
+                    - cell "857.3 KB" [ref=e308]
+                    - cell "17/6/26, 16:17" [ref=e309]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e310]:
+                      - generic [ref=e311]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e312] [cursor=pointer]:
+                          - /url: /documents/174
+                          - img [ref=e313]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e316] [cursor=pointer]:
+                          - img [ref=e317]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e322] [cursor=pointer]:
+                          - /url: /api/v1/documents/174/download
+                          - img [ref=e323]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf presupuesto Revisión Revisión 60% 157.2 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e326]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e327]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e328]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e329]:
+                      - generic [ref=e330]:
+                        - img [ref=e331]
+                        - generic [ref=e334]:
+                          - paragraph [ref=e335]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf
+                          - paragraph [ref=e336]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf
+                    - cell "presupuesto" [ref=e337]
+                    - cell "Revisión" [ref=e338]:
+                      - generic [ref=e340]:
+                        - img [ref=e341]
+                        - generic [ref=e343]: Revisión
+                    - cell "Revisión" [ref=e344]:
+                      - generic [ref=e346]:
+                        - img [ref=e347]
+                        - generic [ref=e349]: Revisión
+                    - cell "60%" [ref=e350]
+                    - cell "157.2 KB" [ref=e351]
+                    - cell "17/6/26, 16:17" [ref=e352]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e353]:
+                      - generic [ref=e354]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e355] [cursor=pointer]:
+                          - /url: /documents/173
+                          - img [ref=e356]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e359] [cursor=pointer]:
+                          - img [ref=e360]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e365] [cursor=pointer]:
+                          - /url: /api/v1/documents/173/download
+                          - img [ref=e366]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf presupuesto Revisión Revisión 60% 280.3 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e369]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e370]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e371]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e372]:
+                      - generic [ref=e373]:
+                        - img [ref=e374]
+                        - generic [ref=e377]:
+                          - paragraph [ref=e378]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf
+                          - paragraph [ref=e379]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf
+                    - cell "presupuesto" [ref=e380]
+                    - cell "Revisión" [ref=e381]:
+                      - generic [ref=e383]:
+                        - img [ref=e384]
+                        - generic [ref=e386]: Revisión
+                    - cell "Revisión" [ref=e387]:
+                      - generic [ref=e389]:
+                        - img [ref=e390]
+                        - generic [ref=e392]: Revisión
+                    - cell "60%" [ref=e393]
+                    - cell "280.3 KB" [ref=e394]
+                    - cell "17/6/26, 16:17" [ref=e395]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e396]:
+                      - generic [ref=e397]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e398] [cursor=pointer]:
+                          - /url: /documents/172
+                          - img [ref=e399]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e402] [cursor=pointer]:
+                          - img [ref=e403]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/GR014_SKINCOVER_es.en.fr.pdf" [ref=e408] [cursor=pointer]:
+                          - /url: /api/v1/documents/172/download
+                          - img [ref=e409]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf presupuesto Revisión Revisión 40% 320.2 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e412]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e413]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e414]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e415]:
+                      - generic [ref=e416]:
+                        - img [ref=e417]
+                        - generic [ref=e420]:
+                          - paragraph [ref=e421]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf
+                          - paragraph [ref=e422]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf
+                    - cell "presupuesto" [ref=e423]
+                    - cell "Revisión" [ref=e424]:
+                      - generic [ref=e426]:
+                        - img [ref=e427]
+                        - generic [ref=e429]: Revisión
+                    - cell "Revisión" [ref=e430]:
+                      - generic [ref=e432]:
+                        - img [ref=e433]
+                        - generic [ref=e435]: Revisión
+                    - cell "40%" [ref=e436]
+                    - cell "320.2 KB" [ref=e437]
+                    - cell "17/6/26, 16:17" [ref=e438]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e439]:
+                      - generic [ref=e440]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e441] [cursor=pointer]:
+                          - /url: /documents/171
+                          - img [ref=e442]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e445] [cursor=pointer]:
+                          - img [ref=e446]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/FT138_SKINCOVER.es.en.fr.pdf" [ref=e451] [cursor=pointer]:
+                          - /url: /api/v1/documents/171/download
+                          - img [ref=e452]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf presupuesto Revisión Revisión 40% 288.0 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e455]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e456]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e457]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e458]:
+                      - generic [ref=e459]:
+                        - img [ref=e460]
+                        - generic [ref=e463]:
+                          - paragraph [ref=e464]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf
+                          - paragraph [ref=e465]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf
+                    - cell "presupuesto" [ref=e466]
+                    - cell "Revisión" [ref=e467]:
+                      - generic [ref=e469]:
+                        - img [ref=e470]
+                        - generic [ref=e472]: Revisión
+                    - cell "Revisión" [ref=e473]:
+                      - generic [ref=e475]:
+                        - img [ref=e476]
+                        - generic [ref=e478]: Revisión
+                    - cell "40%" [ref=e479]
+                    - cell "288.0 KB" [ref=e480]
+                    - cell "17/6/26, 16:17" [ref=e481]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e482]:
+                      - generic [ref=e483]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e484] [cursor=pointer]:
+                          - /url: /documents/170
+                          - img [ref=e485]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e488] [cursor=pointer]:
+                          - img [ref=e489]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/DOP052_SKINCOVER_es.en.fr.pdf" [ref=e494] [cursor=pointer]:
+                          - /url: /api/v1/documents/170/download
+                          - img [ref=e495]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf presupuesto Revisión Revisión 60% 62.8 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e498]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e499]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e500]
+                    - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e501]:
+                      - generic [ref=e502]:
+                        - img [ref=e503]
+                        - generic [ref=e506]:
+                          - paragraph [ref=e507]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf
+                          - paragraph [ref=e508]: ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf
+                    - cell "presupuesto" [ref=e509]
+                    - cell "Revisión" [ref=e510]:
+                      - generic [ref=e512]:
+                        - img [ref=e513]
+                        - generic [ref=e515]: Revisión
+                    - cell "Revisión" [ref=e516]:
+                      - generic [ref=e518]:
+                        - img [ref=e519]
+                        - generic [ref=e521]: Revisión
+                    - cell "60%" [ref=e522]
+                    - cell "62.8 KB" [ref=e523]
+                    - cell "17/6/26, 16:17" [ref=e524]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e525]:
+                      - generic [ref=e526]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e527] [cursor=pointer]:
+                          - /url: /documents/169
+                          - img [ref=e528]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e531] [cursor=pointer]:
+                          - img [ref=e532]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/confirmacion firmada.pdf" [ref=e537] [cursor=pointer]:
+                          - /url: /api/v1/documents/169/download
+                          - img [ref=e538]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx presupuesto Revisión Revisión 60% 77.2 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e541]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e542]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e543]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e544]:
+                      - generic [ref=e545]:
+                        - img [ref=e546]
+                        - generic [ref=e549]:
+                          - paragraph [ref=e550]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx
+                          - paragraph [ref=e551]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx
+                    - cell "presupuesto" [ref=e552]
+                    - cell "Revisión" [ref=e553]:
+                      - generic [ref=e555]:
+                        - img [ref=e556]
+                        - generic [ref=e558]: Revisión
+                    - cell "Revisión" [ref=e559]:
+                      - generic [ref=e561]:
+                        - img [ref=e562]
+                        - generic [ref=e564]: Revisión
+                    - cell "60%" [ref=e565]
+                    - cell "77.2 KB" [ref=e566]
+                    - cell "17/6/26, 16:17" [ref=e567]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e568]:
+                      - generic [ref=e569]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e570] [cursor=pointer]:
+                          - /url: /documents/168
+                          - img [ref=e571]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e574] [cursor=pointer]:
+                          - img [ref=e575]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/HOJA COSTES.xlsx" [ref=e580] [cursor=pointer]:
+                          - /url: /api/v1/documents/168/download
+                          - img [ref=e581]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx presupuesto Revisión Revisión 60% 42.1 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e584]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e585]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e586]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e587]:
+                      - generic [ref=e588]:
+                        - img [ref=e589]
+                        - generic [ref=e592]:
+                          - paragraph [ref=e593]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx
+                          - paragraph [ref=e594]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx
+                    - cell "presupuesto" [ref=e595]
+                    - cell "Revisión" [ref=e596]:
+                      - generic [ref=e598]:
+                        - img [ref=e599]
+                        - generic [ref=e601]: Revisión
+                    - cell "Revisión" [ref=e602]:
+                      - generic [ref=e604]:
+                        - img [ref=e605]
+                        - generic [ref=e607]: Revisión
+                    - cell "60%" [ref=e608]
+                    - cell "42.1 KB" [ref=e609]
+                    - cell "17/6/26, 16:17" [ref=e610]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e611]:
+                      - generic [ref=e612]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e613] [cursor=pointer]:
+                          - /url: /documents/167
+                          - img [ref=e614]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e617] [cursor=pointer]:
+                          - img [ref=e618]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/EXCEL/260009.xlsx" [ref=e623] [cursor=pointer]:
+                          - /url: /api/v1/documents/167/download
+                          - img [ref=e624]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG imagen Duplicado Duplicado - 69.1 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e627]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e628]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e629]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e630]:
+                      - generic [ref=e631]:
+                        - img [ref=e632]
+                        - generic [ref=e635]:
+                          - paragraph [ref=e636]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG
+                          - paragraph [ref=e637]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG
+                    - cell "imagen" [ref=e638]
+                    - cell "Duplicado" [ref=e639]:
+                      - generic [ref=e641]:
+                        - img [ref=e642]
+                        - generic [ref=e645]: Duplicado
+                    - cell "Duplicado" [ref=e646]:
+                      - generic [ref=e648]:
+                        - img [ref=e649]
+                        - generic [ref=e652]: Duplicado
+                    - cell "-" [ref=e653]
+                    - cell "69.1 KB" [ref=e654]
+                    - cell "17/6/26, 16:17" [ref=e655]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e656]:
+                      - generic [ref=e657]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e658] [cursor=pointer]:
+                          - /url: /documents/166
+                          - img [ref=e659]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e662] [cursor=pointer]:
+                          - img [ref=e663]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/roma oro mate pantalla incluida.JPG" [ref=e668] [cursor=pointer]:
+                          - /url: /api/v1/documents/166/download
+                          - img [ref=e669]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG imagen Duplicado Duplicado - 50.6 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e672]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e673]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e674]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e675]:
+                      - generic [ref=e676]:
+                        - img [ref=e677]
+                        - generic [ref=e680]:
+                          - paragraph [ref=e681]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG
+                          - paragraph [ref=e682]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG
+                    - cell "imagen" [ref=e683]
+                    - cell "Duplicado" [ref=e684]:
+                      - generic [ref=e686]:
+                        - img [ref=e687]
+                        - generic [ref=e690]: Duplicado
+                    - cell "Duplicado" [ref=e691]:
+                      - generic [ref=e693]:
+                        - img [ref=e694]
+                        - generic [ref=e697]: Duplicado
+                    - cell "-" [ref=e698]
+                    - cell "50.6 KB" [ref=e699]
+                    - cell "17/6/26, 16:17" [ref=e700]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e701]:
+                      - generic [ref=e702]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e703] [cursor=pointer]:
+                          - /url: /documents/165
+                          - img [ref=e704]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e707] [cursor=pointer]:
+                          - img [ref=e708]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/micro recess switched.JPG" [ref=e713] [cursor=pointer]:
+                          - /url: /api/v1/documents/165/download
+                          - img [ref=e714]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG imagen Duplicado Duplicado - 14.8 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e717]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e718]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e719]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e720]:
+                      - generic [ref=e721]:
+                        - img [ref=e722]
+                        - generic [ref=e725]:
+                          - paragraph [ref=e726]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG
+                          - paragraph [ref=e727]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG
+                    - cell "imagen" [ref=e728]
+                    - cell "Duplicado" [ref=e729]:
+                      - generic [ref=e731]:
+                        - img [ref=e732]
+                        - generic [ref=e735]: Duplicado
+                    - cell "Duplicado" [ref=e736]:
+                      - generic [ref=e738]:
+                        - img [ref=e739]
+                        - generic [ref=e742]: Duplicado
+                    - cell "-" [ref=e743]
+                    - cell "14.8 KB" [ref=e744]
+                    - cell "17/6/26, 16:17" [ref=e745]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e746]:
+                      - generic [ref=e747]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e748] [cursor=pointer]:
+                          - /url: /documents/164
+                          - img [ref=e749]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e752] [cursor=pointer]:
+                          - img [ref=e753]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/Lampara Abbacus.JPG" [ref=e758] [cursor=pointer]:
+                          - /url: /api/v1/documents/164/download
+                          - img [ref=e759]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG imagen Duplicado Duplicado - 53.6 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e762]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e763]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e764]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e765]:
+                      - generic [ref=e766]:
+                        - img [ref=e767]
+                        - generic [ref=e770]:
+                          - paragraph [ref=e771]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG
+                          - paragraph [ref=e772]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG
+                    - cell "imagen" [ref=e773]
+                    - cell "Duplicado" [ref=e774]:
+                      - generic [ref=e776]:
+                        - img [ref=e777]
+                        - generic [ref=e780]: Duplicado
+                    - cell "Duplicado" [ref=e781]:
+                      - generic [ref=e783]:
+                        - img [ref=e784]
+                        - generic [ref=e787]: Duplicado
+                    - cell "-" [ref=e788]
+                    - cell "53.6 KB" [ref=e789]
+                    - cell "17/6/26, 16:17" [ref=e790]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e791]:
+                      - generic [ref=e792]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e793] [cursor=pointer]:
+                          - /url: /documents/163
+                          - img [ref=e794]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e797] [cursor=pointer]:
+                          - img [ref=e798]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/IMAGENES/ABBACUS LAMPARA COLGANTE.JPG" [ref=e803] [cursor=pointer]:
+                          - /url: /api/v1/documents/163/download
+                          - img [ref=e804]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf desconocido Duplicado Duplicado - 16.4 MB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e807]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e808]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e809]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e810]:
+                      - generic [ref=e811]:
+                        - img [ref=e812]
+                        - generic [ref=e815]:
+                          - paragraph [ref=e816]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf
+                          - paragraph [ref=e817]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf
+                    - cell "desconocido" [ref=e818]
+                    - cell "Duplicado" [ref=e819]:
+                      - generic [ref=e821]:
+                        - img [ref=e822]
+                        - generic [ref=e825]: Duplicado
+                    - cell "Duplicado" [ref=e826]:
+                      - generic [ref=e828]:
+                        - img [ref=e829]
+                        - generic [ref=e832]: Duplicado
+                    - cell "-" [ref=e833]
+                    - cell "16.4 MB" [ref=e834]
+                    - cell "17/6/26, 16:17" [ref=e835]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e836]:
+                      - generic [ref=e837]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e838] [cursor=pointer]:
+                          - /url: /documents/162
+                          - img [ref=e839]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e842] [cursor=pointer]:
+                          - img [ref=e843]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE presentacion.pdf" [ref=e848] [cursor=pointer]:
+                          - /url: /api/v1/documents/162/download
+                          - img [ref=e849]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf desconocido Duplicado Duplicado - 598.7 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e852]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e853]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e854]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e855]:
+                      - generic [ref=e856]:
+                        - img [ref=e857]
+                        - generic [ref=e860]:
+                          - paragraph [ref=e861]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf
+                          - paragraph [ref=e862]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf
+                    - cell "desconocido" [ref=e863]
+                    - cell "Duplicado" [ref=e864]:
+                      - generic [ref=e866]:
+                        - img [ref=e867]
+                        - generic [ref=e870]: Duplicado
+                    - cell "Duplicado" [ref=e871]:
+                      - generic [ref=e873]:
+                        - img [ref=e874]
+                        - generic [ref=e877]: Duplicado
+                    - cell "-" [ref=e878]
+                    - cell "598.7 KB" [ref=e879]
+                    - cell "17/6/26, 16:17" [ref=e880]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e881]:
+                      - generic [ref=e882]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e883] [cursor=pointer]:
+                          - /url: /documents/161
+                          - img [ref=e884]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e887] [cursor=pointer]:
+                          - img [ref=e888]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/VISTA ALEGRE carpinteria.pdf" [ref=e893] [cursor=pointer]:
+                          - /url: /api/v1/documents/161/download
+                          - img [ref=e894]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf presupuesto Revisión Revisión 60% 275.3 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e897]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e898]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e899]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e900]:
+                      - generic [ref=e901]:
+                        - img [ref=e902]
+                        - generic [ref=e905]:
+                          - paragraph [ref=e906]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf
+                          - paragraph [ref=e907]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf
+                    - cell "presupuesto" [ref=e908]
+                    - cell "Revisión" [ref=e909]:
+                      - generic [ref=e911]:
+                        - img [ref=e912]
+                        - generic [ref=e914]: Revisión
+                    - cell "Revisión" [ref=e915]:
+                      - generic [ref=e917]:
+                        - img [ref=e918]
+                        - generic [ref=e920]: Revisión
+                    - cell "60%" [ref=e921]
+                    - cell "275.3 KB" [ref=e922]
+                    - cell "17/6/26, 16:17" [ref=e923]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e924]:
+                      - generic [ref=e925]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e926] [cursor=pointer]:
+                          - /url: /documents/160
+                          - img [ref=e927]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e930] [cursor=pointer]:
+                          - img [ref=e931]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/ALBARÁN.pdf" [ref=e936] [cursor=pointer]:
+                          - /url: /api/v1/documents/160/download
+                          - img [ref=e937]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf albaran Procesado Calidad OK 50% 61.5 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e940]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e941]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e942]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e943]:
+                      - generic [ref=e944]:
+                        - img [ref=e945]
+                        - generic [ref=e948]:
+                          - paragraph [ref=e949]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf
+                          - paragraph [ref=e950]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf
+                    - cell "albaran" [ref=e951]
+                    - cell "Procesado" [ref=e952]:
+                      - generic [ref=e954]:
+                        - img [ref=e955]
+                        - generic [ref=e958]: Procesado
+                    - cell "Calidad OK" [ref=e959]:
+                      - generic [ref=e961]:
+                        - img [ref=e962]
+                        - generic [ref=e965]: Calidad OK
+                    - cell "50%" [ref=e966]
+                    - cell "61.5 KB" [ref=e967]
+                    - cell "17/6/26, 16:17" [ref=e968]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e969]:
+                      - generic [ref=e970]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e971] [cursor=pointer]:
+                          - /url: /documents/159
+                          - img [ref=e972]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e975] [cursor=pointer]:
+                          - img [ref=e976]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3394_001.pdf" [ref=e981] [cursor=pointer]:
+                          - /url: /api/v1/documents/159/download
+                          - img [ref=e982]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf presupuesto Revisión Revisión 60% 52.7 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e985]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e986]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e987]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e988]:
+                      - generic [ref=e989]:
+                        - img [ref=e990]
+                        - generic [ref=e993]:
+                          - paragraph [ref=e994]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf
+                          - paragraph [ref=e995]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf
+                    - cell "presupuesto" [ref=e996]
+                    - cell "Revisión" [ref=e997]:
+                      - generic [ref=e999]:
+                        - img [ref=e1000]
+                        - generic [ref=e1002]: Revisión
+                    - cell "Revisión" [ref=e1003]:
+                      - generic [ref=e1005]:
+                        - img [ref=e1006]
+                        - generic [ref=e1008]: Revisión
+                    - cell "60%" [ref=e1009]
+                    - cell "52.7 KB" [ref=e1010]
+                    - cell "17/6/26, 16:17" [ref=e1011]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e1012]:
+                      - generic [ref=e1013]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e1014] [cursor=pointer]:
+                          - /url: /documents/158
+                          - img [ref=e1015]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e1018] [cursor=pointer]:
+                          - img [ref=e1019]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/3388_001.pdf" [ref=e1024] [cursor=pointer]:
+                          - /url: /api/v1/documents/158/download
+                          - img [ref=e1025]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf presupuesto Revisión Revisión 60% 50.9 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1028]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1029]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1030]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1031]:
+                      - generic [ref=e1032]:
+                        - img [ref=e1033]
+                        - generic [ref=e1036]:
+                          - paragraph [ref=e1037]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf
+                          - paragraph [ref=e1038]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf
+                    - cell "presupuesto" [ref=e1039]
+                    - cell "Revisión" [ref=e1040]:
+                      - generic [ref=e1042]:
+                        - img [ref=e1043]
+                        - generic [ref=e1045]: Revisión
+                    - cell "Revisión" [ref=e1046]:
+                      - generic [ref=e1048]:
+                        - img [ref=e1049]
+                        - generic [ref=e1051]: Revisión
+                    - cell "60%" [ref=e1052]
+                    - cell "50.9 KB" [ref=e1053]
+                    - cell "17/6/26, 16:17" [ref=e1054]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1055]:
+                      - generic [ref=e1056]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1057] [cursor=pointer]:
+                          - /url: /documents/157
+                          - img [ref=e1058]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1061] [cursor=pointer]:
+                          - img [ref=e1062]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2978_001.pdf" [ref=e1067] [cursor=pointer]:
+                          - /url: /api/v1/documents/157/download
+                          - img [ref=e1068]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf presupuesto Revisión Revisión 60% 51.5 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1071]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1072]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1073]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1074]:
+                      - generic [ref=e1075]:
+                        - img [ref=e1076]
+                        - generic [ref=e1079]:
+                          - paragraph [ref=e1080]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf
+                          - paragraph [ref=e1081]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf
+                    - cell "presupuesto" [ref=e1082]
+                    - cell "Revisión" [ref=e1083]:
+                      - generic [ref=e1085]:
+                        - img [ref=e1086]
+                        - generic [ref=e1088]: Revisión
+                    - cell "Revisión" [ref=e1089]:
+                      - generic [ref=e1091]:
+                        - img [ref=e1092]
+                        - generic [ref=e1094]: Revisión
+                    - cell "60%" [ref=e1095]
+                    - cell "51.5 KB" [ref=e1096]
+                    - cell "17/6/26, 16:17" [ref=e1097]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1098]:
+                      - generic [ref=e1099]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1100] [cursor=pointer]:
+                          - /url: /documents/156
+                          - img [ref=e1101]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1104] [cursor=pointer]:
+                          - img [ref=e1105]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2977_001.pdf" [ref=e1110] [cursor=pointer]:
+                          - /url: /api/v1/documents/156/download
+                          - img [ref=e1111]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf presupuesto Revisión Revisión 60% 61.6 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1114]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1115]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1116]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1117]:
+                      - generic [ref=e1118]:
+                        - img [ref=e1119]
+                        - generic [ref=e1122]:
+                          - paragraph [ref=e1123]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf
+                          - paragraph [ref=e1124]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf
+                    - cell "presupuesto" [ref=e1125]
+                    - cell "Revisión" [ref=e1126]:
+                      - generic [ref=e1128]:
+                        - img [ref=e1129]
+                        - generic [ref=e1131]: Revisión
+                    - cell "Revisión" [ref=e1132]:
+                      - generic [ref=e1134]:
+                        - img [ref=e1135]
+                        - generic [ref=e1137]: Revisión
+                    - cell "60%" [ref=e1138]
+                    - cell "61.6 KB" [ref=e1139]
+                    - cell "17/6/26, 16:17" [ref=e1140]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1141]:
+                      - generic [ref=e1142]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1143] [cursor=pointer]:
+                          - /url: /documents/155
+                          - img [ref=e1144]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1147] [cursor=pointer]:
+                          - img [ref=e1148]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2879_001.pdf" [ref=e1153] [cursor=pointer]:
+                          - /url: /api/v1/documents/155/download
+                          - img [ref=e1154]
+                  - row "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf presupuesto Revisión Revisión 60% 51.4 KB 17/6/26, 16:17 Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1157]:
+                    - cell "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1158]:
+                      - checkbox "Seleccionar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1159]
+                    - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1160]:
+                      - generic [ref=e1161]:
+                        - img [ref=e1162]
+                        - generic [ref=e1165]:
+                          - paragraph [ref=e1166]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf
+                          - paragraph [ref=e1167]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf
+                    - cell "presupuesto" [ref=e1168]
+                    - cell "Revisión" [ref=e1169]:
+                      - generic [ref=e1171]:
+                        - img [ref=e1172]
+                        - generic [ref=e1174]: Revisión
+                    - cell "Revisión" [ref=e1175]:
+                      - generic [ref=e1177]:
+                        - img [ref=e1178]
+                        - generic [ref=e1180]: Revisión
+                    - cell "60%" [ref=e1181]
+                    - cell "51.4 KB" [ref=e1182]
+                    - cell "17/6/26, 16:17" [ref=e1183]
+                    - cell "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1184]:
+                      - generic [ref=e1185]:
+                        - link "Ver ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1186] [cursor=pointer]:
+                          - /url: /documents/154
+                          - img [ref=e1187]
+                        - button "Reprocesar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1190] [cursor=pointer]:
+                          - img [ref=e1191]
+                        - link "Descargar ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2852_001.pdf" [ref=e1196] [cursor=pointer]:
+                          - /url: /api/v1/documents/154/download
+                          - img [ref=e1197]
+              - generic [ref=e1200]:
+                - generic [ref=e1201]: Mostrando 1-25 de 111
+                - generic [ref=e1202]:
+                  - button "Anterior" [disabled]
+                  - button "Siguiente" [ref=e1203] [cursor=pointer]
+          - generic [ref=e1204]:
+            - heading "Vista activa" [level=3] [ref=e1206]
+            - generic [ref=e1207]:
+              - paragraph [ref=e1208]: Últimos documentos registrados
+              - generic [ref=e1209]:
+                - generic [ref=e1210]: Filtro texto
+                - generic [ref=e1211]: "-"
+              - generic [ref=e1212]:
+                - generic [ref=e1213]: Estado
+                - generic [ref=e1214]: "-"
+              - generic [ref=e1215]:
+                - generic [ref=e1216]: Tipo
+                - generic [ref=e1217]: "-"
+              - generic [ref=e1218]:
+                - generic [ref=e1219]: Página
+                - generic [ref=e1220]: "1"
+  - region "Notifications alt+T"

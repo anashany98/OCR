@@ -1,0 +1,234 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Docu-Intel
+          - paragraph [ref=e12]: Operación documental
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]:
+            - generic [ref=e18]: Recientes
+          - list [ref=e19]:
+            - listitem [ref=e20]:
+              - link "Todos los documentos" [ref=e21] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e22]
+                - generic [ref=e25]: Todos los documentos
+        - generic [ref=e26]:
+          - paragraph [ref=e27]:
+            - generic [ref=e29]: General
+          - list [ref=e30]:
+            - listitem [ref=e31]:
+              - link "Dashboard" [ref=e32] [cursor=pointer]:
+                - /url: /
+                - img [ref=e33]
+                - generic [ref=e38]: Dashboard
+            - listitem [ref=e39]:
+              - link "Tareas 3 tareas pendientes" [ref=e195] [cursor=pointer]:
+                - /url: /work-inbox
+                - img [ref=e41]
+                - generic [ref=e43]: Tareas
+                - generic "3 tareas pendientes" [ref=e196]: "3"
+        - generic [ref=e44]:
+          - paragraph [ref=e45]:
+            - generic [ref=e47]: Documentos
+          - list [ref=e48]:
+            - listitem [ref=e49]:
+              - link "Todos los documentos" [ref=e50] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e52]
+                - generic [ref=e55]: Todos los documentos
+            - listitem [ref=e56]:
+              - link "Buscar" [ref=e57] [cursor=pointer]:
+                - /url: /search
+                - img [ref=e58]
+                - generic [ref=e61]: Buscar
+            - listitem [ref=e62]:
+              - link "Preguntar a documentos" [ref=e63] [cursor=pointer]:
+                - /url: /chat
+                - img [ref=e64]
+                - generic [ref=e66]: Preguntar a documentos
+            - listitem [ref=e67]:
+              - link "Planos β" [ref=e68] [cursor=pointer]:
+                - /url: /plans
+                - img [ref=e69]
+                - generic [ref=e71]: Planos
+                - generic [ref=e72]: β
+        - generic [ref=e73]:
+          - paragraph [ref=e74]:
+            - generic [ref=e76]: Operación
+          - list [ref=e77]:
+            - listitem [ref=e78]:
+              - link "Presupuestos" [ref=e79] [cursor=pointer]:
+                - /url: /budgets
+                - img [ref=e80]
+                - generic [ref=e83]: Presupuestos
+            - listitem [ref=e84]:
+              - link "Pedidos" [ref=e85] [cursor=pointer]:
+                - /url: /orders
+                - img [ref=e86]
+                - generic [ref=e89]: Pedidos
+            - listitem [ref=e90]:
+              - link "Facturas" [ref=e91] [cursor=pointer]:
+                - /url: /invoices
+                - img [ref=e92]
+                - generic [ref=e95]: Facturas
+            - listitem [ref=e96]:
+              - link "Incidencias" [ref=e97] [cursor=pointer]:
+                - /url: /reconciliation
+                - img [ref=e98]
+                - generic [ref=e102]: Incidencias
+            - listitem [ref=e103]:
+              - link "OCR y calidad" [ref=e104] [cursor=pointer]:
+                - /url: /ocr-review
+                - img [ref=e105]
+                - generic [ref=e108]: OCR y calidad
+            - listitem [ref=e109]:
+              - link "Duplicados" [ref=e110] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e111]
+                - generic [ref=e113]: Duplicados
+            - listitem [ref=e114]:
+              - link "Cuarentena" [ref=e115] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e116]
+                - generic [ref=e118]: Cuarentena
+        - generic [ref=e119]:
+          - paragraph [ref=e120]:
+            - generic [ref=e122]: Sistema
+          - list [ref=e123]:
+            - listitem [ref=e124]:
+              - link "Procesamiento" [ref=e125] [cursor=pointer]:
+                - /url: /jobs
+                - img [ref=e126]
+                - generic [ref=e131]: Procesamiento
+            - listitem [ref=e132]:
+              - link "Estado técnico" [ref=e133] [cursor=pointer]:
+                - /url: /admin/sistema
+                - img [ref=e134]
+                - generic [ref=e137]: Estado técnico
+            - listitem [ref=e138]:
+              - link "Usuarios y permisos" [ref=e139] [cursor=pointer]:
+                - /url: /admin/acceso
+                - img [ref=e140]
+                - generic [ref=e145]: Usuarios y permisos
+            - listitem [ref=e146]:
+              - link "Integraciones" [ref=e147] [cursor=pointer]:
+                - /url: /admin/integraciones
+                - img [ref=e148]
+                - generic [ref=e151]: Integraciones
+            - listitem [ref=e152]:
+              - link "Aprendizaje IA" [ref=e153] [cursor=pointer]:
+                - /url: /admin/aprendizaje
+                - img [ref=e154]
+                - generic [ref=e164]: Aprendizaje IA
+    - generic [ref=e165]:
+      - banner [ref=e166]:
+        - generic [ref=e167]:
+          - heading "Documentos" [level=1] [ref=e168]
+          - generic "3 tareas pendientes" [ref=e197] [cursor=pointer]:
+            - generic [ref=e198]: 3 tareas
+          - button "Abrir paleta de comandos" [ref=e169] [cursor=pointer]:
+            - img [ref=e170]
+            - generic [ref=e172]: Buscar…
+            - generic [ref=e173]: ⌘K
+          - generic [ref=e176]: Sistema
+          - button "Cambiar a tema oscuro" [ref=e177] [cursor=pointer]:
+            - img [ref=e178]
+          - button "Menú de usuario" [ref=e181] [cursor=pointer]:
+            - generic [ref=e182]: A
+            - generic [ref=e183]: Admin
+            - img [ref=e184]
+          - button "Cerrar sesión" [ref=e186] [cursor=pointer]:
+            - img [ref=e187]
+      - main [ref=e190]:
+        - generic [ref=e199]:
+          - navigation "Breadcrumb" [ref=e200]:
+            - list [ref=e201]:
+              - listitem [ref=e202]:
+                - link "Inicio" [ref=e203] [cursor=pointer]:
+                  - /url: /
+                  - img [ref=e204]
+                  - generic [ref=e207]: Inicio
+              - listitem [ref=e208]:
+                - img [ref=e209]
+              - listitem [ref=e211]:
+                - generic [ref=e213]: Documentos
+          - generic [ref=e215]:
+            - generic [ref=e216]:
+              - heading "Documentos" [level=1] [ref=e217]
+              - generic [ref=e218]: Tabla operativa con filtros de servidor, vistas guardadas y acciones masivas.
+            - generic [ref=e219]:
+              - button "Escanear carpetas" [ref=e220] [cursor=pointer]:
+                - img [ref=e221]
+                - text: Escanear carpetas
+              - generic [ref=e226]:
+                - img [ref=e227]
+                - text: Subir
+              - generic [ref=e230]:
+                - img [ref=e231]
+                - text: Subir carpeta
+          - generic [ref=e234]:
+            - generic [ref=e235]:
+              - button "Todos" [ref=e236] [cursor=pointer]
+              - button "OCR pendiente" [ref=e237] [cursor=pointer]
+              - button "Fallidos" [ref=e238] [cursor=pointer]
+              - button "Planos sin escala" [ref=e239] [cursor=pointer]
+              - button "Últimos 7 días" [ref=e240] [cursor=pointer]
+            - generic [ref=e241]:
+              - img
+              - textbox "Archivo, proveedor, referencia..." [ref=e242]
+            - combobox "Estado" [ref=e243]:
+              - option "Todos los estados" [selected]
+              - option "Pendiente"
+              - option "Procesando"
+              - option "Procesado"
+              - option "Necesita revisión"
+              - option "Fallido"
+              - option "Duplicado"
+            - combobox "Tipo" [ref=e244]:
+              - option "Todos los tipos" [selected]
+              - option "Presupuesto"
+              - option "Pedido"
+              - option "Factura"
+              - option "Plano"
+              - option "Imagen"
+              - option "Excel"
+              - option "Otro"
+          - generic [ref=e245]:
+            - generic [ref=e246]:
+              - generic [ref=e247]:
+                - heading "Listado" [level=3] [ref=e248]
+                - generic [ref=e249]: 0 documentos
+              - generic [ref=e250]:
+                - button [disabled]:
+                  - img
+            - generic [ref=e251]:
+              - table [ref=e253]:
+                - rowgroup [ref=e254]:
+                  - row "Seleccionar página Archivo Estado · Calidad Tipo Confianza Tamaño · Fecha Acciones" [ref=e255]:
+                    - columnheader "Seleccionar página" [ref=e256]:
+                      - checkbox "Seleccionar página" [ref=e257]
+                    - columnheader "Archivo" [ref=e258]
+                    - columnheader "Estado · Calidad" [ref=e259]
+                    - columnheader "Tipo" [ref=e260]
+                    - columnheader "Confianza" [ref=e261]
+                    - columnheader "Tamaño · Fecha" [ref=e262]
+                    - columnheader "Acciones" [ref=e263]
+                - rowgroup [ref=e264]:
+                  - row "Sin documentos Ajusta los filtros, sube archivos o lanza el escaneo de carpetas para empezar. Escanear carpetas" [ref=e265]:
+                    - cell "Sin documentos Ajusta los filtros, sube archivos o lanza el escaneo de carpetas para empezar. Escanear carpetas" [ref=e266]:
+                      - generic [ref=e267]:
+                        - img [ref=e269]
+                        - generic [ref=e274]:
+                          - heading "Sin documentos" [level=3] [ref=e275]
+                          - paragraph [ref=e276]: Ajusta los filtros, sube archivos o lanza el escaneo de carpetas para empezar.
+                        - button "Escanear carpetas" [ref=e277] [cursor=pointer]
+              - generic [ref=e278]:
+                - generic [ref=e279]: Mostrando 0–0 de 0
+                - generic [ref=e280]:
+                  - button "Anterior" [disabled]
+                  - button "Siguiente" [disabled]
+  - region "Notifications alt+T"

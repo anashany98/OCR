@@ -248,7 +248,10 @@ def _run_coro_sync(coro: Awaitable[_T]) -> _T:
 # O1 — DPI ladder: when Tier 1 returns very little text on a
 # scanned page, the characters are probably too small for the
 # current DPI. We re-render at progressively higher DPI and
-# re-run the cascade, up to 3 attempts.
+# re-run the cascade, up to 3 attempts.  The 600 DPI level is
+# only tried when the previous two levels produced completely
+# empty text (not just low quality) to avoid wasting time on
+# pages that are readable at 400 DPI but below the quality bar.
 _DPI_LADDER: list[int] = [300, 400, 600]
 _DPI_MIN_TEXT_LENGTH = 30
 _DPI_MIN_CONFIDENCE = 0.40
@@ -267,6 +270,11 @@ def _ocr_with_dpi_ladder(
     file is the *highest* DPI render we tried (the one whose OCR
     result we kept). The function is fail-safe: on any exception
     we return the result of the *last successful* attempt.
+
+    DPI escalation is capped: 600 DPI is only attempted when both
+    300 and 400 produced completely empty text (0 chars), not just
+    low quality. This avoids spending 2-3 extra OCR rounds on pages
+    that are readable at 400 DPI but below the quality bar.
     """
     from app.ocr.base import OCRResult
 
@@ -274,14 +282,13 @@ def _ocr_with_dpi_ladder(
     best_ocr: OCRResult | None = None
     best_engine: str = ""
     prev_dpi = 0
+    prev_text_empty = True
 
     for dpi in _DPI_LADDER:
-        # OPS-1: ``_render_page_to_image`` returns the on-disk
-        # extension actually used (``.jpg`` or ``.png``). The
-        # file is left with that suffix on disk so the browser
-        # infers the right Content-Type from the filename. We
-        # build the requested path with a placeholder suffix
-        # here and let the helper rewrite it.
+        # Skip 600 DPI unless previous attempts returned no text at all.
+        if dpi == 600 and not prev_text_empty:
+            break
+
         image_file = output_dir / f"page_{page_number}_dpi{dpi}.tmp"
         rendered_ext = _render_page_to_image(page, image_file, dpi=dpi)
         if rendered_ext is None:
@@ -291,14 +298,6 @@ def _ocr_with_dpi_ladder(
         try:
             ocr = ocr_engine.extract(image_file)
         except Exception as exc:
-            # OPS-2: the OCR engine itself can crash on a
-            # particular image (corrupt raster, tesseract
-            # segfault caught by Python, paddle import race).
-            # The DPI ladder just moves on, but if every
-            # ladder step fails the page comes out blank and
-            # nobody knows whether it was a render or an OCR
-            # problem. Count the OCR-side failure so the
-            # operator can see which one is firing.
             logger.debug(
                 "OCR engine %s crashed on page %d dpi %d: %s: %s",
                 getattr(ocr_engine, "name", "?"),
@@ -320,6 +319,7 @@ def _ocr_with_dpi_ladder(
         if prev_dpi > 0 and dpi > prev_dpi:
             track_ocr_dpi_escalation(from_dpi=prev_dpi, to_dpi=dpi)
         prev_dpi = dpi
+        prev_text_empty = len(text) == 0
 
         if _ocr_is_usable(text, conf):
             break
@@ -502,18 +502,16 @@ def _extract_table_markdown(path: Path, page_index: int) -> str:
     return ""
 
 
-async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> str:
+async def _maybe_vision_table(
+    path: Path,
+    page_index: int,
+    output_dir: Path,
+    content_route: str | None = None,
+) -> str:
     """If the vision LLM is configured and the page produced no
     structured text (i.e. it's scanned/photographed), ask the vision
-    model to transcribe the table as markdown. Returns empty string on
-    any failure (vision is best-effort).
-
-    OPS-2: failures used to be silently swallowed here too. The
-    sync caller (``parse_pdf``) wraps this coroutine with
-    ``_run_coro_sync`` and logs+counts the exception, so this
-    inner ``except`` is a no-op in practice — but if the
-    sync wrapper ever changes, this branch keeps a verbose
-    log so the failure isn't lost.
+    model to transcribe the content. Handles tables, handwritten text,
+    and scanned documents. Returns empty string on any failure.
     """
     if not settings.vision_table_transcription:
         return ""
@@ -521,9 +519,19 @@ async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> 
         return ""
     try:
         from app.ai.local_client import LocalVisionClient
+        from app.parsers.image import _get_vision_prompt
 
         client = LocalVisionClient()
-        return await client.transcribe_table_from_pdf_page(path, page_index, output_dir=output_dir)
+        prompt = _get_vision_prompt(content_route)
+        text = await client.transcribe_table_from_pdf_page(path, page_index, output_dir=output_dir)
+        if text and len(text.strip()) > 20:
+            return text
+        # Fallback: content-aware prompt for the specific page
+        return await client.describe(
+            path,
+            prompt=prompt,
+            max_tokens=2000,
+        )
     except Exception as exc:
         logger.warning(
             "vision-table async call failed for %s page %d: %s: %s",
@@ -536,7 +544,12 @@ async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> 
         return ""
 
 
-def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
+def parse_pdf(
+    path: Path,
+    output_dir: Path,
+    ocr_engine: BaseOCREngine,
+    folder_hint: str | None = None,
+) -> ExtractedDocument:
     """Extract text from a PDF, per-page.
 
     Decision is made **per page**, not per document:
@@ -553,6 +566,22 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
     entirely through OCR.
     """
     import fitz
+
+    # Content-aware routing: classify the PDF before processing.
+    # This runs a quick text scan on the first 3 pages to detect
+    # if it's a plan, interior design content, etc.
+    from app.parsers.content_router import classify_content
+
+    content_classification = classify_content(path, folder_hint=folder_hint)
+    content_route = content_classification.route.value
+    if content_classification.route.value != "standard_ocr":
+        logger.info(
+            "PDF content router: %s -> %s (confidence=%.2f, reason=%s)",
+            path.name,
+            content_classification.route.value,
+            content_classification.confidence,
+            content_classification.reason,
+        )
 
     pages: list[ExtractedPage] = []
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -695,7 +724,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                 # LLM as a recovery path for tables (best-effort).
                 if not text and settings.vision_table_transcription and settings.vision_model:
                     try:
-                        vision_md = _run_coro_sync(_maybe_vision_table(path, index - 1, output_dir))
+                        vision_md = _run_coro_sync(_maybe_vision_table(path, index - 1, output_dir, content_route=content_route))
                         if vision_md:
                             text = vision_md
                             ocr_confidence = max(ocr_confidence or 0.0, 0.85)

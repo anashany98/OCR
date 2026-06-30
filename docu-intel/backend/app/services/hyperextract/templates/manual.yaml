@@ -1,0 +1,78 @@
+# Hyper-Extract — manual/instructions template
+
+document_type: manual
+description: Manual de uso, instrucciones, guia tecnica, procedimiento, ficha tecnica.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de manuales, instrucciones y fichas tecnicas.
+  Devuelve EXCLUSIVAMENTE JSON valido (sin texto alrededor, sin bloques
+  ```json). Si un dato no aparece, devuelve null.
+  "resumen" debe sintetizar que cubre el manual y para que publico.
+  "pasos_instalacion" o "pasos_uso" segun corresponda.
+
+fields:
+  - name: titulo
+    type: string
+    description: Titulo del manual o ficha tecnica.
+  - name: fabricante
+    type: string
+    description: Fabricante o marca.
+  - name: producto
+    type: string
+    description: Producto o sistema que describe.
+  - name: modelo
+    type: string
+    description: Modelo o referencia del producto.
+  - name: version
+    type: string
+    description: Version o revision del manual.
+  - name: fecha
+    type: date
+    description: Fecha del documento.
+  - name: idioma
+    type: string
+    description: Idioma principal.
+  - name: resumen
+    type: string
+    description: Que cubre el manual y para que publico.
+  - name: pasos_instalacion
+    type: array
+    description: Pasos principales de instalacion (si los hay).
+    items:
+      type: string
+  - name: pasos_uso
+    type: array
+    description: Pasos principales de uso (si los hay).
+    items:
+      type: string
+  - name: especificaciones
+    type: array
+    description: Especificaciones tecnicas listadas.
+    items:
+      type: object
+      properties:
+        parametro: {type: string}
+        valor: {type: string}
+        unidad: {type: string}
+  - name: advertencias
+    type: array
+    description: Advertencias o precauciones de seguridad.
+    items:
+      type: string
+
+entities:
+  - name: manual
+    label: Manual
+  - name: producto
+    label: Product
+  - name: fabricante
+    label: Manufacturer
+
+relations:
+  - source: manual
+    type: documenta
+    target: producto
+  - source: manual
+    type: publicado_por
+    target: fabricante

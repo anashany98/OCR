@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react"
+
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -24,6 +26,21 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        onCancel()
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    cancelRef.current?.focus()
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [open, onCancel])
+
   if (!open) return null
   const titleId = "confirm-dialog-title"
   const descriptionId = description ? "confirm-dialog-description" : undefined
@@ -46,7 +63,7 @@ export function ConfirmDialog({
           </p>
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
+          <Button ref={cancelRef} type="button" variant="outline" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </Button>
           <Button

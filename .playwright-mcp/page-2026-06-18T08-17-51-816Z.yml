@@ -1,0 +1,23 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - button "Abrir menú de navegación" [ref=e7] [cursor=pointer]:
+          - img [ref=e8]
+        - heading "Documentos" [level=1] [ref=e9]
+        - button "Abrir paleta de comandos" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+          - generic [ref=e13]: Buscar…
+          - generic [ref=e14]: ⌘K
+        - generic [ref=e17]: Sistema
+        - button "Cambiar a tema oscuro" [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+        - button "Menú de usuario" [ref=e22] [cursor=pointer]:
+          - generic [ref=e23]: A
+          - generic [ref=e24]: Administrador
+          - img [ref=e25]
+        - button "Cerrar sesión" [ref=e27] [cursor=pointer]:
+          - img [ref=e28]
+    - main [ref=e31]:
+      - paragraph [ref=e35]: Cargando página...
+  - region "Notifications alt+T"

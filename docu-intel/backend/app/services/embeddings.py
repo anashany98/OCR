@@ -38,7 +38,7 @@ EMBEDDING_DIMENSIONS = int(settings.embedding_dimensions or 1024)
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 EMBEDDING_CACHE_TTL = 3600
 BATCH_SIZE = 32
-MAX_CONCURRENT_BATCHES = 4
+MAX_CONCURRENT_BATCHES = 8
 
 
 class EmbeddingProviderError(RuntimeError):

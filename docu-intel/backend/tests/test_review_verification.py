@@ -364,6 +364,39 @@ def test_fabrication_tolerates_year_only():
     ) is False
 
 
+def test_fabrication_accepts_document_number_from_source_path():
+    items = [
+        ContextItem(
+            title="APROBADO.pdf",
+            summary="Presupuesto aprobado por 121,00 EUR",
+            document_filename="APROBADO.pdf",
+            source_path="clientes/CEO-001 20040-IC13-2605-000024 APROBADO.pdf",
+        )
+    ]
+
+    assert response_fabricates_documents(
+        "Segun el archivo APROBADO.pdf, la referencia 20040-IC13-2605-000024 "
+        "esta aprobada por 121,00 EUR.",
+        items,
+    ) is False
+
+
+def test_fabrication_accepts_filename_suffix_from_source_path():
+    items = [
+        ContextItem(
+            title="253434.xlsx",
+            summary="Presupuesto 253434 por 121,00 EUR",
+            document_filename="ALEJANDRA COMPANY LASERE/Presupuesto 260074/EXCEL/253434.xlsx",
+            source_path="ALEJANDRA COMPANY LASERE/Presupuesto 260074/EXCEL/253434.xlsx",
+        )
+    ]
+
+    assert response_fabricates_documents(
+        "Segun 260074/EXCEL/253434.xlsx el presupuesto asciende a 121,00 EUR.",
+        items,
+    ) is False
+
+
 # ---------------------------------------------------------------------------
 # Item 8 - hardcoded confidence: not changed, but documented
 # ---------------------------------------------------------------------------

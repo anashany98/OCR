@@ -1,0 +1,64 @@
+# Hyper-Extract — report/informe template
+# ---------------------------------------------------------------------------
+# For technical reports, audit reports, summaries, analysis documents.
+
+document_type: informe
+description: Informe tecnico, reporte, auditoria, analisis o resumen ejecutivo.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de informes y reportes.
+  Devuelve EXCLUSIVAMENTE JSON valido (sin texto alrededor, sin bloques
+  ```json). Si un dato no aparece, devuelve null.
+  "resumen_ejecutivo" debe sintetizar el informe en 2-3 frases.
+  "puntos_clave" lista las conclusiones o hallazgos principales (max 10).
+  "recomendaciones" lista las acciones propuestas (si las hay).
+
+fields:
+  - name: titulo
+    type: string
+    description: Titulo del informe.
+  - name: autor
+    type: string
+    description: Autor o departamento que firma el informe.
+  - name: fecha
+    type: date
+    description: Fecha del informe en formato ISO 8601.
+  - name: tipo_informe
+    type: string
+    description: Tipo de informe (tecnico, auditoria, financiero, etc.).
+  - name: resumen_ejecutivo
+    type: string
+    description: Sintesis del informe en 2-3 frases.
+  - name: puntos_clave
+    type: array
+    description: Conclusiones o hallazgos principales.
+    items:
+      type: string
+  - name: recomendaciones
+    type: array
+    description: Acciones propuestas o recomendaciones.
+    items:
+      type: string
+  - name: datos_cuantitativos
+    type: array
+    description: Cifras, metricas o KPIs mencionados.
+    items:
+      type: object
+      properties:
+        metrica: {type: string}
+        valor: {type: string}
+        unidad: {type: string}
+
+entities:
+  - name: informe
+    label: Report
+  - name: autor
+    label: Author
+  - name: metrica
+    label: Metric
+
+relations:
+  - source: informe
+    type: redactado_por
+    target: autor

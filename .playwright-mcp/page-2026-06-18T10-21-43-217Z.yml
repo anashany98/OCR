@@ -1,0 +1,273 @@
+- generic [ref=e2]:
+  - generic [ref=e9]:
+    - banner [ref=e10]:
+      - generic [ref=e11]:
+        - button "Abrir menú de navegación" [ref=e12] [cursor=pointer]:
+          - img [ref=e13]
+        - heading "Administración · Estado técnico" [level=1] [ref=e14]
+        - generic "105 tareas pendientes" [ref=e15] [cursor=pointer]:
+          - generic [ref=e16]: 105 tareas
+        - button "Abrir paleta de comandos" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+          - generic [ref=e20]: Buscar…
+          - generic [ref=e21]: ⌘K
+        - generic [ref=e24]: Sistema
+        - button "Cambiar a tema oscuro" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+        - button "Menú de usuario" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: A
+          - generic [ref=e31]: Administrador
+          - img [ref=e32]
+        - button "Cerrar sesión" [ref=e34] [cursor=pointer]:
+          - img [ref=e35]
+    - main [ref=e38]:
+      - generic [ref=e41]:
+        - heading "Administración" [level=1] [ref=e42]
+        - generic [ref=e43]: Operación documental, integración segura, colas y auditoría.
+      - generic [ref=e44]:
+        - link "Operativa" [ref=e45] [cursor=pointer]:
+          - /url: /admin/operativa
+          - generic [ref=e46]:
+            - img [ref=e47]
+            - text: Operativa
+        - link "Estado técnico" [ref=e50] [cursor=pointer]:
+          - /url: /admin/sistema
+          - generic [ref=e51]:
+            - img [ref=e52]
+            - text: Estado técnico
+        - link "Integraciones" [ref=e55] [cursor=pointer]:
+          - /url: /admin/integraciones
+          - generic [ref=e56]:
+            - img [ref=e57]
+            - text: Integraciones
+        - link "Usuarios y permisos" [ref=e60] [cursor=pointer]:
+          - /url: /admin/acceso
+          - generic [ref=e61]:
+            - img [ref=e62]
+            - text: Usuarios y permisos
+        - link "Calidad" [ref=e67] [cursor=pointer]:
+          - /url: /admin/calidad
+          - generic [ref=e68]:
+            - img [ref=e69]
+            - text: Calidad
+        - link "Aprendizaje IA" [ref=e76] [cursor=pointer]:
+          - /url: /admin/aprendizaje
+          - generic [ref=e77]:
+            - img [ref=e78]
+            - text: Aprendizaje IA
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - img [ref=e90]
+          - heading "PostgreSQL" [level=3] [ref=e94]
+        - generic [ref=e96]:
+          - generic [ref=e99]:
+            - generic [ref=e100]: degraded
+            - generic [ref=e101]: "database: ok"
+          - generic [ref=e104]:
+            - paragraph [ref=e105]: Estado
+            - generic [ref=e107]: degradado
+        - generic [ref=e108]:
+          - img [ref=e109]
+          - heading "Redis y Workers" [level=3] [ref=e112]
+        - generic [ref=e114]:
+          - generic [ref=e118]: "redis: ok"
+          - generic [ref=e121]:
+            - paragraph [ref=e122]: Colas por tipo
+            - generic [ref=e123]:
+              - generic [ref=e124]: "text_fast: 0"
+              - generic [ref=e125]: "ocr_heavy: 0"
+              - generic [ref=e126]: "embeddings: 0"
+              - generic [ref=e127]: "maintenance: 0"
+        - generic [ref=e128]:
+          - img [ref=e129]
+          - heading "Disco y almacenamiento" [level=3] [ref=e131]
+        - generic [ref=e133]:
+          - generic [ref=e135]:
+            - generic [ref=e136]:
+              - generic [ref=e137]:
+                - generic [ref=e138]:
+                  - img [ref=e139]
+                  - text: Directorio de entrada
+                - generic [ref=e141]: 95% usado
+              - paragraph [ref=e144]: /app/data/input
+            - generic [ref=e145]:
+              - generic [ref=e146]:
+                - generic [ref=e147]:
+                  - img [ref=e148]
+                  - text: Archivos originales
+                - generic [ref=e150]: 95% usado
+              - paragraph [ref=e153]: /app/data/files
+          - generic [ref=e155]:
+            - paragraph [ref=e156]: Integridad de almacenamiento
+            - generic [ref=e157]:
+              - generic [ref=e158]:
+                - paragraph [ref=e159]: Comprobados
+                - paragraph [ref=e160]: "111"
+              - generic [ref=e161]:
+                - paragraph [ref=e162]: Sin fichero
+                - paragraph [ref=e163]: "0"
+              - generic [ref=e164]:
+                - paragraph [ref=e165]: Huérfanos
+                - paragraph [ref=e166]: "165"
+              - generic [ref=e167]:
+                - paragraph [ref=e168]: Hash dudoso
+                - paragraph [ref=e169]: "0"
+        - generic [ref=e170]:
+          - img [ref=e171]
+          - heading "Readiness y producción" [level=3] [ref=e174]
+        - generic [ref=e176]:
+          - generic [ref=e178]:
+            - generic [ref=e179]:
+              - paragraph [ref=e180]: Readiness productivo
+              - generic [ref=e181]: ready
+            - generic [ref=e182]:
+              - generic [ref=e183]:
+                - generic [ref=e184]:
+                  - paragraph [ref=e185]: database
+                  - generic [ref=e186]: ok
+                - paragraph [ref=e187]: Base de datos disponible.
+              - generic [ref=e188]:
+                - generic [ref=e189]:
+                  - paragraph [ref=e190]: redis
+                  - generic [ref=e191]: ok
+                - paragraph [ref=e192]: Redis disponible.
+              - generic [ref=e193]:
+                - generic [ref=e194]:
+                  - paragraph [ref=e195]: workers
+                  - generic [ref=e196]: ok
+                - paragraph [ref=e197]: Workers monitorizados. Pendiente=0, procesando=0.
+              - generic [ref=e198]:
+                - generic [ref=e199]:
+                  - paragraph [ref=e200]: watcher
+                  - generic [ref=e201]: ok
+                - paragraph [ref=e202]: "Watcher activo. Ultimo evento: 2026-06-18T10:18:02.022270+00:00."
+              - generic [ref=e203]:
+                - generic [ref=e204]:
+                  - paragraph [ref=e205]: files_dir
+                  - generic [ref=e206]: ok
+                - paragraph [ref=e207]: /app/data/files
+              - generic [ref=e208]:
+                - generic [ref=e209]:
+                  - paragraph [ref=e210]: input_dir
+                  - generic [ref=e211]: ok
+                - paragraph [ref=e212]: /app/data/input
+              - generic [ref=e213]:
+                - generic [ref=e214]:
+                  - paragraph [ref=e215]: backups
+                  - generic [ref=e216]: ok
+                - paragraph [ref=e217]: Scripts de backup se ejecutan desde el host; validacion estricta solo en production.
+              - generic [ref=e218]:
+                - generic [ref=e219]:
+                  - paragraph [ref=e220]: integration_manifest
+                  - generic [ref=e221]: ok
+                - paragraph [ref=e222]: Manifest /integrations/v1 disponible con tools controladas.
+          - generic [ref=e224]:
+            - paragraph [ref=e225]: Checklist producción
+            - generic [ref=e226]:
+              - generic [ref=e227]:
+                - generic [ref=e228]:
+                  - paragraph [ref=e229]: Base de datos
+                  - generic [ref=e230]: ok
+                - paragraph [ref=e231]: PostgreSQL responde a consultas basicas.
+              - generic [ref=e232]:
+                - generic [ref=e233]:
+                  - paragraph [ref=e234]: Redis
+                  - generic [ref=e235]: ok
+                - paragraph [ref=e236]: Redis responde para colas, cache y notificaciones.
+              - generic [ref=e237]:
+                - generic [ref=e238]:
+                  - paragraph [ref=e239]: Watcher
+                  - generic [ref=e240]: ok
+                - paragraph [ref=e241]: Vigilancia de carpetas configurada para ingesta 24h.
+              - generic [ref=e242]:
+                - generic [ref=e243]:
+                  - paragraph [ref=e244]: Disco
+                  - generic [ref=e245]: warning
+                - paragraph [ref=e246]: Espacio disponible para originales, previews y OCR.
+              - generic [ref=e247]:
+                - generic [ref=e248]:
+                  - paragraph [ref=e249]: Colas
+                  - generic [ref=e250]: ok
+                - paragraph [ref=e251]: "Pendientes: 0. Procesando: 0."
+              - generic [ref=e252]:
+                - generic [ref=e253]:
+                  - paragraph [ref=e254]: Backup y restore
+                  - generic [ref=e255]: warning
+                - paragraph [ref=e256]: Runbooks disponibles para PostgreSQL y /data/files.
+              - generic [ref=e257]:
+                - generic [ref=e258]:
+                  - paragraph [ref=e259]: Manifest IA externa
+                  - generic [ref=e260]: ok
+                - paragraph [ref=e261]: Manifest y tools versionadas para que la IA externa consulte sin SQL.
+        - generic [ref=e262]:
+          - img [ref=e263]
+          - heading "Usuarios y notificaciones" [level=3] [ref=e266]
+        - generic [ref=e268]:
+          - generic [ref=e270]:
+            - generic [ref=e271]:
+              - textbox "email@empresa.com" [ref=e272]
+              - textbox "Nombre" [ref=e273]
+              - combobox [ref=e274]:
+                - option "Operario" [selected]
+                - option "Gestor"
+                - option "Auditor"
+                - option "Admin"
+              - textbox "Contraseña" [ref=e275]
+              - button "Crear" [disabled]
+            - table [ref=e278]:
+              - rowgroup [ref=e279]:
+                - row "Usuario Rol Estado" [ref=e280]:
+                  - columnheader "Usuario" [ref=e281]
+                  - columnheader "Rol" [ref=e282]
+                  - columnheader "Estado" [ref=e283]
+                  - columnheader [ref=e284]
+              - rowgroup [ref=e285]:
+                - row "Administrador admin@local admin activo Desactivar" [ref=e286]:
+                  - cell "Administrador admin@local" [ref=e287]:
+                    - paragraph [ref=e288]: Administrador
+                    - paragraph [ref=e289]: admin@local
+                  - cell "admin" [ref=e290]:
+                    - generic [ref=e291]: admin
+                  - cell "activo" [ref=e292]:
+                    - generic [ref=e293]: activo
+                  - cell "Desactivar" [ref=e294]:
+                    - button "Desactivar" [ref=e295] [cursor=pointer]
+          - generic [ref=e297]:
+            - generic [ref=e298]:
+              - textbox "Nombre regla" [ref=e299]
+              - textbox "Evento" [ref=e300]: ocr_failed
+              - combobox [ref=e301]:
+                - option "Webhook" [selected]
+                - option "Email"
+                - option "Teams"
+              - textbox "URL o email" [ref=e302]
+              - button "Crear" [ref=e303] [cursor=pointer]
+            - paragraph [ref=e305]: Sin reglas.
+        - generic [ref=e306]:
+          - img [ref=e307]
+          - heading "Configuración IA/OCR" [level=3] [ref=e311]
+        - generic [ref=e313]:
+          - generic [ref=e315]:
+            - generic [ref=e316]:
+              - generic [ref=e317]:
+                - paragraph [ref=e318]: Readiness
+                - generic [ref=e320]: ready
+              - generic [ref=e321]:
+                - paragraph [ref=e322]: OCR
+                - generic [ref=e324]: paddleocr
+              - generic [ref=e325]:
+                - paragraph [ref=e326]: Embeddings
+                - generic [ref=e328]: backend
+              - generic [ref=e329]:
+                - paragraph [ref=e330]: Backups
+                - generic [ref=e332]: auditable
+            - generic [ref=e333]:
+              - generic [ref=e334]: AI_PROVIDER=local_openai_compatible
+              - generic [ref=e335]: OCR_ENGINE=paddleocr
+              - generic [ref=e336]: "Docs en revisión: 64"
+          - generic [ref=e339]:
+            - button "Activar demo" [ref=e340] [cursor=pointer]:
+              - img [ref=e341]
+              - text: Activar demo
+            - generic [ref=e346]: Crea datos de ejemplo para demo.
+  - region "Notifications alt+T"

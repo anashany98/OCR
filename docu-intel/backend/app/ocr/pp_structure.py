@@ -77,6 +77,9 @@ class PPStructureEngine:
         except Exception:
             track_ocr_duration(time.perf_counter() - start)
             raise
+        finally:
+            if ocr_path != image_path:
+                ocr_path.unlink(missing_ok=True)
 
         if not results:
             track_ocr_duration(time.perf_counter() - start)

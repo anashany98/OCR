@@ -19,7 +19,12 @@ from app.ai.agent import (
     redact_context_items_for_scope,
     select_tools_for_question,
 )
+from app.ai.active_context import ActiveContext, load_active_context, persist_context_after_answer
+from app.ai.confidence_gates import evaluate_gates_for_turn
 from app.ai.local_client import LocalOpenAICompatibleClient  # noqa: F401
+from app.ai.reference_resolver import resolve_references
+from app.ai.scope_guard import enforce_budget_scope
+from app.ai.tools import ToolCall, select_structured_tools
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.rate_limit import limiter
@@ -27,6 +32,7 @@ from app.database.session import get_db
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
 from app.schemas.ai import AIAnswerRead, AIQuestionRead, AskRequest
 from app.services.ai_cache import get_cache_stats, invalidate_all_ai_cache
+from app.services.business_redaction import redact_business_payload_for_scope
 from app.services.tenant_access import (
     access_scope_cache_key,
     filter_documents_for_scope,
@@ -90,13 +96,38 @@ async def ask_stream(
     mode = payload.mode
     session_id = payload.session_id
 
-    # 1) build the same context the non-streaming path builds.
+    # 1) build the same context the non-streaming path builds:
+    # reference resolution, structured-first tools, active scope and
+    # confidence gates. The UI uses this endpoint, so a drift here makes
+    # chat ignore data that /ai/ask can already answer from.
+    active_context: ActiveContext = (
+        load_active_context(db, user, session_id) if session_id else ActiveContext()
+    )
+    question, _reference_resolution = resolve_references(question, active_context)
     tools = select_tools_for_question(question)
+    structured_tools = select_structured_tools(question, active_context=active_context)
+    if structured_tools:
+        tools = structured_tools + tools
+    scope_outcome = enforce_budget_scope(question=question, state=active_context, tools=tools)
+    tools = scope_outcome.tools
+    if mode == "semantic":
+        tools = [t for t in tools if t.name != "hybrid_search"] + [
+            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}})
+        ]
     access_scope = resolve_user_access_scope(db, user)
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
     )
+    warnings = list(scope_outcome.warnings) + warnings
     context_items = redact_context_items_for_scope(context_items, access_scope)
+    gate_eval, gate_warning = evaluate_gates_for_turn(
+        db,
+        question=question,
+        context_items=context_items,
+        resolved_doc_id=resolved_doc_id,
+    )
+    if gate_warning:
+        warnings.append(gate_warning)
 
     # Inject conversation memory.
     memory_block = _build_memory_block(db, user, question)
@@ -123,7 +154,6 @@ async def ask_stream(
     grounded = build_grounded_response(
         question=question, context_items=context_items, warnings=warnings
     )
-
     # 3) serialise sources (deduped) for the end event.
     from app.ai.agent import _dedupe_sources  # local import
 
@@ -176,7 +206,10 @@ async def ask_stream(
                     if rel_details:
                         entry["entities"] = rel_details.get("entities", {})
                 related_payload.append(entry)
-            resolved_json = {"document": details, "related": related_payload}
+            resolved_json = redact_business_payload_for_scope(
+                {"document": details, "related": related_payload},
+                access_scope,
+            )
 
     async def event_stream() -> AsyncIterator[bytes]:
         # start event: announce the model + that the LLM is running
@@ -252,6 +285,14 @@ async def ask_stream(
                 )
             )
         db.commit()
+        persist_context_after_answer(
+            db,
+            user=user,
+            session_id=session_id,
+            intent=None,
+            resolved_doc_id=resolved_doc_id,
+            context_items=context_items,
+        )
 
         # Feed the answer into the AI cache so subsequent similar
         # questions (and exact re-asks) skip the LLM. The cache embeds

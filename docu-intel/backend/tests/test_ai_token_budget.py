@@ -73,7 +73,7 @@ class TestBuildContextTextTokenBudget:
             mock_settings.prompt_injection_use_xml_wrap = False
             result = build_context_text(items)
         # All 5 items should be present
-        assert result.count("Fuente=") == 5
+        assert result.count("Fuente ") == 5
 
     def test_budget_clips_later_items(self):
         """Items beyond the token budget are dropped."""
@@ -87,7 +87,7 @@ class TestBuildContextTextTokenBudget:
             mock_settings.prompt_injection_action = "flag"
             mock_settings.prompt_injection_use_xml_wrap = False
             result = build_context_text(items)
-        lines_with_source = result.count("Fuente=")
+        lines_with_source = result.count("Fuente ")
         assert lines_with_source < 10
         assert lines_with_source >= 1
 
@@ -121,4 +121,4 @@ class TestBuildContextTextTokenBudget:
             mock_settings.prompt_injection_use_xml_wrap = False
             result = build_context_text(items)
         # Without a budget, all items are included
-        assert "Fuente=" in result
+        assert "Fuente 1:" in result

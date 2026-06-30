@@ -1,0 +1,575 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Docu-Intel
+          - paragraph [ref=e12]: Operación documental
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]:
+            - generic [ref=e18]: Recientes
+          - list [ref=e19]:
+            - listitem [ref=e20]:
+              - link "Todos los documentos" [ref=e21] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e22]
+                - generic [ref=e25]: Todos los documentos
+        - generic [ref=e26]:
+          - paragraph [ref=e27]:
+            - generic [ref=e29]: General
+          - list [ref=e30]:
+            - listitem [ref=e31]:
+              - link "Dashboard" [ref=e32] [cursor=pointer]:
+                - /url: /
+                - img [ref=e33]
+                - generic [ref=e38]: Dashboard
+            - listitem [ref=e39]:
+              - link "Tareas 3 tareas pendientes" [ref=e195] [cursor=pointer]:
+                - /url: /work-inbox
+                - img [ref=e41]
+                - generic [ref=e43]: Tareas
+                - generic "3 tareas pendientes" [ref=e196]: "3"
+        - generic [ref=e44]:
+          - paragraph [ref=e45]:
+            - generic [ref=e47]: Documentos
+          - list [ref=e48]:
+            - listitem [ref=e49]:
+              - link "Todos los documentos" [ref=e50] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e52]
+                - generic [ref=e55]: Todos los documentos
+            - listitem [ref=e56]:
+              - link "Buscar" [ref=e57] [cursor=pointer]:
+                - /url: /search
+                - img [ref=e58]
+                - generic [ref=e61]: Buscar
+            - listitem [ref=e62]:
+              - link "Preguntar a documentos" [ref=e63] [cursor=pointer]:
+                - /url: /chat
+                - img [ref=e64]
+                - generic [ref=e66]: Preguntar a documentos
+            - listitem [ref=e67]:
+              - link "Planos β" [ref=e68] [cursor=pointer]:
+                - /url: /plans
+                - img [ref=e69]
+                - generic [ref=e71]: Planos
+                - generic [ref=e72]: β
+        - generic [ref=e73]:
+          - paragraph [ref=e74]:
+            - generic [ref=e76]: Operación
+          - list [ref=e77]:
+            - listitem [ref=e78]:
+              - link "Presupuestos" [ref=e79] [cursor=pointer]:
+                - /url: /budgets
+                - img [ref=e80]
+                - generic [ref=e83]: Presupuestos
+            - listitem [ref=e84]:
+              - link "Pedidos" [ref=e85] [cursor=pointer]:
+                - /url: /orders
+                - img [ref=e86]
+                - generic [ref=e89]: Pedidos
+            - listitem [ref=e90]:
+              - link "Facturas" [ref=e91] [cursor=pointer]:
+                - /url: /invoices
+                - img [ref=e92]
+                - generic [ref=e95]: Facturas
+            - listitem [ref=e96]:
+              - link "Incidencias" [ref=e97] [cursor=pointer]:
+                - /url: /reconciliation
+                - img [ref=e98]
+                - generic [ref=e102]: Incidencias
+            - listitem [ref=e103]:
+              - link "OCR y calidad" [ref=e104] [cursor=pointer]:
+                - /url: /ocr-review
+                - img [ref=e105]
+                - generic [ref=e108]: OCR y calidad
+            - listitem [ref=e109]:
+              - link "Duplicados" [ref=e110] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e111]
+                - generic [ref=e113]: Duplicados
+            - listitem [ref=e114]:
+              - link "Cuarentena" [ref=e115] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e116]
+                - generic [ref=e118]: Cuarentena
+        - generic [ref=e119]:
+          - paragraph [ref=e120]:
+            - generic [ref=e122]: Sistema
+          - list [ref=e123]:
+            - listitem [ref=e124]:
+              - link "Procesamiento" [ref=e125] [cursor=pointer]:
+                - /url: /jobs
+                - img [ref=e126]
+                - generic [ref=e131]: Procesamiento
+            - listitem [ref=e132]:
+              - link "Estado técnico" [ref=e133] [cursor=pointer]:
+                - /url: /admin/sistema
+                - img [ref=e134]
+                - generic [ref=e137]: Estado técnico
+            - listitem [ref=e138]:
+              - link "Usuarios y permisos" [ref=e139] [cursor=pointer]:
+                - /url: /admin/acceso
+                - img [ref=e140]
+                - generic [ref=e145]: Usuarios y permisos
+            - listitem [ref=e146]:
+              - link "Integraciones" [ref=e147] [cursor=pointer]:
+                - /url: /admin/integraciones
+                - img [ref=e148]
+                - generic [ref=e151]: Integraciones
+            - listitem [ref=e152]:
+              - link "Aprendizaje IA" [ref=e153] [cursor=pointer]:
+                - /url: /admin/aprendizaje
+                - img [ref=e154]
+                - generic [ref=e164]: Aprendizaje IA
+    - generic [ref=e165]:
+      - banner [ref=e166]:
+        - generic [ref=e167]:
+          - heading "Documentos" [level=1] [ref=e168]
+          - generic "3 tareas pendientes" [ref=e197] [cursor=pointer]:
+            - generic [ref=e198]: 3 tareas
+          - button "Abrir paleta de comandos" [ref=e169] [cursor=pointer]:
+            - img [ref=e170]
+            - generic [ref=e172]: Buscar…
+            - generic [ref=e173]: ⌘K
+          - generic [ref=e176]: Sistema
+          - button "Cambiar a tema oscuro" [ref=e177] [cursor=pointer]:
+            - img [ref=e178]
+          - button "Menú de usuario" [ref=e181] [cursor=pointer]:
+            - generic [ref=e182]: A
+            - generic [ref=e183]: Admin
+            - img [ref=e184]
+          - button "Cerrar sesión" [ref=e186] [cursor=pointer]:
+            - img [ref=e187]
+      - main [ref=e190]:
+        - generic [ref=e199]:
+          - navigation "Breadcrumb" [ref=e200]:
+            - list [ref=e201]:
+              - listitem [ref=e202]:
+                - link "Inicio" [ref=e203] [cursor=pointer]:
+                  - /url: /
+                  - img [ref=e204]
+                  - generic [ref=e207]: Inicio
+              - listitem [ref=e208]:
+                - img [ref=e209]
+              - listitem [ref=e211]:
+                - generic [ref=e213]: Documentos
+          - generic [ref=e215]:
+            - generic [ref=e216]:
+              - heading "Documentos" [level=1] [ref=e217]
+              - generic [ref=e218]: Tabla operativa con filtros de servidor, vistas guardadas y acciones masivas.
+            - generic [ref=e219]:
+              - button "Escanear carpetas" [ref=e220] [cursor=pointer]:
+                - img [ref=e221]
+                - text: Escanear carpetas
+              - generic [ref=e226]:
+                - img [ref=e227]
+                - text: Subir
+              - generic [ref=e230]:
+                - img [ref=e231]
+                - text: Subir carpeta
+          - generic [ref=e234]:
+            - generic [ref=e235]:
+              - button "Todos" [ref=e236] [cursor=pointer]
+              - button "OCR pendiente" [ref=e237] [cursor=pointer]
+              - button "Fallidos" [ref=e238] [cursor=pointer]
+              - button "Planos sin escala" [ref=e239] [cursor=pointer]
+              - button "Últimos 7 días" [ref=e240] [cursor=pointer]
+            - generic [ref=e241]:
+              - img
+              - textbox "Archivo, proveedor, referencia..." [ref=e242]
+            - combobox "Estado" [ref=e243]:
+              - option "Todos los estados" [selected]
+              - option "Pendiente"
+              - option "Procesando"
+              - option "Procesado"
+              - option "Necesita revisión"
+              - option "Fallido"
+              - option "Duplicado"
+            - combobox "Tipo" [ref=e244]:
+              - option "Todos los tipos" [selected]
+              - option "Presupuesto"
+              - option "Pedido"
+              - option "Factura"
+              - option "Plano"
+              - option "Imagen"
+              - option "Excel"
+              - option "Otro"
+          - generic [ref=e245]:
+            - generic [ref=e246]:
+              - generic [ref=e247]:
+                - heading "Listado" [level=3] [ref=e248]
+                - generic [ref=e249]: 10 documentos
+              - button [ref=e251] [cursor=pointer]:
+                - img [ref=e252]
+            - generic [ref=e257]:
+              - table [ref=e259]:
+                - rowgroup [ref=e260]:
+                  - row "Seleccionar página Archivo Estado · Calidad Tipo Confianza Tamaño · Fecha Acciones" [ref=e261]:
+                    - columnheader "Seleccionar página" [ref=e262]:
+                      - checkbox "Seleccionar página" [ref=e263]
+                    - columnheader "Archivo" [ref=e264]
+                    - columnheader "Estado · Calidad" [ref=e265]
+                    - columnheader "Tipo" [ref=e266]
+                    - columnheader "Confianza" [ref=e267]
+                    - columnheader "Tamaño · Fecha" [ref=e268]
+                    - columnheader "Acciones" [ref=e269]
+                - rowgroup [ref=e270]:
+                  - row "Seleccionar undefined /data/input/facturas/factura_2024_0345.pdf Calidad OK - factura — 239.9 KB 18/6/26, 10:32 Ver undefined Reprocesar undefined Descargar undefined" [ref=e271]:
+                    - cell "Seleccionar undefined" [ref=e272]:
+                      - checkbox "Seleccionar undefined" [ref=e273]
+                    - cell "/data/input/facturas/factura_2024_0345.pdf" [ref=e274]:
+                      - generic [ref=e275]:
+                        - img [ref=e276]
+                        - generic [ref=e279]:
+                          - link:
+                            - /url: /documents/1
+                          - paragraph [ref=e280]: /data/input/facturas/factura_2024_0345.pdf
+                    - cell "Calidad OK -" [ref=e281]:
+                      - generic [ref=e282]:
+                        - generic [ref=e284]:
+                          - img [ref=e285]
+                          - generic [ref=e288]: Calidad OK
+                        - generic [ref=e290]:
+                          - img [ref=e291]
+                          - generic [ref=e294]: "-"
+                    - cell "factura" [ref=e295]
+                    - cell "—" [ref=e296]:
+                      - generic [ref=e299]: —
+                    - cell "239.9 KB 18/6/26, 10:32" [ref=e300]:
+                      - generic [ref=e301]:
+                        - generic [ref=e302]: 239.9 KB
+                        - generic [ref=e303]: 18/6/26, 10:32
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e304]:
+                      - generic [ref=e305]:
+                        - link "Ver undefined" [ref=e306] [cursor=pointer]:
+                          - /url: /documents/1
+                          - img [ref=e307]
+                        - button "Reprocesar undefined" [ref=e310] [cursor=pointer]:
+                          - img [ref=e311]
+                        - link "Descargar undefined" [ref=e316] [cursor=pointer]:
+                          - /url: /api/v1/documents/1/download
+                          - img [ref=e317]
+                  - row "Seleccionar undefined /data/input/presupuestos/presupuesto_245745.pdf Calidad OK - presupuesto — 185.0 KB 18/6/26, 9:15 Ver undefined Reprocesar undefined Descargar undefined" [ref=e320]:
+                    - cell "Seleccionar undefined" [ref=e321]:
+                      - checkbox "Seleccionar undefined" [ref=e322]
+                    - cell "/data/input/presupuestos/presupuesto_245745.pdf" [ref=e323]:
+                      - generic [ref=e324]:
+                        - img [ref=e325]
+                        - generic [ref=e328]:
+                          - link:
+                            - /url: /documents/2
+                          - paragraph [ref=e329]: /data/input/presupuestos/presupuesto_245745.pdf
+                    - cell "Calidad OK -" [ref=e330]:
+                      - generic [ref=e331]:
+                        - generic [ref=e333]:
+                          - img [ref=e334]
+                          - generic [ref=e337]: Calidad OK
+                        - generic [ref=e339]:
+                          - img [ref=e340]
+                          - generic [ref=e343]: "-"
+                    - cell "presupuesto" [ref=e344]
+                    - cell "—" [ref=e345]:
+                      - generic [ref=e348]: —
+                    - cell "185.0 KB 18/6/26, 9:15" [ref=e349]:
+                      - generic [ref=e350]:
+                        - generic [ref=e351]: 185.0 KB
+                        - generic [ref=e352]: 18/6/26, 9:15
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e353]:
+                      - generic [ref=e354]:
+                        - link "Ver undefined" [ref=e355] [cursor=pointer]:
+                          - /url: /documents/2
+                          - img [ref=e356]
+                        - button "Reprocesar undefined" [ref=e359] [cursor=pointer]:
+                          - img [ref=e360]
+                        - link "Descargar undefined" [ref=e365] [cursor=pointer]:
+                          - /url: /api/v1/documents/2/download
+                          - img [ref=e366]
+                  - row "Seleccionar undefined /data/input/planos/plano_arquitectonico_A3.pdf Baja calidad - plano — 2.0 MB 17/6/26, 18:42 Ver undefined Reprocesar undefined Descargar undefined" [ref=e369]:
+                    - cell "Seleccionar undefined" [ref=e370]:
+                      - checkbox "Seleccionar undefined" [ref=e371]
+                    - cell "/data/input/planos/plano_arquitectonico_A3.pdf" [ref=e372]:
+                      - generic [ref=e373]:
+                        - img [ref=e374]
+                        - generic [ref=e377]:
+                          - link:
+                            - /url: /documents/3
+                          - paragraph [ref=e378]: /data/input/planos/plano_arquitectonico_A3.pdf
+                    - cell "Baja calidad -" [ref=e379]:
+                      - generic [ref=e380]:
+                        - generic [ref=e382]:
+                          - img [ref=e383]
+                          - generic [ref=e385]: Baja calidad
+                        - generic [ref=e387]:
+                          - img [ref=e388]
+                          - generic [ref=e391]: "-"
+                    - cell "plano" [ref=e392]
+                    - cell "—" [ref=e393]:
+                      - generic [ref=e396]: —
+                    - cell "2.0 MB 17/6/26, 18:42" [ref=e397]:
+                      - generic [ref=e398]:
+                        - generic [ref=e399]: 2.0 MB
+                        - generic [ref=e400]: 17/6/26, 18:42
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e401]:
+                      - generic [ref=e402]:
+                        - link "Ver undefined" [ref=e403] [cursor=pointer]:
+                          - /url: /documents/3
+                          - img [ref=e404]
+                        - button "Reprocesar undefined" [ref=e407] [cursor=pointer]:
+                          - img [ref=e408]
+                        - link "Descargar undefined" [ref=e413] [cursor=pointer]:
+                          - /url: /api/v1/documents/3/download
+                          - img [ref=e414]
+                  - row "Seleccionar undefined /data/input/pedidos/albaran_entrega_017.pdf Revisión - albaran — 96.5 KB 17/6/26, 16:20 Ver undefined Reprocesar undefined Descargar undefined" [ref=e417]:
+                    - cell "Seleccionar undefined" [ref=e418]:
+                      - checkbox "Seleccionar undefined" [ref=e419]
+                    - cell "/data/input/pedidos/albaran_entrega_017.pdf" [ref=e420]:
+                      - generic [ref=e421]:
+                        - img [ref=e422]
+                        - generic [ref=e425]:
+                          - link:
+                            - /url: /documents/4
+                          - paragraph [ref=e426]: /data/input/pedidos/albaran_entrega_017.pdf
+                    - cell "Revisión -" [ref=e427]:
+                      - generic [ref=e428]:
+                        - generic [ref=e430]:
+                          - img [ref=e431]
+                          - generic [ref=e433]: Revisión
+                        - generic [ref=e435]:
+                          - img [ref=e436]
+                          - generic [ref=e439]: "-"
+                    - cell "albaran" [ref=e440]
+                    - cell "—" [ref=e441]:
+                      - generic [ref=e444]: —
+                    - cell "96.5 KB 17/6/26, 16:20" [ref=e445]:
+                      - generic [ref=e446]:
+                        - generic [ref=e447]: 96.5 KB
+                        - generic [ref=e448]: 17/6/26, 16:20
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e449]:
+                      - generic [ref=e450]:
+                        - link "Ver undefined" [ref=e451] [cursor=pointer]:
+                          - /url: /documents/4
+                          - img [ref=e452]
+                        - button "Reprocesar undefined" [ref=e455] [cursor=pointer]:
+                          - img [ref=e456]
+                        - link "Descargar undefined" [ref=e461] [cursor=pointer]:
+                          - /url: /api/v1/documents/4/download
+                          - img [ref=e462]
+                  - row "Seleccionar undefined /data/input/pedidos/pedido_compra_2024_089.pdf Calidad OK - pedido — 153.1 KB 17/6/26, 13:05 Ver undefined Reprocesar undefined Descargar undefined" [ref=e465]:
+                    - cell "Seleccionar undefined" [ref=e466]:
+                      - checkbox "Seleccionar undefined" [ref=e467]
+                    - cell "/data/input/pedidos/pedido_compra_2024_089.pdf" [ref=e468]:
+                      - generic [ref=e469]:
+                        - img [ref=e470]
+                        - generic [ref=e473]:
+                          - link:
+                            - /url: /documents/5
+                          - paragraph [ref=e474]: /data/input/pedidos/pedido_compra_2024_089.pdf
+                    - cell "Calidad OK -" [ref=e475]:
+                      - generic [ref=e476]:
+                        - generic [ref=e478]:
+                          - img [ref=e479]
+                          - generic [ref=e482]: Calidad OK
+                        - generic [ref=e484]:
+                          - img [ref=e485]
+                          - generic [ref=e488]: "-"
+                    - cell "pedido" [ref=e489]
+                    - cell "—" [ref=e490]:
+                      - generic [ref=e493]: —
+                    - cell "153.1 KB 17/6/26, 13:05" [ref=e494]:
+                      - generic [ref=e495]:
+                        - generic [ref=e496]: 153.1 KB
+                        - generic [ref=e497]: 17/6/26, 13:05
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e498]:
+                      - generic [ref=e499]:
+                        - link "Ver undefined" [ref=e500] [cursor=pointer]:
+                          - /url: /documents/5
+                          - img [ref=e501]
+                        - button "Reprocesar undefined" [ref=e504] [cursor=pointer]:
+                          - img [ref=e505]
+                        - link "Descargar undefined" [ref=e510] [cursor=pointer]:
+                          - /url: /api/v1/documents/5/download
+                          - img [ref=e511]
+                  - row "Seleccionar undefined /data/input/imagenes/foto_rotulo_puerta.jpg Campos faltantes - imagen — 856.0 KB 16/6/26, 21:30 Ver undefined Reprocesar undefined Descargar undefined" [ref=e514]:
+                    - cell "Seleccionar undefined" [ref=e515]:
+                      - checkbox "Seleccionar undefined" [ref=e516]
+                    - cell "/data/input/imagenes/foto_rotulo_puerta.jpg" [ref=e517]:
+                      - generic [ref=e518]:
+                        - img [ref=e519]
+                        - generic [ref=e522]:
+                          - link:
+                            - /url: /documents/6
+                          - paragraph [ref=e523]: /data/input/imagenes/foto_rotulo_puerta.jpg
+                    - cell "Campos faltantes -" [ref=e524]:
+                      - generic [ref=e525]:
+                        - generic [ref=e527]:
+                          - img [ref=e528]
+                          - generic [ref=e530]: Campos faltantes
+                        - generic [ref=e532]:
+                          - img [ref=e533]
+                          - generic [ref=e536]: "-"
+                    - cell "imagen" [ref=e537]
+                    - cell "—" [ref=e538]:
+                      - generic [ref=e541]: —
+                    - cell "856.0 KB 16/6/26, 21:30" [ref=e542]:
+                      - generic [ref=e543]:
+                        - generic [ref=e544]: 856.0 KB
+                        - generic [ref=e545]: 16/6/26, 21:30
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e546]:
+                      - generic [ref=e547]:
+                        - link "Ver undefined" [ref=e548] [cursor=pointer]:
+                          - /url: /documents/6
+                          - img [ref=e549]
+                        - button "Reprocesar undefined" [ref=e552] [cursor=pointer]:
+                          - img [ref=e553]
+                        - link "Descargar undefined" [ref=e558] [cursor=pointer]:
+                          - /url: /api/v1/documents/6/download
+                          - img [ref=e559]
+                  - row "Seleccionar undefined /data/input/presupuestos/presupuesto_245745_dup.pdf Duplicado - presupuesto — 185.0 KB 16/6/26, 19:00 Ver undefined Reprocesar undefined Descargar undefined" [ref=e562]:
+                    - cell "Seleccionar undefined" [ref=e563]:
+                      - checkbox "Seleccionar undefined" [ref=e564]
+                    - cell "/data/input/presupuestos/presupuesto_245745_dup.pdf" [ref=e565]:
+                      - generic [ref=e566]:
+                        - img [ref=e567]
+                        - generic [ref=e570]:
+                          - link:
+                            - /url: /documents/7
+                          - paragraph [ref=e571]: /data/input/presupuestos/presupuesto_245745_dup.pdf
+                    - cell "Duplicado -" [ref=e572]:
+                      - generic [ref=e573]:
+                        - generic [ref=e575]:
+                          - img [ref=e576]
+                          - generic [ref=e579]: Duplicado
+                        - generic [ref=e581]:
+                          - img [ref=e582]
+                          - generic [ref=e585]: "-"
+                    - cell "presupuesto" [ref=e586]
+                    - cell "—" [ref=e587]:
+                      - generic [ref=e590]: —
+                    - cell "185.0 KB 16/6/26, 19:00" [ref=e591]:
+                      - generic [ref=e592]:
+                        - generic [ref=e593]: 185.0 KB
+                        - generic [ref=e594]: 16/6/26, 19:00
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e595]:
+                      - generic [ref=e596]:
+                        - link "Ver undefined" [ref=e597] [cursor=pointer]:
+                          - /url: /documents/7
+                          - img [ref=e598]
+                        - button "Reprocesar undefined" [ref=e601] [cursor=pointer]:
+                          - img [ref=e602]
+                        - link "Descargar undefined" [ref=e607] [cursor=pointer]:
+                          - /url: /api/v1/documents/7/download
+                          - img [ref=e608]
+                  - row "Seleccionar undefined /data/input/facturas/factura_proveedor_xyz.pdf Fallido - factura — 66.3 KB 16/6/26, 12:11 Ver undefined Reprocesar undefined Descargar undefined" [ref=e611]:
+                    - cell "Seleccionar undefined" [ref=e612]:
+                      - checkbox "Seleccionar undefined" [ref=e613]
+                    - cell "/data/input/facturas/factura_proveedor_xyz.pdf" [ref=e614]:
+                      - generic [ref=e615]:
+                        - img [ref=e616]
+                        - generic [ref=e619]:
+                          - link:
+                            - /url: /documents/8
+                          - paragraph [ref=e620]: /data/input/facturas/factura_proveedor_xyz.pdf
+                    - cell "Fallido -" [ref=e621]:
+                      - generic [ref=e622]:
+                        - generic [ref=e624]:
+                          - img [ref=e625]
+                          - generic [ref=e629]: Fallido
+                        - generic [ref=e631]:
+                          - img [ref=e632]
+                          - generic [ref=e635]: "-"
+                    - cell "factura" [ref=e636]
+                    - cell "—" [ref=e637]:
+                      - generic [ref=e640]: —
+                    - cell "66.3 KB 16/6/26, 12:11" [ref=e641]:
+                      - generic [ref=e642]:
+                        - generic [ref=e643]: 66.3 KB
+                        - generic [ref=e644]: 16/6/26, 12:11
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e645]:
+                      - generic [ref=e646]:
+                        - link "Ver undefined" [ref=e647] [cursor=pointer]:
+                          - /url: /documents/8
+                          - img [ref=e648]
+                        - button "Reprocesar undefined" [ref=e651] [cursor=pointer]:
+                          - img [ref=e652]
+                        - link "Descargar undefined" [ref=e657] [cursor=pointer]:
+                          - /url: /api/v1/documents/8/download
+                          - img [ref=e658]
+                  - row "Seleccionar undefined /data/input/planos/plano_cotas_planta_baja.pdf Calidad OK - plano — 1.8 MB 15/6/26, 17:00 Ver undefined Reprocesar undefined Descargar undefined" [ref=e661]:
+                    - cell "Seleccionar undefined" [ref=e662]:
+                      - checkbox "Seleccionar undefined" [ref=e663]
+                    - cell "/data/input/planos/plano_cotas_planta_baja.pdf" [ref=e664]:
+                      - generic [ref=e665]:
+                        - img [ref=e666]
+                        - generic [ref=e669]:
+                          - link:
+                            - /url: /documents/9
+                          - paragraph [ref=e670]: /data/input/planos/plano_cotas_planta_baja.pdf
+                    - cell "Calidad OK -" [ref=e671]:
+                      - generic [ref=e672]:
+                        - generic [ref=e674]:
+                          - img [ref=e675]
+                          - generic [ref=e678]: Calidad OK
+                        - generic [ref=e680]:
+                          - img [ref=e681]
+                          - generic [ref=e684]: "-"
+                    - cell "plano" [ref=e685]
+                    - cell "—" [ref=e686]:
+                      - generic [ref=e689]: —
+                    - cell "1.8 MB 15/6/26, 17:00" [ref=e690]:
+                      - generic [ref=e691]:
+                        - generic [ref=e692]: 1.8 MB
+                        - generic [ref=e693]: 15/6/26, 17:00
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e694]:
+                      - generic [ref=e695]:
+                        - link "Ver undefined" [ref=e696] [cursor=pointer]:
+                          - /url: /documents/9
+                          - img [ref=e697]
+                        - button "Reprocesar undefined" [ref=e700] [cursor=pointer]:
+                          - img [ref=e701]
+                        - link "Descargar undefined" [ref=e706] [cursor=pointer]:
+                          - /url: /api/v1/documents/9/download
+                          - img [ref=e707]
+                  - row "Seleccionar undefined /data/input/presupuestos/presupuesto_cliente_nuevo.xlsx Calidad OK - presupuesto — 44.6 KB 15/6/26, 11:20 Ver undefined Reprocesar undefined Descargar undefined" [ref=e710]:
+                    - cell "Seleccionar undefined" [ref=e711]:
+                      - checkbox "Seleccionar undefined" [ref=e712]
+                    - cell "/data/input/presupuestos/presupuesto_cliente_nuevo.xlsx" [ref=e713]:
+                      - generic [ref=e714]:
+                        - img [ref=e715]
+                        - generic [ref=e718]:
+                          - link:
+                            - /url: /documents/10
+                          - paragraph [ref=e719]: /data/input/presupuestos/presupuesto_cliente_nuevo.xlsx
+                    - cell "Calidad OK -" [ref=e720]:
+                      - generic [ref=e721]:
+                        - generic [ref=e723]:
+                          - img [ref=e724]
+                          - generic [ref=e727]: Calidad OK
+                        - generic [ref=e729]:
+                          - img [ref=e730]
+                          - generic [ref=e733]: "-"
+                    - cell "presupuesto" [ref=e734]
+                    - cell "—" [ref=e735]:
+                      - generic [ref=e738]: —
+                    - cell "44.6 KB 15/6/26, 11:20" [ref=e739]:
+                      - generic [ref=e740]:
+                        - generic [ref=e741]: 44.6 KB
+                        - generic [ref=e742]: 15/6/26, 11:20
+                    - cell "Ver undefined Reprocesar undefined Descargar undefined" [ref=e743]:
+                      - generic [ref=e744]:
+                        - link "Ver undefined" [ref=e745] [cursor=pointer]:
+                          - /url: /documents/10
+                          - img [ref=e746]
+                        - button "Reprocesar undefined" [ref=e749] [cursor=pointer]:
+                          - img [ref=e750]
+                        - link "Descargar undefined" [ref=e755] [cursor=pointer]:
+                          - /url: /api/v1/documents/10/download
+                          - img [ref=e756]
+              - generic [ref=e759]:
+                - generic [ref=e760]: Mostrando 1–10 de 10
+                - generic [ref=e761]:
+                  - button "Anterior" [disabled]
+                  - button "Siguiente" [disabled]
+  - region "Notifications alt+T"

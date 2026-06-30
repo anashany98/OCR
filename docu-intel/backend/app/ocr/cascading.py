@@ -35,6 +35,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine, OCRResult
+from app.ocr.preprocess import clear_preprocess_cache
 from app.services.metrics import (
     track_ocr_cascade_fallback,
     track_ocr_duration,
@@ -169,6 +170,10 @@ class CascadingOCREngine:
         return self._name
 
     def extract(self, image_path: Path) -> OCRResult:
+        # O1: clear the preprocessing cache so each page starts fresh.
+        # Within a single page the cache avoids redundant denoising
+        # when Tesseract → Paddle → PP-Structure all hit the same image.
+        clear_preprocess_cache()
         start = time.perf_counter()
         primary_result = self.primary.extract(image_path)
         track_ocr_duration(time.perf_counter() - start)

@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --default-timeout=120 --retries=5 --prefix=/install -r /app/requirements.txt \
-    && python -m pip install --no-deps --prefix=/install paddlepaddle==3.3.1
+    && python -m pip install --no-deps --prefix=/install paddlepaddle==3.3.1 \
+    && python -m pip install --default-timeout=120 --retries=5 --prefix=/install 'paddlex[ocr]==3.5.2'
 
 # --- Runtime stage ---
 FROM python:3.11-slim

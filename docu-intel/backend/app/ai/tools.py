@@ -251,10 +251,17 @@ _AGGREGATION_HINTS: frozenset[str] = frozenset(
         "faturado",
         # Ranking hints (cross-language)
         "top",
+        "ranking",
+        "rank",
+        "principales",
         "mayor",
         "menor",
         "mas alto",
+        "mas altos",
+        "mas baja",
+        "mas bajas",
         "mas grande",
+        "mas grandes",
         "highest",
         "largest",
         "biggest",
@@ -525,6 +532,60 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     """
     normalized = _normalize(question)
     document_number = _extract_document_number(question)
+
+    # ---- Plan measurements ----
+    # "Cuanto mide el salon" contains an aggregation hint ("cuanto"),
+    # but it is not a business aggregate. Route room measurements before
+    # SQL-style budget/order/invoice aggregation.
+    if _contains_any(
+        normalized,
+        (
+            "mide",
+            "medida",
+            "medidas",
+            "superficie",
+            "tamano",
+            "how big",
+            "how large",
+            "size",
+            "area",
+            "square",
+            "taille",
+            "dimension",
+            "groesse",
+            "flaeche",
+            "dimensione",
+            "superficie",
+            "tamanho",
+            "surface",
+        ),
+    ) and (room_name := _extract_room_name(normalized)):
+        return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
+
+    # ---- Presupuesto / pedido / factura by number ----
+    # Keep this before generic aggregation so "importe del presupuesto
+    # 260009" resolves the specific budget instead of returning a global
+    # total over every budget.
+    if document_number and (
+        _contains_any(normalized, _BUDGET_HINTS)
+        or _contains_any(normalized, _ORDER_HINTS)
+        or _contains_any(normalized, _INVOICE_HINTS)
+        or "documento" in normalized
+        or "document" in normalized
+        or "commande" in normalized
+    ):
+        if _contains_any(normalized, _BUDGET_HINTS):
+            primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
+        elif _contains_any(normalized, _ORDER_HINTS):
+            primary = ToolCall("get_order_by_number", {"order_number": document_number})
+        else:
+            primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
+        return [
+            primary,
+            ToolCall("get_document_full_details", {"document_id": 0}),
+            ToolCall("get_related_documents", {"document_id": 0}),
+            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}),
+        ]
 
     # ---- Aggregation intent (SQL over structured tables) ----
     # Catches the "cuanto nos hemos gastado en X", "cuantos pedidos sin
@@ -836,6 +897,37 @@ def _classify_aggregation(normalized: str) -> tuple[str, str]:
     if _contains_any(
         normalized,
         (
+            "top",
+            "ranking",
+            "rank",
+            "principales",
+            "mayor",
+            "menor",
+            "mas alto",
+            "mas altos",
+            "mas baja",
+            "mas bajas",
+            "mas grande",
+            "mas grandes",
+            "highest",
+            "largest",
+            "biggest",
+            "lowest",
+            "smallest",
+            "le plus",
+            "le moins",
+            "hoechste",
+            "niedrigste",
+            "piu alto",
+            "piu basso",
+            "mais alto",
+            "mais baixo",
+        ),
+    ):
+        kind = "top"
+    elif _contains_any(
+        normalized,
+        (
             "cuanto",
             "cuanta",
             "total",
@@ -864,30 +956,6 @@ def _classify_aggregation(normalized: str) -> tuple[str, str]:
         ),
     ):
         kind = "total"
-    elif _contains_any(
-        normalized,
-        (
-            "top",
-            "mayor",
-            "menor",
-            "mas alto",
-            "mas grande",
-            "highest",
-            "largest",
-            "biggest",
-            "lowest",
-            "smallest",
-            "le plus",
-            "le moins",
-            "hoechste",
-            "niedrigste",
-            "piu alto",
-            "piu basso",
-            "mais alto",
-            "mais baixo",
-        ),
-    ):
-        kind = "top"
     elif (
         "por proveedor" in normalized
         or "por cada proveedor" in normalized

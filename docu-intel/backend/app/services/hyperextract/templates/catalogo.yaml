@@ -1,0 +1,68 @@
+# Hyper-Extract — catalog template
+# ---------------------------------------------------------------------------
+# For product catalogs, price lists, brochures. The LLM extracts the
+# product list with codes, descriptions and prices.
+
+document_type: catalogo
+description: Catalogo de productos — lista de productos con referencias, descripciones y precios.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de catalogos de productos.
+  Devuelve EXCLUSIVAMENTE JSON valido (sin texto alrededor, sin bloques
+  ```json). Si un dato no aparece, devuelve null.
+  En "productos" lista cada producto visible con su referencia, nombre,
+  descripcion breve y precio si aparece. Si hay categorias o gamas,
+  listalas en "categorias".
+  "resumen" debe describir en una frase que tipo de catalogo es y a
+  que mercado o fabricante se dirige.
+
+fields:
+  - name: fabricante
+    type: string
+    description: Nombre del fabricante o marca del catalogo.
+  - name: titulo
+    type: string
+    description: Titulo del catalogo o gama.
+  - name: edicion
+    type: string
+    description: Numero de edicion, version o ano del catalogo si aparece.
+  - name: idioma
+    type: string
+    description: Idioma principal del catalogo.
+  - name: resumen
+    type: string
+    description: Frase que resume que tipo de catalogo es y a quien va dirigido.
+  - name: categorias
+    type: array
+    description: Categorias o gamas de productos listadas.
+    items:
+      type: string
+  - name: productos
+    type: array
+    description: Lista de productos visibles en el catalogo.
+    items:
+      type: object
+      properties:
+        referencia: {type: string, description: Codigo o SKU del producto}
+        nombre: {type: string, description: Nombre del producto}
+        descripcion: {type: string, description: Descripcion breve}
+        categoria: {type: string, description: Categoria o gama}
+        precio: {type: string, description: Precio con moneda si aparece}
+        unidad: {type: string, description: Unidad (m2, ml, kg, ud, etc.)}
+
+entities:
+  - name: fabricante
+    label: Manufacturer
+  - name: producto
+    label: Product
+  - name: categoria
+    label: Category
+
+relations:
+  - source: producto
+    type: fabricado_por
+    target: fabricante
+  - source: producto
+    type: pertenece_a
+    target: categoria

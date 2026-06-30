@@ -19,7 +19,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    command: >
+      redis-server --appendonly yes
+      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     volumes:
@@ -33,6 +37,25 @@ services:
       - internal
     mem_limit: ${REDIS_MEM_LIMIT:-512m}
     cpus: ${REDIS_CPUS:-1}
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://app:${POSTGRES_PASSWORD:-app}@postgres:5432/docuintel
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      SERVER_IDLE_TIMEOUT: 300
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    mem_limit: 256m
+    cpus: 0.5
 
   backend:
     build:
@@ -59,11 +82,19 @@ services:
     networks:
       - internal
 
-  worker-fast:
+  # ─── GPU Workers (OCR + Embeddings) ───────────────────────────────
+  # These workers need GPU access for PaddleOCR, PP-Structure, and
+  # the sentence-transformers embedding model. One GPU per container.
+  worker-ocr-gpu:
     build:
       context: ./backend
+      dockerfile: Dockerfile.gpu
     env_file: ${DOCUINTEL_ENV_FILE:-.env}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-4}
+    environment:
+      - WORKER_NAME=ocr-gpu
+      - CUDA_VISIBLE_DEVICES=${OCR_GPU_DEVICE:-0}
+      - NVIDIA_VISIBLE_DEVICES=all
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --hostname=ocr-gpu@%h
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
@@ -75,7 +106,80 @@ services:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping"]
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -n ocr-gpu@%h"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    mem_limit: ${OCR_WORKER_MEM_LIMIT:-6g}
+    cpus: ${OCR_WORKER_CPUS:-4}
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  worker-embeddings-gpu:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.gpu
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    environment:
+      - WORKER_NAME=embeddings-gpu
+      - CUDA_VISIBLE_DEVICES=${EMBEDDING_GPU_DEVICE:-0}
+      - NVIDIA_VISIBLE_DEVICES=all
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q embeddings --concurrency=${EMBEDDING_WORKER_CONCURRENCY:-2} --hostname=embeddings-gpu@%h
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -n embeddings-gpu@%h"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    mem_limit: ${EMBEDDING_WORKER_MEM_LIMIT:-4g}
+    cpus: ${EMBEDDING_WORKER_CPUS:-2}
+    networks:
+      - internal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ─── CPU Workers (text, classification, maintenance) ─────────────
+  # These workers handle lightweight tasks that don't need GPU.
+  worker-text-cpu:
+    build:
+      context: ./backend
+    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    environment:
+      - WORKER_NAME=text-cpu
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,celery --concurrency=${WORKER_FAST_CONCURRENCY:-4} --hostname=text-cpu@%h
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -n text-cpu@%h"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -88,7 +192,9 @@ services:
     build:
       context: ./backend
     env_file: ${DOCUINTEL_ENV_FILE:-.env}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1}
+    environment:
+      - WORKER_NAME=maintenance
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1} --hostname=maintenance@%h
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
@@ -100,37 +206,12 @@ services:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping"]
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -n maintenance@%h"]
       interval: 30s
       timeout: 10s
       retries: 3
     mem_limit: ${WORKER_MAINTENANCE_MEM_LIMIT:-1g}
     cpus: ${WORKER_MAINTENANCE_CPUS:-1}
-    networks:
-      - internal
-
-  ocr-worker:
-    build:
-      context: ./backend
-    env_file: ${DOCUINTEL_ENV_FILE:-.env}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1}
-    restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./data/files:/app/data/files
-      - ./data/input:/app/data/input
-    healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    mem_limit: ${OCR_WORKER_MEM_LIMIT:-6g}
-    cpus: ${OCR_WORKER_CPUS:-4}
     networks:
       - internal
 

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.ocr.base import OCRBlock, OCRResult
-from app.ocr.preprocess import preprocess_for_paddle
+from app.ocr.preprocess import preprocess_for_paddle, preprocess_adaptive
 from app.services.metrics import track_ocr_duration
 
 logger = __import__("logging").getLogger("app.ocr.paddle")
@@ -168,60 +168,64 @@ class PaddleOCREngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
-        ocr_path = preprocess_for_paddle(image_path)
-        raw = self._engine.ocr(str(ocr_path))
-        blocks: list[OCRBlock] = []
-        confidences: list[float] = []
+        ocr_path = preprocess_adaptive(image_path, engine=self.name)
+        try:
+            raw = self._engine.ocr(str(ocr_path))
+            blocks: list[OCRBlock] = []
+            confidences: list[float] = []
 
-        if raw is None:
-            return OCRResult(text="", confidence=None, blocks=[], engine=self.name)
+            if raw is None:
+                return OCRResult(text="", confidence=None, blocks=[], engine=self.name)
 
-        if not isinstance(raw, (list, tuple)):
-            raw = [raw]
+            if not isinstance(raw, (list, tuple)):
+                raw = [raw]
 
-        for page in raw:
-            if page is None:
-                continue
+            for page in raw:
+                if page is None:
+                    continue
 
-            # PaddleOCR 3.x format: dict with rec_texts, rec_scores, dt_polys
-            if isinstance(page, dict):
-                rec_texts = page.get("rec_texts", [])
-                rec_scores = page.get("rec_scores", [])
-                dt_polys = page.get("dt_polys", [])
+                # PaddleOCR 3.x format: dict with rec_texts, rec_scores, dt_polys
+                if isinstance(page, dict):
+                    rec_texts = page.get("rec_texts", [])
+                    rec_scores = page.get("rec_scores", [])
+                    dt_polys = page.get("dt_polys", [])
 
-                for i, text in enumerate(rec_texts):
-                    score = rec_scores[i] if i < len(rec_scores) else None
-                    bbox = None
-                    if i < len(dt_polys):
-                        poly = dt_polys[i]
-                        bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
+                    for i, text in enumerate(rec_texts):
+                        score = rec_scores[i] if i < len(rec_scores) else None
+                        bbox = None
+                        if i < len(dt_polys):
+                            poly = dt_polys[i]
+                            bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
 
-                    blocks.append(
-                        OCRBlock(
-                            text=text or "",
-                            confidence=float(score) if score is not None else None,
-                            bbox=bbox,
+                        blocks.append(
+                            OCRBlock(
+                                text=text or "",
+                                confidence=float(score) if score is not None else None,
+                                bbox=bbox,
+                            )
                         )
-                    )
-                    if score is not None:
-                        confidences.append(float(score))
-                continue
+                        if score is not None:
+                            confidences.append(float(score))
+                    continue
 
-            # Legacy/2.x format or other list format
-            if not isinstance(page, (list, tuple)):
-                continue
+                # Legacy/2.x format or other list format
+                if not isinstance(page, (list, tuple)):
+                    continue
 
-            for line in page:
-                result = self._parse_ocr_line(line)
-                if result is not None:
-                    text, confidence, bbox = result
-                    blocks.append(OCRBlock(text=text, confidence=confidence, bbox=bbox))
-                    confidences.append(confidence)
+                for line in page:
+                    result = self._parse_ocr_line(line)
+                    if result is not None:
+                        text, confidence, bbox = result
+                        blocks.append(OCRBlock(text=text, confidence=confidence, bbox=bbox))
+                        confidences.append(confidence)
 
-        text = "\n".join(block.text for block in blocks if block.text)
-        average = sum(confidences) / len(confidences) if confidences else None
-        track_ocr_duration(time.perf_counter() - start)
-        return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
+            text = "\n".join(block.text for block in blocks if block.text)
+            average = sum(confidences) / len(confidences) if confidences else None
+            track_ocr_duration(time.perf_counter() - start)
+            return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
+        finally:
+            if ocr_path != image_path:
+                ocr_path.unlink(missing_ok=True)
 
     def _parse_ocr_line(
         self, line: object

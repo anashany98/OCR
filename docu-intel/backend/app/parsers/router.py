@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.ocr.base import BaseOCREngine
+from app.parsers.content_router import ContentRoute, classify_content
+
+logger = logging.getLogger("app.parsers.router")
 from app.parsers.doc import parse_doc
 from app.parsers.docx import parse_docx
 from app.parsers.dxf import parse_dxf
@@ -20,12 +24,29 @@ MSG_EXTENSIONS = {".msg"}
 DXF_EXTENSIONS = {".dxf"}
 
 
-def parse_document(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
+def parse_document(
+    path: Path,
+    output_dir: Path,
+    ocr_engine: BaseOCREngine,
+    folder_hint: str | None = None,
+) -> ExtractedDocument:
     extension = path.suffix.lower()
-    if extension == ".pdf":
-        return parse_pdf(path, output_dir, ocr_engine)
+
+    # Content-aware routing for images: classify before OCR
     if extension in IMAGE_EXTENSIONS:
-        return parse_image(path, output_dir, ocr_engine)
+        classification = classify_content(path, folder_hint=folder_hint)
+        content_route = classification.route.value if classification.route else None
+        logger.info(
+            "Content router: %s -> %s (confidence=%.2f, reason=%s)",
+            path.name,
+            classification.route.value,
+            classification.confidence,
+            classification.reason,
+        )
+        return parse_image(path, output_dir, ocr_engine, content_route=content_route)
+
+    if extension == ".pdf":
+        return parse_pdf(path, output_dir, ocr_engine, folder_hint=folder_hint)
     if extension in EXCEL_EXTENSIONS:
         return parse_excel(path)
     if extension == ".docx":

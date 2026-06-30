@@ -1,11 +1,10 @@
 import {
-  AlertTriangle,
   ChevronDown,
   ChevronUp,
-  History,
+  Download,
   Loader2,
+  Menu,
   Send,
-  Trash2,
   X,
 } from "lucide-react"
 
@@ -14,25 +13,11 @@ import { PageHeader } from "@/components/layout/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
-import { HistoryRow, TypingIndicator, WelcomeCard } from "./components"
+import { ConversationSidebar, ConversationSidebarMobile } from "./ConversationSidebar"
+import { TypingIndicator, WelcomeCard } from "./components"
 import { MessageBubble } from "./MessageBubble"
 import { useChat } from "./useChat"
 
-// ---------------------------------------------------------------------------
-// F8b - chat page composition
-//
-// Before F8b the file was 1.2 KB / 1,222 lines with 30+ queries,
-// 25+ useState, a 130-line streaming handler, localStorage
-// persistence, a markdown renderer, and 9 sub-components all
-// living side by side. After F8b:
-//
-// * state + side effects live in ``useChat``;
-// * markdown rendering lives in ``renderAssistantContent``;
-// * sub-components (WelcomeCard, HistoryRow, MessageBubble,
-//   DocumentPreview, ResolvedDocumentCard, SourceChip, ...)
-//   live in ``chat/components``;
-// * the page itself is just the layout glue, around 200 lines.
-// ---------------------------------------------------------------------------
 export function ChatPage() {
   const chat = useChat()
   const hasMessages = chat.messages.length > 0
@@ -42,27 +27,66 @@ export function ChatPage() {
       <Breadcrumbs items={[{ label: "Preguntar a documentos" }]} />
       <PageHeader
         title="Preguntar a documentos"
-        description="Conversa con la base documental. Cada respuesta cita sus fuentes para que puedas comprobarla."
         variant="plain"
         actions={
-          hasMessages ? (
+          <div className="flex items-center gap-2">
+            {hasMessages && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={chat.exportConversation}
+                className="gap-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Exportar
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
-              onClick={chat.clearConversation}
-              className="gap-1.5 text-[var(--text-muted)] hover:text-[var(--danger)]"
+              onClick={chat.newConversation}
+              className="gap-1.5"
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              Borrar conversacion
+              + Nueva
             </Button>
-          ) : null
+          </div>
         }
       />
 
-      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
+        {/* Desktop sidebar */}
+        <aside className="hidden min-h-0 flex-col border-r border-[var(--border)] bg-[var(--bg-surface)]/50 lg:flex">
+          <ConversationSidebar chat={chat} />
+        </aside>
+
+        {/* Mobile sidebar */}
+        <ConversationSidebarMobile
+          chat={chat}
+          open={chat.sidebarOpen}
+          onClose={() => chat.setSidebarOpen(false)}
+        />
+
         {/* Main chat column */}
         <div className="flex min-h-0 flex-col">
-          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 border-l-0 border-t-0">
+            {/* Mobile menu button */}
+            <div className="flex items-center border-b border-[var(--border)] px-3 py-2 lg:hidden">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => chat.setSidebarOpen(true)}
+                className="gap-1.5"
+              >
+                <Menu className="h-4 w-4" />
+                Conversaciones
+              </Button>
+              {chat.activeConv && (
+                <span className="ml-2 truncate text-[12px] text-[var(--text-muted)]">
+                  {chat.activeConv.title}
+                </span>
+              )}
+            </div>
+
             <div
               ref={chat.scrollRef}
               className="min-h-0 flex-1 overflow-y-auto"
@@ -102,7 +126,7 @@ export function ChatPage() {
                       onCompositionStart={chat.onCompositionStart}
                       onCompositionEnd={chat.onCompositionEnd}
                       rows={1}
-                      placeholder="Escribe tu pregunta…  (Enter para enviar, Shift+Enter para nueva linea)"
+                      placeholder="Escribe tu pregunta…  (Enter para enviar)"
                       className="block w-full resize-none bg-transparent px-4 py-3 text-[14px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
                       disabled={chat.isStreaming}
                     />
@@ -189,57 +213,13 @@ export function ChatPage() {
 
                 {chat.isStreaming && chat.messages.some((m) => m.pending) && (
                   <p className="mt-2 text-[12px] text-[var(--text-muted)]">
-                    La IA está escribiendo. Pulsa{" "}
-                    <kbd className="rounded border border-[var(--border)] bg-[var(--bg-surface-2)] px-1 font-mono text-[10px]">
-                      ×
-                    </kbd>{" "}
-                    para detener.
+                    La IA está escribiendo…
                   </p>
                 )}
               </div>
             </div>
           </Card>
         </div>
-
-        {/* Right sidebar */}
-        <aside className="hidden min-h-0 flex-col gap-4 xl:flex">
-          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-0">
-              <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3 text-[13px] font-semibold">
-                <History className="h-4 w-4 text-[var(--text-muted)]" />
-                <span>Conversaciones recientes</span>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-                {chat.history.length === 0 ? (
-                  <p className="px-2 py-3 text-[13px] text-[var(--text-muted)]">
-                    Sin historial reciente.
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {chat.history.slice(0, 12).map((item) => (
-                      <li key={item.id}>
-                        <HistoryRow item={item} onPick={chat.pickQuestion} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="space-y-2 px-4 py-4 text-[12.5px] text-[var(--text-secondary)]">
-              <p className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--text-primary)]">
-                <AlertTriangle className="h-3.5 w-3.5 text-[var(--warning)]" />
-                Como trabaja la IA
-              </p>
-              <p>· Solo responde con datos encontrados en los documentos.</p>
-              <p>· Si no hay fuentes, te avisa en vez de inventar.</p>
-              <p>· Verifica siempre la fuente antes de tomar decisiones.</p>
-              <p>· Marca como incorrecta si detectas un error, nos ayuda a mejorar.</p>
-            </CardContent>
-          </Card>
-        </aside>
       </div>
     </div>
   )

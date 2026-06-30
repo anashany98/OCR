@@ -11,8 +11,9 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    event,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 try:
     from pgvector.sqlalchemy import Vector
@@ -173,6 +174,13 @@ class DocumentBlock(Base):
 
     document = relationship("Document", back_populates="blocks")
     page = relationship("DocumentPage", back_populates="blocks")
+
+    _ALLOWED_BLOCK_TYPES = frozenset({"text", "table", "figure", "header", "footer", "list"})
+
+    @validates("block_type")
+    def _sanitize_block_type(self, key, value):
+        v = (value or "text").strip().lower()
+        return v if v in self._ALLOWED_BLOCK_TYPES else "text"
 
 
 class DocumentEntity(Base):

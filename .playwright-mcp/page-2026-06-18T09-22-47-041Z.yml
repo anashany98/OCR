@@ -1,0 +1,5 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - heading "No se pudo cargar esta vista" [level=1] [ref=e4]
+    - paragraph [ref=e5]: "Minified React error #306; visit https://reactjs.org/docs/error-decoder.html?invariant=306&args[]=undefined&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+  - region "Notifications alt+T"

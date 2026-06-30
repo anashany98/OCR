@@ -251,61 +251,43 @@ def format_gate_blocked_answer(
     evaluation: GateEvaluation,
     active_context: Any | None = None,
 ) -> str:
-    """Render the standard answer when a confidence gate blocks the LLM.
-
-    Delegates the layout to :func:`app.ai.answer_format.format_grounded_answer`
-    so the user always sees the same five-section layout (directa /
-    evidencia / documentos usados / advertencias / que falta)
-    regardless of which fallback path produced the response. The
-    amount candidates are passed as synthetic :class:`ContextItem`
-    objects so they show up in the "Evidencia" section.
-    """
-    from .answer_format import format_grounded_answer
-    from .context import ContextItem
+    """Render a natural answer when a confidence gate blocks the LLM."""
 
     if not isinstance(evaluation, GateEvaluation):
         evaluation = GateEvaluation()
-    scope = ""
+    scope = "del documento"
     if active_context is not None and getattr(active_context, "current_budget_number", None):
-        scope = f"del presupuesto {active_context.current_budget_number} "
-    direct = (
-        f"No puedo confirmarlo con seguridad para {scope}porque el documento "
-        f"tiene una o varias senales de baja calidad: " + ", ".join(evaluation.gates_open) + "."
-    )
-    evidence_items: list[ContextItem] = []
+        scope = f"del presupuesto {active_context.current_budget_number}"
+
+    reasons = {
+        "ocr_baja_confianza": "el OCR tiene baja confianza",
+        "documento_duplicado": "el documento está marcado como duplicado",
+        "tipo_documento_desconocido": "el tipo de documento no está clasificado",
+        "necesita_revision": "el documento está pendiente de revisión",
+        "sin_texto_ocr": "no hay texto OCR suficiente",
+        "texto_muy_corto": "el texto extraído es demasiado corto",
+    }
+    reason_text = ", ".join(reasons.get(gate, gate) for gate in evaluation.gates_open)
+    lines = [
+        f"No puedo confirmar el importe {scope} con seguridad porque {reason_text}.",
+    ]
+
     for cand in evaluation.amount_candidates[:12]:
         amount = cand.get("amount") or "?"
         document = cand.get("document") or "documento"
         page = cand.get("page")
-        conf = cand.get("confidence")
-        excerpt = f"importe candidato: {amount}"
-        evidence_items.append(
-            ContextItem(
-                title=f"Cantidad detectada en {document}",
-                summary=f"importe candidato: {amount}",
-                document_id=None,
-                document_filename=document,
-                page_number=page,
-                relevance_score=0.0,
-                excerpt=excerpt,
-                confidence=conf,
-                source_path=None,
-            )
-        )
-    missing = [
-        "No he fabricado un importe a partir de una lectura dudosa.",
-        (
-            "Si quieres, puedo re-procesar el PDF con OCR avanzado (PaddleOCR v3 / "
-            "PP-Structure) para mejorar la lectura. Dime y lo lanzo."
-        ),
-    ]
-    return format_grounded_answer(
-        context_items=evidence_items,
-        warnings=[direct] + list(evaluation.gates_open),
-        direct=direct,
-        missing=missing,
-        active_context=active_context,
+        suffix = f", página {page}" if page else ""
+        lines.append(f"- {amount} en {document}{suffix}")
+
+    if evaluation.amount_candidates:
+        lines.insert(1, "He visto estos candidatos, pero no escogería uno como definitivo:")
+    else:
+        lines.append("No he encontrado un candidato de importe suficientemente fiable.")
+
+    lines.append(
+        "Lo prudente es re-OCRizar el documento o contrastarlo en el PDF original antes de usar ese dato."
     )
+    return "\n".join(lines)
 
 
 def evaluate_gates_for_turn(

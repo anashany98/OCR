@@ -1,0 +1,136 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Docu-Intel
+          - paragraph [ref=e12]: Operación documental
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]:
+            - generic [ref=e18]: General
+          - list [ref=e19]:
+            - listitem [ref=e20]:
+              - link "Dashboard" [ref=e21] [cursor=pointer]:
+                - /url: /
+                - img [ref=e22]
+                - generic [ref=e27]: Dashboard
+            - listitem [ref=e28]:
+              - link "Tareas" [ref=e29] [cursor=pointer]:
+                - /url: /work-inbox
+                - img [ref=e30]
+                - generic [ref=e32]: Tareas
+        - generic [ref=e33]:
+          - paragraph [ref=e34]:
+            - generic [ref=e36]: Documentos
+          - list [ref=e37]:
+            - listitem [ref=e38]:
+              - link "Todos los documentos" [ref=e39] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e40]
+                - generic [ref=e43]: Todos los documentos
+            - listitem [ref=e44]:
+              - link "Buscar" [ref=e45] [cursor=pointer]:
+                - /url: /search
+                - img [ref=e46]
+                - generic [ref=e49]: Buscar
+            - listitem [ref=e50]:
+              - link "Preguntar a documentos" [ref=e51] [cursor=pointer]:
+                - /url: /chat
+                - img [ref=e52]
+                - generic [ref=e54]: Preguntar a documentos
+            - listitem [ref=e55]:
+              - link "Planos β" [ref=e56] [cursor=pointer]:
+                - /url: /plans
+                - img [ref=e57]
+                - generic [ref=e59]: Planos
+                - generic [ref=e60]: β
+        - generic [ref=e61]:
+          - paragraph [ref=e62]:
+            - generic [ref=e64]: Operación
+          - list [ref=e65]:
+            - listitem [ref=e66]:
+              - link "Presupuestos" [ref=e67] [cursor=pointer]:
+                - /url: /budgets
+                - img [ref=e68]
+                - generic [ref=e71]: Presupuestos
+            - listitem [ref=e72]:
+              - link "Pedidos" [ref=e73] [cursor=pointer]:
+                - /url: /orders
+                - img [ref=e74]
+                - generic [ref=e77]: Pedidos
+            - listitem [ref=e78]:
+              - link "Facturas" [ref=e79] [cursor=pointer]:
+                - /url: /invoices
+                - img [ref=e80]
+                - generic [ref=e83]: Facturas
+            - listitem [ref=e84]:
+              - link "Incidencias" [ref=e85] [cursor=pointer]:
+                - /url: /reconciliation
+                - img [ref=e86]
+                - generic [ref=e90]: Incidencias
+            - listitem [ref=e91]:
+              - link "OCR y calidad" [ref=e92] [cursor=pointer]:
+                - /url: /ocr-review
+                - img [ref=e93]
+                - generic [ref=e96]: OCR y calidad
+            - listitem [ref=e97]:
+              - link "Duplicados" [ref=e98] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e99]
+                - generic [ref=e101]: Duplicados
+            - listitem [ref=e102]:
+              - link "Cuarentena" [ref=e103] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e104]
+                - generic [ref=e106]: Cuarentena
+        - generic [ref=e107]:
+          - paragraph [ref=e108]:
+            - generic [ref=e110]: Sistema
+          - list [ref=e111]:
+            - listitem [ref=e112]:
+              - link "Procesamiento" [ref=e113] [cursor=pointer]:
+                - /url: /jobs
+                - img [ref=e114]
+                - generic [ref=e119]: Procesamiento
+            - listitem [ref=e120]:
+              - link "Estado técnico" [ref=e121] [cursor=pointer]:
+                - /url: /admin/sistema
+                - img [ref=e123]
+                - generic [ref=e126]: Estado técnico
+            - listitem [ref=e127]:
+              - link "Usuarios y permisos" [ref=e128] [cursor=pointer]:
+                - /url: /admin/acceso
+                - img [ref=e129]
+                - generic [ref=e134]: Usuarios y permisos
+            - listitem [ref=e135]:
+              - link "Integraciones" [ref=e136] [cursor=pointer]:
+                - /url: /admin/integraciones
+                - img [ref=e137]
+                - generic [ref=e140]: Integraciones
+            - listitem [ref=e141]:
+              - link "Aprendizaje IA" [ref=e142] [cursor=pointer]:
+                - /url: /admin/aprendizaje
+                - img [ref=e143]
+                - generic [ref=e153]: Aprendizaje IA
+    - generic [ref=e154]:
+      - banner [ref=e155]:
+        - generic [ref=e156]:
+          - heading "Administración · Estado técnico" [level=1] [ref=e157]
+          - button "Abrir paleta de comandos" [ref=e158] [cursor=pointer]:
+            - img [ref=e159]
+            - generic [ref=e161]: Buscar…
+            - generic [ref=e162]: ⌘K
+          - generic [ref=e165]: Sistema
+          - button "Cambiar a tema oscuro" [ref=e166] [cursor=pointer]:
+            - img [ref=e167]
+          - button "Menú de usuario" [ref=e170] [cursor=pointer]:
+            - generic [ref=e171]: A
+            - generic [ref=e172]: Admin
+            - img [ref=e173]
+          - button "Cerrar sesión" [ref=e175] [cursor=pointer]:
+            - img [ref=e176]
+      - main [ref=e179]:
+        - paragraph [ref=e183]: Cargando página...
+  - region "Notifications alt+T"

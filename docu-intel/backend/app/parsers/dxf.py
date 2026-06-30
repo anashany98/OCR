@@ -90,7 +90,7 @@ def parse_dxf(path: Path, output_dir: Path) -> ExtractedDocument:
                         texts.append(text)
                         blocks.append(
                             ExtractedBlock(
-                                block_type="attribute",
+                                block_type="text",
                                 text=text,
                                 page_number=1,
                                 bbox=_get_bbox(attrib),

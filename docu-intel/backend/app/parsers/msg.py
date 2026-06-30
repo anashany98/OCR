@@ -334,7 +334,7 @@ def parse_msg(path: Path) -> ExtractedDocument:
                 text=text,
                 blocks=[
                     ExtractedBlock(
-                        block_type="email",
+                        block_type="text",
                         text=text,
                         page_number=1,
                         confidence=1.0,

@@ -1,0 +1,406 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e36]:
+      - generic [ref=e37]:
+        - img [ref=e39]
+        - generic [ref=e42]:
+          - paragraph [ref=e43]: Docu-Intel
+          - paragraph [ref=e44]: Operación documental
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - paragraph [ref=e48]:
+            - generic [ref=e50]: General
+          - list [ref=e51]:
+            - listitem [ref=e52]:
+              - link "Dashboard" [ref=e53] [cursor=pointer]:
+                - /url: /
+                - img [ref=e54]
+                - generic [ref=e59]: Dashboard
+            - listitem [ref=e60]:
+              - link "Tareas 3 tareas pendientes" [ref=e61] [cursor=pointer]:
+                - /url: /work-inbox
+                - img [ref=e62]
+                - generic [ref=e64]: Tareas
+                - generic "3 tareas pendientes" [ref=e65]: "3"
+        - generic [ref=e66]:
+          - paragraph [ref=e67]:
+            - generic [ref=e69]: Documentos
+          - list [ref=e70]:
+            - listitem [ref=e71]:
+              - link "Todos los documentos" [ref=e72] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e73]
+                - generic [ref=e76]: Todos los documentos
+            - listitem [ref=e77]:
+              - link "Buscar" [ref=e78] [cursor=pointer]:
+                - /url: /search
+                - img [ref=e79]
+                - generic [ref=e82]: Buscar
+            - listitem [ref=e83]:
+              - link "Preguntar a documentos" [ref=e84] [cursor=pointer]:
+                - /url: /chat
+                - img [ref=e85]
+                - generic [ref=e87]: Preguntar a documentos
+            - listitem [ref=e88]:
+              - link "Planos β" [ref=e89] [cursor=pointer]:
+                - /url: /plans
+                - img [ref=e90]
+                - generic [ref=e92]: Planos
+                - generic [ref=e93]: β
+        - generic [ref=e94]:
+          - paragraph [ref=e95]:
+            - generic [ref=e97]: Operación
+          - list [ref=e98]:
+            - listitem [ref=e99]:
+              - link "Presupuestos" [ref=e100] [cursor=pointer]:
+                - /url: /budgets
+                - img [ref=e101]
+                - generic [ref=e104]: Presupuestos
+            - listitem [ref=e105]:
+              - link "Pedidos" [ref=e106] [cursor=pointer]:
+                - /url: /orders
+                - img [ref=e107]
+                - generic [ref=e110]: Pedidos
+            - listitem [ref=e111]:
+              - link "Facturas" [ref=e112] [cursor=pointer]:
+                - /url: /invoices
+                - img [ref=e113]
+                - generic [ref=e116]: Facturas
+            - listitem [ref=e117]:
+              - link "Incidencias" [ref=e118] [cursor=pointer]:
+                - /url: /reconciliation
+                - img [ref=e119]
+                - generic [ref=e123]: Incidencias
+            - listitem [ref=e124]:
+              - link "OCR y calidad" [ref=e125] [cursor=pointer]:
+                - /url: /ocr-review
+                - img [ref=e126]
+                - generic [ref=e129]: OCR y calidad
+            - listitem [ref=e130]:
+              - link "Duplicados" [ref=e131] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e132]
+                - generic [ref=e134]: Duplicados
+            - listitem [ref=e135]:
+              - link "Cuarentena" [ref=e136] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e137]
+                - generic [ref=e139]: Cuarentena
+        - generic [ref=e140]:
+          - paragraph [ref=e141]:
+            - generic [ref=e143]: Sistema
+          - list [ref=e144]:
+            - listitem [ref=e145]:
+              - link "Procesamiento" [ref=e146] [cursor=pointer]:
+                - /url: /jobs
+                - img [ref=e147]
+                - generic [ref=e152]: Procesamiento
+            - listitem [ref=e153]:
+              - link "Estado técnico" [ref=e154] [cursor=pointer]:
+                - /url: /admin/sistema
+                - img [ref=e156]
+                - generic [ref=e159]: Estado técnico
+            - listitem [ref=e160]:
+              - link "Usuarios y permisos" [ref=e161] [cursor=pointer]:
+                - /url: /admin/acceso
+                - img [ref=e162]
+                - generic [ref=e167]: Usuarios y permisos
+            - listitem [ref=e168]:
+              - link "Integraciones" [ref=e169] [cursor=pointer]:
+                - /url: /admin/integraciones
+                - img [ref=e170]
+                - generic [ref=e173]: Integraciones
+            - listitem [ref=e174]:
+              - link "Aprendizaje IA" [ref=e175] [cursor=pointer]:
+                - /url: /admin/aprendizaje
+                - img [ref=e176]
+                - generic [ref=e186]: Aprendizaje IA
+    - generic [ref=e4]:
+      - banner [ref=e5]:
+        - generic [ref=e6]:
+          - heading "Administración · Estado técnico" [level=1] [ref=e9]
+          - generic "3 tareas pendientes" [ref=e187] [cursor=pointer]:
+            - generic [ref=e188]: 3 tareas
+          - button "Abrir paleta de comandos" [ref=e10] [cursor=pointer]:
+            - img [ref=e11]
+            - generic [ref=e13]: Buscar…
+            - generic [ref=e14]: ⌘K
+          - generic [ref=e17]: Sistema
+          - button "Cambiar a tema oscuro" [ref=e18] [cursor=pointer]:
+            - img [ref=e19]
+          - button "Menú de usuario" [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: A
+            - generic [ref=e24]: Admin
+            - img [ref=e25]
+          - button "Cerrar sesión" [ref=e27] [cursor=pointer]:
+            - img [ref=e28]
+      - main [ref=e31]:
+        - generic [ref=e191]:
+          - heading "Administración" [level=1] [ref=e192]
+          - generic [ref=e193]: Operación documental, integración segura, colas y auditoría.
+        - generic [ref=e194]:
+          - link "Operativa" [ref=e195] [cursor=pointer]:
+            - /url: /admin/operativa
+            - generic [ref=e196]:
+              - img [ref=e197]
+              - text: Operativa
+          - link "Estado técnico" [ref=e200] [cursor=pointer]:
+            - /url: /admin/sistema
+            - generic [ref=e201]:
+              - img [ref=e202]
+              - text: Estado técnico
+          - link "Integraciones" [ref=e205] [cursor=pointer]:
+            - /url: /admin/integraciones
+            - generic [ref=e206]:
+              - img [ref=e207]
+              - text: Integraciones
+          - link "Usuarios y permisos" [ref=e210] [cursor=pointer]:
+            - /url: /admin/acceso
+            - generic [ref=e211]:
+              - img [ref=e212]
+              - text: Usuarios y permisos
+          - link "Calidad" [ref=e217] [cursor=pointer]:
+            - /url: /admin/calidad
+            - generic [ref=e218]:
+              - img [ref=e219]
+              - text: Calidad
+          - link "Aprendizaje IA" [ref=e226] [cursor=pointer]:
+            - /url: /admin/aprendizaje
+            - generic [ref=e227]:
+              - img [ref=e228]
+              - text: Aprendizaje IA
+        - generic [ref=e238]:
+          - complementary [ref=e239]:
+            - navigation "Secciones de sistema" [ref=e241]:
+              - paragraph [ref=e242]: Secciones
+              - list [ref=e243]:
+                - listitem [ref=e244]:
+                  - link "PostgreSQL Conexión y salud de la base de datos" [ref=e245] [cursor=pointer]:
+                    - /url: "#postgres"
+                    - img [ref=e246]
+                    - generic [ref=e250]:
+                      - generic [ref=e251]: PostgreSQL
+                      - generic [ref=e252]: Conexión y salud de la base de datos
+                - listitem [ref=e253]:
+                  - link "Redis y Workers Colas Celery y latencia de workers" [ref=e254] [cursor=pointer]:
+                    - /url: "#redis-workers"
+                    - img [ref=e255]
+                    - generic [ref=e258]:
+                      - generic [ref=e259]: Redis y Workers
+                      - generic [ref=e260]: Colas Celery y latencia de workers
+                - listitem [ref=e261]:
+                  - link "Disco y almacenamiento Uso de disco e integridad de archivos" [ref=e262] [cursor=pointer]:
+                    - /url: "#storage"
+                    - img [ref=e263]
+                    - generic [ref=e265]:
+                      - generic [ref=e266]: Disco y almacenamiento
+                      - generic [ref=e267]: Uso de disco e integridad de archivos
+                - listitem [ref=e268]:
+                  - link "Readiness y producción Checklist y readiness para puesta en producción" [ref=e269] [cursor=pointer]:
+                    - /url: "#readiness"
+                    - img [ref=e270]
+                    - generic [ref=e273]:
+                      - generic [ref=e274]: Readiness y producción
+                      - generic [ref=e275]: Checklist y readiness para puesta en producción
+                - listitem [ref=e276]:
+                  - link "Usuarios y notificaciones Cuentas admin y reglas de notificación" [ref=e277] [cursor=pointer]:
+                    - /url: "#access"
+                    - img [ref=e278]
+                    - generic [ref=e281]:
+                      - generic [ref=e282]: Usuarios y notificaciones
+                      - generic [ref=e283]: Cuentas admin y reglas de notificación
+                - listitem [ref=e284]:
+                  - link "Configuración IA/OCR Motores, dimensiones y datos de demostración" [ref=e285] [cursor=pointer]:
+                    - /url: "#ai-config"
+                    - img [ref=e286]
+                    - generic [ref=e290]:
+                      - generic [ref=e291]: Configuración IA/OCR
+                      - generic [ref=e292]: Motores, dimensiones y datos de demostración
+          - generic [ref=e293]:
+            - region "Resumen" [ref=e294]:
+              - generic [ref=e295]:
+                - img [ref=e297]
+                - generic [ref=e299]:
+                  - heading "Resumen del sistema" [level=3] [ref=e300]
+                  - paragraph [ref=e301]: Indicadores críticos. Baja en cada sección para detalles.
+              - generic [ref=e302]:
+                - generic [ref=e304]:
+                  - generic [ref=e305]:
+                    - img [ref=e306]
+                    - text: PostgreSQL
+                  - generic [ref=e310]: degradado
+                - generic [ref=e312]:
+                  - generic [ref=e313]:
+                    - img [ref=e314]
+                    - text: Readiness
+                  - generic [ref=e317]: degradado
+                - generic [ref=e319]:
+                  - generic [ref=e320]:
+                    - img [ref=e321]
+                    - text: Mantenimiento
+                  - generic [ref=e325]: sin datos
+            - region "PostgreSQL" [ref=e326]:
+              - heading "PostgreSQL" [level=4] [ref=e327]
+              - generic [ref=e328]:
+                - img [ref=e330]
+                - generic [ref=e334]:
+                  - heading "PostgreSQL" [level=3] [ref=e335]
+                  - paragraph [ref=e336]: Conexión y salud de la base de datos
+              - generic [ref=e337]:
+                - generic [ref=e339]:
+                  - paragraph [ref=e340]: Checks en vivo
+                  - generic [ref=e342]: sin datos
+                - generic [ref=e344]:
+                  - paragraph [ref=e345]: Estado operativo
+                  - generic [ref=e346]:
+                    - paragraph [ref=e347]: Estado
+                    - generic [ref=e349]: degradado
+            - region "Redis y Workers" [ref=e350]:
+              - heading "Redis y Workers" [level=4] [ref=e351]
+              - generic [ref=e352]:
+                - img [ref=e354]
+                - generic [ref=e357]:
+                  - heading "Redis y Workers" [level=3] [ref=e358]
+                  - paragraph [ref=e359]: Colas Celery y latencia de workers
+              - generic [ref=e360]:
+                - generic [ref=e362]:
+                  - paragraph [ref=e363]: Estado de workers
+                  - paragraph [ref=e365]: Sin datos de workers.
+                - generic [ref=e367]:
+                  - paragraph [ref=e368]: Colas por tipo
+                  - generic [ref=e369]:
+                    - paragraph
+                    - generic [ref=e371]: Sin datos
+            - region "Disco y almacenamiento" [ref=e372]:
+              - heading "Disco y almacenamiento" [level=4] [ref=e373]
+              - generic [ref=e374]:
+                - img [ref=e376]
+                - generic [ref=e378]:
+                  - heading "Disco y almacenamiento" [level=3] [ref=e379]
+                  - paragraph [ref=e380]: Uso de disco e integridad de archivos
+              - generic [ref=e381]:
+                - generic [ref=e383]:
+                  - paragraph [ref=e384]: Volúmenes montados
+                  - generic [ref=e385]:
+                    - generic [ref=e386]:
+                      - generic [ref=e387]:
+                        - img [ref=e388]
+                        - text: Directorio de entrada
+                      - generic [ref=e390]: 0% usado
+                    - paragraph [ref=e392]: "-"
+                  - generic [ref=e393]:
+                    - generic [ref=e394]:
+                      - generic [ref=e395]:
+                        - img [ref=e396]
+                        - text: Archivos originales
+                      - generic [ref=e398]: 0% usado
+                    - paragraph [ref=e400]: "-"
+                - generic [ref=e402]:
+                  - paragraph [ref=e403]: Integridad de almacenamiento
+                  - generic [ref=e404]:
+                    - generic [ref=e405]:
+                      - paragraph [ref=e406]: Comprobados
+                      - paragraph [ref=e407]: "0"
+                    - generic [ref=e408]:
+                      - paragraph [ref=e409]: Sin fichero
+                      - paragraph [ref=e410]: "0"
+                    - generic [ref=e411]:
+                      - paragraph [ref=e412]: Huérfanos
+                      - paragraph [ref=e413]: "0"
+                    - generic [ref=e414]:
+                      - paragraph [ref=e415]: Hash dudoso
+                      - paragraph [ref=e416]: "0"
+            - region "Readiness y producción" [ref=e417]:
+              - heading "Readiness y producción" [level=4] [ref=e418]
+              - generic [ref=e419]:
+                - img [ref=e421]
+                - generic [ref=e424]:
+                  - heading "Readiness y producción" [level=3] [ref=e425]
+                  - paragraph [ref=e426]: Checklist y readiness para puesta en producción
+              - generic [ref=e427]:
+                - generic [ref=e430]:
+                  - paragraph [ref=e431]: Readiness productivo
+                  - generic [ref=e432]: sin datos
+                - paragraph [ref=e435]: Checklist de producción
+            - region "Usuarios y notificaciones" [ref=e436]:
+              - heading "Usuarios y notificaciones" [level=4] [ref=e437]
+              - generic [ref=e438]:
+                - img [ref=e440]
+                - generic [ref=e443]:
+                  - heading "Usuarios y notificaciones" [level=3] [ref=e444]
+                  - paragraph [ref=e445]: Cuentas admin y reglas de notificación
+              - generic [ref=e446]:
+                - generic [ref=e448]:
+                  - generic [ref=e449]:
+                    - img [ref=e450]
+                    - paragraph [ref=e453]: Crear usuario admin
+                  - generic [ref=e454]:
+                    - textbox "email@empresa.com" [ref=e455]
+                    - textbox "Nombre" [ref=e456]
+                    - combobox [ref=e457]:
+                      - option "Operario" [selected]
+                      - option "Gestor"
+                      - option "Auditor"
+                      - option "Admin"
+                    - textbox "Contraseña (12+ caracteres)" [ref=e458]
+                    - generic [ref=e459]:
+                      - paragraph [ref=e460]: Mínimo 12 caracteres. El usuario recibirá acceso inmediato al rol seleccionado.
+                      - button "Crear usuario" [disabled]
+                  - table [ref=e463]:
+                    - rowgroup [ref=e464]:
+                      - row "Usuario Rol Estado" [ref=e465]:
+                        - columnheader "Usuario" [ref=e466]
+                        - columnheader "Rol" [ref=e467]
+                        - columnheader "Estado" [ref=e468]
+                        - columnheader [ref=e469]
+                    - rowgroup
+                - generic [ref=e471]:
+                  - generic [ref=e472]:
+                    - img [ref=e473]
+                    - paragraph [ref=e476]: Crear regla de notificación
+                  - generic [ref=e477]:
+                    - textbox "Nombre regla" [ref=e478]
+                    - textbox "Evento" [ref=e479]: ocr_failed
+                    - combobox [ref=e480]:
+                      - option "Webhook" [selected]
+                      - option "Email"
+                      - option "Teams"
+                    - textbox "URL o email" [ref=e481]
+                    - button "Crear regla" [ref=e483] [cursor=pointer]
+                  - paragraph [ref=e485]: Sin reglas.
+            - region "Configuración IA/OCR" [ref=e486]:
+              - heading "Configuración IA/OCR" [level=4] [ref=e487]
+              - generic [ref=e488]:
+                - img [ref=e490]
+                - generic [ref=e494]:
+                  - heading "Configuración IA/OCR" [level=3] [ref=e495]
+                  - paragraph [ref=e496]: Motores, dimensiones y datos de demostración
+              - generic [ref=e497]:
+                - generic [ref=e499]:
+                  - paragraph [ref=e500]: Estado de configuración
+                  - generic [ref=e501]:
+                    - generic [ref=e502]:
+                      - paragraph [ref=e503]: Readiness
+                      - generic [ref=e505]: "-"
+                    - generic [ref=e506]:
+                      - paragraph [ref=e507]: OCR
+                      - generic [ref=e509]: paddleocr
+                    - generic [ref=e510]:
+                      - paragraph [ref=e511]: Embeddings
+                      - generic [ref=e513]: backend
+                    - generic [ref=e514]:
+                      - paragraph [ref=e515]: Backups
+                      - generic [ref=e517]: sin datos
+                  - generic [ref=e518]:
+                    - generic [ref=e519]: AI_PROVIDER=local_openai_compatible
+                    - generic [ref=e520]: OCR_ENGINE=paddleocr
+                    - generic [ref=e521]: "Docs en revisión: -"
+                - generic [ref=e523]:
+                  - generic [ref=e524]:
+                    - img [ref=e525]
+                    - paragraph [ref=e530]: Datos de demostración
+                  - paragraph [ref=e531]: Crea un conjunto reducido de documentos, presupuestos y pedidos para mostrar el funcionamiento del sistema sin afectar datos reales.
+                  - button "Activar demo" [ref=e533] [cursor=pointer]:
+                    - img [ref=e534]
+                    - text: Activar demo
+  - region "Notifications alt+T"

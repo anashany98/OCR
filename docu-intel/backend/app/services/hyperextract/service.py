@@ -287,6 +287,17 @@ class HyperExtractService:
         result.fields = self._coerce_dict(parsed.get("fields"))
         result.entities = self._coerce_list(parsed.get("entities"))
         result.relations = self._coerce_list(parsed.get("relations"))
+        # Allow the LLM to OVERRIDE the document_type with what it
+        # actually saw in the text. This is the "LLM classifies + extracts"
+        # path: a single prompt decides the type and the fields. If the
+        # caller passed a document_type in metadata AND the LLM did not
+        # emit one, the metadata value wins.
+        llm_type = parsed.get("document_type")
+        if isinstance(llm_type, str) and llm_type.strip():
+            result.document_type = llm_type.strip().lower()
+        summary = parsed.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            result.fields["summary"] = summary.strip()
         if isinstance(parsed.get("warnings"), list):
             for entry in parsed["warnings"]:
                 if entry is None:
@@ -304,11 +315,16 @@ class HyperExtractService:
     @staticmethod
     def _build_system_prompt(template: HyperExtractTemplate | None) -> str:
         base = (
-            "Eres un asistente que extrae información estructurada de "
-            "documentos en español. Devuelve EXCLUSIVAMENTE JSON válido "
-            "(sin ```json, sin texto alrededor). Si un campo no aparece, "
-            "devuelve null. No inventes datos: si dudas, devuelve null y "
-            "añade el campo al array 'warnings'."
+            "Eres un asistente que lee CUALQUIER tipo de documento y devuelve "
+            "informacion estructurada en JSON valido (sin ```json, sin texto "
+            "alrededor). No te limites a facturas, presupuestos o pedidos: "
+            "puedes recibir emails, catalogos, contratos, planos, informes, "
+            "manuales, normativas, cartas, actas, nominas, extractos bancarios, "
+            "notas tecnicas, presentaciones, o cualquier otro documento. "
+            "Tu trabajo tiene dos partes: (1) DECIDIR que tipo de documento es "
+            "y (2) EXTRAER los campos relevantes. Si un campo no aparece en el "
+            "documento, devuelve null. No inventes datos: si dudas, devuelve "
+            "null y anyade el campo al array 'warnings'."
         )
         if template and template.system_prompt:
             return f"{base}\n\n{template.system_prompt.strip()}"
@@ -350,7 +366,15 @@ class HyperExtractService:
             sections.append(field_instructions)
         sections.append(
             "Devuelve un objeto JSON con esta forma exacta:\n"
-            '{"fields": {...}, "entities": [...], "relations": [...], "warnings": [...]}'
+            '{"document_type": "<tipo_detectado>", "summary": "<resumen_1_frase>", '
+            '"fields": {...}, "entities": [...], "relations": [...], "warnings": [...]}\n'
+            "Donde:\n"
+            "- document_type: el tipo real del documento que detectas (email, "
+            "catalogo, contrato, informe, plano, presupuesto, factura, "
+            "pedido, albaran, manual, normativa, presentacion, nomina, "
+            "extracto_bancario, carta, nota, otro, etc.).\n"
+            "- summary: una frase de maximo 20 palabras con el contenido "
+            "principal del documento."
         )
         sections.append("Texto del documento:\n" + body)
         if truncated:
@@ -432,8 +456,13 @@ class HyperExtractService:
         """
         if not raw:
             return None
+        # Normalize literal escape sequences (``\n`` written as two
+        # characters rather than a real newline). Some providers emit
+        # the markdown wrapper as text with backslash-n inside the JSON
+        # string, which breaks fence-matching regexes.
+        normalized = raw.replace("\\n", "\n").replace("\\t", "\t")
         # 1) Fenced JSON.
-        match = cls._JSON_FENCE_RE.search(raw)
+        match = cls._JSON_FENCE_RE.search(normalized)
         if match:
             candidate = match.group(1).strip()
             try:
@@ -442,22 +471,54 @@ class HyperExtractService:
                 value = None
             if isinstance(value, dict):
                 return value
-        # 2) First balanced object.
-        match = cls._JSON_OBJECT_RE.search(raw)
-        if match:
-            candidate = match.group(0)
-            try:
-                value = json.loads(candidate)
-            except json.JSONDecodeError:
-                value = None
-            if isinstance(value, dict):
-                return value
+        # 2) First balanced object. We use brace-counting instead of a
+        # greedy regex so we capture the FIRST complete object even when
+        # the model concatenates a second one or appends trailing text.
+        first_open = normalized.find("{")
+        if first_open >= 0:
+            candidate = cls._first_balanced_object(normalized, first_open)
+            if candidate is not None:
+                try:
+                    value = json.loads(candidate)
+                except json.JSONDecodeError:
+                    value = None
+                if isinstance(value, dict):
+                    return value
         # 3) Whole payload.
         try:
-            value = json.loads(raw.strip())
+            value = json.loads(normalized.strip())
         except json.JSONDecodeError:
             return None
         return value if isinstance(value, dict) else None
+
+    @staticmethod
+    def _first_balanced_object(text: str, start: int) -> str | None:
+        """Return the substring from ``start`` up to the matching closing
+        brace, ignoring braces inside JSON strings. Returns ``None`` if
+        the braces are unbalanced.
+        """
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+        return None
 
     @staticmethod
     def _coerce_dict(value: Any) -> dict[str, Any]:

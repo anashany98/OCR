@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Docu-Intel — Informe Técnico y Comercial</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; line-height: 1.55; background: #fff; }
+
+  /* --- Portada --- */
+  .cover { page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 95vh; text-align: center; background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); color: #fff; padding: 60px 40px; border-radius: 0; }
+  .cover h1 { font-size: 38pt; font-weight: 800; letter-spacing: -1px; margin-bottom: 12px; }
+  .cover .subtitle { font-size: 16pt; font-weight: 300; color: #a0a0d0; margin-bottom: 30px; }
+  .cover .meta { font-size: 11pt; color: #8888bb; margin-top: 40px; }
+  .cover .logo-text { font-size: 14pt; letter-spacing: 6px; text-transform: uppercase; color: #6c63ff; margin-bottom: 20px; font-weight: 700; }
+
+  /* --- Contenido --- */
+  .content { padding: 0 10px; }
+  h1 { font-size: 22pt; color: #302b63; border-bottom: 3px solid #6c63ff; padding-bottom: 6px; margin: 36px 0 16px; }
+  h2 { font-size: 15pt; color: #24243e; margin: 26px 0 10px; border-left: 4px solid #6c63ff; padding-left: 10px; }
+  h3 { font-size: 12pt; color: #444; margin: 18px 0 8px; }
+  p, li { margin-bottom: 6px; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 4px; }
+
+  /* --- Tablas --- */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 10pt; }
+  th { background: #302b63; color: #fff; padding: 8px 10px; text-align: left; font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid #e0e0e0; }
+  tr:nth-child(even) td { background: #f8f8fc; }
+  tr:hover td { background: #eeeef8; }
+
+  /* --- Cajas destacadas --- */
+  .highlight-box { background: #f0f0ff; border-left: 4px solid #6c63ff; padding: 14px 18px; margin: 14px 0; border-radius: 4px; }
+  .warning-box { background: #fff8e1; border-left: 4px solid #ffa000; padding: 14px 18px; margin: 14px 0; border-radius: 4px; }
+  .success-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 14px 18px; margin: 14px 0; border-radius: 4px; }
+
+  /* --- Código --- */
+  code { background: #f0f0f5; padding: 2px 5px; border-radius: 3px; font-size: 9.5pt; font-family: 'Fira Code', 'Consolas', monospace; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 9pt; margin: 10px 0; }
+  pre code { background: none; padding: 0; color: inherit; }
+
+  /* --- Diagrama ASCII --- */
+  .diagram { background: #f5f5fa; border: 1px solid #ddd; padding: 16px; border-radius: 6px; font-family: 'Fira Code', monospace; font-size: 8.5pt; line-height: 1.4; white-space: pre; overflow-x: auto; margin: 14px 0; }
+
+  /* --- Badges --- */
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 9pt; font-weight: 600; margin: 2px 4px 2px 0; }
+  .badge-red { background: #ffebee; color: #c62828; }
+  .badge-orange { background: #fff3e0; color: #e65100; }
+  .badge-green { background: #e8f5e9; color: #2e7d32; }
+  .badge-blue { background: #e3f2fd; color: #1565c0; }
+  .badge-purple { background: #f3e5f5; color: #6a1b9a; }
+
+  /* --- Página --- */
+  .page-break { page-break-before: always; }
+
+  /* --- Footer --- */
+  .footer { text-align: center; color: #999; font-size: 9pt; margin-top: 40px; padding-top: 16px; border-top: 1px solid #eee; }
+
+  /* --- Dos columnas --- */
+  .two-col { display: flex; gap: 20px; }
+  .two-col > div { flex: 1; }
+</style>
+</head>
+<body>
+
+<!-- ==================== PORTADA ==================== -->
+<div class="cover">
+  <div class="logo-text">Docu-Intel</div>
+  <h1>Sistema de Inteligencia Documental</h1>
+  <div class="subtitle">Informe Técnico y Comercial</div>
+  <div class="meta">
+    Versión 1.0 &mdash; Junio 2026<br>
+    Plataforma interna de OCR, IA y recuperación documental
+  </div>
+</div>
+
+<!-- ==================== RESUMEN EJECUTIVO ==================== -->
+<div class="content">
+
+<h1>1. Resumen Ejecutivo</h1>
+
+<div class="highlight-box">
+<strong>Docu-Intel</strong> es un sistema de inteligencia documental que transforma carpetas de documentos en escaneo (presupuestos, pedidos, facturas, albaranes, planos, imágenes, PDFs y Excels) en una base de conocimiento consultable mediante lenguaje natural. Combina OCR multicascada de alta precisión, embeddings semánticos, búsqueda híbrida y un asistente IA local para responder preguntas sobre la documentación empresarial.
+</div>
+
+<h2>Problema que resuelve</h2>
+<p>Las empresas de construcción y mantenimiento acumulan cientos de gigabytes de documentos por presupuesto: facturas escaneadas, pedidos, planos, correos y hojas de cálculo. Encontrar información específica ("¿cuánto costó la fontanería del hotel X?", "¿dónde está el plano de la planta baja?") requiere horas de búsqueda manual.</p>
+
+<h2>Valor para el negocio</h2>
+<ul>
+  <li><strong>Ahorro de tiempo:</strong> Búsqueda instantánea en lugar de revisar carpetas manualmente</li>
+  <li><strong>Precisión:</strong> OCR multicascada con preprocesado específico por motor</li>
+  <li><strong>Seguridad:</strong> Aislamiento por presupuesto; precios solo visible por permisos</li>
+  <li><strong>Automatización:</strong> Ingesta 24h, clasificación automática, alertas de calidad</li>
+  <li><strong>Escalabilidad:</strong> Workers GPU separados, procesamiento paralelo</li>
+  <li><strong>Sin dependencia externa:</strong> IA local (sin envío de datos a la nube)</li>
+</ul>
+
+<!-- ==================== CAPACIDADES ==================== -->
+<div class="page-break"></div>
+<h1>2. Capacidades Principales</h1>
+
+<h2>2.1 Ingesta Automática de Documentos</h2>
+<p>Sistema de ingesta 24/7 que monitoriza carpetas compartidas y procesa documentos automáticamente:</p>
+<ul>
+  <li><strong>Watcher 24h:</strong> Detección de archivos nuevos/modificados con polling o eventos nativos</li>
+  <li><strong>Subida web:</strong> Interfaz de arrastrar y soltar para pocos archivos</li>
+  <li><strong>API de integración:</strong> Endpoint dedicado para herramientas externas</li>
+  <li><strong>Importación masiva:</strong> Scripts PowerShell para sincronización incremental de históricos</li>
+  <li><strong>Detección de estabilidad:</strong> Procesa solo cuando el archivo deja de cambiarse</li>
+</ul>
+
+<div class="diagram">data/input/
+├── presupuestos/     ← Ofertas y presupuestos
+├── pedidos/          ← Órdenes de compra
+├── facturas/         ← Facturas de proveedores
+├── planos/           ← Planos y dibujos técnicos
+├── imagenes/         ← Fotos de obra
+└── otros/            ← Documentos varios
+        │
+        ▼  (watcher detecta archivos nuevos)
+   ┌─────────────┐
+   │  Pipeline    │  SHA256 → duplicados → OCR → chunks → embeddings
+   │  Celery      │  → búsqueda → alertas → auditoría
+   └─────────────┘</div>
+
+<h2>2.2 OCR Multicascada de Alta Precisión</h2>
+<p>Cadena de motores OCR que selecciona automáticamente el mejor resultado:</p>
+
+<table>
+  <tr><th>Tier</th><th>Motor</th><th>Caso de uso</th><th>Hardware</th></tr>
+  <tr><td>1</td><td>Tesseract 5</td><td>PDFs digitales, texto limpio</td><td>CPU</td></tr>
+  <tr><td>2</td><td>PaddleOCR 3.5</td><td>Escaneos, imágenes, texto manuscrito</td><td>GPU</td></tr>
+  <tr><td>3</td><td>PP-Structure</td><td>Tablas, layouts complejos</td><td>GPU</td></tr>
+  <tr><td>4</td><td>VLM-OCR (Qwen2-VL)</td><td>Casos difíciles (fotos, sellos)</td><td>GPU</td></tr>
+</table>
+
+<ul>
+  <li><strong>Preprocesado específico por motor:</strong> deskew, denoise, binarización adaptativa solo para Tesseract; upscaling y corrección de orientación</li>
+  <li><strong>Score de calidad:</strong> No gana por longitud sino por confianza, densidad alfanumérica y limpieza</li>
+  <li><strong>Logging de degradación:</strong> Cada fallback de cascada se registra y mide</li>
+</ul>
+
+<h2>2.3 Extracción de Datos de Negocio</h2>
+<p>Extracción automática y verificable de campos clave de documentos de negocio:</p>
+
+<table>
+  <tr><th>Tipo documento</th><th>Campos extraídos</th><th>Persistencia</th></tr>
+  <tr><td>Presupuesto</td><td>Número, cliente, fecha, total, moneda, estado, líneas</td><td>budgets, budget_lines</td></tr>
+  <tr><td>Pedido</td><td>Número, proveedor, cliente, fecha, total, referencia a presupuesto</td><td>orders, order_lines</td></tr>
+  <tr><td>Factura</td><td>Número, proveedor, base imponible, IVA, total, fecha</td><td>invoices</td></tr>
+  <tr><td>Plano</td><td>Escala (1:50, 1:100), cotas, habitaciones con superficies</td><td>plans, plan_rooms, plan_dimensions</td></tr>
+</table>
+
+<h2>2.4 Búsqueda Inteligente</h2>
+<p>Tres modos de búsqueda que se combinan para máxima recall:</p>
+<ul>
+  <li><strong>Texto exacto:</strong> BM25 sobre contenido OCR y metadatos (presupuesto, cliente, referencia)</li>
+  <li><strong>Semántica:</strong> Embeddings BGE-M3 (1024 dims) con pgvector, modo query para consultas asimétricas</li>
+  <li><strong>Híbrida (RRF):</strong> Reciprocal Rank Fusion que fusiona texto + semántico sin calibrar escalas</li>
+  <li><strong>Reranker:</strong> Cross-encoder BGE-reranker-v2-m3 para reordenar los candidatos iniciales</li>
+</ul>
+
+<h2>2.5 Chat IA con Fuentes Verificables</h2>
+<p>Asistente en lenguaje natural que responde preguntas sobre la documentación:</p>
+<ul>
+  <li><strong>15+ tools internas:</strong> Búsqueda documental, presupuestos, pedidos, entidades, planos, duplicados</li>
+  <li><strong>Grounding obligatorio:</strong> Solo responde con fuentes recuperadas; sin inventar datos</li>
+  <li><strong>Respuesta estructurada:</strong> Secciones de Respuesta, Datos, Fuentes, Confianza y Advertencias</li>
+  <li><strong>Multiidioma:</strong> Español, inglés, francés, alemán, italiano, portugués</li>
+  <li><strong>Historial:</strong> Preguntas y respuestas persistidas para referencia</li>
+</ul>
+
+<h2>2.6 Planos y Cotas</h2>
+<p>Módulo especializado en extracción de información de planos técnicos:</p>
+<ul>
+  <li><strong>Escala:</strong> Extracción de ratios 1:50, 1:100, etc.</li>
+  <li><strong>Cotas textuales:</strong> Medidas en m, cm, mm con confianza</li>
+  <li><strong>Habitaciones:</strong> Superficies OCR en m²</li>
+  <li><strong>Anotación manual:</strong> Corrección y edición de escala y habitaciones</li>
+  <li><strong>Detección de símbolos:</strong> YOLOv8 para elementos de plano</li>
+</ul>
+
+<h2>2.7 Administración y Gobierno</h2>
+<p>Panel de administración completo con 6 secciones:</p>
+<ul>
+  <li><strong>Operativa:</strong> Métricas de procesamiento, calidad documental, alertas</li>
+  <li><strong>Estado técnico:</strong> Salud de servicios, workers, disco, colas</li>
+  <li><strong>Integraciones:</strong> API keys, sesiones firmadas, webhooks</li>
+  <li><strong>Usuarios y permisos:</strong> RBAC, roles, tags sensibles, revisión de acceso</li>
+  <li><strong>Calidad:</strong> Revisión OCR, duplicados, cuarentena, reglas de calidad</li>
+  <li><strong>Aprendizaje IA:</strong> Sugerencias de clasificación, patrones aprendidos, bucle de mejora</li>
+</ul>
+
+<!-- ==================== CASOS DE USO ==================== -->
+<div class="page-break"></div>
+<h1>3. Casos de Uso</h1>
+
+<h2>3.1 Buscar un Presupuesto por Número</h2>
+<div class="highlight-box">
+<strong>Escenario:</strong> Un técnico necesita encontrar el presupuesto 245745 rápidamente.<br>
+<strong>Flujo:</strong> Abre Docu-Intel → Busca "245745" → Ve el presupuesto con cliente, fecha, total y documentos asociados.<br>
+<strong>Tecnología:</strong> Búsqueda exacta por `budget_code` + BM25 sobre metadatos.
+</div>
+
+<h2>3.2 Consultar Gasto por Proyecto</h2>
+<div class="highlight-box">
+<strong>Escenario:</strong> Un director pregunta "¿cuánto nos hemos gastado en el hotel Marina en marzo?"<br>
+<strong>Flujo:</strong> Escribe la pregunta en Chat IA → El sistema ejecuta `aggregate_business` → Devuelve desglose por tipo de documento con fuentes.<br>
+<strong>Tecnología:</strong> Intent router → tool `aggregate_business` → SQL exacto sobre entidades extraídas.
+</div>
+
+<h2>3.3 Revisar Documentos de Baja Calidad</h2>
+<div class="highlight-box">
+<strong>Escenario:</strong> Un administrador revisa documentos que el OCR no procesó bien.<br>
+<strong>Flujo:</strong> Admin → OCR y calidad → Ve preview, texto extraído, bloques OCR → Aprueba o rechaza con motivo → Reprocesa página específica.<br>
+<strong>Tecnología:</strong> Pipeline de revisión OCR con preview, aprobación/denegación, reprocesado por página.
+</div>
+
+<h2>3.4 Consultar Medidas de un Plano</h2>
+<div class="highlight-box">
+<strong>Escenario:</strong> Un instalador necesita saber las dimensiones de la cocina.<br>
+<strong>Flujo:</strong> Chat IA: "¿Cuánto mide la cocina del plano del hotel X?" → Sistema recupera habitaciones del plano → Devuelve ancho, largo, área con fuente.<br>
+<strong>Tecnología:</strong> Extracción de `plan_rooms` + `plan_dimensions` + respuesta grounded.
+</div>
+
+<h2>3.5 Integrar con Herramienta Externa</h2>
+<div class="highlight-box">
+<strong>Escenario:</strong> Una herramienta de gestión de obra necesita datos de presupuestos.<br>
+<strong>Flujo:</strong> La herramienta crea sesión firmada → Ejecuta tools controladas → Recibe datos con precios solo si tiene permiso.<br>
+<strong>Tecnología:</strong> API `/integrations/v1` con API key, sesiones JWT por presupuesto, redacción automática.
+</div>
+
+<!-- ==================== ARQUITECTURA ==================== -->
+<div class="page-break"></div>
+<h1>4. Arquitectura General</h1>
+
+<div class="diagram">┌─────────────────────────────────────────────────────────────────────┐
+│                        FRONTEND (React + Vite)                      │
+│  Dashboard │ Documentos │ Buscar │ Chat IA │ Planos │ Administrar  │
+└───────────────────────────┬─────────────────────────────────────────┘
+                            │ HTTP / WebSocket
+┌───────────────────────────▼─────────────────────────────────────────┐
+│                     BACKEND (FastAPI + Uvicorn)                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
+│  │ API REST │  │   AI     │  │   OCR    │  │  Integrations     │  │
+│  │ Routes   │  │  Agent   │  │ Cascade  │  │  /integrations/v1 │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬──────────┘  │
+│       │              │              │                  │             │
+│  ┌────▼──────────────▼──────────────▼──────────────────▼──────────┐ │
+│  │                    Services Layer                              │ │
+│  │  embeddings │ search │ chunking │ classification │ quality     │ │
+│  │  plan_extraction │ business_extraction │ webhooks │ audit      │ │
+│  └────┬──────────────┬──────────────┬──────────────────┬──────────┘ │
+└───────┼──────────────┼──────────────┼──────────────────┼───────────┘
+        │              │              │                  │
+┌───────▼──────┐ ┌─────▼────┐ ┌──────▼──────┐ ┌────────▼─────────┐
+│ PostgreSQL   │ │  Redis   │ │  pgvector   │ │  File Storage    │
+│ + pgvector   │ │ (Colas)  │ │ (Embeddings)│ │  /data/files     │
+└──────────────┘ └──────────┘ └─────────────┘ └──────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     CELERY WORKERS                                  │
+│  worker-fast    │ worker-heavy │ worker-heavy-gpu-0/1 │ maintenance│
+│  (texto, emb.)  │ (OCR CPU)    │ (OCR GPU × 2)       │ (limpieza) │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  WATCHER 24h  │  SCHEDULER (beat)  │  LMS Server (Vision Model)   │
+└─────────────────────────────────────────────────────────────────────┘</div>
+
+<h2>Flujo de Datos Principal</h2>
+<ol>
+  <li><strong>Ingesta:</strong> Watcher detecta archivo → registra en BD → envía job a Celery</li>
+  <li><strong>OCR:</strong> Worker renderiza PDF → cascada Tesseract→PaddleOCR→PP-Structure → guarda texto y posiciones</li>
+  <li><strong>Chunking:</strong> Texto se divide en chunks semánticos con metadatos (tipo, archivo, página)</li>
+  <li><strong>Embeddings:</strong> Chunks se vectorizan con BGE-M3 (1024 dims) → inserta en pgvector</li>
+  <li><strong>Clasificación:</strong> Tipo de documento determinado por reglas + learned patterns</li>
+  <li><strong>Extracción:</strong> Campos clave (nº factura, total, etc.) extraídos por regex y LLM</li>
+  <li><strong>Búsqueda:</strong> Queries se buscan en texto + vectores → RRF fusiona → reranker reordena</li>
+  <li><strong>Chat IA:</strong> Pregunta → intent router → tools internas → contexto → LLM local → respuesta grounded</li>
+</ol>
+
+<!-- ==================== STACK TECNOLÓGICO ==================== -->
+<div class="page-break"></div>
+<h1>5. Stack Tecnológico</h1>
+
+<table>
+  <tr><th>Capa</th><th>Tecnología</th><th>Versión</th><th>Función</th></tr>
+  <tr><td>Backend API</td><td>FastAPI + Uvicorn</td><td>0.136 / 0.32</td><td>REST API asíncrona</td></tr>
+  <tr><td>Lenguaje Backend</td><td>Python</td><td>3.11</td><td>Lógica de negocio</td></tr>
+  <tr><td>Frontend</td><td>React + Vite + TypeScript</td><td>18.3 / 5.4 / 5.6</td><td>SPA moderna</td></tr>
+  <tr><td>Estilos</td><td>Tailwind CSS</td><td>3.4</td><td>Design system utility-first</td></tr>
+  <tr><td>State Management</td><td>TanStack Query</td><td>5.59</td><td>Cache y fetching de datos</td></tr>
+  <tr><td>Tablas</td><td>TanStack Table</td><td>8.20</td><td>Tablas con sorting/filtrado</td></tr>
+  <tr><td>Base de datos</td><td>PostgreSQL + pgvector</td><td>16</td><td>Metadatos + vectores</td></tr>
+  <tr><td>Cache / Colas</td><td>Redis</td><td>7</td><td>Broker Celery + cache</td></tr>
+  <tr><td>Colas</td><td>Celery</td><td>5.6</td><td>Tareas asíncronas</td></tr>
+  <tr><td>Migraciones</td><td>Alembic</td><td>1.13</td><td>Schema versionado</td></tr>
+  <tr><td>ORM</td><td>SQLAlchemy</td><td>2.0</td><td>Acceso a BD</td></tr>
+  <tr><td>Validación</td><td>Pydantic</td><td>2.10</td><td>Schemas y settings</td></tr>
+  <tr><td>OCR - Tesseract</td><td>pytesseract</td><td>0.3.13</td><td>OCR rápido CPU</td></tr>
+  <tr><td>OCR - PaddleOCR</td><td>PaddleOCR + PaddlePaddle</td><td>3.5 / 3.3</td><td>OCR preciso GPU</td></tr>
+  <tr><td>OCR - PP-Structure</td><td>PaddleOCR (PP-Structure)</td><td>3.5</td><td>Tablas y layout</td></tr>
+  <tr><td>Visión por computadora</td><td>OpenCV</td><td>4.10</td><td>Preprocesado de imágenes</td></tr>
+  <tr><td>PDF parsing</td><td>PyMuPDF + pdfplumber</td><td>1.24 / 0.11</td><td>Extracción de texto PDF</td></tr>
+  <tr><td>Excel</td><td>openpyxl + pandas</td><td>3.1 / 2.2</td><td>Lectura de spreadsheets</td></tr>
+  <tr><td>Detección objetos</td><td>YOLOv8 (ultralytics)</td><td>8.0+</td><td>Símbolos de plano</td></tr>
+  <tr><td>Embeddings</td><td>sentence-transformers</td><td>3.0+</td><td>BGE-M3 (1024 dims)</td></tr>
+  <tr><td>Reranker</td><td>BGE-reranker-v2-m3</td><td>—</td><td>Reordenación cross-encoder</td></tr>
+  <tr><td>LLM Local</td><td>Qwen2.5-32B via LM Studio</td><td>—</td><td>Generación de respuestas</td></tr>
+  <tr><td>Geometría</td><td>Shapely + ezdxf</td><td>2.0 / 1.4</td><td>Geometría y DXF</td></tr>
+  <tr><td>Monitorización</td><td>Sentry / GlitchTip</td><td>2.19</td><td>Error tracking</td></tr>
+  <tr><td>Métricas</td><td>Prometheus</td><td>0.20+</td><td>/metrics endpoint</td></tr>
+  <tr><td>Containerización</td><td>Docker + Docker Compose</td><td>—</td><td>Despliegue</td></tr>
+  <tr><td>GPU</td><td>NVIDIA RTX 4070 × 2</td><td>CUDA</td><td>OCR + embeddings + LLM</td></tr>
+  <tr><td>Testing</td><td>pytest + Vitest + Playwright</td><td>8.3 / 2.1 / —</td><td>Unit + E2E</td></tr>
+  <tr><td>CI/CD</td><td>GitHub Actions</td><td>—</td><td>CI pipeline</td></tr>
+</table>
+
+<!-- ==================== PIPELINE OCR ==================== -->
+<div class="page-break"></div>
+<h1>6. Pipeline OCR y Preprocesado</h1>
+
+<h2>6.1 Cascada de Motores</h2>
+<p>El sistema implementa una cascada de 4 motores OCR que selecciona automáticamente el mejor resultado usando un score de calidad:</p>
+
+<div class="diagram">Documento de entrada
+        │
+        ▼
+┌─────────────────┐
+│  Preprocesado   │  Específico por motor:
+│  (OpenCV)       │  - Tesseract: gris + denoise + deskew + binarización
+│                 │  - Paddle: deskew + upscaling (sin binarizar)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐     ┌──────────────────┐
+│  Tier 1:        │────▶│  ¿Confianza >    │──SÍ──▶ Resultado final
+│  Tesseract 5    │     │  umbral aceptable?│
+└─────────────────┘     └──────────────────┘
+                              │ NO
+                              ▼
+                      ┌──────────────────┐     ┌──────────────────┐
+                      │  Tier 2:         │────▶│  ¿Quality >      │──SÍ──▶ Resultado final
+                      │  PaddleOCR 3.5   │     │  mejor previo?   │
+                      └──────────────────┘     └──────────────────┘
+                              │ NO
+                              ▼
+                      ┌──────────────────┐     ┌──────────────────┐
+                      │  Tier 3:         │────▶│  ¿Quality >      │──SÍ──▶ Resultado final
+                      │  PP-Structure    │     │  mejor previo?   │
+                      └──────────────────┘     └──────────────────┘
+                              │ NO
+                              ▼
+                      ┌──────────────────┐
+                      │  Tier 4:         │  (Opcional, gated por setting)
+                      │  VLM-OCR         │
+                      └──────────────────┘</div>
+
+<h2>6.2 Score de Calidad</h2>
+<p>El motor "ganador" NO se decide por longitud (que favorece ruido) sino por un score compuesto:</p>
+
+<div class="highlight-box">
+<strong>_quality(result) =</strong> confidence × 0.5 + density × 0.3 + length_factor × 0.2<br><br>
+Donde:<br>
+- <strong>confidence</strong>: Confianza media del motor OCR (0-1)<br>
+- <strong>density</strong>: Proporción de caracteres alfanuméricos y espacios (penaliza basura simbólica)<br>
+- <strong>length_factor</strong>: min(len(text)/500, 1.0) — satura, no premia infinito
+</div>
+
+<h2>6.3 Preprocesado de Imágenes</h2>
+<table>
+  <tr><th>Operación</th><th>Para Tesseract</th><th>Para PaddleOCR</th></tr>
+  <tr><td>Conversión a escala de grises</td><td>Sí</td><td>Opcional</td></tr>
+  <tr><td>Reducción de ruido (denoise)</td><td>Sí (bilateral)</td><td>Sí (suave)</td></tr>
+  <tr><td>Deskew (corrección inclinación)</td><td>Sí</td><td>Sí</td></tr>
+  <tr><td>Binarización adaptativa</td><td>Sí (mejora显著)</td><td>NO (perjudica)</td></tr>
+  <tr><td>Upscaling (si DPI bajo)</td><td>Sí (×2 CUBIC)</td><td>Sí (×2 CUBIC)</td></tr>
+  <tr><td>Corrección orientación (OSD)</td><td>Sí (90°/180°/270°)</td><td>Sí</td></tr>
+</table>
+
+<h2>6.4 Workers GPU</h2>
+<p>Dos workers GPU independientes con RTX 4070 dedicada cada uno:</p>
+<ul>
+  <li><strong>worker-heavy-gpu-0:</strong> CUDA_VISIBLE_DEVICES=0, concurrencia 1</li>
+  <li><strong>worker-heavy-gpu-1:</strong> CUDA_VISIBLE_DEVICES=1, concurrencia 1</li>
+  <li><strong>worker-heavy (CPU fallback):</strong> Sin GPU, para cuando las GPUs no están disponibles</li>
+</ul>
+
+<!-- ==================== IA Y RAG ==================== -->
+<div class="page-break"></div>
+<h1>7. IA y Recuperación (RAG)</h1>
+
+<h2>7.1 Pipeline de Embeddings</h2>
+
+<div class="diagram">Texto OCR / Metadatos
+        │
+        ▼
+┌─────────────────┐
+│  Chunking       │  Respetando: límites de frase, páginas, tablas
+│  Semántico      │  Prepend: [tipo=factura | archivo=X | pág=2]
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Embedding      │  Modo "passage:" para chunks (indexado)
+│  BGE-M3         │  Modo "query:" para preguntas (búsqueda)
+│  (1024 dims)    │  Proveedor: sentence-transformers local
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  pgvector       │  Índice IVFFlat o HNSW
+│  Inserción      │  Búsqueda cosine similarity
+└─────────────────┘</div>
+
+<h2>7.2 Búsqueda Híbrida con RRF</h2>
+<p>La fusión de resultados textuales y semánticos usa Reciprocal Rank Fusion (RRF), robusto y sin necesidad de calibrar escalas:</p>
+
+<div class="highlight-box">
+<strong>RRF.score(d) =</strong> Σ 1/(k + rank_i + 1) para cada lista de resultados<br><br>
+Donde k=60 (constante estándar). Cada fuente (texto, semántico) aporta su ranking, no su score absoluto.<br>
+<strong>Resultado:</strong> Un documento que solo aparece en semántica con alta relevancia puede superar a un match léxico débil.
+</div>
+
+<h2>7.3 Agent IA y Tools</h2>
+<p>El agente IA decide qué herramientas ejecutar basándose en la pregunta del usuario:</p>
+
+<table>
+  <tr><th>Tool</th><th>Función</th><th>Ejemplo de uso</th></tr>
+  <tr><td>hybrid_search</td><td>Búsqueda textual+semántica</td><td>"¿Qué dice sobre fontanería?"</td></tr>
+  <tr><td>get_budget_by_number</td><td>Presupuesto por número exacto</td><td>"Dame el presupuesto 245745"</td></tr>
+  <tr><td>aggregate_business</td><td>Agregaciones de negocio</td><td>"¿Cuánto hemos gastado en X?"</td></tr>
+  <tr><td>get_orders_by_number</td><td>Pedido por número</td><td>"¿Tiene pedido el presupuesto X?"</td></tr>
+  <tr><td>get_plan_dimensions</td><td>Medidas de habitaciones</td><td>"¿Cuánto mide la cocina?"</td></tr>
+  <tr><td>find_duplicates</td><td>Duplicados de documentos</td><td>"¿Hay documentos duplicados?"</td></tr>
+  <tr><td>list_documents_needing_review</td><td>Docs de baja calidad</td><td>"¿Qué documentos necesitan revisión?"</td></tr>
+  <tr><td>propose_*</td><td>Sugerencias de mejora</td><td>Agente externo propone correcciones</td></tr>
+</table>
+
+<h2>7.4 Learning Loop (Bucle de Mejora)</h2>
+<p>El sistema aprende de las correcciones humanas y las propuestas del agente externo:</p>
+
+<div class="diagram">Agente externo / Operador
+        │
+        ▼  (propone corrección)
+┌─────────────────┐
+│  classification_ │  status='pending'
+│  suggestions     │
+└────────┬────────┘
+         │ Admin revisa
+         ▼
+┌─────────────────┐
+│  Admin aprueba  │  status='approved'
+└────────┬────────┘
+         │ Cada 5 min (Celery beat)
+         ▼
+┌─────────────────┐
+│  Procesamiento  │  1. Crea/activa LearnedPattern
+│  automático     │  2. Aplica corrección al documento
+│                 │  3. Reclasifica docs afectados
+│                 │  4. Emite webhooks
+└─────────────────┘</div>
+
+<!-- ==================== SEGURIDAD ==================== -->
+<div class="page-break"></div>
+<h1>8. Seguridad y Permisos</h1>
+
+<h2>8.1 Modelo de Roles (RBAC)</h2>
+<table>
+  <tr><th>Rol</th><th>Permisos</th><th>Restricciones</th></tr>
+  <tr><td><span class="badge badge-red">admin</span></td><td>Total: admin, documentos, jobs, configuración</td><td>Ninguna</td></tr>
+  <tr><td><span class="badge badge-orange">gestor</span></td><td>Documentos, planos, búsqueda, revisión OCR</td><td>Sin acceso a admin/sistema</td></tr>
+  <tr><td><span class="badge badge-green">operario</span></td><td>Documentos, búsqueda, chat IA</td><td>Sin precios, sin planos, sin admin</td></tr>
+</table>
+
+<h2>8.2 Aislamiento por Presupuesto</h2>
+<div class="warning-box">
+<strong>Regla crítica:</strong> El aislamiento principal es por <code>budget_scope_id</code>, no por usuario o cadena. Una sesión firmada limita todas las consultas al presupuesto específico.
+</div>
+<ul>
+  <li><strong>API keys:</strong> Identifican al cliente (herramienta externa)</li>
+  <li><strong>Sesiones firmadas (JWT):</strong> Vinculan a un presupuesto específico con caducidad</li>
+  <li><strong>Permisos por scope:</strong> <code>can_query</code> (consultar) y <code>can_see_amounts</code> (ver precios)</li>
+  <li><strong>Políticas por técnico:</strong> <code>operario_minimo</code> (sin precios) vs <code>precios_autorizados</code></li>
+</ul>
+
+<h2>8.3 Redacción de Precios</h2>
+<p>Cuando un técnico no tiene permiso para ver importes:</p>
+<ul>
+  <li>Los campos de precio se reemplazan por <code>[IMPORTE OCULTO]</code></li>
+  <li>La redacción se aplica <strong>antes</strong> de entregar contexto a la IA externa</li>
+  <li>La IA no recibe precios, márgenes ni condiciones comerciales</li>
+</ul>
+
+<h2>8.4 Auditoría</h2>
+<ul>
+  <li>Cada acción queda registrada en <code>audit_logs</code> con usuario, acción, entidad y timestamp</li>
+  <li>Filtros por acción, entidad y usuario en <code>/admin/audit-logs</code></li>
+  <li>Simulador de permisos: <code>/admin/access-explain</code> para verificar por qué un usuario puede o no ver un documento</li>
+</ul>
+
+<h2>8.5 Webhooks Firmados</h2>
+<p>Las notificaciones a herramientas externas van firmadas con HMAC-SHA256:</p>
+<ul>
+  <li><code>X-DocuIntel-Signature:</code> Firma HMAC del payload</li>
+  <li>Eventos: <code>document.processed</code>, <code>document.failed</code>, <code>document.needs_review</code>, <code>classification.low_confidence</code>, <code>entity.new_pattern_detected</code></li>
+</ul>
+
+<!-- ==================== INFRAESTRUCTURA ==================== -->
+<div class="page-break"></div>
+<h1>9. Infraestructura y Despliegue</h1>
+
+<h2>9.1 Servicios Docker</h2>
+<table>
+  <tr><th>Servicio</th><th>Función</th><th>Puerto</th><th>Notas</th></tr>
+  <tr><td>backend</td><td>API FastAPI</td><td>8000</td><td>Healthcheck cada 30s</td></tr>
+  <tr><td>frontend</td><td>React (nginx)</td><td>5173/5174</td><td>Proxy a backend</td></tr>
+  <tr><td>postgres</td><td>PostgreSQL 16 + pgvector</td><td>5432 (interno)</td><td>No expuesto en prod</td></tr>
+  <tr><td>redis</td><td>Redis 7</td><td>6379 (interno)</td><td>Broker + cache</td></tr>
+  <tr><td>worker-fast</td><td>Celery: texto, embeddings</td><td>—</td><td>Concurrencia 2</td></tr>
+  <tr><td>worker-heavy</td><td>Celery: OCR CPU</td><td>—</td><td>Concurrencia 1</td></tr>
+  <tr><td>worker-heavy-gpu-0</td><td>Celery: OCR GPU</td><td>—</td><td>RTX 4070 #0</td></tr>
+  <tr><td>worker-heavy-gpu-1</td><td>Celery: OCR GPU</td><td>—</td><td>RTX 4070 #1</td></tr>
+  <tr><td>worker-maintenance</td><td>Celery: limpieza</td><td>—</td><td>Aprendizaje, webhooks</td></tr>
+  <tr><td>watcher</td><td>Monitorización 24h</td><td>—</td><td>Polling o nativo</td></tr>
+  <tr><td>scheduler</td><td>Celery Beat</td><td>—</td><td>Tareas periódicas</td></tr>
+  <tr><td>migrate</td><td>Alembic migrations</td><td>—</td><td>One-shot sidecar</td></tr>
+  <tr><td>pgadmin</td><td>Administración BD</td><td>5050</td><td>Profile: tools</td></tr>
+  <tr><td>glitchtip</td><td>Error tracking</td><td>8001</td><td>Profile: monitoring</td></tr>
+</table>
+
+<h2>9.2 Hardware Recomendado</h2>
+<table>
+  <tr><th>Componente</th><th>Mínimo</th><th>Recomendado</th></tr>
+  <tr><td>CPU</td><td>4 cores</td><td>8+ cores (AMD/Intel modern)</td></tr>
+  <tr><td>RAM</td><td>16 GB</td><td>32+ GB</td></tr>
+  <tr><td>GPU</td><td>Sin GPU (CPU fallback)</td><td>2× RTX 4070 (12GB VRAM c/u)</td></tr>
+  <tr><td>Disco</td><td>100 GB SSD</td><td>500+ GB NVMe (para docs)</td></tr>
+  <tr><td>Red</td><td>1 Gbps</td><td>1+ Gbps (para ingesta masiva)</td></tr>
+</table>
+
+<h2>9.3 Backup y Restore</h2>
+<ul>
+  <li><strong>PostgreSQL:</strong> Backup completo de la base de datos</li>
+  <li><strong>Files:</strong> <code>/data/files</code> (documentos originales)</li>
+  <li><strong>Redis:</strong> Snapshot RDB (colas Celery, cache)</li>
+  <li><strong>Scripts:</strong> PowerShell con verificación de integridad</li>
+  <li><strong>Restore probado:</strong> Entorno separado para validar backups</li>
+</ul>
+
+<h2>9.4 CI/CD</h2>
+<ul>
+  <li><strong>GitHub Actions:</strong> Verificación de migraciones Alembic, tests backend, tests frontend, build Vite</li>
+  <li><strong>Linting:</strong> ESLint (frontend) + ruff/flake8 (backend)</li>
+  <li><strong>Type checking:</strong> TypeScript strict mode</li>
+</ul>
+
+<!-- ==================== BASE DE DATOS ==================== -->
+<div class="page-break"></div>
+<h1>10. Base de Datos</h1>
+
+<h2>10.1 Modelo Principal</h2>
+<div class="diagram">users ───────────┐
+                  │
+documents ────────┤── document_chunks (embedding vector(1024))
+  │               │
+  ├── pages       ├── document_entities
+  ├── blocks      ├── budgets ── budget_lines
+  └── chunks      ├── orders ── order_lines
+                  ├── invoices
+                  │
+plans ────────────┤── plan_rooms ── plan_dimensions
+                  │
+budget_scopes ────┤── api_client_budget_scopes
+                  │
+ai_questions ─────┤── ai_answers ── ai_answer_sources
+                  │
+classification_suggestions ── learned_patterns
+                  │
+audit_logs        │
+webhook_outbox    │
+extraction_jobs   │
+document_quality  │
+storage_integrity │</div>
+
+<h2>10.2 pgvector para Embeddings</h2>
+<div class="highlight-box">
+<strong>Tabla:</strong> <code>document_chunks</code><br>
+<strong>Columna:</strong> <code>embedding vector(1024)</code><br>
+<strong>Modelo:</strong> BGE-M3 multilingüe (sentence-transformers)<br>
+<strong>Índice:</strong> IVFFlat o HNSW para búsqueda eficiente<br>
+<strong>Búsqueda:</strong> Cosine similarity con <code>&lt;=&gt;</code> operator
+</div>
+
+<h2>10.3 Tablas Principales</h2>
+<table>
+  <tr><th>Tabla</th><th>Registros típicos</th><th>Función</th></tr>
+  <tr><td>documents</td><td>10.000-100.000</td><td>Documentos ingeridos</td></tr>
+  <tr><td>document_chunks</td><td>100.000-1.000.000</td><td>Chunks con embeddings</td></tr>
+  <tr><td>pages</td><td>50.000-500.000</td><td>Páginas de PDFs</td></tr>
+  <tr><td>ocr_blocks</td><td>200.000-2.000.000</td><td>Bloques OCR con bbox</td></tr>
+  <tr><td>budgets</td><td>500-5.000</td><td>Presupuestos extraídos</td></tr>
+  <tr><td>orders</td><td>200-2.000</td><td>Pedidos extraídos</td></tr>
+  <tr><td>plans</td><td>100-1.000</td><td>Planos con cotas</td></tr>
+  <tr><td>audit_logs</td><td>100.000+</td><td>Registro de acciones</td></tr>
+  <tr><td>ai_questions</td><td>1.000-10.000</td><td>Historial de chat</td></tr>
+</table>
+
+<!-- ==================== ROADMAP ==================== -->
+<div class="page-break"></div>
+<h1>11. Roadmap y Fases</h1>
+
+<table>
+  <tr><th>Fase</th><th>Estado</th><th>Funcionalidades</th></tr>
+  <tr><td><span class="badge badge-green">Fase 1</span></td><td>Completada</td><td>Ingesta, OCR básico, chunking, embeddings, búsqueda textual</td></tr>
+  <tr><td><span class="badge badge-green">Fase 2</span></td><td>Completada</td><td>Extracción presupuestos/pedidos, entidades, dashboard</td></tr>
+  <tr><td><span class="badge badge-green">Fase 3</span></td><td>Completada</td><td>Embeddings reales, búsqueda semántica/híbrida, chat IA con tools</td></tr>
+  <tr><td><span class="badge badge-green">Fase 4</span></td><td>Completada</td><td>Planos: escala, cotas, habitaciones, anotación manual</td></tr>
+  <tr><td><span class="badge badge-green">Fase 5</span></td><td>Operativa</td><td>Alertas, auditoría, reprocesado, integraciones, aprendizaje IA</td></tr>
+  <tr><td><span class="badge badge-blue">Fase 6</span></td><td>Planificada</td><td>Extracción geométrica avanzada, VLM-OCR Tier 4, planos complejos</td></tr>
+</table>
+
+<h2>Mejoras en Curso (Backlog)</h2>
+<ul>
+  <li><strong>O1:</strong> Conectar preprocesado real (hoy no se aplica en ninguno de los 3 motores)</li>
+  <li><strong>O3:</strong> Score de calidad compuesto en cascada (no ganar por longitud)</li>
+  <li><strong>A1:</strong> Fix query/passage mode en embeddings (recall degradado)</li>
+  <li><strong>A2:</strong> Fusión híbrida con RRF en vez de escalas fijas</li>
+  <li><strong>PL1-PL6:</strong> Planos: usar escala, geometría, parsing robusto de medidas</li>
+  <li><strong>F1-F2:</strong> Frontend: code-splitting + gating de rutas por rol</li>
+</ul>
+
+<!-- ==================== MÉTRICAS ==================== -->
+<div class="page-break"></div>
+<h1>12. Métricas y Calidad</h1>
+
+<h2>12.1 Estados de Calidad Documental</h2>
+<table>
+  <tr><th>Estado</th><th>Significado</th><th>Acción</th></tr>
+  <tr><td><span class="badge badge-green">processed_ok</span></td><td>OCR exitoso, campos extraídos</td><td>Ninguna</td></tr>
+  <tr><td><span class="badge badge-orange">processed_low_quality</span></td><td>OCR con baja confianza</td><td>Revisión recomendada</td></tr>
+  <tr><td><span class="badge badge-orange">processed_missing_fields</span></td><td>Faltan campos clave</td><td>Revisión de extracción</td></tr>
+  <tr><td><span class="badge badge-red">needs_human_review</span></td><td>Requiere intervención humana</td><td>Revisión obligatoria</td></tr>
+  <tr><td><span class="badge badge-red">failed</span></td><td>Error en procesamiento</td><td>Reprocesar</td></tr>
+</table>
+
+<h2>12.2 Dashboard de Métricas</h2>
+<ul>
+  <li><strong>/admin/processing-metrics:</strong> Documentos por estado/tipo, jobs por estado</li>
+  <li><strong>/admin/operations/overview:</strong> GB procesados, ETA de cola, calidad documental</li>
+  <li><strong>/admin/quality/summary:</strong> Resumen de calidad con reglas configurables</li>
+  <li><strong>/admin/production/readiness:</strong> DB, Redis, workers, watcher, directorios</li>
+</ul>
+
+<h2>12.3 Alertas Automáticas</h2>
+<ul>
+  <li>Presupuestos aceptados sin pedido</li>
+  <li>Pedidos sin presupuesto asociado</li>
+  <li>Documentos con OCR de baja calidad</li>
+  <li>Disco bajo en almacenamiento</li>
+  <li>Planos sin escala válida</li>
+  <li>Jobs fallidos en Cola Celery</li>
+  <li>Backpressure en procesamiento</li>
+</ul>
+
+<!-- ==================== CONCLUSIÓN ==================== -->
+<div class="page-break"></div>
+<h1>13. Conclusión</h1>
+
+<div class="success-box">
+<strong>Docu-Intel</strong> es una plataforma completa de inteligencia documental que combina:<br><br>
+<ul style="margin-top:8px;">
+  <li><strong>OCR industrial:</strong> 4 motores en cascada con preprocesado específico</li>
+  <li><strong>IA local:</strong> Sin dependencia de servicios externos, total control de datos</li>
+  <li><strong>Seguridad:</strong> Aislamiento por presupuesto, RBAC, auditoría completa</li>
+  <li><strong>Escalabilidad:</strong> Workers GPU separados, procesamiento paralelo</li>
+  <li><strong>Gobierno:</strong> Calidad documental, aprendizaje automático, alertas</li>
+</ul>
+</div>
+
+<p style="margin-top:20px;">El sistema está en producción activa, procesando documentos de presupuestos, pedidos, facturas y planos con alta precisión. La arquitectura modular permite escalar desde un servidor hasta un clúster con múltiples GPUs según la carga de trabajo.</p>
+
+<div class="footer">
+  Docu-Intel — Informe Técnico y Comercial — Junio 2026<br>
+  Generado automáticamente desde la documentación del proyecto
+</div>
+
+</div>
+</body>
+</html>

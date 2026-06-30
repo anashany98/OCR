@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import case, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -50,15 +50,27 @@ def get_document_blocks(db: Session, document_id: int, page_number: int | None =
 
 
 def find_document_by_filename(db: Session, query: str, limit: int = 5) -> list[Document]:
-    """Partial / case-insensitive match on `original_filename`. The most-recent
-    match wins, ties broken by relevance score when available."""
+    """Partial / case-insensitive match on filename or source path.
+
+    Prefer active budget documents over duplicate/temp files, then newest.
+    """
     pattern = f"%{query.strip()}%"
     stmt = (
         select(Document)
         .where(Document.deleted_at.is_(None))
-        .where(Document.original_filename.ilike(pattern))
+        .where(
+            or_(
+                Document.original_filename.ilike(pattern),
+                Document.source_path.ilike(pattern),
+            )
+        )
+        .order_by(
+            case((Document.status == "duplicate", 1), else_=0).asc(),
+            case((Document.document_type == "presupuesto", 0), else_=1).asc(),
+            Document.id.desc(),
+        )
     )
-    return list(db.scalars(stmt.order_by(Document.id.desc()).limit(limit)).all())
+    return list(db.scalars(stmt.limit(limit)).all())
 
 
 def get_document_full_details(db: Session, document_id: int) -> dict | None:

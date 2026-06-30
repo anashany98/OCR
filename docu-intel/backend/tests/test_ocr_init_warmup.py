@@ -88,19 +88,21 @@ class TestPreloadWorkerOcrEngine:
     * emit ``track_worker_init_failure(stage="ocr_preload")``
     """
 
-    def test_success_does_not_emit_failure_metric(self):
+    def test_success_does_not_emit_failure_metric(self, monkeypatch):
         """Patch at the SOURCE because the hook does a local
         ``from app.ocr.factory import preload_ocr_engine``."""
         from app.workers import celery_app as celery_app_module
 
+        monkeypatch.setenv("WORKER_NAME", "worker-heavy")
         with patch("app.services.metrics.track_worker_init_failure") as mock_metric:
             with patch("app.ocr.factory.preload_ocr_engine", return_value=MagicMock()):
                 celery_app_module.preload_worker_ocr_engine()
             mock_metric.assert_not_called()
 
-    def test_failure_emits_metric_and_logs_stack_trace(self, caplog):
+    def test_failure_emits_metric_and_logs_stack_trace(self, caplog, monkeypatch):
         from app.workers import celery_app as celery_app_module
 
+        monkeypatch.setenv("WORKER_NAME", "worker-heavy")
         with patch("app.services.metrics.track_worker_init_failure") as mock_metric:
             with patch(
                 "app.ocr.factory.preload_ocr_engine",
@@ -123,12 +125,24 @@ class TestPreloadWorkerOcrEngine:
                 record.exc_info is not None for record in caplog.records
             ), "logger.exception should attach a stack trace"
 
-    def test_metric_failure_does_not_break_worker(self):
+    def test_skips_non_ocr_worker(self, monkeypatch, caplog):
+        from app.workers import celery_app as celery_app_module
+
+        monkeypatch.setenv("WORKER_NAME", "worker-fast")
+        with patch("app.ocr.factory.preload_ocr_engine") as mock_preload:
+            with caplog.at_level(logging.INFO, logger="app.workers.celery_app"):
+                celery_app_module.preload_worker_ocr_engine()
+
+        mock_preload.assert_not_called()
+        assert any("ocr_preload_skipped" in record.message for record in caplog.records)
+
+    def test_metric_failure_does_not_break_worker(self, monkeypatch):
         """If the metric emission itself fails (e.g. the metrics
         module is broken), the worker must still come up.
         """
         from app.workers import celery_app as celery_app_module
 
+        monkeypatch.setenv("WORKER_NAME", "worker-heavy")
         with patch(
             "app.ocr.factory.preload_ocr_engine",
             side_effect=RuntimeError("Paddle not installed"),

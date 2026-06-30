@@ -246,3 +246,16 @@ CHUNK_WEIGHT_ADJUSTMENTS = Counter(
     "Chunk weight adjustments triggered by feedback.",
     labelnames=("direction", "source_count_bucket"),
 )
+STALE_JOBS_RESET = Counter(
+    "docuintel_stale_jobs_reset_total",
+    "Stale processing jobs reset by the sweeper.",
+)
+NOTIFICATION_FAILURES = Counter(
+    "docuintel_notification_failures_total",
+    "Failed notification deliveries.",
+    labelnames=("channel",),
+)
+EMBEDDING_COVERAGE = Gauge(
+    "docuintel_embedding_coverage_ratio",
+    "Fraction of document chunks with embeddings.",
+)

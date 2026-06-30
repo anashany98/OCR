@@ -17,10 +17,21 @@ from typing import Any
 from app.services.cache import cache_service
 
 logger = logging.getLogger("app.services.ai_cache")
-AI_CACHE_TTL = 3600  # 1 hour
+AI_CACHE_TTL = 3600  # 1 hour (default)
+AI_CACHE_TTL_SHORT = 1800  # 30 min for complex/specific questions
 AI_CACHE_PREFIX = "ai:answer:"
 AI_SEMANTIC_PREFIX = "ai:sem:"
 SEMANTIC_SIM_THRESHOLD = 0.92  # cosine similarity above this = cache hit
+
+
+def _cache_ttl(question: str) -> int:
+    """Dynamic TTL: short/generic questions cache longer, specific ones shorter."""
+    words = question.strip().split()
+    if len(words) <= 5:
+        return AI_CACHE_TTL  # 1h — generic questions are stable
+    if len(words) >= 15:
+        return AI_CACHE_TTL_SHORT  # 30min — specific questions may change
+    return AI_CACHE_TTL
 
 
 def _cache_key(
@@ -132,7 +143,7 @@ def cache_answer(
     mode: str | None = None,
     scope_key: str | None = None,
     session_id: str | None = None,
-    ttl: int = AI_CACHE_TTL,
+    ttl: int | None = None,
 ) -> bool:
     """Cache an AI answer for future queries.
 
@@ -140,8 +151,9 @@ def cache_answer(
     containing the question's embedding, so subsequent reformulations
     can be served from cache.
     """
+    effective_ttl = ttl if ttl is not None else _cache_ttl(question)
     key = _cache_key(question, user_id, mode, scope_key, session_id)
-    ok = cache_service.set(key, answer, ttl)
+    ok = cache_service.set(key, answer, effective_ttl)
     # Sidecar: append a {embedding, key} to the per-user semantic index.
     try:
         vec = _embed_question(question)
@@ -256,7 +268,7 @@ async def cache_answer_async(
     mode: str | None = None,
     scope_key: str | None = None,
     session_id: str | None = None,
-    ttl: int = AI_CACHE_TTL,
+    ttl: int | None = None,
 ) -> bool:
     """Async variant of :func:`cache_answer` for FastAPI handlers.
 

@@ -100,12 +100,22 @@ def evaluate_document_quality(
 
     # Trust shortcut: high-confidence extraction → auto-approve, even with some
     # missing structured fields. The audit log keeps a record for rollback.
+    #
+    # Digital PDFs (min_ocr == 1.0) get a relaxed path: text comes straight
+    # from the PDF content stream, so it is always readable.  Business
+    # extraction may fail to match its regex patterns (missing fields), but
+    # that is a pattern-gap issue, not a quality issue — the document
+    # should still be auto-approved if the text is present and classified.
+    is_digital = min_ocr >= 1.0
     if (
         document.status != "failed"
         and "page_failed" not in flags
         and "page_without_text" not in flags
         and min_ocr >= settings.auto_approve_min_ocr
-        and classification_conf >= settings.auto_approve_min_classification
+        and (
+            is_digital
+            or classification_conf >= settings.auto_approve_min_classification
+        )
         and is_classified
         and (
             settings.auto_approve_allow_missing_fields

@@ -182,8 +182,10 @@ def _build_cascading_engine() -> BaseOCREngine:
                 DotsMOCRConfig(
                     enabled=True,
                     endpoint=settings.dots_mocr_endpoint,
+                    model=settings.dots_mocr_model or settings.vision_model,
                     api_key=settings.dots_mocr_api_key or None,
                     timeout_seconds=settings.dots_mocr_timeout_seconds,
+                    domain=settings.dots_mocr_domain,
                 )
             )
         except Exception as exc:  # noqa: BLE001 - any constructor failure

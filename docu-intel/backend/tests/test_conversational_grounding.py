@@ -273,6 +273,35 @@ def test_scope_guard_does_not_override_explicit_budget_number():
     assert out.tools[0].arguments["budget_number"] == "260011"
 
 
+def test_collect_context_falls_back_to_budget_document_filename(monkeypatch):
+    from app.ai.context import collect_context
+    from app.ai.tools import ToolCall
+    from app.tools import internal
+
+    class Doc:
+        id = 110
+        original_filename = "ALEJANDRA/Presupuesto 260074/EXCEL/253434.xlsx"
+        source_path = "ALEJANDRA/Presupuesto 260074/EXCEL/253434.xlsx"
+        document_type = "presupuesto"
+        status = "needs_review"
+        confidence = 0.82
+        page_count = 1
+
+    monkeypatch.setattr(internal, "get_budget_by_number", lambda db, number: None)
+    monkeypatch.setattr(internal, "find_document_by_filename", lambda db, query: [Doc()])
+
+    context, warnings, resolved_doc_id = collect_context(
+        object(),
+        [ToolCall("get_budget_by_number", {"budget_number": "253434"})],
+        "de que trata el presupuesto 253434",
+    )
+
+    assert resolved_doc_id == 110
+    assert context[0].document_id == 110
+    assert "253434.xlsx" in context[0].source_path
+    assert "no esta en la tabla estructurada" in warnings[0]
+
+
 # ---------------------------------------------------------------------------
 # CTX-5: Intent router
 # ---------------------------------------------------------------------------

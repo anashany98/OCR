@@ -1,0 +1,324 @@
+- generic [ref=e2]:
+  - generic [ref=e9]:
+    - banner [ref=e10]:
+      - generic [ref=e11]:
+        - button "Abrir menú de navegación" [ref=e12] [cursor=pointer]:
+          - img [ref=e13]
+        - heading "Revisión OCR" [level=1] [ref=e14]
+        - generic "105 tareas pendientes" [ref=e15] [cursor=pointer]:
+          - generic [ref=e16]: 105 tareas
+        - button "Abrir paleta de comandos" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+          - generic [ref=e20]: Buscar…
+          - generic [ref=e21]: ⌘K
+        - generic [ref=e24]: Sistema
+        - button "Cambiar a tema oscuro" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+        - button "Menú de usuario" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: A
+          - generic [ref=e31]: Administrador
+          - img [ref=e32]
+        - button "Cerrar sesión" [ref=e34] [cursor=pointer]:
+          - img [ref=e35]
+    - main [ref=e38]:
+      - navigation "Breadcrumb" [ref=e39]:
+        - list [ref=e40]:
+          - listitem [ref=e41]:
+            - link "Inicio" [ref=e42] [cursor=pointer]:
+              - /url: /
+              - img [ref=e43]
+              - generic [ref=e46]: Inicio
+          - listitem [ref=e47]:
+            - img [ref=e48]
+          - listitem [ref=e50]:
+            - generic [ref=e52]: Revisión OCR
+      - generic [ref=e53]:
+        - generic [ref=e55]:
+          - generic [ref=e56]:
+            - heading "Documentos que necesitan re-embedding" [level=3] [ref=e57]:
+              - img [ref=e58]
+              - text: Documentos que necesitan re-embedding
+            - paragraph [ref=e60]: 10 documento(s) con chunks sin embedding (el provider de embeddings falló durante el procesamiento inicial). Usa el botón para regenerar embeddings sin re-OCR.
+          - button "Actualizar" [ref=e61] [cursor=pointer]:
+            - img [ref=e62]
+            - text: Actualizar
+        - table [ref=e68]:
+          - rowgroup [ref=e69]:
+            - row "Documento Tipo Chunks pendientes Acción" [ref=e70]:
+              - columnheader "Documento" [ref=e71]
+              - columnheader "Tipo" [ref=e72]
+              - columnheader "Chunks pendientes" [ref=e73]
+              - columnheader "Acción" [ref=e74]
+          - rowgroup [ref=e75]:
+            - row "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx presupuesto 3 / 3 Re-embebir" [ref=e76]:
+              - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e77]:
+                - link "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/260039.xlsx" [ref=e78] [cursor=pointer]:
+                  - /url: /documents/176
+              - cell "presupuesto" [ref=e79]
+              - cell "3 / 3" [ref=e80]:
+                - generic [ref=e81]: 3 / 3
+              - cell "Re-embebir" [ref=e82]:
+                - button "Re-embebir" [ref=e83] [cursor=pointer]:
+                  - img [ref=e84]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx presupuesto 3 / 3 Re-embebir" [ref=e86]:
+              - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e87]:
+                - link "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/EXCEL/PL_FRA PLANTILLA_solo FILIAL R.D y MX_COPIA.xlsx" [ref=e88] [cursor=pointer]:
+                  - /url: /documents/177
+              - cell "presupuesto" [ref=e89]
+              - cell "3 / 3" [ref=e90]:
+                - generic [ref=e91]: 3 / 3
+              - cell "Re-embebir" [ref=e92]:
+                - button "Re-embebir" [ref=e93] [cursor=pointer]:
+                  - img [ref=e94]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg albaran 1 / 1 Re-embebir" [ref=e96]:
+              - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e97]:
+                - link "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/IMAGENES/albaran.jpeg" [ref=e98] [cursor=pointer]:
+                  - /url: /documents/175
+              - cell "albaran" [ref=e99]
+              - cell "1 / 1" [ref=e100]:
+                - generic [ref=e101]: 1 / 1
+              - cell "Re-embebir" [ref=e102]:
+                - button "Re-embebir" [ref=e103] [cursor=pointer]:
+                  - img [ref=e104]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf presupuesto 33 / 33 Re-embebir" [ref=e106]:
+              - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e107]:
+                - link "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/II018_SKINCOVER_INST-MANT.es.en.fr.pdf" [ref=e108] [cursor=pointer]:
+                  - /url: /documents/174
+              - cell "presupuesto" [ref=e109]
+              - cell "33 / 33" [ref=e110]:
+                - generic [ref=e111]: 33 / 33
+              - cell "Re-embebir" [ref=e112]:
+                - button "Re-embebir" [ref=e113] [cursor=pointer]:
+                  - img [ref=e114]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf presupuesto 3 / 3 Re-embebir" [ref=e116]:
+              - cell "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e117]:
+                - link "ALEJANDRA COMPANY LASERE/OFICINAS ESCRIBANO/Presupuesto 260039/PDF/Hoja entrega muestras.pdf" [ref=e118] [cursor=pointer]:
+                  - /url: /documents/173
+              - cell "presupuesto" [ref=e119]
+              - cell "3 / 3" [ref=e120]:
+                - generic [ref=e121]: 3 / 3
+              - cell "Re-embebir" [ref=e122]:
+                - button "Re-embebir" [ref=e123] [cursor=pointer]:
+                  - img [ref=e124]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.14.00 (1).jpeg imagen 1 / 1 Re-embebir" [ref=e126]:
+              - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.14.00 (1).jpeg" [ref=e127]:
+                - link "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.14.00 (1).jpeg" [ref=e128] [cursor=pointer]:
+                  - /url: /documents/106
+              - cell "imagen" [ref=e129]
+              - cell "1 / 1" [ref=e130]:
+                - generic [ref=e131]: 1 / 1
+              - cell "Re-embebir" [ref=e132]:
+                - button "Re-embebir" [ref=e133] [cursor=pointer]:
+                  - img [ref=e134]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg imagen 1 / 1 Re-embebir" [ref=e136]:
+              - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg" [ref=e137]:
+                - link "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg" [ref=e138] [cursor=pointer]:
+                  - /url: /documents/105
+              - cell "imagen" [ref=e139]
+              - cell "1 / 1" [ref=e140]:
+                - generic [ref=e141]: 1 / 1
+              - cell "Re-embebir" [ref=e142]:
+                - button "Re-embebir" [ref=e143] [cursor=pointer]:
+                  - img [ref=e144]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/visillos opc 2 SARE ORO A.FERRE.jpeg imagen 1 / 1 Re-embebir" [ref=e146]:
+              - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/visillos opc 2 SARE ORO A.FERRE.jpeg" [ref=e147]:
+                - link "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/visillos opc 2 SARE ORO A.FERRE.jpeg" [ref=e148] [cursor=pointer]:
+                  - /url: /documents/102
+              - cell "imagen" [ref=e149]
+              - cell "1 / 1" [ref=e150]:
+                - generic [ref=e151]: 1 / 1
+              - cell "Re-embebir" [ref=e152]:
+                - button "Re-embebir" [ref=e153] [cursor=pointer]:
+                  - img [ref=e154]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara techo RITA 40 cm opc 1.JPG imagen 1 / 1 Re-embebir" [ref=e156]:
+              - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara techo RITA 40 cm opc 1.JPG" [ref=e157]:
+                - link "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara techo RITA 40 cm opc 1.JPG" [ref=e158] [cursor=pointer]:
+                  - /url: /documents/88
+              - cell "imagen" [ref=e159]
+              - cell "1 / 1" [ref=e160]:
+                - generic [ref=e161]: 1 / 1
+              - cell "Re-embebir" [ref=e162]:
+                - button "Re-embebir" [ref=e163] [cursor=pointer]:
+                  - img [ref=e164]
+                  - text: Re-embebir
+            - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara techo opc 3.JPG imagen 1 / 1 Re-embebir" [ref=e166]:
+              - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara techo opc 3.JPG" [ref=e167]:
+                - link "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara techo opc 3.JPG" [ref=e168] [cursor=pointer]:
+                  - /url: /documents/87
+              - cell "imagen" [ref=e169]
+              - cell "1 / 1" [ref=e170]:
+                - generic [ref=e171]: 1 / 1
+              - cell "Re-embebir" [ref=e172]:
+                - button "Re-embebir" [ref=e173] [cursor=pointer]:
+                  - img [ref=e174]
+                  - text: Re-embebir
+      - generic [ref=e176]:
+        - generic [ref=e179]:
+          - heading "Verificación OCR" [level=1] [ref=e180]
+          - generic [ref=e181]: Revisión humana de páginas con confianza OCR inferior al umbral seleccionado.
+        - generic [ref=e182]:
+          - generic [ref=e183]: Umbral %
+          - spinbutton "Umbral %" [ref=e184]: "70"
+          - combobox [ref=e185]:
+            - option "Tipo" [selected]
+            - option "Presupuesto"
+            - option "Pedido"
+            - option "Factura"
+            - option "Plano"
+            - option "Imagen"
+            - option "Excel"
+          - combobox [ref=e186]:
+            - option "Estado" [selected]
+            - option "Revisión"
+            - option "Procesado"
+            - option "Fallido"
+          - button "Actualizar" [ref=e187] [cursor=pointer]:
+            - img [ref=e188]
+            - text: Actualizar
+      - generic [ref=e191]:
+        - generic [ref=e192]:
+          - generic [ref=e193]:
+            - heading "Cola de revisión" [level=3] [ref=e194]
+            - paragraph [ref=e195]: 7 páginas por debajo de 70%.
+          - table [ref=e199]:
+            - rowgroup [ref=e200]:
+              - row "Documento Página OCR" [ref=e201]:
+                - columnheader "Documento" [ref=e202]
+                - columnheader "Página" [ref=e203]
+                - columnheader "OCR" [ref=e204]
+            - rowgroup [ref=e205]:
+              - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59 (1).jpeg imagen 1 0% pendiente" [ref=e206] [cursor=pointer]:
+                - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59 (1).jpeg imagen" [ref=e207]:
+                  - generic [ref=e208]:
+                    - generic [ref=e209]: ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59 (1).jpeg
+                    - generic [ref=e210]: imagen
+                - cell "1" [ref=e211]
+                - cell "0% pendiente" [ref=e212]:
+                  - generic [ref=e213]:
+                    - generic [ref=e214]: 0%
+                    - generic [ref=e215]: pendiente
+              - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara Abbacus.JPG imagen 1 21% pendiente" [ref=e216] [cursor=pointer]:
+                - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara Abbacus.JPG imagen" [ref=e217]:
+                  - generic [ref=e218]:
+                    - generic [ref=e219]: ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/Lampara Abbacus.JPG
+                    - generic [ref=e220]: imagen
+                - cell "1" [ref=e221]
+                - cell "21% pendiente" [ref=e222]:
+                  - generic [ref=e223]:
+                    - generic [ref=e224]: 21%
+                    - generic [ref=e225]: pendiente
+              - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg imagen 1 40% pendiente" [ref=e226] [cursor=pointer]:
+                - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg imagen" [ref=e227]:
+                  - generic [ref=e228]:
+                    - generic [ref=e229]: ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg
+                    - generic [ref=e230]: imagen
+                - cell "1" [ref=e231]
+                - cell "40% pendiente" [ref=e232]:
+                  - generic [ref=e233]:
+                    - generic [ref=e234]: 40%
+                    - generic [ref=e235]: pendiente
+              - row "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2655_001.pdf presupuesto 1 53% pendiente" [ref=e236] [cursor=pointer]:
+                - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2655_001.pdf presupuesto" [ref=e237]:
+                  - generic [ref=e238]:
+                    - generic [ref=e239]: ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2655_001.pdf
+                    - generic [ref=e240]: presupuesto
+                - cell "1" [ref=e241]
+                - cell "53% pendiente" [ref=e242]:
+                  - generic [ref=e243]:
+                    - generic [ref=e244]: 53%
+                    - generic [ref=e245]: pendiente
+              - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejidos.jpeg imagen 1 56% pendiente" [ref=e246] [cursor=pointer]:
+                - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejidos.jpeg imagen" [ref=e247]:
+                  - generic [ref=e248]:
+                    - generic [ref=e249]: ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejidos.jpeg
+                    - generic [ref=e250]: imagen
+                - cell "1" [ref=e251]
+                - cell "56% pendiente" [ref=e252]:
+                  - generic [ref=e253]:
+                    - generic [ref=e254]: 56%
+                    - generic [ref=e255]: pendiente
+              - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejido para enrollable.jpeg imagen 1 63% pendiente" [ref=e256] [cursor=pointer]:
+                - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejido para enrollable.jpeg imagen" [ref=e257]:
+                  - generic [ref=e258]:
+                    - generic [ref=e259]: ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejido para enrollable.jpeg
+                    - generic [ref=e260]: imagen
+                - cell "1" [ref=e261]
+                - cell "63% pendiente" [ref=e262]:
+                  - generic [ref=e263]:
+                    - generic [ref=e264]: 63%
+                    - generic [ref=e265]: pendiente
+              - row "ALEJANDRA COMPANY LASERE/Presupuesto 260074/PDF/VISTA ALEGRE.pptx2.pdf presupuesto 6 68% pendiente" [ref=e266] [cursor=pointer]:
+                - cell "ALEJANDRA COMPANY LASERE/Presupuesto 260074/PDF/VISTA ALEGRE.pptx2.pdf presupuesto" [ref=e267]:
+                  - generic [ref=e268]:
+                    - generic [ref=e269]: ALEJANDRA COMPANY LASERE/Presupuesto 260074/PDF/VISTA ALEGRE.pptx2.pdf
+                    - generic [ref=e270]: presupuesto
+                - cell "6" [ref=e271]
+                - cell "68% pendiente" [ref=e272]:
+                  - generic [ref=e273]:
+                    - generic [ref=e274]: 68%
+                    - generic [ref=e275]: pendiente
+        - generic [ref=e276]:
+          - generic [ref=e277]:
+            - generic [ref=e278]:
+              - generic [ref=e279]:
+                - heading "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59 (1).jpeg" [level=3] [ref=e280]
+                - paragraph [ref=e281]: Página 1 · OCR 0% · 17/6/26, 16:18
+              - generic [ref=e282]:
+                - generic [ref=e284]:
+                  - img [ref=e285]
+                  - generic [ref=e287]: Revisión
+                - generic [ref=e288]: pendiente
+                - link "Abrir documento" [ref=e289] [cursor=pointer]:
+                  - /url: /documents/103
+                  - img [ref=e290]
+                  - text: Abrir documento
+                - button "Aprobar" [ref=e294] [cursor=pointer]:
+                  - img [ref=e295]
+                  - text: Aprobar
+                - button "Denegar" [disabled]:
+                  - img
+                  - text: Denegar
+                - button "Reprocesar OCR" [ref=e297] [cursor=pointer]:
+                  - img [ref=e298]
+                  - text: Reprocesar OCR
+                - button "Re-embebir documento" [ref=e303] [cursor=pointer]:
+                  - img [ref=e304]
+                  - text: Re-embebir documento
+            - generic [ref=e306]:
+              - generic [ref=e307]:
+                - textbox "Motivo o nota de revisión. Obligatorio al denegar." [ref=e308]
+                - generic [ref=e309]:
+                  - generic [ref=e310]: "Calidad: processed_low_quality"
+                  - generic [ref=e311]: Score 41%
+                  - generic [ref=e312]: low_ocr_confidence
+                  - generic [ref=e313]: page_without_text
+              - img "Preview OCR página 1" [ref=e315]
+          - generic [ref=e316]:
+            - generic [ref=e317]:
+              - heading "OCR extraído" [level=3] [ref=e318]
+              - paragraph [ref=e319]: Texto completo guardado para la página seleccionada.
+            - generic [ref=e321]: Sin texto OCR disponible.
+          - generic [ref=e322]:
+            - generic [ref=e323]:
+              - heading "Bloques OCR" [level=3] [ref=e324]
+              - paragraph [ref=e325]: Bloques y confianza detectados por el motor OCR.
+            - table [ref=e329]:
+              - rowgroup [ref=e330]:
+                - row "Tipo Confianza Texto" [ref=e331]:
+                  - columnheader "Tipo" [ref=e332]
+                  - columnheader "Confianza" [ref=e333]
+                  - columnheader "Texto" [ref=e334]
+              - rowgroup [ref=e335]:
+                - row "text 0%" [ref=e336]:
+                  - cell "text" [ref=e337]
+                  - cell "0%" [ref=e338]
+                  - cell [ref=e339]
+  - region "Notifications alt+T"

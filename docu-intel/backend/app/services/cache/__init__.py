@@ -23,7 +23,12 @@ class CacheService:
         if redis is None:
             raise RuntimeError("redis package is not installed")
         if self._client is None:
-            self._client = redis.from_url(settings.redis_url, decode_responses=True)
+            pool = redis.ConnectionPool.from_url(
+                settings.redis_url,
+                max_connections=20,
+                decode_responses=True,
+            )
+            self._client = redis.Redis(connection_pool=pool)
         return self._client
 
     def get(self, key: str) -> Any | None:

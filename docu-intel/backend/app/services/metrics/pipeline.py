@@ -190,3 +190,15 @@ def refresh_documents_by_status_gauge(db: Session) -> dict[str, int]:
     for status, count in counts.items():
         DOCUMENTS_BY_STATUS.labels(status=status).set(count)
     return counts
+
+
+def track_stale_jobs_reset(count: int = 1) -> None:
+    from . import _registry
+
+    _registry.STALE_JOBS_RESET.inc(count)
+
+
+def track_notification_failure(channel: str = "unknown") -> None:
+    from . import _registry
+
+    _registry.NOTIFICATION_FAILURES.labels(channel=channel).inc()

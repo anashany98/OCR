@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 
 from sqlalchemy import select
@@ -17,6 +18,9 @@ from app.services.metrics import track_search_latency
 from app.services.vector_store import PgvectorStore, _is_postgres
 
 logger = logging.getLogger(__name__)
+
+# Shared thread pool for parallel search strategies.
+_search_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="search")
 
 
 SEARCH_CACHE_TTL = 300
@@ -457,11 +461,39 @@ def search_hybrid(
         from app.services.bm25 import search_bm25
         from app.services.metrics import track_search_strategy_used
 
-        text_results = search_text(db, query, limit=max(limit, 10), filters=filters)
-        semantic_results = search_semantic(db, query, limit=max(limit, 10), filters=filters)
+        effective_limit = max(limit, 10)
+
+        # Run text, semantic, and BM25 searches in parallel for
+        # lower latency. Each strategy is independent and hits a
+        # different code path (ILIKE, pgvector, tsvector).
+        futures = {}
+        text_results: list[SearchResult] = []
+        semantic_results: list[SearchResult] = []
         bm25_results: list[SearchResult] = []
+
+        futures[_search_pool.submit(search_text, db, query, effective_limit, filters)] = "text"
+        futures[
+            _search_pool.submit(search_semantic, db, query, effective_limit, filters)
+        ] = "semantic"
         if settings.search_use_bm25:
-            bm25_results = search_bm25(db, query, limit=max(limit, 10), filters=filters)
+            futures[
+                _search_pool.submit(search_bm25, db, query, effective_limit, filters)
+            ] = "bm25"
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                result = future.result()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("%s search failed: %s", name, exc)
+                continue
+            if name == "text":
+                text_results = result
+            elif name == "semantic":
+                semantic_results = result
+            elif name == "bm25":
+                bm25_results = result
+
         track_search_strategy_used("hybrid", "executed")
 
         # Merge with a larger pool so the reranker has enough

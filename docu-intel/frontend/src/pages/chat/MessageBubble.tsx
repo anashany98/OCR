@@ -64,19 +64,25 @@ export function MessageBubble({
   const hasMoreSources = sources.length > VISIBLE_SOURCES
 
   if (isUser) {
+    const time = new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
     return (
-      <div className="flex items-start justify-end gap-3">
-        <Card className="max-w-[88%] rounded-2xl rounded-tr-sm border-[var(--accent)]/40 bg-[var(--accent-faint)]/70 px-4 py-2.5 sm:max-w-[80%]">
-          <CardContent className="p-0 text-[14px] leading-relaxed text-[var(--text-primary)]">
-            {message.content}
-          </CardContent>
-        </Card>
+      <div className="flex items-end justify-end gap-3">
+        <div className="flex flex-col items-end gap-0.5">
+          <Card className="max-w-[88%] rounded-2xl rounded-tr-sm border-[var(--accent)]/40 bg-[var(--accent-faint)]/70 px-4 py-2.5 sm:max-w-[80%]">
+            <CardContent className="p-0 text-[14px] leading-relaxed text-[var(--text-primary)]">
+              {message.content}
+            </CardContent>
+          </Card>
+          <span className="text-[10px] text-[var(--text-muted)]">{time}</span>
+        </div>
         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--ink)] text-[var(--bg-base)]">
           <UserIcon className="h-4 w-4" />
         </div>
       </div>
     )
   }
+
+  const time = new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
 
   return (
     <div className="flex items-start gap-3">
@@ -195,6 +201,7 @@ export function MessageBubble({
             </ActionButton>
           </div>
         )}
+        <span className="text-[10px] text-[var(--text-muted)]">{time}</span>
       </div>
     </div>
   )

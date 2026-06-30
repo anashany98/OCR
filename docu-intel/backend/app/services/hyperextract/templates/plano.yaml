@@ -1,0 +1,70 @@
+# Hyper-Extract — plano template
+# ---------------------------------------------------------------------------
+# For floor plans, technical drawings. LLM already has tools to extract
+# scale and rooms separately; this template is for the textual/visual
+# metadata that the LLM can pull from the OCR.
+
+document_type: plano
+description: Plano arquitectonico o tecnico — proyecto, escala, plantas, estancias.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de planos arquitectonicos y tecnicos.
+  Devuelve EXCLUSIVAMENTE JSON valido (sin texto alrededor, sin bloques
+  ```json). Si un dato no aparece, devuelve null.
+  Identifica la escala grafica si esta escrita (1:50, 1:100, etc).
+  Lista las estancias/cuartos que se mencionen o sean visibles.
+  "resumen" debe sintetizar que muestra el plano en una frase.
+
+fields:
+  - name: proyecto
+    type: string
+    description: Nombre del proyecto al que pertenece el plano.
+  - name: numero_plano
+    type: string
+    description: Numero o codigo del plano.
+  - name: revision
+    type: string
+    description: Numero de revision del plano.
+  - name: fecha
+    type: date
+    description: Fecha del plano en formato ISO 8601.
+  - name: escala_grafica
+    type: string
+    description: Escala del plano escrita (ej. "1:100", "1:50").
+  - name: tipo_plano
+    type: string
+    description: Tipo (planta, alzado, seccion, detalle, distribucion, etc.).
+  - name: plantas
+    type: array
+    description: Plantas representadas (baja, primera, segunda, cubierta...).
+    items:
+      type: string
+  - name: estancias
+    type: array
+    description: Estancias o zonas visibles o mencionadas.
+    items:
+      type: object
+      properties:
+        nombre: {type: string}
+        area_m2: {type: string, description: Superficie si aparece}
+        cotas: {type: string, description: Dimensiones si aparecen}
+  - name: resumen
+    type: string
+    description: Que muestra el plano en una frase.
+
+entities:
+  - name: plano
+    label: Plan
+  - name: estancia
+    label: Room
+  - name: proyecto
+    label: Project
+
+relations:
+  - source: plano
+    type: pertenece_a
+    target: proyecto
+  - source: estancia
+    type: parte_de
+    target: plano
