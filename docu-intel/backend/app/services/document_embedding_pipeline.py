@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -22,6 +23,13 @@ logger = logging.getLogger("app.services.document_embedding_pipeline")
 # 12) and there is no cycle: ``app.services.embeddings`` and
 # ``app.services.chunking`` are leaves that do not import
 # anything from this module or from ``document_service``.
+
+
+def _should_create_embeddings() -> bool:
+    facade = sys.modules.get("app.services.document_service")
+    if facade is not None:
+        return getattr(facade, "should_create_embeddings", should_create_embeddings)()
+    return should_create_embeddings()
 
 
 def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, bool]]:
@@ -101,7 +109,7 @@ def prepare_document_chunks(
 
     embedding_payloads = (
         embed_many_with_metadata([embedding_text for _, _, embedding_text, _, _ in chunk_payloads])
-        if chunk_payloads and should_create_embeddings()
+        if chunk_payloads and _should_create_embeddings()
         else [(None, None, False)] * len(chunk_payloads)
     )
     if len(embedding_payloads) != len(chunk_payloads):

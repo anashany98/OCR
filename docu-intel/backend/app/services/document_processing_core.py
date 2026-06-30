@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import contextlib
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +42,76 @@ _LEARNED_RULES_CACHE_TTL = 60.0
 logger = logging.getLogger(__name__)
 _learned_rules_cache: dict[str, object] = {"expires_at": 0.0, "rules": []}
 _ALLOWED_DOCUMENT_BLOCK_TYPES = {"text", "table", "figure", "header", "footer", "list"}
+
+
+class _LazyOCREngine:
+    """Defer heavy OCR model construction until a parser calls extract()."""
+
+    name = "ocr_lazy"
+
+    def __init__(self) -> None:
+        self._engine = None
+        self._current_language = None
+
+    def _load(self):
+        if self._engine is None:
+            engine_class = _get_effective_ocr_engine_class()
+            engine = engine_class()
+            self._engine = engine() if isinstance(engine, type) else engine
+            if self._current_language is not None:
+                with contextlib.suppress(Exception):
+                    self._engine.current_language = self._current_language
+        return self._engine
+
+    def extract(self, image_path: Path):
+        return self._load().extract(image_path)
+
+    def __getattr__(self, attr: str):
+        return getattr(self._load(), attr)
+
+    def __setattr__(self, attr: str, value) -> None:
+        if attr == "current_language":
+            object.__setattr__(self, "_current_language", value)
+            engine = self.__dict__.get("_engine")
+            if engine is not None:
+                with contextlib.suppress(Exception):
+                    engine.current_language = value
+            return
+        object.__setattr__(self, attr, value)
+
+
+def _get_effective_ocr_engine_class():
+    facade = sys.modules.get("app.services.document_service")
+    if facade is not None:
+        return getattr(facade, "get_ocr_engine_class", get_ocr_engine_class)
+    return get_ocr_engine_class
+
+
+def _facade_attr(name: str, fallback):
+    facade = sys.modules.get("app.services.document_service")
+    if facade is not None:
+        return getattr(facade, name, fallback)
+    return fallback
+
+
+def _get_effective_parse_document():
+    return _facade_attr("parse_document", parse_document)
+
+
+def _get_effective_persist_business_extraction():
+    return _facade_attr("persist_business_extraction", persist_business_extraction)
+
+
+def _get_effective_persist_plan_extraction():
+    return _facade_attr("persist_plan_extraction", persist_plan_extraction)
+
+
+def _get_effective_evaluate_document_quality():
+    return _facade_attr("evaluate_document_quality", evaluate_document_quality)
+
+
+def _get_effective_update_document_quality():
+    return _facade_attr("update_document_quality", update_document_quality)
 
 
 def _normalise_document_block_type(block_type: str | None) -> str:
@@ -367,7 +439,7 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         raise ValueError("Document has no stored file")
     stored_path = settings.files_dir / document.stored_filename
     page_image_dir = settings.files_dir / document.file_hash[:2] / f"{document.file_hash}_pages"
-    ocr_engine = get_ocr_engine_class()()
+    ocr_engine = _LazyOCREngine()
     # Extract folder hint from source_path for content routing.
     # e.g. "/app/data/input/presupuestos/245745/foto.jpg" -> "presupuestos"
     folder_hint = None
@@ -376,7 +448,12 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         input_dir_parts = Path(settings.input_dir).parts
         if len(parts) > len(input_dir_parts):
             folder_hint = parts[len(input_dir_parts)]
-    extracted = parse_document(stored_path, page_image_dir, ocr_engine, folder_hint=folder_hint)
+    extracted = _get_effective_parse_document()(
+        stored_path,
+        page_image_dir,
+        ocr_engine,
+        folder_hint=folder_hint,
+    )
     for extracted_page in extracted.pages:
         extracted_page.text = sanitize_text_for_database(extracted_page.text)
         for extracted_block in extracted_page.blocks:
@@ -584,12 +661,17 @@ def _apply_classification_and_extraction(
     document.confidence = classification.confidence
     document.page_count = page_count
 
-    business_result = persist_business_extraction(db, document, text, pages=pages)
+    business_result = _get_effective_persist_business_extraction()(
+        db,
+        document,
+        text,
+        pages=pages,
+    )
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
-    plan_result = persist_plan_extraction(db, document, text)
+    plan_result = _get_effective_persist_plan_extraction()(db, document, text)
 
-    quality = evaluate_document_quality(
+    quality = _get_effective_evaluate_document_quality()(
         db,
         document,
         text=text,
@@ -598,7 +680,7 @@ def _apply_classification_and_extraction(
         business_needs_review=business_result.needs_review,
         plan_needs_review=plan_result.needs_review,
     )
-    update_document_quality(db, document, quality)
+    _get_effective_update_document_quality()(db, document, quality)
 
     # Hyper-Extract (optional structured-extraction layer). Runs
     # *after* the OCR and the deterministic business extraction so we

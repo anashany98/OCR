@@ -109,20 +109,22 @@ def _register_sqlite_schema_overrides() -> None:
     Idempotent and import-safe: called once at conftest import time. If
     pgvector is not installed (e.g. the CPU-only local venv), the
     ``Vector`` fallback in ``app.models.document`` already renders as JSON
-    and there is nothing for us to override, so we bail out early.
+    and there is nothing for us to override for VECTOR.
     """
-    try:
-        from pgvector.sqlalchemy import VECTOR
-    except Exception:  # pragma: no cover - pgvector always installed in this repo
-        return
-
     from sqlalchemy import Computed
+    from sqlalchemy.dialects.sqlite.base import SQLiteDDLCompiler
     from sqlalchemy.ext.compiler import compiles
 
-    # 1. VECTOR(N) -> BLOB on SQLite. Postgres keeps using the native type.
-    @compiles(VECTOR, "sqlite")
-    def _compile_vector_sqlite(type_, compiler, **kw):  # noqa: ANN001
-        return "BLOB"
+    try:
+        from pgvector.sqlalchemy import VECTOR
+    except Exception:  # pragma: no cover - local env may use the JSON fallback
+        VECTOR = None
+
+    if VECTOR is not None:
+        # 1. VECTOR(N) -> BLOB on SQLite. Postgres keeps using the native type.
+        @compiles(VECTOR, "sqlite")
+        def _compile_vector_sqlite(type_, compiler, **kw):  # noqa: ANN001
+            return "BLOB"
 
     # 2. Generated columns (``Computed``) -> drop the generation clause on
     #    SQLite. The only ``Computed`` column in the schema is
@@ -137,6 +139,16 @@ def _register_sqlite_schema_overrides() -> None:
     @compiles(Computed, "sqlite")
     def _drop_computed_sqlite(expr, compiler, **kw):  # noqa: ANN001
         return ""
+
+    # SQLAlchemy renders Computed through SQLiteDDLCompiler.visit_computed_column
+    # in CREATE TABLE DDL, bypassing the generic @compiles hook above.
+    if not getattr(SQLiteDDLCompiler.visit_computed_column, "_docuintel_patched", False):
+
+        def _visit_computed_column_sqlite(self, generated, **kw):  # noqa: ANN001
+            return ""
+
+        _visit_computed_column_sqlite._docuintel_patched = True  # type: ignore[attr-defined]
+        SQLiteDDLCompiler.visit_computed_column = _visit_computed_column_sqlite
 
 
 @pytest.fixture
