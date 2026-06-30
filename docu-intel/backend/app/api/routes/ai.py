@@ -224,7 +224,7 @@ async def ask_stream(
         confidence = grounded.confidence
         use_fallback = True
 
-        if context_items and settings.ai_base_url and settings.ai_model:
+        if settings.ai_base_url and settings.ai_model:
             try:
                 async for chunk in _stream_local_ai_answer(question, context_items, warnings):
                     if isinstance(chunk, StreamOutcome):

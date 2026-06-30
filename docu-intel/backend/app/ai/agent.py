@@ -362,7 +362,7 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    if context_items:
+    if settings.ai_base_url and settings.ai_model:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
