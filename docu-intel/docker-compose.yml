@@ -165,7 +165,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-0@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-0@%h
     restart: unless-stopped
     depends_on:
       postgres:
@@ -209,7 +209,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-1@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-1@%h
     restart: unless-stopped
     depends_on:
       postgres:

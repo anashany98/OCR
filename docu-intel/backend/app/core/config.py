@@ -239,6 +239,13 @@ class Settings(BaseSettings):
     pp_structure_device: str = "gpu"
     pp_structure_lang: str = "es"
     paddle_lang: str = "es"
+    # Number of scanned pages to OCR in parallel within a single document.
+    # Each worker thread opens its own fitz handle and runs the cascade
+    # independently; the OCR C extensions release the GIL so this achieves
+    # real parallelism. Bounded to keep VRAM in check (each concurrent
+    # Paddle/PP-Structure instance holds model weights). Set to 1 to
+    # disable parallelism (serial behaviour, same as before).
+    ocr_page_parallelism: int = 2
 
     # Default to the OpenAI-compatible path so a fresh deployment that
     # forgets to set EMBEDDING_PROVIDER still tries to use a real model.

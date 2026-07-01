@@ -30,6 +30,7 @@ share of pages that escalated to Paddle / PP-Structure.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -157,11 +158,15 @@ class CascadingOCREngine:
         # O2 — per-page language context. The parser sets this before
         # each ``extract`` call; the cascade reads it to look up the
         # per-language thresholds. ``None`` means "no detection, use
-        # the legacy document-wide constants". The cascade is *not*
-        # thread-safe w.r.t. this attribute; the workers that build
-        # a fresh cascade per process rely on the parser always
-        # setting it before calling.
-        self.current_language: str | None = None
+        # the legacy document-wide constants".
+        #
+        # Page-parallel processing: the language is stored thread-locally
+        # so two pages being OCR'd in parallel each carry their own
+        # language without racing on a shared attribute. The existing
+        # ``engine.current_language = "es"`` assignment API keeps working
+        # through the property setter.
+        self._tls = threading.local()
+        self._tls.language: str | None = None
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
         # value.
@@ -170,6 +175,14 @@ class CascadingOCREngine:
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def current_language(self) -> str | None:
+        return getattr(self._tls, "language", None)
+
+    @current_language.setter
+    def current_language(self, value: str | None) -> None:
+        self._tls.language = value
 
     def extract(self, image_path: Path) -> OCRResult:
         # O1: clear the preprocessing cache so each page starts fresh.

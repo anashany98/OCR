@@ -477,6 +477,11 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             page_status=_page_status_from_confidence(extracted_page.ocr_confidence),
             ocr_confidence=extracted_page.ocr_confidence,
             ocr_engine=extracted_page.ocr_engine,
+            # Per-page OCR timing. The PDF parser attaches this to the
+            # ExtractedPage (set in _process_scanned_page); the image
+            # parser and reprocess path also set it. Defaults to None
+            # for paths that don't measure (e.g. digital pymupdf pages).
+            processing_time_ms=getattr(extracted_page, "processing_time_ms", None),
             # Stamp the configured engine version so the periodic
             # re-OCR sweep can find pages produced with a stale
             # version. Pages with no engine (e.g. pymupdf-native text)

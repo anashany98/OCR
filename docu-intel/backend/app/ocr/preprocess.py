@@ -2,22 +2,55 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import threading
 from pathlib import Path
 
 logger = logging.getLogger("app.ocr.preprocess")
 UPSCALE_MIN_SIDE = 1500
 
-# Cache for preprocessed images within a single cascade run.
-# Key: (resolved_input_path, engine_name) → preprocessed output path.
-# The cascading OCR clears this before each page so it never grows unbounded.
-_preprocess_cache: dict[tuple[str, str], Path] = {}
+# Thread-local storage for the per-page preprocessing caches.
+#
+# The cascading OCR processes one page per call to ``extract``. When pages
+# are processed in parallel (a ThreadPoolExecutor in the PDF parser), each
+# thread runs its own cascade and must have its own cache — otherwise two
+# pages racing on the same dict would corrupt each other's entries or clear
+# them mid-cascade. A thread-local makes each page self-contained without
+# any locking overhead.
+#
+# Each cache lives only for the duration of a single page; the cascade
+# clears it at the start of ``extract`` via :func:`clear_preprocess_cache`.
+_local = threading.local()
+
+
+def _preprocess_cache() -> dict[tuple[str, str], Path]:
+    cache = getattr(_local, "preprocess", None)
+    if cache is None:
+        cache = {}
+        _local.preprocess = cache
+    return cache
+
+
+def _osd_cache() -> dict[str, int]:
+    cache = getattr(_local, "osd", None)
+    if cache is None:
+        cache = {}
+        _local.osd = cache
+    return cache
 
 
 def clear_preprocess_cache() -> None:
     """Drop cached preprocessed images and OSD results. Called by the cascading
-    OCR before each new page so the dicts never leak across pages."""
-    _preprocess_cache.clear()
-    _osd_cache.clear()
+    OCR before each new page so the dicts never leak across pages.
+
+    Thread-local: only clears the calling thread's cache, so parallel pages
+    do not interfere with each other.
+    """
+    cache = getattr(_local, "preprocess", None)
+    if cache is not None:
+        cache.clear()
+    osd = getattr(_local, "osd", None)
+    if osd is not None:
+        osd.clear()
 
 
 def _track_preprocess_path(path_type: str) -> None:
@@ -130,7 +163,8 @@ def preprocess_adaptive(path: Path, *, engine: str) -> Path:
     PP-Structure all need it.
     """
     cache_key = (str(path.resolve()), engine)
-    cached = _preprocess_cache.get(cache_key)
+    cache = _preprocess_cache()
+    cached = cache.get(cache_key)
     if cached is not None and cached.exists():
         return cached
 
@@ -150,7 +184,7 @@ def preprocess_adaptive(path: Path, *, engine: str) -> Path:
             engine_path = preprocess_for_manuscript(path)
             _track_preprocess_path("manuscript")
 
-        _preprocess_cache[cache_key] = engine_path
+        cache[cache_key] = engine_path
         return engine_path
     except Exception as exc:
         logger.warning("Adaptive preprocess failed for %s: %s", path, exc)
@@ -181,15 +215,13 @@ def _correct_orientation(image):
     return image
 
 
-_osd_cache: dict[str, int] = {}
-
-
 def _detect_osd_rotation(image) -> int:
     """Detect rotation needed using Tesseract OSD.
 
     Results are cached by a cheap fingerprint of the image so the OSD
     call (which launches the Tesseract binary, ~100-300 ms) is not
-    repeated for the same page across the cascade tiers.
+    repeated for the same page across the cascade tiers. The cache is
+    thread-local so parallel pages do not interfere.
 
     The fingerprint avoids ``image.tobytes()``, which would serialise
     the whole array (tens of MB for a 4K page) before discarding most of
@@ -210,8 +242,9 @@ def _detect_osd_rotation(image) -> int:
     )
     fingerprint.update(sample.tobytes())
     cache_key = fingerprint.hexdigest()
-    if cache_key in _osd_cache:
-        return _osd_cache[cache_key]
+    cache = _osd_cache()
+    if cache_key in cache:
+        return cache[cache_key]
 
     try:
         import pytesseract
@@ -221,7 +254,7 @@ def _detect_osd_rotation(image) -> int:
         osd = pytesseract.image_to_osd(Image.fromarray(rgb))
     except Exception as exc:
         logger.debug("Tesseract OSD orientation detection failed: %s", exc)
-        _osd_cache[cache_key] = 0
+        cache[cache_key] = 0
         return 0
 
     for line in str(osd).splitlines():
@@ -229,13 +262,13 @@ def _detect_osd_rotation(image) -> int:
             try:
                 value = int(line.split(":", 1)[1].strip())
             except ValueError:
-                _osd_cache[cache_key] = 0
+                cache[cache_key] = 0
                 return 0
             result = value if value in {90, 180, 270} else 0
-            _osd_cache[cache_key] = result
+            cache[cache_key] = result
             return result
 
-    _osd_cache[cache_key] = 0
+    cache[cache_key] = 0
     return 0
 
 
