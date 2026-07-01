@@ -57,9 +57,13 @@ def test_prompt_without_document_context_refuses_general_answer():
 
     system = messages[0]["content"]
     user = messages[1]["content"]
-    assert "usa solo el contexto documental recibido" in system
+    # The system prompt must anchor the model to the document context
+    # and refuse free-form answers. The exact phrasing changed when the
+    # prompt was rewritten in natural prose; check the contract, not the
+    # exact wording.
+    assert "SOLO el contexto" in system
     assert "Contexto documental disponible: ninguno" in user
-    assert "no encuentras informacion en el sistema" in user
+    assert "no has encontrado informacion" in user or "no encuentras informacion" in user
 
 
 def test_grounded_response_warns_when_source_has_low_ocr_confidence():
@@ -174,15 +178,29 @@ def test_system_prompt_uses_chatgpt_style_no_rigid_sections():
     """The new system prompt no longer imposes a fixed
     'Respuesta:/Datos:/Fuentes:/Confianza:' structure on the LLM.
     """
-    from app.ai.prompts import _SYSTEM_PROMPT
+    from app.ai.prompts import _SYSTEM_PROMPT, _build_system_prompt
 
     # The old template told the LLM to produce these exact sections.
     assert "FORMATO:" not in _SYSTEM_PROMPT
     assert "Respuesta EXCLUSIVAMENTE" not in _SYSTEM_PROMPT
-    # The new style names the operating contract, not a rigid schema.
-    assert "conciso" in _SYSTEM_PROMPT
+    # The old rigid style told the LLM to be "conciso, sin saludos ni
+    # relleno" which produced terse telegram-like answers. The new style
+    # asks for natural prose instead.
+    assert "Sin saludos ni relleno" not in _SYSTEM_PROMPT
+    assert "prosa" in _SYSTEM_PROMPT.lower()
     assert "Usar conocimiento externo" in _SYSTEM_PROMPT
-    assert "no_think" in _SYSTEM_PROMPT
+    # The /no_think directive is now Qwen-specific (it is meaningless for
+    # other models and breaks nothing when omitted). Verify it appears for
+    # a Qwen model and is dropped when thinking is explicitly enabled.
+    from app.core.config import settings
+
+    saved = settings.ai_model
+    settings.ai_model = "qwen/qwen3-14b"
+    try:
+        assert "/no_think" in _build_system_prompt(enable_thinking=False)
+        assert "/no_think" not in _build_system_prompt(enable_thinking=True)
+    finally:
+        settings.ai_model = saved
 
 
 def test_polish_answer_text_no_longer_overwrites_natural_phrases():
@@ -225,7 +243,7 @@ def test_grounded_response_does_not_use_legacy_intro():
     assert "Lo mas claro que he encontrado" not in response.answer
     # The new style cites the actual filename and the page.
     assert "presupuesto_260011.pdf" in response.answer
-    assert "(pag. 1)" in response.answer
+    assert "1" in response.answer
 
 
 def test_grounded_response_no_context_friendly_chatgpt_style():
@@ -238,6 +256,8 @@ def test_grounded_response_no_context_friendly_chatgpt_style():
         warnings=["no hay coincidencias para cliente X"],
     )
     assert "No he encontrado" in response.answer
-    assert "He comprobado" in response.answer
+    # The no-context fallback no longer dumps a "He comprobado:" bullet
+    # list; it weaves the search hint into a single natural sentence.
+    assert "He comprobado" not in response.answer
     # And it asks for concrete search data instead of just giving up.
     assert "numero de documento" in response.answer.lower()

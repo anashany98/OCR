@@ -171,11 +171,7 @@ def collect_context(
                 _structured_context_item(
                     tool_name=tool.name,
                     payload=payload,
-                    label=(
-                        f"Total presupuesto {payload.get('budget_number')}"
-                        if payload.get("found")
-                        else "Total presupuesto (no encontrado)"
-                    ),
+                    label=f"Total presupuesto {payload.get('budget_number') or 'indicado'}",
                 )
             )
             if not payload.get("found"):
@@ -209,11 +205,7 @@ def collect_context(
                 _structured_context_item(
                     tool_name=tool.name,
                     payload=payload,
-                    label=(
-                        f"Facturado presupuesto {payload.get('budget_number')}"
-                        if payload.get("found")
-                        else "Facturado presupuesto (no encontrado)"
-                    ),
+                    label=f"Facturado presupuesto {payload.get('budget_number') or 'indicado'}",
                 )
             )
         elif tool.name == "list_recent_accepted_budgets":
@@ -237,11 +229,7 @@ def collect_context(
                 _structured_context_item(
                     tool_name=tool.name,
                     payload=payload,
-                    label=(
-                        f"Origen factura {payload.get('invoice_number')}"
-                        if payload.get("found")
-                        else "Origen factura (no encontrada)"
-                    ),
+                    label=f"Origen factura {payload.get('invoice_number') or 'indicada'}",
                 )
             )
         elif tool.name == "find_delivery_note_in_scope":
@@ -825,13 +813,11 @@ def build_grounded_response(
         item for item in context_items if item.title != "Memoria de la conversacion"
     ]
     if not context_items:
-        details = ""
-        if warnings:
-            details = "\n\nHe comprobado:\n" + "\n".join(f"- {w}" for w in warnings[:4])
+        # Natural-language "nothing found": 1-2 sentences, no bullet list.
         lead = (
-            "No he encontrado informacion en el sistema para responder a eso."
-            f"{details}\n\n"
-            "Prueba con un numero de documento, proveedor, cliente, fecha o nombre de archivo."
+            "No he encontrado informacion en el sistema para responder a eso. "
+            "Si me das un numero de documento, un proveedor, un cliente, una fecha "
+            "o el nombre de un archivo, lo busco mas a fondo."
         )
         return GroundedResponse(
             answer=lead,
@@ -850,13 +836,27 @@ def build_grounded_response(
     warnings = _warnings_with_low_ocr_notice(context_items, warnings)
     confidence = _average_confidence(context_items)
     top = context_items[0]
-    file_label = top.document_filename or top.title or "el documento mas relevante"
-    page_label = f" (pag. {top.page_number})" if top.page_number else ""
+    # Structured-tool items carry an internal ``[Estructurado]`` prefix in
+    # their title (used by the LLM detection in agent.has_answer_context).
+    # Strip it for the user-facing label so the chat never exposes that
+    # jargon; prefer the human-readable ``summary`` over raw JSON.
+    raw_title = top.title or ""
+    clean_title = (
+        raw_title[len("[Estructurado] ") :].strip()
+        if raw_title.startswith("[Estructurado] ")
+        else raw_title
+    )
+    file_label = top.document_filename or clean_title or "el documento mas relevante"
+    page_label = f", pagina {top.page_number}" if top.page_number else ""
 
-    raw_text = (top.summary or top.excerpt or "").strip()
-    # If the excerpt is already a Markdown table (e.g. from an
-    # ``aggregate_business`` tool result), render it directly without
-    # blockquote wrapping - tables look broken inside ``>``.
+    # For structured-tool items the ``excerpt`` is raw JSON (meant for the
+    # LLM). The user should see the human-readable ``summary`` instead.
+    if raw_title.startswith("[Estructurado] "):
+        raw_text = (top.summary or top.excerpt or "").strip()
+    else:
+        raw_text = (top.summary or top.excerpt or "").strip()
+    # Markdown tables (e.g. from ``aggregate_business`` tool results) are
+    # rendered as-is: they read well as a table and would break inside prose.
     starts_table = raw_text.lstrip().startswith("|")
     aggregate_header_then_table = (
         raw_text.lstrip().startswith("Agregado:") and "\n|" in raw_text
@@ -865,27 +865,42 @@ def build_grounded_response(
     quote = clip_excerpt(raw_text, 600)
 
     if is_table:
-        lead = f"Datos encontrados en **{file_label}**:\n\n{quote}\n\n"
+        # Keep the table, but lead with a natural sentence, not a bare label.
+        lead = f"Segun **{file_label}**{page_label}, esto es lo que aparece:\n\n{quote}"
     elif quote:
-        lead = f"En **{file_label}**{page_label} aparece esto:\n\n> {quote}\n\n"
+        # Quote the relevant excerpt as part of the answer, inline, not as a
+        # blockquote. A single short line is woven into the sentence; a long
+        # one goes on its own paragraph after a natural lead-in.
+        lead = (
+            f"En **{file_label}**{page_label} aparece este texto: {quote}"
+            if len(quote) <= 160
+            else f"En **{file_label}**{page_label} aparece lo siguiente:\n\n{quote}"
+        )
     else:
         lead = (
             f"He encontrado **{file_label}**{page_label}, pero el texto recuperado "
-            "no basta para responder con seguridad.\n\n"
+            "no basta para responder con seguridad."
         )
 
-    # Cite 2-3 additional sources naturally, so the user can jump to them.
+    # Mention 1-2 additional sources only when they add value, woven into a
+    # sentence rather than as a "Tambien he revisado:" list.
     extras: list[str] = []
-    for item in context_items[1:4]:
-        label = item.document_filename or item.title or "doc"
+    for item in context_items[1:3]:
+        label = item.document_filename or item.title or "otro documento"
         if item.page_number:
-            label += f" (pag. {item.page_number})"
-        extras.append(label)
+            label += f", pagina {item.page_number}"
+        extras.append(f"**{label}**")
     if extras:
-        lead += "Tambien he revisado: " + ", ".join(f"**{x}**" for x in extras) + ".\n\n"
+        if len(extras) == 1:
+            lead += f" Tambien aparece en {extras[0]}."
+        else:
+            lead += " Coincide ademas con lo que aparece en " + " y ".join(extras) + "."
 
+    # Low-OCR / duplicate warnings are folded into the answer naturally as a
+    # closing remark, not as an "Avisos:" block.
     if warnings:
-        lead += "Avisos: " + "; ".join(warnings[:4]) + "\n"
+        warning_phrase = "; ".join(warnings[:2]).strip().rstrip(".")
+        lead += f" Ojo: {warning_phrase}."
 
     return GroundedResponse(
         answer=lead,
@@ -1186,14 +1201,72 @@ def _structured_context_item(
     )
 
 
+def _structured_not_found_text(tool_name: str, payload: dict) -> str:
+    """Natural-language "not found" sentence for a structured tool that
+    reported ``found: false``.
+
+    Replaces the old ``"Datos no encontrados para {tool_name}."`` leak,
+    which exposed internal snake_case tool names to the user. Each tool
+    gets a Spanish sentence phrased so it can be quoted directly in the
+    chat answer.
+    """
+    if tool_name == "get_invoice_origin_order":
+        num = payload.get("invoice_number")
+        scope = f" {num}" if num else ""
+        return (
+            f"No he encontrado el pedido de origen de la factura{scope} en la base "
+            f"estructurada. Puede que la factura no este vinculada a ningun pedido."
+        )
+    if tool_name == "get_budget_total":
+        num = payload.get("budget_number") or payload.get("budget_id")
+        scope = f" {num}" if num else ""
+        return (
+            f"No he encontrado el importe total del presupuesto{scope} en la base "
+            f"estructurada."
+        )
+    if tool_name == "get_invoiced_amount_for_budget":
+        num = payload.get("budget_number") or payload.get("budget_id")
+        scope = f" {num}" if num else ""
+        return (
+            f"No he encontrado facturacion asociada al presupuesto{scope} en la base "
+            f"estructurada."
+        )
+    if tool_name == "get_budget_lines":
+        num = payload.get("budget_number") or payload.get("budget_id")
+        scope = f" {num}" if num else ""
+        return f"No he encontrado las lineas del presupuesto{scope}."
+    if tool_name == "list_recent_accepted_budgets":
+        return "No he encontrado presupuestos aceptados recientes."
+    if tool_name == "find_delivery_note_in_scope":
+        return (
+            "No he encontrado un albaran de entrega dentro del ambito de busqueda actual."
+        )
+    if tool_name == "find_shipping_cost_in_scope":
+        return (
+            "No he encontrado gastos de envio asociados dentro del ambito de busqueda actual."
+        )
+    # Generic fallback: never leak the raw tool name. Describe the entity
+    # by the keys present (minus internal flags) so the sentence is useful.
+    public = [
+        f"{k}={v}"
+        for k, v in payload.items()
+        if k not in {"found", "confidence", "document_id"} and v not in (None, "", [])
+    ]
+    detail = f" ({', '.join(public[:3])})" if public else ""
+    return f"No he encontrado ese dato en la base estructurada{detail}."
+
+
 def _render_structured_payload(tool_name: str, payload: dict) -> str:
     """Convert a structured-tool JSON payload into human-readable text.
 
-    This is used in the grounded fallback so users never see raw JSON.
-    The LLM still receives the raw JSON in the excerpt field.
+    This is used in the grounded fallback so users never see raw JSON
+    or internal tool names. The LLM still receives the raw JSON in the
+    excerpt field. When a tool reports ``found: false`` the text is a
+    natural-language "not found" sentence per entity, phrased in
+    Spanish so it can be quoted directly to the user.
     """
     if not payload.get("found", True):
-        return f" Datos no encontrados para {tool_name}."
+        return _structured_not_found_text(tool_name, payload)
 
     parts: list[str] = []
 

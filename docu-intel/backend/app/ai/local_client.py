@@ -35,6 +35,26 @@ class LocalAICircuitOpen(RuntimeError):
     pass
 
 
+class ContextSizeExceededError(RuntimeError):
+    """The prompt exceeded the model's loaded context_length.
+
+    Raised when the LLM server returns a 400 with a "context size" /
+    "context length" message. This is a *caller* error (prompt too big),
+    NOT a server fault: it must NOT open the circuit breaker, and the
+    agent should retry with a smaller context budget rather than fail.
+    """
+
+    pass
+
+
+def _looks_like_context_size_error(status_code: int, body: bytes) -> bool:
+    """True when a 4xx response means 'prompt too long for the model'."""
+    if status_code != 400:
+        return False
+    text = body.decode(errors="replace").lower()
+    return "context size" in text or "context length" in text or "maximum context" in text
+
+
 @dataclass
 class _CircuitState:
     failures: int = 0
@@ -205,6 +225,17 @@ class LocalOpenAICompatibleClient:
                                 response.status_code,
                                 body[:2000].decode(errors="replace"),
                             )
+                            # A prompt-too-big error is a caller fault, not a
+                            # server fault: do NOT record it as a circuit
+                            # failure (which would otherwise cascade-fail
+                            # every subsequent call for ~30s). Propagate a
+                            # dedicated error the agent can retry with less
+                            # context.
+                            if _looks_like_context_size_error(response.status_code, body):
+                                raise ContextSizeExceededError(
+                                    f"Prompt exceeded the model's loaded context_length "
+                                    f"for {self.model}"
+                                )
                             response.raise_for_status()
                         self._record_success()
                         async for line in response.aiter_lines():
@@ -272,6 +303,17 @@ class LocalOpenAICompatibleClient:
                             response.status_code,
                             response.text[:2000],
                         )
+                        # Prompt-too-big is a caller fault, not a server fault:
+                        # do NOT trip the circuit breaker (which would cascade-
+                        # fail every call for ~30s). Raise a dedicated error so
+                        # the agent can retry with a smaller context budget.
+                        if _looks_like_context_size_error(
+                            response.status_code, response.content
+                        ):
+                            raise ContextSizeExceededError(
+                                f"Prompt exceeded the model's loaded context_length "
+                                f"for {self.model}"
+                            )
                     response.raise_for_status()
                     self._record_success()
                     return response.json()

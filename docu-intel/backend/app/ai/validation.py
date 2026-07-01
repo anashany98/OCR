@@ -89,27 +89,42 @@ _SPANISH_HINTS = (
 def response_looks_spanish(answer: str) -> bool:
     """True when ``answer`` is plausibly in Spanish.
 
-    Layered detection:
+    Layered detection, tuned to avoid rejecting valid natural answers
+    that happen to be short or list-like (which carry little language
+    signal). The previous version demanded >= 2 function-word hits and
+    a hard langdetect threshold, which dropped terse Spanish answers
+    and fell back to the rigid template. This version errs on the side
+    of accepting, since the LLM is already told to answer in Spanish.
+
     1. If the text contains a Spanish diacritic, accept immediately.
     2. If langdetect says it's Spanish with prob >= 0.55, accept.
-    3. If langdetect says it's NOT Spanish with prob >= 0.75, reject.
-    4. Fallback: count common Spanish function words; accept
-       when there are at least 2 hits.
+    3. Reject ONLY when langdetect is confident (prob >= 0.85) it is
+       a language CLEARLY distinct from Spanish. Short Spanish answers
+       are routinely misclassified as Catalan / Portuguese / Galician
+       / Italian (mutually intelligible Ibero-Romance languages); those
+       are treated as "possibly Spanish" and not used to reject alone.
+    4. Fallback: count common Spanish function words; accept when
+       there is at least 1 hit (was 2).
     """
     if not answer or not answer.strip():
         return False
     if any(ch in answer for ch in "ñáéíóúü¿¡"):
         return True
+    # Ibero-Romance languages langdetect confuses with short Spanish
+    # inputs. They share most function words and vocabulary, so a high
+    # confidence verdict on one of them is not reliable evidence that
+    # the answer is NOT Spanish.
+    _IBERO_ROMANCE_CLOSE = {"ca", "pt", "gl", "it", "la", "es"}
     detected = _detect_language(answer)
     if detected:
         language, probability = detected
         if language == "es" and probability >= 0.55:
             return True
-        if language != "es" and probability >= 0.75:
+        if language != "es" and probability >= 0.85 and language not in _IBERO_ROMANCE_CLOSE:
             return False
     lowered = " " + answer.lower() + " "
     hint_count = sum(1 for hint in _SPANISH_HINTS if hint in lowered)
-    return hint_count >= 2
+    return hint_count >= 1
 
 
 def question_is_spanish(question: str) -> bool:
@@ -348,6 +363,17 @@ def _filename_is_known(ref: str, known: set[str]) -> bool:
             for token in re.split(r"[\s/_\-]+", name_stem)
         ):
             return True
+    # Looser fallback: the LLM often cites a document by a meaningful
+    # fragment of its filename (e.g. "F-2026-044.pdf" when the stored
+    # name is "Factura_F-2026-044_cliente.pdf"). Accept when the stem
+    # of the cited ref appears as a substring of a known filename's
+    # stem, as long as that substring is long enough (>= 4 chars) to
+    # be meaningful and not a common generic token.
+    if len(stem) >= 4:
+        for name in known:
+            name_stem = name.rsplit(".", 1)[0] if "." in name else name
+            if stem in name_stem:
+                return True
     return False
 
 

@@ -233,24 +233,57 @@ async def ask_stream(
 
         if answer_context_available and settings.ai_base_url and settings.ai_model:
             try:
+                # Real token-by-token streaming: each plain-text piece the
+                # generator yields is emitted immediately as its own ``delta``
+                # event (the frontend appends them: ``assembled += ev.text``).
+                # Previously we buffered everything and emitted a single delta
+                # at the end, so the user saw no live typing.
                 async for chunk in _stream_local_ai_answer(question, context_items, warnings):
                     if isinstance(chunk, StreamOutcome):
+                        # Terminal outcome. ``chunk.text`` is the final
+                        # accumulated text. When the generator streamed
+                        # token-by-token, ``full_text`` already equals it
+                        # and this is a no-op. When the first attempt came
+                        # back EMPTY (Qwen3 + /no_think failure mode) the
+                        # generator retries internally and returns the
+                        # retry text here, which we must emit as a delta so
+                        # the user actually sees it (nothing was streamed
+                        # live during the silent retry).
                         if chunk.ok:
-                            full_text = chunk.text
+                            if chunk.text and chunk.text != full_text:
+                                full_text = chunk.text
+                                yield (
+                                    b"event: delta\ndata: "
+                                    + json.dumps({"text": full_text}).encode()
+                                    + b"\n\n"
+                                )
                             model_name = settings.ai_model
                             use_fallback = False
-                            yield (
-                                b"event: delta\ndata: "
-                                + json.dumps({"text": full_text}).encode()
-                                + b"\n\n"
-                            )
                         break
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "thinking":
+                        # Forward reasoning trace so the frontend can show
+                        # its "razonando..." state.
+                        yield (
+                            b"event: thinking\ndata: "
+                            + json.dumps({"text": chunk[1]}).encode()
+                            + b"\n\n"
+                        )
                         continue
+                    # Plain-text incremental token.
+                    full_text += chunk
+                    yield (
+                        b"event: delta\ndata: "
+                        + json.dumps({"text": chunk}).encode()
+                        + b"\n\n"
+                    )
             except Exception as exc:
                 logger.exception("Streaming failed: %s", exc)
 
         if use_fallback:
+            # The stream was rejected by validation, failed, or never ran.
+            # ``end.answer`` is authoritative for the frontend, so set it to
+            # the grounded fallback; the UI will replace any partially
+            # streamed text with this final answer.
             full_text = grounded.answer
             model_name = grounded.model_name
 

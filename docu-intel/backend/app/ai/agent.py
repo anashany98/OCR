@@ -49,7 +49,7 @@ from dataclasses import dataclass
 import httpx
 from sqlalchemy.orm import Session
 
-from app.ai.local_client import LocalOpenAICompatibleClient
+from app.ai.local_client import ContextSizeExceededError, LocalOpenAICompatibleClient
 from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
 from app.services.ai_cache import cache_answer_async
@@ -503,19 +503,22 @@ async def _try_local_ai_answer(
     context_text = build_context_text(context_items)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
     messages = build_ai_messages(question, context_text, warning_text)
+    client = LocalOpenAICompatibleClient()
     try:
-        client = LocalOpenAICompatibleClient()
-        # The non-stream ``chat()`` already enforces a per-request
-        # timeout (``settings.ai_request_timeout_seconds``,
-        # default 120s) and ``ai_max_retries`` (default 2)
-        # with exponential backoff + jitter inside
-        # ``LocalOpenAICompatibleClient._post_chat_completion``.
-        # Wrapping it in another ``asyncio.wait_for`` would cap
-        # the total wall-clock at 60s and **cut the retry
-        # chain short** (audit A6), so the call goes through
-        # unchanged and the inner timeout / retry handles the
-        # slow / flaky cases instead.
         answer = await client.chat(messages, temperature=0.0)
+    except ContextSizeExceededError:
+        # Prompt too big for the loaded context_length (caller fault — the
+        # client avoided the circuit breaker). Shrink the budget and retry ONCE.
+        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
+        logger.warning("Prompt exceeded context_length — retry budget=%d: %s", halved, question[:100])
+        messages = build_ai_messages(
+            question, build_context_text(context_items, max_tokens_override=halved), warning_text
+        )
+        try:
+            answer = await client.chat(messages, temperature=0.0)
+        except Exception as exc:
+            logger.warning("Context-shrunk retry failed: %s", exc)
+            answer = ""
     except TimeoutError:
         logger.warning("AI answer timed out for question: %s", question[:100])
         return None
@@ -527,6 +530,28 @@ async def _try_local_ai_answer(
             "Unexpected error in AI answer generation: %s - question: %s", exc, question[:100]
         )
         return None
+
+    # Qwen3 + LM Studio known failure: with ``/no_think`` the model can
+    # return an EMPTY answer (0 tokens, finish_reason='stop'). Retry once
+    # with thinking enabled before falling back to the grounded answer.
+    # Mirrors the streaming path's retry in ``_stream_local_ai_answer``.
+    if not answer and "qwen" in (settings.ai_model or "").lower():
+        logger.warning(
+            "Qwen3 returned an empty answer (0 tokens) with /no_think — "
+            "retrying once with thinking enabled for question: %s",
+            question[:100],
+        )
+        retry_messages = build_ai_messages(
+            question, context_text, warning_text, enable_thinking=True
+        )
+        try:
+            answer = await client.chat(retry_messages, temperature=0.0)
+        except Exception as exc:
+            logger.warning("Qwen3 thinking-enabled retry failed: %s", exc)
+            answer = ""
+
+    if not answer:
+        return fallback
     if question_is_spanish(question) and not response_looks_spanish(answer):
         logger.warning("AI response not in Spanish for Spanish question: %s", answer[:200])
         return fallback
@@ -581,27 +606,16 @@ async def _stream_local_ai_answer(
     context_items: list[ContextItem],
     warnings: list[str],
 ) -> AsyncIterator[str | tuple[str, str] | StreamOutcome]:
-    """Stream chunks of the LLM's answer as they arrive. Yields
-    plain text deltas while the LLM is producing, optional
-    ``("thinking", chunk)`` tuples for the model's internal
-    reasoning (Qwen3 / reasoning models), and a final
-    :class:`StreamOutcome` telling the caller whether to use the
-    streamed text or fall back to the grounded answer.
+    """Stream chunks of the LLM's answer. Yields plain-text deltas, optional
+    ``("thinking", chunk)`` tuples (reasoning models), and a final
+    :class:`StreamOutcome` (``ok=False`` → SSE endpoint swaps in the
+    grounded fallback).
 
-    The previous version returned ``ok=False`` silently when the
-    model emitted only ``reasoning_content`` (Qwen3 thinking-mode
-    burning the entire ``max_tokens`` budget on internal reasoning
-    and never producing a visible answer). That left the user with
-    the grounded fallback and no clue why. This version:
-
-    1. Uses a larger ``max_tokens`` ceiling (4000) to leave room for
-       a real answer after the thinking trace.
-    2. Logs a clear "stream returned only reasoning" warning when
-       it happens, so the cause is observable in the backend logs.
-    3. Still returns ``ok=False`` so the SSE endpoint can fall back
-       to the grounded response - the LLM really did fail to answer
-       - but operators can now see the root cause instead of a
-       generic "no visible content" warning.
+    Resilience retries (all buffered, since on retry nothing has been
+    streamed yet): (a) ``ContextSizeExceededError`` → halve the context
+    budget and retry once; (b) Qwen3 empty answer with ``/no_think`` →
+    retry once with thinking enabled. Both log a clear warning so the
+    operator can see the root cause.
     """
     if not settings.ai_base_url or not settings.ai_model:
         return
@@ -616,8 +630,8 @@ async def _stream_local_ai_answer(
     accumulated: list[str] = []
     thinking_accumulated: list[str] = []
     aborted = False
+    client = LocalOpenAICompatibleClient()
     try:
-        client = LocalOpenAICompatibleClient()
         # 4000 tokens (was 2000) so Qwen3 thinking-mode can fit both its
         # reasoning trace and a real answer in the same completion.
         async for piece in client.chat_stream(
@@ -631,6 +645,22 @@ async def _stream_local_ai_answer(
                 continue
             accumulated.append(piece)  # type: ignore[arg-type]
             yield piece  # type: ignore[misc]
+    except ContextSizeExceededError:
+        # Prompt too big for the loaded context_length (caller fault — the
+        # client avoided the circuit breaker). Shrink the budget and retry
+        # ONCE, buffered (nothing was streamed yet).
+        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
+        logger.warning("Stream exceeded context_length — retry budget=%d: %s", halved, question[:100])
+        shrunk = build_ai_messages(
+            question, build_context_text(context_items, max_tokens_override=halved), warning_text
+        )
+        try:
+            async for piece in client.chat_stream(shrunk, temperature=0.0, max_tokens=4000):
+                if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
+                    continue
+                accumulated.append(piece)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Context-shrunk stream retry failed: %s", exc)
     except TimeoutError:
         logger.warning("AI stream timed out for question: %s", question[:100])
         aborted = True
@@ -642,6 +672,22 @@ async def _stream_local_ai_answer(
         aborted = True
 
     full = "".join(accumulated)
+    # Qwen3 + LM Studio: with ``/no_think`` it can return EMPTY (0 tokens).
+    # Retry ONCE with thinking enabled, buffered (nothing streamed yet);
+    # only in the pure-empty case (no text AND no reasoning).
+    if not full and not thinking_accumulated and not aborted and "qwen" in (settings.ai_model or "").lower():
+        logger.warning("Qwen3 empty with /no_think — retry thinking on: %s", question[:100])
+        retry_messages = build_ai_messages(question, context_text, warning_text, enable_thinking=True)
+        retry_parts: list[str] = []
+        try:
+            async for piece in client.chat_stream(retry_messages, temperature=0.0, max_tokens=4000):
+                if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
+                    continue
+                retry_parts.append(piece)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Qwen3 thinking-enabled retry stream failed: %s", exc)
+        full = "".join(retry_parts) or full
+
     if aborted or not full:
         if not full and thinking_accumulated:
             # Distinguish the "model reasoned but said nothing visible"

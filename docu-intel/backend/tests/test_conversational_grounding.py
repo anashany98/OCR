@@ -8,7 +8,6 @@ helper unit tests that pin the contract of every new module:
 * :mod:`app.ai.scope_guard` — scope pinning + global intent.
 * :mod:`app.ai.intent_router` — heuristic classifier.
 * :mod:`app.ai.confidence_gates` — gate evaluation + safe fallback.
-* :mod:`app.ai.answer_format` — five-section grounded layout.
 * :mod:`app.ai.context` — friendly fallback (CTX-7).
 
 DB-touching tests use an in-memory SQLite session (same pattern as
@@ -661,54 +660,6 @@ def test_confidence_gate_duplicate_status_blocks():
         },
     )
     assert "documento_duplicado" in ev.gates_open
-
-
-# ---------------------------------------------------------------------------
-# CTX-9: Standard answer format
-# ---------------------------------------------------------------------------
-
-
-def test_standard_answer_format_has_five_sections():
-    from app.ai.answer_format import format_grounded_answer
-    from app.ai.context import ContextItem
-
-    items = [
-        ContextItem(
-            title="Presupuesto 260009",
-            summary="Total 1234,56 EUR",
-            document_id=1,
-            document_filename="pres.pdf",
-            confidence=0.55,
-            ocr_confidence=0.55,
-            excerpt="Importe total 1.234,56 EUR",
-        )
-    ]
-    out = format_grounded_answer(
-        context_items=items,
-        warnings=["OCR al 55%"],
-        direct="No puedo confirmarlo con seguridad.",
-        missing=["No he encontrado un total claro."],
-        active_context=None,
-    )
-    assert "No puedo confirmarlo" in out
-    assert "Evidencia" in out
-    assert "Documentos usados" in out
-    assert "Advertencias" in out
-    assert "Que falta" in out or "Qué falta" in out
-
-
-def test_standard_answer_format_mentions_scope_when_no_results():
-    from app.ai.active_context import ActiveContext
-    from app.ai.answer_format import format_grounded_answer
-
-    out = format_grounded_answer(
-        context_items=[],
-        warnings=[],
-        direct=None,
-        missing=[],
-        active_context=ActiveContext(current_budget_number="260009"),
-    )
-    assert "260009" in out
 
 
 # ---------------------------------------------------------------------------
