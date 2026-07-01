@@ -30,7 +30,6 @@ from functools import cached_property
 from pathlib import Path
 
 from app.ocr.base import OCRBlock, OCRResult
-from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 
 # Skip the HuggingFace connectivity probe that adds ~2 s to first init.
@@ -71,7 +70,9 @@ class PPStructureEngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
-        ocr_path = preprocess_for_paddle(image_path)
+        # Use preprocess_adaptive to benefit from caching across tiers
+        from app.ocr.preprocess import preprocess_adaptive
+        ocr_path = preprocess_adaptive(image_path, engine=self.name)
         try:
             results = list(self._pipeline.predict(str(ocr_path)))
         except Exception:

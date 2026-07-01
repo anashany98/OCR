@@ -79,7 +79,16 @@ def parse_image(
             f"max_image_megapixels exceeded: {megapixels:.2f} > {settings.max_image_megapixels}"
         )
 
-    result = ocr_engine.extract(path)
+    # Skip OCR for photos/interior design images — no text expected
+    import logging
+    _log = logging.getLogger("app.parsers.image")
+    _log.info("parse_image content_route=%s path=%s", content_route, path.name)
+    if content_route in ("interior_design", "fabric_description"):
+        _log.info("OCR SKIPPED: photo/interior_design detected for %s", path.name)
+        from app.ocr.base import OCRResult
+        result = OCRResult(text="", confidence=0.0, blocks=[], engine="photo_skip")
+    else:
+        result = ocr_engine.extract(path)
     actual_engine = result.engine or ocr_engine.name
     blocks = [
         ExtractedBlock(

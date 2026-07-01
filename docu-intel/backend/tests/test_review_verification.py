@@ -438,10 +438,20 @@ def test_parse_spanish_date_invalid_returns_none():
     assert parse_spanish_date("not a date") is None
 
 
-def test_quality_uses_shared_date_pattern():
-    from app.services import quality
+def test_quality_uses_shared_date_helper():
+    """quality module must use the shared date helper from
+    app.services.dates so textual Spanish dates (e.g. "15 de junio de
+    2026") are recognised — not just numeric DD/MM/YYYY. The old
+    ``_DATE_PATTERN`` attribute was removed when quality switched to
+    ``find_dates_in_text``."""
+    from app.services import quality, dates
 
-    assert quality._DATE_PATTERN is DATE_PATTERN
+    # quality must delegate to the shared helper, not its own regex.
+    assert quality.find_dates_in_text is dates.find_dates_in_text
+
+    # A textual Spanish date must be recognised so an invoice that uses
+    # this format is no longer flagged as ``invoice_date_missing``.
+    assert find_dates_in_text("Fecha: 15 de junio de 2026")
 
 
 def test_business_extraction_textual_date_round_trip():

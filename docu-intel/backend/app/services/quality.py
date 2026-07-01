@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Budget, Document, DocumentPage, Order, Plan
-from app.services.dates import DATE_PATTERN as _DATE_PATTERN
+from app.services.dates import find_dates_in_text
 
 LOW_OCR_THRESHOLD = settings.low_ocr_confidence_threshold
 MIN_TEXT_CHARS = 40
@@ -86,7 +86,7 @@ def evaluate_document_quality(
             flags.add("supplier_missing")
     elif document.document_type == "factura":
         # Only flag missing date if the text has no recognisable date at all.
-        if not _DATE_PATTERN.search(clean_text):
+        if not find_dates_in_text(clean_text):
             flags.add("invoice_date_missing")
     elif document.document_type == "plano":
         plan = db.scalar(select(Plan).where(Plan.document_id == document.id).limit(1))
@@ -200,6 +200,10 @@ def _quality_score(db: Session, document: Document, flags: set[str]) -> float:
     ocr_values = [page.ocr_confidence for page in pages if page.ocr_confidence is not None]
     base = document.confidence if document.confidence is not None else 0.80
     if ocr_values:
-        base = (base + sum(ocr_values) / len(ocr_values)) / 2
+        # Use minimum OCR confidence instead of average.
+        # A single bad page should penalize the whole document,
+        # not be diluted by many good pages.
+        min_ocr = min(ocr_values)
+        base = (base + min_ocr) / 2
     penalty = min(0.55, len(flags) * settings.quality_flag_penalty)
     return round(max(0.0, min(1.0, base - penalty)), 4)

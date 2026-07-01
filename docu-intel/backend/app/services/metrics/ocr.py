@@ -23,6 +23,8 @@ to audit when changing the cascade.
 
 from __future__ import annotations
 
+from prometheus_client import Counter
+
 from ._registry import (
     OCR_CASCADE_FALLBACK,
     OCR_DPI_ESCALATION,
@@ -186,4 +188,22 @@ def track_ocr_language_threshold_used(language: str, threshold_type: str) -> Non
     OCR_LANGUAGE_THRESHOLD_USED.labels(
         language=_normalise_language(language),
         threshold_type=(threshold_type or "unknown").lower().strip() or "unknown",
+    ).inc()
+
+
+# Preprocessing metrics
+PREPROCESS_PATH_CHOSEN = Counter(
+    "ocr_preprocess_path_chosen_total",
+    "Preprocessing path chosen (scan, manuscript, photo_skip)",
+    ["path_type"],
+)
+
+
+def track_preprocess_path_chosen(path_type: str) -> None:
+    """Record which preprocessing path was chosen for an image.
+
+    ``path_type`` is one of ``"scan"``, ``"manuscript"``, ``"photo_skip"``.
+    """
+    PREPROCESS_PATH_CHOSEN.labels(
+        path_type=(path_type or "unknown").lower().strip() or "unknown",
     ).inc()

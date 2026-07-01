@@ -173,9 +173,27 @@ class CascadingOCREngine:
 
     def extract(self, image_path: Path) -> OCRResult:
         # O1: clear the preprocessing cache so each page starts fresh.
-        # Within a single page the cache avoids redundant denoising
-        # when Tesseract → Paddle → PP-Structure all hit the same image.
         clear_preprocess_cache()
+
+        # Photo detection: skip all OCR tiers for product/scene photos
+        # where Tesseract would only produce garbage characters. We reuse
+        # the SAME classifier (clip_classifier) as the content router so
+        # the "is this a photo?" verdict is consistent end-to-end, and
+        # require the same high confidence (0.75) the router uses to
+        # route a file away from OCR.
+        try:
+            from app.parsers.clip_classifier import classify_image
+
+            clip_result = classify_image(image_path)
+            if (
+                clip_result["category"] == "product_photo"
+                and clip_result["confidence"] > 0.75
+            ):
+                logger.info("OCR skip: photo detected, no text expected: %s", image_path.name)
+                return OCRResult(text="", confidence=0.0, blocks=[], engine="photo_skip")
+        except Exception:
+            logger.debug("photo classification skipped: %s", image_path.name)
+
         start = time.perf_counter()
         primary_result = self.primary.extract(image_path)
         track_ocr_duration(time.perf_counter() - start)
@@ -258,9 +276,10 @@ class CascadingOCREngine:
             return None
         track_ocr_duration(time.perf_counter() - start)
 
-        # PP-Structure is also judged on text length; a run that
-        # returned nothing useful should never replace a Tier 2 result.
-        if not tier3_result.text or len(tier3_result.text.strip()) < self.min_chars:
+        # PP-Structure is judged on quality, not text length.
+        # A result with short but clean text and high confidence should
+        # not be discarded just because it's below min_chars.
+        if not tier3_result.text or _quality(tier3_result) <= QUALITY_EPSILON:
             return None
 
         best_prior = (

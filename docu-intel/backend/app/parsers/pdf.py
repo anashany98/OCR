@@ -254,7 +254,7 @@ def _run_coro_sync(coro: Awaitable[_T]) -> _T:
 # pages that are readable at 400 DPI but below the quality bar.
 _DPI_LADDER: list[int] = [300, 400, 600]
 _DPI_MIN_TEXT_LENGTH = 30
-_DPI_MIN_CONFIDENCE = 0.40
+_DPI_MIN_CONFIDENCE = 0.55  # Aligned with low_ocr_confidence_threshold=0.60
 
 
 def _ocr_with_dpi_ladder(

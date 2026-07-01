@@ -14,9 +14,19 @@ _preprocess_cache: dict[tuple[str, str], Path] = {}
 
 
 def clear_preprocess_cache() -> None:
-    """Drop cached preprocessed images. Called by the cascading OCR before
-    each new page so the dict never leaks across pages."""
+    """Drop cached preprocessed images and OSD results. Called by the cascading
+    OCR before each new page so the dicts never leak across pages."""
     _preprocess_cache.clear()
+    _osd_cache.clear()
+
+
+def _track_preprocess_path(path_type: str) -> None:
+    """Track which preprocessing path was chosen."""
+    try:
+        from app.services.metrics import track_preprocess_path_chosen
+        track_preprocess_path_chosen(path_type)
+    except Exception:
+        pass  # Don't fail on metric errors
 
 
 def preprocess_for_tesseract(path: Path) -> Path:
@@ -135,8 +145,10 @@ def preprocess_adaptive(path: Path, *, engine: str) -> Path:
 
         if is_scan:
             engine_path = preprocess_for_tesseract(path) if engine == "tesseract" else preprocess_for_paddle(path)
+            _track_preprocess_path("scan")
         else:
             engine_path = preprocess_for_manuscript(path)
+            _track_preprocess_path("manuscript")
 
         _preprocess_cache[cache_key] = engine_path
         return engine_path
@@ -169,9 +181,39 @@ def _correct_orientation(image):
     return image
 
 
+_osd_cache: dict[str, int] = {}
+
+
 def _detect_osd_rotation(image) -> int:
+    """Detect rotation needed using Tesseract OSD.
+
+    Results are cached by a cheap fingerprint of the image so the OSD
+    call (which launches the Tesseract binary, ~100-300 ms) is not
+    repeated for the same page across the cascade tiers.
+
+    The fingerprint avoids ``image.tobytes()``, which would serialise
+    the whole array (tens of MB for a 4K page) before discarding most of
+    it. Instead we hash ``shape`` plus a small fixed-size sample of
+    contiguous pixels — enough to distinguish pages, cheap to compute.
+    """
+    import hashlib
+
+    import cv2
+
+    # Build a cheap, low-allocation fingerprint: shape + up to ~8 KB of
+    # pixel data. A numpy slice is a view (no copy); ``tobytes()`` then
+    # only serialises the sampled region.
+    flat = image.reshape(-1)
+    sample = flat[:2048]
+    fingerprint = hashlib.md5(
+        b"%dx%d|" % (image.shape[0], image.shape[1])
+    )
+    fingerprint.update(sample.tobytes())
+    cache_key = fingerprint.hexdigest()
+    if cache_key in _osd_cache:
+        return _osd_cache[cache_key]
+
     try:
-        import cv2
         import pytesseract
         from PIL import Image
 
@@ -179,6 +221,7 @@ def _detect_osd_rotation(image) -> int:
         osd = pytesseract.image_to_osd(Image.fromarray(rgb))
     except Exception as exc:
         logger.debug("Tesseract OSD orientation detection failed: %s", exc)
+        _osd_cache[cache_key] = 0
         return 0
 
     for line in str(osd).splitlines():
@@ -186,8 +229,13 @@ def _detect_osd_rotation(image) -> int:
             try:
                 value = int(line.split(":", 1)[1].strip())
             except ValueError:
+                _osd_cache[cache_key] = 0
                 return 0
-            return value if value in {90, 180, 270} else 0
+            result = value if value in {90, 180, 270} else 0
+            _osd_cache[cache_key] = result
+            return result
+
+    _osd_cache[cache_key] = 0
     return 0
 
 

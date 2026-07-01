@@ -181,6 +181,24 @@ def _plan_filename_match(filename: str) -> bool:
     return any(re.search(rf"\b{keyword}\b", filename) for keyword in _PLAN_FILENAME_KEYWORDS)
 
 
+def _image_is_too_small(path: Path, *, min_side: int = 64) -> bool:
+    """Return True if the image's shorter side is below ``min_side``.
+
+    Used to avoid the "no text sample → must be a photo" assumption on
+    degenerate inputs (thumbnails, 1×1 pixels) where the empty sample is
+    just a consequence of the tiny size, not evidence of a photo. Reads
+    only the header via PIL so it's cheap; any error returns False
+    (fail to the existing photo assumption, preserving prior behaviour).
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(path) as img:
+            return min(img.size) < min_side
+    except Exception:
+        return False
+
+
 def classify_content(
     path: Path,
     extracted_text: str | None = None,
@@ -268,7 +286,48 @@ def classify_content(
                 f"image_text_{plan_reason}" if is_plan else "folder_and_filename_plan",
             )
 
+        # CLIP fallback: use visual classification before text-based heuristics.
+        # Confidence bar is high (0.75): classifying an image as a product
+        # photo routes it away from OCR entirely, so we only trust a strong
+        # visual signal. A weak verdict falls through to the text-based
+        # heuristics below.
+        if ext in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
+            try:
+                from app.parsers.clip_classifier import classify_image
+                clip_result = classify_image(path)
+                if clip_result["confidence"] > 0.75:
+                    category = clip_result["category"]
+                    if category == "document":
+                        return ContentClassification(
+                            ContentRoute.STANDARD_OCR,
+                            clip_result["confidence"],
+                            f"clip_{category}",
+                        )
+                    elif category == "product_photo":
+                        return ContentClassification(
+                            ContentRoute.INTERIOR_DESIGN,
+                            clip_result["confidence"],
+                            f"clip_{category}",
+                            suggested_ocr_domain="interior_design",
+                        )
+                    elif category == "plan":
+                        return ContentClassification(
+                            ContentRoute.PLAN_OCR,
+                            clip_result["confidence"],
+                            f"clip_{category}",
+                        )
+            except Exception as exc:
+                logger.debug("CLIP classification failed: %s", exc)
+
         if not text_sample or len(text_sample.strip()) < 20:
+            # An image with no quick text sample is *assumed* to be a photo
+            # — but only if it is large enough for that assumption to be
+            # meaningful. Tiny / degenerate images (thumbnails, 1×1 pixels)
+            # produce an empty sample simply because there's nothing to
+            # sniff, not because they're photos; route them to OCR instead
+            # so a valid small document isn't silently skipped.
+            if _image_is_too_small(path):
+                return ContentClassification(ContentRoute.STANDARD_OCR, 0.5, "tiny_image_default_ocr")
             return ContentClassification(
                 ContentRoute.INTERIOR_DESIGN,
                 0.5,
