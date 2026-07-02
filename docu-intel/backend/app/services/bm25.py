@@ -113,6 +113,8 @@ def _row_to_search_result(
         ocr_confidence=None,
         source_type="bm25",
         source_path=source_path,
+        # Carry the full chunk text for the cross-encoder reranker.
+        full_text=chunk_text or None,
     )
 
 
@@ -166,12 +168,12 @@ def search_bm25(
             d.status,
             c.page_number,
             c.id AS chunk_id,
-            ts_rank_cd(c.tsv, plainto_tsquery('simple', :query), :norm) AS rank,
+            ts_rank_cd(c.tsv, plainto_tsquery('spanish', :query), :norm) AS rank,
             c.chunk_text
         FROM document_chunks c
         JOIN documents d ON d.id = c.document_id
         WHERE d.deleted_at IS NULL
-          AND c.tsv @@ plainto_tsquery('simple', :query)
+          AND c.tsv @@ plainto_tsquery('spanish', :query)
           {filter_clauses}
         ORDER BY rank DESC
         LIMIT :limit

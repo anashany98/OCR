@@ -185,7 +185,7 @@ async def rerank(
     if url is None:
         return candidates[:top_k]
 
-    documents = [c.excerpt for c in candidates]
+    documents = [getattr(c, "full_text", None) or c.excerpt for c in candidates]
 
     try:
         async with httpx.AsyncClient(timeout=RERANKER_TIMEOUT) as client:
@@ -257,7 +257,7 @@ def _rerank_local_sync(
     """Synchronous in-process rerank. Runs in a worker thread from the
     async ``rerank()`` to avoid blocking the event loop on GPU work."""
     reranker = get_local_reranker()
-    passages = [c.excerpt for c in candidates]
+    passages = [getattr(c, "full_text", None) or c.excerpt for c in candidates]
     scores = reranker.score(query, passages)
     order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
     reranked: list[SearchResult] = []

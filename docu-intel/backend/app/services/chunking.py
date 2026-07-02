@@ -47,6 +47,14 @@ _MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 # optional whitespace). We do not parse the table itself; we just
 # look for the *contiguous run* of such lines.
 _TABLE_LINE_RE = re.compile(r"^\s*\|.*\|\s*$")
+# Space-aligned "table" line: a line that has 2+ columns separated by
+# runs of 2+ spaces, the common output of OCR on scanned
+# invoices/budgets that don't arrive as markdown. We require at least
+# two such separators AND a minimum of one alphanumeric token in each
+# column so prose like "Esto es una frase" (single space) is not
+# mistaken for a table. Tab-separated columns are treated the same way
+# (OCR sometimes emits tabs between detected columns).
+_ALIGNED_TABLE_COL_RE = re.compile(r"\S(?:.*?\S)?(?:\s{2,}|\t+)\S")
 # A bare "label:" line that often appears in invoices / planos as a
 # soft heading ("Cliente:", "Importe total:", "Escala:").
 _LABEL_HEADING_RE = re.compile(r"^([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ 0-9]{2,40}):\s*$")
@@ -107,19 +115,69 @@ def _metadata_value(value: str) -> str:
     return " ".join(str(value).replace("|", " ").split())
 
 
+def _looks_like_aligned_table_line(line: str) -> bool:
+    """Heuristic: does this line look like a row of a space-aligned
+    table (as opposed to prose)? We require at least one multi-space
+    (or tab) column separator that splits the line into two non-empty
+    tokens, AND reject obvious prose by requiring the line to be
+    relatively short (table rows from OCR are rarely full sentences).
+    """
+    stripped = line.rstrip()
+    # Too long → almost certainly prose, not a table row.
+    if len(stripped) > 120:
+        return False
+    if not stripped:
+        return False
+    return bool(_ALIGNED_TABLE_COL_RE.search(stripped))
+
+
 def _split_table_block(lines: list[str]) -> list[list[str]]:
     """Partition a list of lines into runs of consecutive table lines
-    (``| ... |``) separated by runs of plain lines. Used so we can
-    attach the right ``chunk_type`` to each run.
+    separated by runs of plain lines. Used so we can attach the right
+    ``chunk_type`` to each run.
+
+    Two table flavours are detected:
+
+    * Markdown tables (``| ... |``) — always treated as tables.
+    * Space-aligned tables (columns separated by 2+ spaces / tabs),
+      the typical output of OCR on scanned invoices. A single aligned
+      line is not enough to be a table; we require at least 2
+      consecutive aligned lines so prose is not misclassified.
     """
     if not lines:
         return []
+    # First pass: mark each line with a candidate "is_table" flag.
+    # Markdown lines are tables on their own; aligned lines are only
+    # tables when they appear in a contiguous block of >=2.
+    flags: list[bool] = []
+    aligned_runs: list[tuple[int, int]] = []  # (start, end) index ranges
+    i = 0
+    n = len(lines)
+    while i < n:
+        if _TABLE_LINE_RE.match(lines[i]):
+            flags.append(True)
+            i += 1
+            continue
+        if _looks_like_aligned_table_line(lines[i]):
+            j = i
+            while j < n and _looks_like_aligned_table_line(lines[j]):
+                j += 1
+            # Only treat as table if the run is at least 2 lines.
+            aligned_runs.append((i, j, j - i >= 2))
+            for k in range(i, j):
+                flags.append(j - i >= 2)
+            i = j
+        else:
+            flags.append(False)
+            i += 1
+
+    # Second pass: group consecutive lines that share the same flag.
     runs: list[list[str]] = []
     current: list[str] = []
     current_is_table = False
-    for line in lines:
-        is_table = bool(_TABLE_LINE_RE.match(line))
-        if is_table != current_is_table and current:
+    for idx, line in enumerate(lines):
+        is_table = flags[idx]
+        if idx > 0 and is_table != current_is_table and current:
             runs.append(current)
             current = []
         current.append(line)

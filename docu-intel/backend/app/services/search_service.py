@@ -48,6 +48,12 @@ class SearchResult:
     # "presupuestos/245745/foo.pdf"). Helps the IA agent disambiguate
     # documents that share a name but live in different folders.
     source_path: str | None = None
+    # Full chunk text, available on the semantic/BM25 paths where we
+    # have the untruncated ``chunk_text``. The cross-encoder reranker
+    # reads this in preference to ``excerpt`` (which is capped at ~320
+    # chars) so long passages are scored on their actual content, not
+    # a window around the query. Not serialized (transient, per-query).
+    full_text: str | None = None
 
 
 def _search_result_to_dict(result: SearchResult) -> dict:
@@ -359,9 +365,50 @@ def _run_semantic_search(
                 ocr_confidence=None,
                 source_type="semantic_chunk",
                 source_path=document.source_path,
+                # Carry the full chunk text so the cross-encoder reranker
+                # scores the whole passage, not a ~320-char excerpt.
+                full_text=chunk.chunk_text,
             )
         )
     return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+
+
+def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -> list[SearchResult]:
+    """Apply the cross-encoder reranker and the MMR diversity pass to a
+    result list, mirroring what :func:`search_hybrid` does.
+
+    Used by :func:`search_semantic` so the semantic-only path also
+    benefits from the reranker (the hybrid path already applies it).
+    Both passes are no-ops when the candidate pool is small enough that
+    they would not change the top-``limit``.
+    """
+    # Cross-encoder rerank: needs a larger pool than the final limit to
+    # actually re-order anything meaningful.
+    if len(results) > limit:
+        try:
+            from app.services.reranker import rerank_sync
+
+            results = rerank_sync(query.strip(), results, top_k=limit)
+        except Exception as exc:  # noqa: BLE001 - reranker is best-effort
+            logger.debug("semantic rerank failed (best-effort): %s", exc)
+
+    # MMR diversity pass, same policy as the hybrid path.
+    if settings.search_use_mmr and len(results) > limit:
+        try:
+            from app.services.mmr import mmr_rerank
+
+            pool_size = settings.search_mmr_pool_size or max(limit * 3, 15)
+            mmr_pool = results[:pool_size]
+            mmr_outcome = mmr_rerank(
+                mmr_pool,
+                top_k=limit,
+                lambda_param=settings.search_mmr_lambda,
+            )
+            results = mmr_outcome.results
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("semantic MMR failed (best-effort): %s", exc)
+
+    return results
 
 
 def search_semantic(
@@ -384,15 +431,19 @@ def search_semantic(
         # terms*. Falls back to the raw query on any error.
         query_embedding = _hyde_embed(normalized)
 
+        # Over-fetch so the reranker has a candidate pool to reorder;
+        # the rerank + trim to ``limit`` happens at the end.
+        rerank_pool_size = max(limit * 3, 15)
+
         if _use_multi_query_strategy():
             # Multi-query: embed the original + reformulations, run a
             # search per embedding, then merge with RRF. Each per-pass
-            # ``limit`` is the same as the final ``limit`` so the fusion
-            # has enough candidates. Failures on individual
-            # reformulations (e.g. provider outage) degrade gracefully
-            # to a single-query search.
+            # ``limit`` is the pool size so the fusion has enough
+            # candidates. Failures on individual reformulations
+            # (e.g. provider outage) degrade gracefully to a
+            # single-query search.
             reformulations = _multi_query_reformulations(normalized)
-            per_pass_limit = max(limit, 10)
+            per_pass_limit = max(rerank_pool_size, 10)
             per_pass: list[list[SearchResult]] = []
             for reformulation in reformulations:
                 try:
@@ -419,25 +470,24 @@ def search_semantic(
                     db,
                     query_embedding=query_embedding,
                     normalized_query=normalized,
-                    limit=limit,
+                    limit=rerank_pool_size,
                     filters=filters,
                 )
             else:
-                results_sorted = _merge_reformulation_results(per_pass, limit=limit)
-            cache_service.set(
-                cache_key,
-                [_search_result_to_dict(r) for r in results_sorted],
-                SEARCH_CACHE_TTL,
+                results_sorted = _merge_reformulation_results(per_pass, limit=rerank_pool_size)
+        else:
+            results_sorted = _run_semantic_search(
+                db,
+                query_embedding=query_embedding,
+                normalized_query=normalized,
+                limit=rerank_pool_size,
+                filters=filters,
             )
-            return results_sorted
 
-        results_sorted = _run_semantic_search(
-            db,
-            query_embedding=query_embedding,
-            normalized_query=normalized,
-            limit=limit,
-            filters=filters,
-        )
+        # Apply cross-encoder rerank + MMR, same as the hybrid path, so
+        # the semantic-only results benefit from the reranker too.
+        results_sorted = _apply_rerank_and_mmr(normalized, results_sorted, limit)
+
         cache_service.set(
             cache_key,
             [_search_result_to_dict(r) for r in results_sorted],
