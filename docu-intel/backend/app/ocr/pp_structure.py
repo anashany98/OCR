@@ -32,6 +32,11 @@ from pathlib import Path
 from app.ocr.base import OCRBlock, OCRResult
 from app.services.metrics import track_ocr_duration
 
+# B7: skip the HuggingFace connectivity probe that adds ~2 s to first
+# init. Set at import time so it runs exactly once per process, not once
+# per PPStructureEngine instance.
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
 
 class PPStructureEngine:
     """PaddleX ``layout_parsing`` pipeline (PP-Structure renamed in 3.x).
@@ -52,14 +57,24 @@ class PPStructureEngine:
                 "'NotImplementedError: ConvertPirAttribute2RuntimeAttribute'. "
                 "Use PaddleOCR (Tier 2) on CPU workers."
             )
-        # Skip the HuggingFace connectivity probe that adds ~2 s to first init.
-        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+        # B7: skip the HuggingFace connectivity probe that adds ~2 s to
+        # first init. Applied at module level (below) so it runs exactly
+        # once per process instead of per instance.
         self.device = device
         self.lang = lang
+        # O6/M3: when the lazy init fails or times out the engine is
+        # marked unavailable so subsequent calls raise a clear error
+        # instead of re-entering the broken state (same convention as
+        # PaddleOCR).
+        self._init_failed: bool = False
 
     @cached_property
     def _pipeline(self):
         """Lazily build the PaddleX pipeline on first use (thread-safe)."""
+        if getattr(self, "_init_failed", False):
+            raise RuntimeError(
+                "PP-Structure engine is unavailable: previous init attempt failed"
+            )
         from paddlex import create_pipeline
 
         return create_pipeline(

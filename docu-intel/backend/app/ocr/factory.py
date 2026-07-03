@@ -214,20 +214,27 @@ def _build_cascading_engine() -> BaseOCREngine:
 
 def _warm_ocr_engine(engine: BaseOCREngine) -> None:
     """Warm up the engine with a timeout. If init hangs, log ERROR and
-    mark the engine as unavailable rather than killing the worker."""
+    mark the engine as unavailable rather than killing the worker.
+
+    M3: on timeout the previously-stuck sub-engines are flagged with
+    ``_init_failed = True`` (the same convention PaddleOCR uses) so any
+    later ``extract()`` raises a clear RuntimeError instead of silently
+    re-entering the hanging init. Sub-engines that don't expose
+    ``_init_failed`` are best-effort: the warning is logged but the flag
+    cannot be set, matching the prior behaviour."""
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
     warmup_timeout = getattr(settings, "ocr_engine_warmup_timeout", 180)
 
+    sub_engines = []
+    for attr in ("fallback", "pp_structure", "vlm_ocr", "tier4_fallback"):
+        sub = getattr(engine, attr, None)
+        if sub is not None:
+            sub_engines.append(sub)
+
     def _do_warm():
-        if hasattr(engine, "fallback"):
-            _warm_ocr_engine(engine.fallback)
-        if hasattr(engine, "pp_structure") and engine.pp_structure is not None:
-            _warm_ocr_engine(engine.pp_structure)
-        if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:
-            _warm_ocr_engine(engine.vlm_ocr)
-        if hasattr(engine, "tier4_fallback") and engine.tier4_fallback is not None:
-            _warm_ocr_engine(engine.tier4_fallback)
+        for sub in sub_engines:
+            _warm_ocr_engine(sub)
         if hasattr(engine, "_engine"):
             _ = engine._engine  # noqa: B018 - intentional touch to warm any lazy init
         if hasattr(engine, "_pipeline"):
@@ -240,11 +247,34 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
     except FuturesTimeout:
         logger.error(
             "OCR engine warmup timed out after %ds. "
-            "Engine may be unavailable on first call.",
+            "Marking affected engine(s) as unavailable.",
             warmup_timeout,
         )
+        _mark_warmup_failed(engine)
     except Exception:
         logger.error("OCR engine warmup failed (best-effort)", exc_info=True)
+        _mark_warmup_failed(engine)
+
+
+def _mark_warmup_failed(engine: BaseOCREngine) -> None:
+    """Flag an engine and its sub-engines as unavailable after a failed
+    warmup. Sets ``_init_failed = True`` where supported; other engines
+    are left untouched (best-effort)."""
+    candidates = [engine]
+    for attr in ("fallback", "pp_structure", "vlm_ocr", "tier4_fallback"):
+        sub = getattr(engine, attr, None)
+        if sub is not None:
+            candidates.append(sub)
+    for cand in candidates:
+        if hasattr(cand, "_init_failed"):
+            try:
+                cand._init_failed = True  # type: ignore[attr-defined]
+            except Exception:
+                logger.error(
+                    "Could not mark %s as unavailable after warmup failure",
+                    type(cand).__name__,
+                    exc_info=True,
+                )
 
 
 def _warn_if_gpu_requested_but_unavailable(engine: BaseOCREngine) -> None:

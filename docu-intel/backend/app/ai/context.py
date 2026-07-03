@@ -98,12 +98,10 @@ MAX_CONTEXT_ITEMS = 14
 # dubious. Used both in the prompt marker and in the warning
 # builder.
 #
-# Lowered to 0.60 (was 0.70) per user request: a 70% threshold was
-# too aggressive in flagging real-world scans as "low quality" and
-# hiding useful context from the LLM. 0.60 keeps the dubious flag for
-# genuinely poor readings (photos of mobile screens, severely skewed
-# pages) without burying mid-confidence scans that still carry
-# recoverable text.
+# Restored to 0.70 (was 0.60): a 0.60 threshold missed genuinely
+# dubious OCR (mid-confidence scans with garbled tokens that the LLM
+# then presented as fact). 0.70 surfaces those readings so the answer
+# can carry an "[OCR DUDOSO]" caveat.
 LOW_OCR_CONFIDENCE_THRESHOLD = 0.70
 
 # Tag inserted into the context line when an item is below the OCR
