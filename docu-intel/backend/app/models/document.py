@@ -175,7 +175,12 @@ class DocumentBlock(Base):
     document = relationship("Document", back_populates="blocks")
     page = relationship("DocumentPage", back_populates="blocks")
 
-    _ALLOWED_BLOCK_TYPES = frozenset({"text", "table", "figure", "header", "footer", "list"})
+    _ALLOWED_BLOCK_TYPES = frozenset({
+        "text", "table", "figure", "header", "footer", "list",
+        "doc_title", "reference", "seal", "table_title", "figure_title",
+        "table_footnote", "text_region", "formula", "chart", "equation",
+        "code", "caption",
+    })
 
     @validates("block_type")
     def _sanitize_block_type(self, key, value):
@@ -214,6 +219,8 @@ class DocumentChunk(Base):
     )
     page_number: Mapped[int | None] = mapped_column(Integer)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # EMBEDDING_DIMENSIONS: cambiar este valor requiere migración manual
+    # ALTER COLUMN embedding TYPE VECTOR(<nueva_dim>) + rebuild del índice.
     embedding: Mapped[Any | None] = mapped_column(Vector(768), nullable=True)
     embedding_provider_used: Mapped[str | None] = mapped_column(String(80))
     embedding_fallback: Mapped[bool] = mapped_column(default=False, nullable=False)

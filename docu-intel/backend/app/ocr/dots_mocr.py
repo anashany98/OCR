@@ -180,6 +180,9 @@ class DotsMOCREngine:
         breaker = self._breaker or _get_dots_mocr_breaker()
         data = self._call_with_retry(breaker, payload, headers)
 
+        if not isinstance(data, dict):
+            raise ValueError(f"Respuesta VLM-OCR inesperada: {type(data).__name__}")
+
         # Parse OpenAI-compatible response format
         text = ""
         try:
@@ -193,8 +196,9 @@ class DotsMOCREngine:
         confidence = _coerce_confidence(data.get("confidence"))
         blocks = _parse_blocks(data.get("blocks"))
         if not blocks and text:
-            blocks = [OCRBlock(text=text, confidence=confidence or 0.8, bbox=None, block_type=None)]
-        return OCRResult(text=text, confidence=confidence or 0.8, blocks=blocks, engine=self.name)
+            blocks = [OCRBlock(text=text, confidence=confidence, bbox=None, block_type=None)]
+        # El endpoint VLM-OCR no aporta score fiable — no inventar 0.8
+        return OCRResult(text=text, confidence=confidence, blocks=blocks, engine=self.name)
 
     def _call_with_retry(
         self,

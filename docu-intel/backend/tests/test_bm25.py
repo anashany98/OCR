@@ -17,73 +17,8 @@ from typing import Any
 import pytest
 
 from app.services import bm25
-from app.services.bm25 import DEFAULT_WEIGHTS, adaptive_weights
 from app.services.metrics import track_search_strategy_used
 from app.services.search_service import SearchResult, merge_hybrid_results
-
-
-# ---------------------------------------------------------------------------
-# Adaptive weights
-# ---------------------------------------------------------------------------
-
-
-def test_adaptive_weights_default_for_short_alphabetic_query():
-    # A single short word: default.
-    weights = adaptive_weights("presupuesto")
-    assert weights == DEFAULT_WEIGHTS
-    # Sum to 1.0.
-    assert abs(sum(weights.values()) - 1.0) < 1e-9
-
-
-def test_adaptive_weights_bm25_heavy_for_code_like_query():
-    """A short query with two or more digits and no long words
-    looks like a code (NIF, CIF, IBAN, reference). BM25 wins."""
-    # Use a query that is unambiguously code-like: short, digits,
-    # no long alphabetic words. A NIF/CIF is 8-9 chars but the
-    # ``long_word`` heuristic counts ALL words >= 4 chars; a real
-    # code query with one token of 4+ chars still trips the
-    # long_word guard. We use a 2-token query where both tokens
-    # are <= 3 chars (NIF + 8 digits is borderline; we keep it
-    # explicit with 2 short tokens).
-    weights = adaptive_weights("B12 34")
-    assert weights["bm25"] > weights["cosine"]
-    assert weights["bm25"] >= 0.70
-
-
-def test_adaptive_weights_cosine_heavy_for_natural_language():
-    """A long natural-language query with at least one long word
-    should weight cosine higher than BM25."""
-    weights = adaptive_weights(
-        "Cuál es el último pedido del proveedor García este año"
-    )
-    assert weights["cosine"] > weights["bm25"]
-    assert weights["cosine"] >= 0.60
-
-
-def test_adaptive_weights_mixed_query_falls_back_to_default():
-    """A query that matches both heuristics (e.g. 5 words with one
-    long word AND a digit) falls back to the balanced default."""
-    weights = adaptive_weights("presupuesto 245745 con totales anuales")
-    # 4 words, at least one long word, but ALSO 6 digits. The
-    # natural-language branch wins because the test requires
-    # ``digit_count >= 2 AND word_count <= 4`` for the code branch.
-    # Here word_count > 4, so we fall to the natural-language
-    # branch. The exact tie-breaker is the *long_word_count*
-    # threshold: 1 long word trips the natural-language rule.
-    assert weights["cosine"] > weights["bm25"]
-
-
-def test_adaptive_weights_handles_empty_input():
-    assert adaptive_weights("") == DEFAULT_WEIGHTS
-    assert adaptive_weights("   ") == DEFAULT_WEIGHTS
-
-
-def test_adaptive_weights_sum_always_to_one():
-    """The returned weights must always sum to 1.0 so the downstream
-    fusion never produces a normalised > 1 score."""
-    for q in ["", "x", "ABC123", "uno dos tres cuatro cinco", "NIF 12345678Z", "foo bar baz qux quux"]:
-        w = adaptive_weights(q)
-        assert abs(sum(w.values()) - 1.0) < 1e-9, f"weights for {q!r} sum to {sum(w.values())}"
 
 
 # ---------------------------------------------------------------------------

@@ -159,7 +159,25 @@ class LocalOpenAICompatibleClient:
                     "max_tokens": max_tokens,
                 },
             )
-        return payload["choices"][0]["message"]["content"]
+        choices = payload.get("choices")
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            raise ValueError(
+                f"Malformed LLM response: 'choices' is empty or missing. "
+                f"Model={self.model}"
+            )
+        message = choices[0].get("message")
+        if not message or not isinstance(message, dict):
+            raise ValueError(
+                f"Malformed LLM response: 'message' is missing in first choice. "
+                f"Model={self.model}"
+            )
+        content = message.get("content")
+        if content is None:
+            raise ValueError(
+                f"Malformed LLM response: 'content' is null in message. "
+                f"Model={self.model}"
+            )
+        return content
 
     async def chat_stream(
         self,
@@ -205,7 +223,12 @@ class LocalOpenAICompatibleClient:
                 try:
                     async with (
                         httpx.AsyncClient(
-                            timeout=request_timeout,
+                            timeout=httpx.Timeout(
+                                connect=5.0,
+                                read=request_timeout,
+                                write=5.0,
+                                pool=10.0,
+                            ),
                             transport=self.transport,
                         ) as client,
                         client.stream(
@@ -264,6 +287,11 @@ class LocalOpenAICompatibleClient:
                         return
                 except Exception as exc:
                     last_exc = exc
+                    # ContextSizeExceededError is a caller fault (prompt
+                    # too big), NOT a server fault. Do NOT trip the circuit
+                    # breaker — that would cascade-fail all subsequent calls.
+                    if isinstance(exc, ContextSizeExceededError):
+                        raise
                     if not _is_retryable_ai_error(exc) or attempt >= self.max_retries:
                         self._record_failure()
                         raise
@@ -286,7 +314,12 @@ class LocalOpenAICompatibleClient:
         for attempt in range(self.max_retries + 1):
             try:
                 async with httpx.AsyncClient(
-                    timeout=timeout,
+                    timeout=httpx.Timeout(
+                        connect=5.0,
+                        read=timeout,
+                        write=5.0,
+                        pool=10.0,
+                    ),
                     transport=self.transport,
                 ) as client:
                     response = await client.post(
@@ -319,6 +352,10 @@ class LocalOpenAICompatibleClient:
                     return response.json()
             except Exception as exc:
                 last_exc = exc
+                # ContextSizeExceededError is a caller fault, not a server
+                # fault — do NOT record a circuit breaker failure.
+                if isinstance(exc, ContextSizeExceededError):
+                    raise
                 if attempt >= self.max_retries or not _is_retryable_ai_error(exc):
                     self._record_failure()
                     raise
@@ -473,15 +510,45 @@ class LocalVisionClient:
             "max_tokens": max_tokens,
         }
         async with _get_llm_semaphore():
-            async with httpx.AsyncClient(timeout=timeout or settings.vision_timeout_seconds) as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=headers,
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
+            last_exc: Exception | None = None
+            for attempt in range(self.max_retries + 1):
+                try:
+                    async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(
+                            connect=5.0,
+                            read=timeout or settings.vision_timeout_seconds,
+                            write=5.0,
+                            pool=10.0,
+                        ),
+                    ) as client:
+                        response = await client.post(
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=payload,
+                        )
+                        if response.status_code == 429 or response.status_code >= 500:
+                            last_exc = httpx.HTTPStatusError(
+                                f"Vision model returned {response.status_code}",
+                                request=response.request,
+                                response=response,
+                            )
+                            if attempt < self.max_retries:
+                                await asyncio.sleep(self.retry_base_delay_seconds * (2 ** attempt))
+                                continue
+                        response.raise_for_status()
+                        data = response.json()
+                        return data["choices"][0]["message"]["content"]
+                except httpx.HTTPStatusError:
+                    raise
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < self.max_retries:
+                        await asyncio.sleep(self.retry_base_delay_seconds * (2 ** attempt))
+                        continue
+                    raise
+            if last_exc is not None:
+                raise last_exc
+            raise RuntimeError("Vision model request failed without an exception")
 
     async def transcribe_table(
         self,

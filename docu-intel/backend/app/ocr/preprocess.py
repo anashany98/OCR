@@ -120,11 +120,6 @@ def preprocess_for_paddle(path: Path) -> Path:
         return path
 
 
-def preprocess_for_ocr(path: Path) -> Path:
-    """Backward-compatible alias for older parser code."""
-    return preprocess_for_tesseract(path)
-
-
 def _looks_like_scan(gray) -> bool:
     """Detect if the image is a scan (mostly B/W, large empty areas).
 
@@ -188,7 +183,12 @@ def preprocess_adaptive(path: Path, *, engine: str) -> Path:
         return engine_path
     except Exception as exc:
         logger.warning("Adaptive preprocess failed for %s: %s", path, exc)
-        return preprocess_for_tesseract(path)
+        # Fall back to the appropriate engine-specific preprocessing
+        # instead of always using Tesseract (which binarizes and degrades
+        # PaddleOCR/PP-Structure quality).
+        if engine == "tesseract":
+            return preprocess_for_tesseract(path)
+        return preprocess_for_paddle(path)
 
 
 def _temporary_output_path(path: Path, engine: str) -> Path:

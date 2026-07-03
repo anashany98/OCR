@@ -49,18 +49,22 @@ from app.services.ocr_language import LanguageThresholds, thresholds_for
 
 logger = logging.getLogger("app.ocr.cascading")
 QUALITY_EPSILON = 0.01
+# Tier 4 (VLM-OCR) es menos fiable: exige mejora más clara
+TIER4_QUALITY_DELTA = 0.15
 
 
 def _quality(result: OCRResult) -> float:
     text = (result.text or "").strip()
     if not text:
         return 0.0
-    alnum = sum(1 for char in text if char.isalnum() or char.isspace())
+    alnum = _alnum_count(text)
     density = alnum / max(len(text), 1)
-    confidence = result.confidence if result.confidence is not None else 0.5
-    confidence = max(0.0, min(1.0, confidence))
+    # confidence=None → 0.5 es un neutral deliberado, no un bug
+    conf = result.confidence if result.confidence is not None else 0.5
+    conf = max(0.0, min(1.0, conf))
     length_factor = min(len(text) / 500.0, 1.0)
-    return confidence * 0.5 + density * 0.3 + length_factor * 0.2
+    # densidad es la señal más fiable entre motores heterogéneos
+    return conf * 0.4 + density * 0.4 + length_factor * 0.2
 
 
 def _alnum_count(text: str | None) -> int:
@@ -169,12 +173,13 @@ class CascadingOCREngine:
         self._tls.language: str | None = None
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
-        # value.
-        self._name: str = primary.name
+        # value. Stored in thread-local to avoid race conditions when
+        # ocr_page_parallelism > 1.
+        self._tls.name: str = primary.name
 
     @property
     def name(self) -> str:
-        return self._name
+        return getattr(self._tls, "name", self.primary.name)
 
     @property
     def current_language(self) -> str | None:
@@ -188,12 +193,10 @@ class CascadingOCREngine:
         # O1: clear the preprocessing cache so each page starts fresh.
         clear_preprocess_cache()
 
-        # Photo detection: skip all OCR tiers for product/scene photos
-        # where Tesseract would only produce garbage characters. We reuse
-        # the SAME classifier (clip_classifier) as the content router so
-        # the "is this a photo?" verdict is consistent end-to-end, and
-        # require the same high confidence (0.75) the router uses to
-        # route a file away from OCR.
+        # Photo detection: for product photos, try OCR first but fall back
+        # to vision LLM if OCR fails. This ensures handwritten text and
+        # sketches are not skipped entirely.
+        is_photo = False
         try:
             from app.parsers.clip_classifier import classify_image
 
@@ -202,14 +205,26 @@ class CascadingOCREngine:
                 clip_result["category"] == "product_photo"
                 and clip_result["confidence"] > 0.75
             ):
-                logger.info("OCR skip: photo detected, no text expected: %s", image_path.name)
-                return OCRResult(text="", confidence=0.0, blocks=[], engine="photo_skip")
+                is_photo = True
+                logger.info("Photo detected, will try OCR then vision: %s", image_path.name)
         except Exception:
             logger.debug("photo classification skipped: %s", image_path.name)
 
         start = time.perf_counter()
         primary_result = self.primary.extract(image_path)
         track_ocr_duration(time.perf_counter() - start)
+
+        # For photos, if OCR produces little text, try vision LLM directly
+        if is_photo and self.vlm_ocr is not None:
+            primary_text = (primary_result.text or "").strip()
+            if len(primary_text) < 50:  # OCR produced very little text
+                logger.info("Photo OCR insufficient (%d chars), trying vision LLM", len(primary_text))
+                try:
+                    vision_result = self.vlm_ocr.extract(image_path)
+                    if _quality(vision_result) > _quality(primary_result) + QUALITY_EPSILON:
+                        return self._finalize(image_path, "vision", vision_result)
+                except Exception as exc:
+                    logger.warning("Vision LLM failed for photo: %s", exc)
 
         if self._is_acceptable(primary_result):
             return self._finalize(image_path, self.primary.name, primary_result)
@@ -236,7 +251,7 @@ class CascadingOCREngine:
                 if tier3 is not None:
                     return self._finalize(
                         image_path,
-                        self.pp_structure.name if self.pp_structure else self._name,
+                        self.pp_structure.name if self.pp_structure else self.name,
                         tier3,
                     )
             return self._finalize(image_path, self.fallback.name, fallback_result)
@@ -330,7 +345,7 @@ class CascadingOCREngine:
             return self._try_tier4_fallback(image_path, best_prior, self.tier4_fallback)
         track_ocr_duration(time.perf_counter() - start)
 
-        if self._is_better(tier4_result, best_prior):
+        if _quality(tier4_result) > _quality(best_prior) + TIER4_QUALITY_DELTA:
             return self._record_winner(self.vlm_ocr.name, tier4_result)
         return None
 
@@ -349,7 +364,7 @@ class CascadingOCREngine:
             self._track_fallback_failure(engine.name, exc)
             return None
         track_ocr_duration(time.perf_counter() - start)
-        if self._is_better(tier4_result, best_prior):
+        if _quality(tier4_result) > _quality(best_prior) + TIER4_QUALITY_DELTA:
             logger.info("OCR Tier 4 fallback used: engine=%s image=%s", engine.name, image_path.name)
             return self._record_winner(engine.name, tier4_result)
         return None
@@ -369,7 +384,11 @@ class CascadingOCREngine:
         thresholds = self._thresholds_for_current_page()
         if not result.text or len(result.text.strip()) < thresholds.min_chars:
             return False
-        return not (result.confidence is not None and result.confidence < thresholds.min_confidence)
+        # Unknown confidence (None) should not bypass the quality gate.
+        # Fall back to a text-length check when confidence is missing.
+        if result.confidence is None:
+            return len(result.text.strip()) >= thresholds.min_chars
+        return result.confidence >= thresholds.min_confidence
 
     def _thresholds_for_current_page(self) -> LanguageThresholds:
         """Return the thresholds to use for the current page.
@@ -398,7 +417,7 @@ class CascadingOCREngine:
         return _quality(candidate) > _quality(baseline) + QUALITY_EPSILON
 
     def _record_winner(self, tier: str, result: OCRResult) -> OCRResult:
-        self._name = tier
+        self._tls.name = tier
         track_ocr_tier_used(tier)
         return result
 
@@ -408,4 +427,4 @@ class CascadingOCREngine:
         track_ocr_cascade_fallback(engine_name, reason)
 
 
-__all__ = ["CascadingOCREngine", "_quality", "_should_replace_with_fallback"]
+__all__ = ["CascadingOCREngine", "_quality", "_should_replace_with_fallback", "TIER4_QUALITY_DELTA"]

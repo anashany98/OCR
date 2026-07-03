@@ -8,9 +8,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
+from app.database.session import get_engine
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_query_text
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 _search_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="search")
 
 
-SEARCH_CACHE_TTL = 300
+SEARCH_CACHE_TTL = 60  # 60s — reducido para evitar resultados obsoletos tras re-embed
 
 
 def _make_search_cache_key(query: str, limit: int, filters: dict | None, search_type: str) -> str:
@@ -69,6 +70,7 @@ def _search_result_to_dict(result: SearchResult) -> dict:
         "ocr_confidence": result.ocr_confidence,
         "source_type": result.source_type,
         "source_path": result.source_path,
+        "full_text": result.full_text,
     }
 
 
@@ -516,18 +518,31 @@ def search_hybrid(
         # Run text, semantic, and BM25 searches in parallel for
         # lower latency. Each strategy is independent and hits a
         # different code path (ILIKE, pgvector, tsvector).
+        #
+        # CRITICAL: Each thread gets its own DB session because
+        # SQLAlchemy sessions are NOT thread-safe. Sharing the
+        # same session across ThreadPoolExecutor threads causes
+        # data corruption and InvalidRequestError under load.
+        _thread_factory = sessionmaker(bind=get_engine())
         futures = {}
         text_results: list[SearchResult] = []
         semantic_results: list[SearchResult] = []
         bm25_results: list[SearchResult] = []
 
-        futures[_search_pool.submit(search_text, db, query, effective_limit, filters)] = "text"
+        def _run_with_session(fn, *args, **kwargs):
+            sess = _thread_factory()
+            try:
+                return fn(sess, *args, **kwargs)
+            finally:
+                sess.close()
+
+        futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters)] = "text"
         futures[
-            _search_pool.submit(search_semantic, db, query, effective_limit, filters)
+            _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters)
         ] = "semantic"
         if settings.search_use_bm25:
             futures[
-                _search_pool.submit(search_bm25, db, query, effective_limit, filters)
+                _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters)
             ] = "bm25"
 
         for future in as_completed(futures):

@@ -15,6 +15,7 @@ concurrent workers.
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import os
 import sys
 import tempfile
@@ -26,10 +27,10 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.ocr.base import OCRBlock, OCRResult
-from app.ocr.preprocess import preprocess_for_paddle, preprocess_adaptive
+from app.ocr.preprocess import preprocess_adaptive
 from app.services.metrics import track_ocr_duration
 
-logger = __import__("logging").getLogger("app.ocr.paddle")
+logger = logging.getLogger("app.ocr.paddle")
 
 # H6 (Sprint 2): maximum time (seconds) to wait for PaddleOCR model
 # to load.  If the init does not complete within this window the

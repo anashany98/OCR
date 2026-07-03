@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -102,6 +102,50 @@ class OrderLine(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
 
     order = relationship("Order", back_populates="lines")
+
+
+class DeliveryNote(Base):
+    __tablename__ = "delivery_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    delivery_number: Mapped[str | None] = mapped_column(String(120), index=True)
+    supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    client_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    date: Mapped[date | None] = mapped_column(Date)
+    total_amount: Mapped[float | None] = mapped_column(Float)
+    currency: Mapped[str | None] = mapped_column(String(12))
+    confidence: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    lines = relationship(
+        "DeliveryNoteLine", back_populates="delivery_note", cascade="all, delete-orphan"
+    )
+
+
+class DeliveryNoteLine(Base):
+    __tablename__ = "delivery_note_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    delivery_note_id: Mapped[int] = mapped_column(
+        ForeignKey("delivery_notes.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    reference: Mapped[str | None] = mapped_column(String(120), index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(50))
+    unit_price: Mapped[float | None] = mapped_column(Float)
+    total_price: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[float | None] = mapped_column(Float)
+
+    delivery_note = relationship("DeliveryNote", back_populates="lines")
 
 
 class Plan(Base):

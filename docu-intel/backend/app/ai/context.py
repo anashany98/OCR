@@ -40,6 +40,7 @@ from app.services.tenant_access import (
 )
 from app.tools import internal
 
+from .multi_query import expand_numbered_query, generate_query_variations
 from .tools import ToolCall, _extract_document_number, _extract_room_name, _normalize
 
 # ---------------------------------------------------------------------------
@@ -103,7 +104,7 @@ MAX_CONTEXT_ITEMS = 14
 # genuinely poor readings (photos of mobile screens, severely skewed
 # pages) without burying mid-confidence scans that still carry
 # recoverable text.
-LOW_OCR_CONFIDENCE_THRESHOLD = 0.60
+LOW_OCR_CONFIDENCE_THRESHOLD = 0.70
 
 # Tag inserted into the context line when an item is below the OCR
 # confidence threshold. The LLM prompt is told to warn the user
@@ -487,7 +488,56 @@ def collect_context(
             if access_scope:
                 filters = dict(filters)
                 filters["_cache_scope"] = access_scope_cache_key(access_scope)
-            results = internal.hybrid_search(db, query, filters)
+
+            # Multi-query: run the original + N variations, then
+            # merge via score-weighted dedup. This improves recall
+            # when the user's phrasing differs from the document's.
+            variations = generate_query_variations(query)
+            numbered = expand_numbered_query(query)
+            all_variations = variations + [v for v in numbered if v.text != query]
+
+            # Deduplicate by text (keep highest weight)
+            seen: dict[str, float] = {}
+            for v in all_variations:
+                key = v.text.lower().strip()
+                if key not in seen or v.weight > seen[key]:
+                    seen[key] = v.weight
+
+            # Run search for each unique variation
+            from collections import defaultdict
+
+            merged_scores: dict[tuple, float] = {}
+            merged_results: dict[tuple, Any] = {}
+            for variant_text, weight in seen.items():
+                try:
+                    variant_results = internal.hybrid_search(
+                        db, variant_text, filters
+                    )
+                    for rank, r in enumerate(variant_results):
+                        if r.document_id is None:
+                            continue
+                        key = (r.document_id, r.page_number, r.block_id)
+                        # RRF-style score: weight / (k + rank)
+                        rrf_score = weight / (60 + rank + 1)
+                        if key in merged_scores:
+                            merged_scores[key] += rrf_score
+                        else:
+                            merged_scores[key] = rrf_score
+                            merged_results[key] = r
+                except Exception:
+                    continue  # best-effort: skip failed variations
+
+            # Sort by merged score and take top results
+            ranked_keys = sorted(merged_scores, key=merged_scores.get, reverse=True)
+            limit_val = int(filters.get("limit", 8))
+            results = []
+            for key in ranked_keys[:limit_val]:
+                r = merged_results[key]
+                # Update score to reflect multi-query ranking
+                from dataclasses import replace
+
+                results.append(replace(r, score=merged_scores[key]))
+
             if access_scope:
                 results = filter_search_results_for_scope(db, results, access_scope)
             # Merge results that come from the same document: concatenate

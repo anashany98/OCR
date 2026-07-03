@@ -395,7 +395,7 @@ def _extract_rooms(text: str, confidence: float) -> list[ExtractedPlanRoom]:
         area_match = ROOM_AREA_RE.search(stripped)
         if area_match:
             name = _clean_room_name(area_match.group(1))
-            area = _parse_number(area_match.group(2))
+            area = _parse_number(area_match.group(2), has_unit=True)
             _append_room(
                 rooms,
                 seen,
@@ -410,8 +410,8 @@ def _extract_rooms(text: str, confidence: float) -> list[ExtractedPlanRoom]:
         pair_match = ROOM_DIMENSION_PAIR_RE.search(stripped)
         if pair_match:
             name = _clean_room_name(pair_match.group(1))
-            width = _parse_number(pair_match.group(2))
-            length = _parse_number(pair_match.group(3))
+            width = _parse_number(pair_match.group(2), has_unit=True)
+            length = _parse_number(pair_match.group(3), has_unit=True)
             area = round(width * length, 4) if width > 0 and length > 0 else None
             _append_room(
                 rooms,
@@ -427,7 +427,7 @@ def _extract_rooms(text: str, confidence: float) -> list[ExtractedPlanRoom]:
         # Alt pattern: "20 m2 Dormitorio 1" (area before name)
         alt_match = ROOM_AREA_ALT_RE.search(stripped)
         if alt_match:
-            area = _parse_number(alt_match.group(1))
+            area = _parse_number(alt_match.group(1), has_unit=True)
             name = _clean_room_name(alt_match.group(2))
             _append_room(
                 rooms,
@@ -478,7 +478,7 @@ def _append_dimension_from_match(
     if key in seen:
         return
     seen.add(key)
-    value = _parse_number(match.group(1))
+    value = _parse_number(match.group(1), has_unit=True)
     unit = match.group(2).lower()
     value_m = _to_meters(value, unit)
     if value_m <= 0:
@@ -523,12 +523,29 @@ def _to_meters(value: float, unit: str) -> float:
     return 0.0
 
 
-def _parse_number(value: str) -> float:
+def _parse_number(value: str, *, has_unit: bool = False) -> float:
+    """Parse a numeric string, handling ES/EN conventions.
+
+    When ``has_unit`` is True (the number is adjacent to a unit like m,
+    cm, mm), a dot with 3 digits after it is treated as a decimal
+    separator (e.g. ``1.234 m`` → 1.234), not as a thousands separator.
+    This matches the dominant convention in architectural plans.
+
+    Without a unit, ``1.234`` is treated as 1234 (ES thousands convention)
+    to stay consistent with ``_parse_amount`` in business_extraction.
+    """
     cleaned = re.sub(r"\s+", "", value.strip())
     if not cleaned:
         return 0.0
 
     if re.fullmatch(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?", cleaned):
+        if has_unit:
+            # "1.234" with unit → 1.234 (decimal in plans)
+            # But "1.234.567" → still thousands
+            parts = cleaned.replace(",", ".").split(".")
+            if len(parts) == 2:
+                return float(cleaned.replace(",", "."))
+            return float(cleaned.replace(".", "").replace(",", "."))
         return float(cleaned.replace(".", "").replace(",", "."))
     if re.fullmatch(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", cleaned):
         return float(cleaned.replace(",", ""))
@@ -540,6 +557,9 @@ def _parse_number(value: str) -> float:
     if re.fullmatch(r"\d+\.\d+", cleaned):
         integer, fraction = cleaned.split(".", 1)
         if len(fraction) == 3 and len(integer) <= 3:
+            if has_unit:
+                # "1.234" with unit → 1.234 (decimal)
+                return float(cleaned)
             return float(integer + fraction)
         return float(cleaned)
     return float(cleaned.replace(",", "."))
@@ -661,14 +681,7 @@ def _load_plan_page_dpi(db: Session, document_id: int) -> float | None:
     """
     from app.core.config import settings
 
-    page = db.scalar(
-        select(DocumentPage)
-        .where(DocumentPage.document_id == document_id)
-        .order_by(DocumentPage.page_number.asc())
-        .limit(1)
-    )
-    if page is None:
-        return float(settings.pdf_ocr_dpi)
+    # TODO: derive real DPI from page metadata if available
     return float(settings.pdf_ocr_dpi)
 
 
@@ -748,6 +761,8 @@ def _validate_dimensions_against_scale(
         # Without a comparable measurement we cannot validate; keep
         # the OCR value as-is.
         if expected_m is None or dimension.value_m <= 0:
+            if expected_m is None:
+                logger.debug("No se puede validar cota: bbox ausente")
             validated.append(dimension)
             continue
         # The OCR may have read the value in cm / mm; ``value_m`` is

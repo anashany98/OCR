@@ -254,9 +254,14 @@ def _run_coro_sync(coro: Awaitable[_T]) -> _T:
 # only tried when the previous two levels produced completely
 # empty text (not just low quality) to avoid wasting time on
 # pages that are readable at 400 DPI but below the quality bar.
-_DPI_LADDER: list[int] = [300, 400, 600]
 _DPI_MIN_TEXT_LENGTH = 30
 _DPI_MIN_CONFIDENCE = 0.55  # Aligned with low_ocr_confidence_threshold=0.60
+
+
+def _get_dpi_ladder() -> list[int]:
+    """Build the DPI ladder dynamically from the configured base DPI."""
+    base = settings.pdf_ocr_dpi
+    return [base, base + 100, base + 300]
 
 
 def _ocr_with_dpi_ladder(
@@ -286,7 +291,7 @@ def _ocr_with_dpi_ladder(
     prev_dpi = 0
     prev_text_empty = True
 
-    for dpi in _DPI_LADDER:
+    for dpi in _get_dpi_ladder():
         # Skip 600 DPI unless previous attempts returned no text at all.
         if dpi == 600 and not prev_text_empty:
             break
@@ -329,7 +334,7 @@ def _ocr_with_dpi_ladder(
     # Fallback: render at the base DPI as the page preview image
     # so the viewer always has something to show.
     if best_image is None:
-        base_dpi = _DPI_LADDER[0]
+        base_dpi = _get_dpi_ladder()[0]
         image_file = output_dir / f"page_{page_number}.tmp"
         rendered_ext = _render_page_to_image(page, image_file, dpi=base_dpi)
         if rendered_ext is not None:
@@ -452,7 +457,7 @@ def _process_scanned_page(
     ocr_confidence = ocr.confidence
     blocks = [
         ExtractedBlock(
-            block_type="text",
+            block_type=block.block_type or "text",
             text=block.text,
             page_number=page_number,
             bbox=block.bbox,

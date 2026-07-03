@@ -27,6 +27,7 @@ import { PriorityBadge } from "@/components/layout/PriorityBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { WorkItem } from "@/types/api"
@@ -557,6 +558,19 @@ export function BatchActionsCard({
   result: { matched: number; updated: number; enqueued: number } | undefined
   error: Error | null
 }) {
+  const [pending, setPending] = useState<string | null>(null)
+
+  const LABELS: Record<string, string> = {
+    retry_failed_jobs: "Reintentar jobs fallidos",
+    approve_high_confidence_ocr: "Aprobar OCR fiable",
+    reprocess_low_quality: "Reprocesar baja calidad",
+  }
+
+  const confirm = () => {
+    if (pending) onAction(pending)
+    setPending(null)
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -567,7 +581,7 @@ export function BatchActionsCard({
           variant="outline"
           size="sm"
           className="w-full justify-start"
-          onClick={() => onAction("retry_failed_jobs")}
+          onClick={() => setPending("retry_failed_jobs")}
           disabled={isPending}
         >
           <RotateCcw className="mr-2 h-3.5 w-3.5" />
@@ -577,7 +591,7 @@ export function BatchActionsCard({
           variant="outline"
           size="sm"
           className="w-full justify-start"
-          onClick={() => onAction("approve_high_confidence_ocr")}
+          onClick={() => setPending("approve_high_confidence_ocr")}
           disabled={isPending}
         >
           <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
@@ -587,7 +601,7 @@ export function BatchActionsCard({
           variant="outline"
           size="sm"
           className="w-full justify-start"
-          onClick={() => onAction("reprocess_low_quality")}
+          onClick={() => setPending("reprocess_low_quality")}
           disabled={isPending}
         >
           <FileWarning className="mr-2 h-3.5 w-3.5" />
@@ -601,6 +615,16 @@ export function BatchActionsCard({
         )}
         {error && <p className="text-xs text-destructive">{error.message}</p>}
       </CardContent>
+      <ConfirmDialog
+        open={pending !== null}
+        title="Confirmar accion en lote"
+        description={`Se ejecutara "${pending ? LABELS[pending] : ""}". Esta accion puede afectar a muchos documentos y no es reversible.`}
+        confirmLabel="Ejecutar"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onConfirm={confirm}
+        onCancel={() => setPending(null)}
+      />
     </Card>
   )
 }

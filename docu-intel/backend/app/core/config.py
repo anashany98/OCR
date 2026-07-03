@@ -161,7 +161,8 @@ class Settings(BaseSettings):
     # wastes tokens on CoT and often returns empty content.
     vision_model_structured: str = ""
 
-    ocr_engine: Literal["tesseract", "paddleocr", "cascading"] = "cascading"
+    ocr_engine: Literal["tesseract", "paddleocr", "pp_structure", "cascading"] = "cascading"
+    ocr_engine_warmup_timeout: float = 180.0
     enable_dots_mocr: bool = False
     dots_mocr_endpoint: str = ""
     dots_mocr_model: str = ""
@@ -250,16 +251,19 @@ class Settings(BaseSettings):
     # Default to the OpenAI-compatible path so a fresh deployment that
     # forgets to set EMBEDDING_PROVIDER still tries to use a real model.
     # Operators that want a pure-offline, no-server mode can set
-    # ``local_hash`` explicitly. ``embedding_fallback_to_hash`` is the
-    # per-request failure policy (see the prior H7 finding).
+    # ``local_hash`` explicitly. Hash fallback is NOT supported — the
+    # policy is to fail fast if the embedding provider is unreachable.
     embedding_provider: str = "local_openai_compatible"
     embedding_base_url: str = ""
     embedding_model: str = "bge-m3"
     embedding_api_key: str = ""
+    # Cambiar este valor requiere migración manual:
+    # ALTER COLUMN embedding TYPE VECTOR(<nueva_dim>) + rebuild del índice.
     embedding_dimensions: int = 768
     embedding_allow_dimension_coercion: bool = False
     embedding_timeout_seconds: float = 30.0
-    embedding_fallback_to_hash: bool = False
+    embedding_query_instruction: str | None = None
+    embedding_passage_instruction: str | None = None
     # E2 — BM25 (PostgreSQL full-text) hybrid-search knobs. When
     # ``search_use_bm25`` is true (default) ``search_hybrid`` runs
     # the BM25 branch alongside the cosine and ILIKE branches and
@@ -294,6 +298,10 @@ class Settings(BaseSettings):
     # n-gram similarity matrix cheap. Override only when the
     # operator needs to push diversity harder.
     search_mmr_pool_size: int = 0  # 0 = use the default
+    # Multi-query expansion: generate N query variations to improve
+    # recall when the user's phrasing differs from the document's.
+    search_multi_query_enabled: bool = True
+    search_multi_query_max_variants: int = 3
     # R2 — Prompt-injection defence knobs. ``sensitivity``
     # controls how aggressive the regex detector is
     # (``low`` catches only obvious patterns, ``high`` is very
@@ -648,6 +656,18 @@ class Settings(BaseSettings):
         # already validated above; this is a defensive second check.
         if "*" in value:
             raise ValueError("CORS_ORIGINS must not contain '*' in non-local environments")
+        return value
+
+    @field_validator("embedding_allow_dimension_coercion", mode="after")
+    @classmethod
+    def _warn_coercion(cls, value: bool) -> bool:
+        if value:
+            import warnings
+            warnings.warn(
+                "EMBEDDING_ALLOW_DIMENSION_COERCION activo: vectores pueden "
+                "corromperse. Solo para migración.",
+                stacklevel=2,
+            )
         return value
 
 

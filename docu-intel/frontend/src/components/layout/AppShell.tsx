@@ -26,6 +26,7 @@ export function AppShell() {
     queryKey: ["system-health"],
     queryFn: api.systemHealth,
     refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   })
   const inbox = useWorkInboxCount()
 

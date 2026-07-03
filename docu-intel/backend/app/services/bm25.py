@@ -40,7 +40,7 @@ import logging
 import re
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.services.metrics import track_search_strategy_used
@@ -63,11 +63,8 @@ logger = logging.getLogger("app.services.bm25")
 #   ("cuál es el último pedido del proveedor Garcia").
 # * ILIKE is a tie-breaker that catches edge cases the other two
 #   miss (literal substring match in the middle of a token).
-DEFAULT_WEIGHTS: dict[str, float] = {
-    "bm25": 0.50,
-    "cosine": 0.40,
-    "text": 0.10,
-}
+# DEFAULT_WEIGHTS and adaptive_weights were removed: RRF fusion is
+# robust without per-strategy calibration.
 
 
 # A pre-compiled regex used to strip the PG ``tsquery`` reserved
@@ -386,14 +383,46 @@ def _post_filter_chunk_clauses(
     if f.get("block_type"):
         results = [r for r in results if getattr(r, "_chunk_type", "text") == f["block_type"]]
     if f.get("min_ocr_confidence") is not None:
-        # The chunk-level ``min_ocr_confidence`` filter would
-        # require fetching the document_pages rows in Python.
-        # The two branches (BM25 + cosine) are *best-effort*
-        # for this particular filter: the document-level cosine
-        # branch (which does have the document join) applies it
-        # accurately. We document this in the function so
-        # callers understand the asymmetry.
-        pass
+        threshold = f["min_ocr_confidence"]
+        # Collect unique (document_id, page_number) pairs from results
+        # and fetch their OCR confidence from document_pages.
+        from app.models import DocumentPage
+
+        page_keys = set()
+        for r in results:
+            doc_id = getattr(r, "document_id", None)
+            page_num = getattr(r, "page_number", None)
+            if doc_id is not None and page_num is not None:
+                page_keys.add((doc_id, page_num))
+        if page_keys:
+            # Query OCR confidence for the relevant pages
+            doc_ids = {k[0] for k in page_keys}
+            page_nums = {k[1] for k in page_keys}
+            page_rows = db.execute(
+                select(
+                    DocumentPage.document_id,
+                    DocumentPage.page_number,
+                    DocumentPage.ocr_confidence,
+                ).where(
+                    DocumentPage.document_id.in_(doc_ids),
+                    DocumentPage.page_number.in_(page_nums),
+                )
+            ).all()
+            # Build lookup: (doc_id, page_num) -> ocr_confidence
+            confidence_map = {
+                (row.document_id, row.page_number): row.ocr_confidence
+                for row in page_rows
+            }
+            # Filter: keep results where at least one page meets the threshold
+            filtered = []
+            for r in results:
+                doc_id = getattr(r, "document_id", None)
+                page_num = getattr(r, "page_number", None)
+                conf = confidence_map.get((doc_id, page_num))
+                # Keep if confidence is unknown (None) or meets threshold
+                if conf is None or conf >= threshold:
+                    filtered.append(r)
+            results = filtered
     return results
 
 
@@ -407,48 +436,10 @@ def _post_filter_chunk_clauses(
 # the BM25 branch than the cosine branch. A pure alphabetic query
 # (3+ words, no digits) is far more likely to be a natural-language
 # question and should weight cosine higher.
-_DIGIT_RE = re.compile(r"\d")
-_LETTER_RE = re.compile(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}")
-
-
-def adaptive_weights(query: str) -> dict[str, float]:
-    """Return the per-strategy weights for ``query``.
-
-    The default is the balanced :data:`DEFAULT_WEIGHTS`. When the
-    query looks like a code (digit-heavy, no long natural-language
-    fragment) the BM25 weight is bumped up to 0.75 and cosine
-    drops to 0.20. When the query is a long natural-language
-    fragment the BM25 weight drops to 0.20 and cosine rises to
-    0.70. The text branch (ILIKE) is left as a small constant
-    tie-breaker.
-
-    The thresholds are deliberately conservative: a query that
-    matches *both* heuristics falls back to the default.
-    """
-    weights = dict(DEFAULT_WEIGHTS)
-    if not query:
-        return weights
-    words = query.split()
-    digit_count = len(_DIGIT_RE.findall(query))
-    word_count = len(words)
-    long_word_count = sum(1 for w in words if len(w) >= 4)
-
-    # Code-like: at least 2 digits, fewer than 4 words, no long
-    # natural-language words.
-    if digit_count >= 2 and word_count <= 4 and long_word_count == 0:
-        weights["bm25"] = 0.75
-        weights["cosine"] = 0.20
-        weights["text"] = 0.05
-    # Natural-language: at least 4 words, at least one long word.
-    elif word_count >= 4 and long_word_count >= 1:
-        weights["bm25"] = 0.20
-        weights["cosine"] = 0.70
-        weights["text"] = 0.10
-    return weights
+# DEFAULT_WEIGHTS and adaptive_weights were removed (see M4):
+# RRF fusion is robust without per-strategy calibration.
 
 
 __all__ = [
     "search_bm25",
-    "adaptive_weights",
-    "DEFAULT_WEIGHTS",
 ]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import math
 import re
 import threading
@@ -24,17 +25,19 @@ from app.services.metrics import track_cache_hit, track_cache_miss, track_embedd
 if TYPE_CHECKING:
     pass
 
+logger = logging.getLogger("app.services.embeddings")
+
 # EMB-DIM-1 (Sprint 2): the previous fallback to ``768`` was a
 # silent dimension mismatch. If the operator's ``.env`` had
 # ``EMBEDDING_DIMENSIONS=`` (empty value) the module would
 # fall back to 768 dims while the pgvector column is hard-
-# coded to 1024. ``coerce_embedding_dimensions`` would then
+# coded to 768. ``coerce_embedding_dimensions`` would then
 # raise, the embedding write would fail, and the operator
 # would see a cryptic error. The new code uses the same
-# default as the pgvector column (``1024``) so a missing
+# default as the pgvector column (``768``) so a missing
 # config value is consistent with the database, not a
 # silent failure.
-EMBEDDING_DIMENSIONS = int(settings.embedding_dimensions or 1024)
+EMBEDDING_DIMENSIONS = int(settings.embedding_dimensions or 768)
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 EMBEDDING_CACHE_TTL = 3600
 BATCH_SIZE = 32
@@ -218,11 +221,21 @@ def embed_query_text(text: str, dimensions: int | None = None) -> list[float]:
     """Embed a user query with query-side semantics when the provider needs it.
 
     The public ``embed_many`` path remains passage-mode because it is used by
-    indexing. OpenAI-compatible providers do not distinguish query/passage, so
-    they keep the existing behavior.
+    indexing. For openai_compatible providers, if ``embedding_query_instruction``
+    is set, it is prepended to the text so asymmetric models (BGE/E5) get the
+    correct query prefix.
     """
     vector_dimensions = dimensions or _configured_dimensions()
     provider = settings.embedding_provider.lower().strip()
+
+    # For openai_compatible: use query instruction if configured
+    if provider in {"local_openai_compatible", "openai_compatible"}:
+        instruction = settings.embedding_query_instruction
+        if instruction:
+            prefixed = f"{instruction} {text}"
+            return embed_text(prefixed, dimensions=vector_dimensions)
+        return embed_text(text, dimensions=vector_dimensions)
+
     if provider != "local_sentence_transformers":
         return embed_text(text, dimensions=vector_dimensions)
 
@@ -319,6 +332,13 @@ async def embed_many_async(
             uncached_texts, provider, vector_dimensions
         )
         track_embedding_latency(time.perf_counter() - start)
+
+        # Validate batch length to avoid silent None values
+        if len(embeddings) != len(uncached_indices):
+            raise EmbeddingProviderError(
+                f"Embedding provider returned {len(embeddings)} vectors "
+                f"for {len(uncached_indices)} texts"
+            )
 
         for idx, emb in zip(uncached_indices, embeddings, strict=False):
             cached[idx] = emb
@@ -705,8 +725,15 @@ def coerce_embedding_dimensions(raw_embedding: object, dimensions: int) -> list[
             "Check EMBEDDING_MODEL/EMBEDDING_DIMENSIONS or enable "
             "EMBEDDING_ALLOW_DIMENSION_COERCION only during a controlled migration."
         )
+    if len(vector) != dimensions:
+        # Solo para migración: nunca dejar activo en producción.
+        logger.warning(
+            "Embedding coaccionado de %d a %d dims (coercion habilitada). "
+            "Esto corrompe la similitud — apaga EMBEDDING_ALLOW_DIMENSION_COERCION.",
+            len(vector), dimensions,
+        )
     if len(vector) < dimensions:
-        vector.extend([0.0] * (dimensions - len(vector)))
+        return list(vector) + [0.0] * (dimensions - len(vector))
     return vector[:dimensions]
 
 

@@ -32,9 +32,6 @@ from pathlib import Path
 from app.ocr.base import OCRBlock, OCRResult
 from app.services.metrics import track_ocr_duration
 
-# Skip the HuggingFace connectivity probe that adds ~2 s to first init.
-os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
-
 
 class PPStructureEngine:
     """PaddleX ``layout_parsing`` pipeline (PP-Structure renamed in 3.x).
@@ -55,6 +52,8 @@ class PPStructureEngine:
                 "'NotImplementedError: ConvertPirAttribute2RuntimeAttribute'. "
                 "Use PaddleOCR (Tier 2) on CPU workers."
             )
+        # Skip the HuggingFace connectivity probe that adds ~2 s to first init.
+        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
         self.device = device
         self.lang = lang
 
@@ -66,6 +65,7 @@ class PPStructureEngine:
         return create_pipeline(
             pipeline="layout_parsing",
             device=self.device,
+            lang=self.lang,
         )
 
     def extract(self, image_path: Path) -> OCRResult:
@@ -74,7 +74,33 @@ class PPStructureEngine:
         from app.ocr.preprocess import preprocess_adaptive
         ocr_path = preprocess_adaptive(image_path, engine=self.name)
         try:
-            results = list(self._pipeline.predict(str(ocr_path)))
+            # PP-Structure predict() has no built-in timeout. Use a
+            # disposable ThreadPoolExecutor — on timeout the pool
+            # cleans up the thread (it becomes a zombie until the
+            # GIL is released, same as paddle.py).
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+            result_holder: list = []
+            exc_holder: list = []
+
+            def _run_predict():
+                try:
+                    result_holder.extend(self._pipeline.predict(str(ocr_path)))
+                except Exception as exc:  # noqa: BLE001
+                    exc_holder.append(exc)
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_run_predict)
+                try:
+                    future.result(timeout=120)
+                except FuturesTimeout:
+                    future.cancel()
+                    raise TimeoutError(
+                        f"PP-Structure predict() timed out after 120s on {image_path.name}"
+                    )
+            if exc_holder:
+                raise exc_holder[0]
+            results = result_holder
         except Exception:
             track_ocr_duration(time.perf_counter() - start)
             raise

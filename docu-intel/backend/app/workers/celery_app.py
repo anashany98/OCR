@@ -29,6 +29,7 @@ celery_app.conf.update(
     enable_utc=True,
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=50,
+    worker_max_memory_bytes=4 * 1024 * 1024 * 1024,  # 4 GB — recycle worker on leak
     broker_connection_retry_on_startup=True,
     task_acks_late=True,
     task_default_queue="text_fast",
@@ -104,6 +105,12 @@ def preload_worker_ocr_engine(**_kwargs) -> None:
     # ``-n`` / ``--hostname`` flag in docker-compose.yml.
     worker_name = os.environ.get("WORKER_NAME") or ""
     if "heavy" not in worker_name.lower() and "ocr" not in worker_name.lower():
+        if os.environ.get("CUDA_VISIBLE_DEVICES"):
+            logger.warning(
+                "GPU visible pero WORKER_NAME no indica worker heavy; "
+                "no se precargara el motor OCR en arranque. worker_name=%s",
+                worker_name,
+            )
         logger.info(
             "ocr_preload_skipped reason=not_ocr_worker worker_name=%s",
             worker_name,

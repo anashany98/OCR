@@ -1,4 +1,4 @@
-﻿"""Output validation, language detection, follow-ups, and memory helpers.
+"""Output validation, language detection, follow-ups, and memory helpers.
 
 The LLM call returns text. Before we trust that text we run it
 through three gates, in order:
@@ -97,18 +97,41 @@ def response_looks_spanish(answer: str) -> bool:
     of accepting, since the LLM is already told to answer in Spanish.
 
     1. If the text contains a Spanish diacritic, accept immediately.
-    2. If langdetect says it's Spanish with prob >= 0.55, accept.
-    3. Reject ONLY when langdetect is confident (prob >= 0.85) it is
+    2. Numeric/currency answers (e.g. "Total: 1234,56 €") are accepted
+       without language gate — they carry no language signal and are
+       valid in any context.
+    3. If langdetect says it's Spanish with prob >= 0.55, accept.
+    4. Reject ONLY when langdetect is confident (prob >= 0.85) it is
        a language CLEARLY distinct from Spanish. Short Spanish answers
        are routinely misclassified as Catalan / Portuguese / Galician
        / Italian (mutually intelligible Ibero-Romance languages); those
        are treated as "possibly Spanish" and not used to reject alone.
-    4. Fallback: count common Spanish function words; accept when
+    5. Fallback: count common Spanish function words; accept when
        there is at least 1 hit (was 2).
     """
     if not answer or not answer.strip():
         return False
     if any(ch in answer for ch in "ñáéíóúü¿¡"):
+        return True
+    # Numeric/currency answers carry no language signal — accept them.
+    # "Total: 1234,56 €", "1234.56 EUR", "1 234,56" are all valid.
+    _NUMERIC_CURRENCY = re.compile(
+        r"""
+        [\d.,\s]+        # digits with separators
+        (?:€|EUR|USD|\$|euros?)?  # optional currency
+        """,
+        re.VERBOSE,
+    )
+    stripped = answer.strip()
+    if _NUMERIC_CURRENCY.fullmatch(stripped):
+        return True
+    # Also accept short answers that are mostly numeric with a label
+    # like "Total:" or "Importe:" — common in invoice/budget answers.
+    if re.match(
+        r"^(?:total|importe|suma|base\s+imponible|iva|neto)\s*[:=]?\s*[\d.,\s]+(?:€|EUR|USD|\$|euros?)?\s*$",
+        stripped,
+        re.IGNORECASE,
+    ):
         return True
     # Ibero-Romance languages langdetect confuses with short Spanish
     # inputs. They share most function words and vocabulary, so a high
@@ -177,6 +200,11 @@ def _detect_language(text: str) -> tuple[str, float] | None:
 #   ``B1234567``, ``pedido 442403``. Each match is normalised to
 # alphanumeric-only lower-case before the lookup, so hyphen / slash
 # separators are transparent to the comparison.
+#
+# Pure numeric patterns (\\d{5,8}) are anchored to a document-number
+# context word (nº, factura, presupuesto, pedido, albarán, expediente,
+# reference, ref.) to avoid matching phone numbers, ZIP codes, or other
+# generic numbers that are perfectly valid in an answer.
 _DOC_NUMBER_PATTERN = re.compile(
     r"""
     \b
@@ -186,11 +214,21 @@ _DOC_NUMBER_PATTERN = re.compile(
         |
         # Slashed or dashed: 2026/143, 2026-143, 2026.143
         \d{4}[/\-.]?\d{2,6}
-        |
-        # Pure long numeric: 442403, 2026044
-        \d{5,8}
     )
     \b
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Pure numeric document numbers (e.g. "pedido 442403", "factura 12345678")
+# require a context word immediately before them to avoid matching phone
+# numbers, ZIP codes or generic IDs.
+_DOC_NUMBER_WITH_CONTEXT = re.compile(
+    r"""
+    (?:nº|n[°o]|num(?:ero)?|factura|presupuesto|pedido|albarán|albaran|
+     expediente|reference|ref\.?)
+    \s*[:#:;\-]?\s*
+    (\d{4,10})
     """,
     re.VERBOSE | re.IGNORECASE,
 )
@@ -367,9 +405,9 @@ def _filename_is_known(ref: str, known: set[str]) -> bool:
     # fragment of its filename (e.g. "F-2026-044.pdf" when the stored
     # name is "Factura_F-2026-044_cliente.pdf"). Accept when the stem
     # of the cited ref appears as a substring of a known filename's
-    # stem, as long as that substring is long enough (>= 4 chars) to
+    # stem, as long as that substring is long enough (>= 6 chars) to
     # be meaningful and not a common generic token.
-    if len(stem) >= 4:
+    if len(stem) >= 6:
         for name in known:
             name_stem = name.rsplit(".", 1)[0] if "." in name else name
             if stem in name_stem:
@@ -490,6 +528,7 @@ def response_fabricates_documents(answer: str, context_items: list[ContextItem])
     # 2) Document numbers
     known_numbers = _extract_known_reference_numbers(context_items)
     if known_numbers:
+        # Prefixed/slash patterns (F-2026-044, 2026/143, etc.)
         for match in _DOC_NUMBER_PATTERN.finditer(answer):
             normalised = _normalise_doc_number(match.group(0))
             if len(normalised) < 4:
@@ -498,6 +537,19 @@ def response_fabricates_documents(answer: str, context_items: list[ContextItem])
                 logger.warning(
                     "AI response rejected: unknown document number %r (normalised=%s)",
                     match.group(0),
+                    normalised,
+                )
+                return True
+        # Pure numeric with context word (e.g. "pedido 442403")
+        for match in _DOC_NUMBER_WITH_CONTEXT.finditer(answer):
+            number_str = match.group(1)
+            normalised = _normalise_doc_number(number_str)
+            if len(normalised) < 4:
+                continue
+            if normalised not in known_numbers:
+                logger.warning(
+                    "AI response rejected: unknown document number %r (normalised=%s)",
+                    number_str,
                     normalised,
                 )
                 return True
@@ -658,11 +710,19 @@ _FOLLOWUP_HINTS = (
     "de esta",
     "de ese",
     "de esa",
+    "de aquel",
+    "de aquella",
     "esos mismos",
     "esas mismas",
     "ahora dime",
     "y cuanto",
     "y cuántos",
+    "este otro",
+    "ese otro",
+    "aquel otro",
+    "también",
+    "el siguiente",
+    "la siguiente",
 )
 
 
