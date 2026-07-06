@@ -171,10 +171,14 @@ class LocalOpenAICompatibleClient:
                 f"Malformed LLM response: 'message' is missing in first choice. "
                 f"Model={self.model}"
             )
-        content = message.get("content")
-        if content is None:
+        content = message.get("content") or ""
+        # Thinking models (qwen3-*) put the actual response in
+        # reasoning_content while content stays empty.
+        if not content.strip():
+            content = message.get("reasoning_content") or ""
+        if not content.strip():
             raise ValueError(
-                f"Malformed LLM response: 'content' is null in message. "
+                f"Malformed LLM response: 'content' is empty in message. "
                 f"Model={self.model}"
             )
         return content
@@ -437,6 +441,8 @@ class LocalVisionClient:
         self.api_key = (
             api_key if api_key is not None else (settings.vision_api_key or settings.ai_api_key)
         )
+        self.max_retries = max(0, getattr(settings, "vision_max_retries", 2))
+        self.retry_base_delay_seconds = 1.0
 
     def is_configured(self) -> bool:
         return bool(self.base_url and self.model)
@@ -537,7 +543,15 @@ class LocalVisionClient:
                                 continue
                         response.raise_for_status()
                         data = response.json()
-                        return data["choices"][0]["message"]["content"]
+                        msg = data["choices"][0]["message"]
+                        # Thinking models (qwen3-vl-8b-thinking etc.) put
+                        # the actual response in reasoning_content while
+                        # content stays empty.  Fall back to content when
+                        # reasoning_content is missing or empty.
+                        answer = msg.get("content") or ""
+                        if not answer.strip():
+                            answer = msg.get("reasoning_content") or ""
+                        return answer
                 except httpx.HTTPStatusError:
                     raise
                 except Exception as exc:

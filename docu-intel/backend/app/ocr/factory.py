@@ -352,6 +352,11 @@ def _exercise(engine: BaseOCREngine) -> None:
     abort the boot. The next real call will trigger the same
     compile (just slower) but the worker is up and serving
     jobs.
+
+    SKIP-VLM: the vision LLM warmup is skipped because it can
+    hang for minutes if the model is loading, blocking the
+    entire worker from starting. The VLM will still work on
+    real jobs — it just won't be preloaded during boot.
     """
     import tempfile
     from pathlib import Path
@@ -379,7 +384,12 @@ def _exercise(engine: BaseOCREngine) -> None:
         cv2.line(img, (16, 32), (48, 32), (200, 200, 200), 1)
         cv2.line(img, (32, 16), (32, 48), (200, 200, 200), 1)
         cv2.imwrite(str(image_path), img)
-        engine.extract(image_path)
+        # Exercise only the OCR tiers (1-3), skip Tier 4 (VLM)
+        # to avoid blocking the worker boot.
+        if hasattr(engine, "primary"):
+            engine.primary.extract(image_path)
+        if hasattr(engine, "fallback"):
+            engine.fallback.extract(image_path)
     except Exception as exc:
         logger.debug("OCR preload exercise failed (best-effort): %s", exc)
     finally:

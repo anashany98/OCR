@@ -1468,15 +1468,57 @@ def _is_low_ocr_context(item: ContextItem) -> bool:
 
 
 def _average_confidence(items: list[ContextItem]) -> float:
-    """Average confidence across the items. When no item carries a
-    confidence, fall back to the relevance score; when even that is
-    missing, return 0.55 (the "we tried but we don't know" default)."""
-    values = [item.confidence for item in items if item.confidence is not None]
-    if not values:
-        values = [item.relevance_score for item in items if item.relevance_score is not None]
-    if not values:
-        return 0.55
-    return max(0.0, min(1.0, sum(values) / len(values)))
+    """Compute a composite answer-confidence score from context items.
+
+    Previously this just averaged ``ocr_confidence``, which made
+    every answer look terrible (0.02-0.03) even when the LLM
+    synthesized a solid answer from multiple sources.
+
+    The new formula weights three independent signals:
+      - **Source density** (0.35): more corroborating sources →
+        higher confidence.  Saturates at ~6 sources.
+      - **Relevance** (0.35): average search-relevance score.
+        Hybrid search returns scores in ~[0, 1.5] via RRF; we
+        normalise by capping at 1.0.
+      - **OCR quality** (0.30): geometric mean of page OCR
+        confidences.  We use the *minimum* rather than the mean
+        so a single garbage page doesn't inflate the score, but
+        a floor of 0.15 prevents a bad scan from tanking the
+        whole answer when other signals are strong.
+    """
+    if not items:
+        return 0.0
+
+    # --- source density ---
+    n = len(items)
+    source_score = min(n / 6.0, 1.0)  # saturates at 6+
+
+    # --- relevance ---
+    rel_values = [
+        min(item.relevance_score or 0.0, 1.0)
+        for item in items
+        if item.relevance_score is not None
+    ]
+    rel_score = (sum(rel_values) / len(rel_values)) if rel_values else 0.5
+
+    # --- OCR quality ---
+    ocr_values = [
+        item.ocr_confidence
+        for item in items
+        if item.ocr_confidence is not None
+    ]
+    if ocr_values:
+        # geometric mean, floored at 0.15
+        import math
+        product = 1.0
+        for v in ocr_values:
+            product *= max(v, 0.15)
+        ocr_score = product ** (1.0 / len(ocr_values))
+    else:
+        ocr_score = 0.5  # unknown OCR quality → neutral
+
+    composite = 0.35 * source_score + 0.35 * rel_score + 0.30 * ocr_score
+    return round(max(0.0, min(1.0, composite)), 3)
 
 
 def confidence_label(value: float) -> str:

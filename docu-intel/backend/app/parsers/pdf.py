@@ -258,9 +258,19 @@ _DPI_MIN_TEXT_LENGTH = 30
 _DPI_MIN_CONFIDENCE = 0.55  # DPI-escalación umbral (relajado vs low_ocr=0.70)
 
 
-def _get_dpi_ladder() -> list[int]:
-    """Build the DPI ladder dynamically from the configured base DPI."""
+def _get_dpi_ladder(page_width: float = 0, page_height: float = 0) -> list[int]:
+    """Build the DPI ladder dynamically from the configured base DPI.
+
+    For small pages (width < 400pt), start at a higher DPI so the
+    rendered image is large enough for OCR. A 516pt-wide page at
+    144 DPI produces a ~516px image — too small for PaddleOCR.
+    Bumping to 244 DPI gives ~860px which is much better.
+    """
     base = settings.pdf_ocr_dpi
+    min_side = min(page_width, page_height) if page_width and page_height else 999
+    # Small page: start 100 DPI higher
+    if min_side < 400:
+        base = min(base + 100, 400)
     return [base, base + 100, base + 300]
 
 
@@ -291,7 +301,7 @@ def _ocr_with_dpi_ladder(
     prev_dpi = 0
     prev_text_empty = True
 
-    for dpi in _get_dpi_ladder():
+    for dpi in _get_dpi_ladder(page.rect.width, page.rect.height):
         # Skip 600 DPI unless previous attempts returned no text at all.
         if dpi == 600 and not prev_text_empty:
             break

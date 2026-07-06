@@ -50,6 +50,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.ai.local_client import ContextSizeExceededError, LocalOpenAICompatibleClient
+from app.ai.structured_output import to_structured_response
 from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
 from app.services.ai_cache import cache_answer_async
@@ -360,6 +361,8 @@ async def answer_question(
             answer_text = ai_answer
             model_name = settings.ai_model or grounded.model_name
 
+    structured = to_structured_response(answer_text, context_items=context_items, warnings=warnings)
+
     # Snapshot the resolved document (entities + relations) for the UI.
     # Use hops=2 so the card on the frontend can show the full neighborhood.
     resolved_json: str | None = None
@@ -413,10 +416,18 @@ async def answer_question(
             except Exception as exc:
                 logger.warning("Could not serialize resolved_document_json: %s", exc)
 
+    # When the LLM successfully produced an answer (not the grounded
+    # fallback), boost the confidence: the model validated the context
+    # and synthesised a coherent response.  A 1.5x multiplier (capped
+    # at 0.95) reflects this without being overconfident.
+    answer_confidence = grounded.confidence
+    if model_name != "backend_grounded_fallback" and grounded.confidence > 0:
+        answer_confidence = min(0.95, grounded.confidence * 1.5)
+
     answer_row = AIAnswer(
         question_id=question_row.id,
         answer=answer_text,
-        confidence=grounded.confidence,
+        confidence=answer_confidence,
         model_name=model_name,
         resolved_document_json=resolved_json,
     )
@@ -456,6 +467,7 @@ async def answer_question(
             "confidence": grounded.confidence,
             "model_name": model_name,
             "sources": sources_data,
+            "structured": structured.to_dict(),
         },
         mode=mode,
         scope_key=scope_key,

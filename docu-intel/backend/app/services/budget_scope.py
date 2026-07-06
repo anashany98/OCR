@@ -36,9 +36,20 @@ def extract_budget_code_from_path(path: str | None) -> str | None:
     if not normalized:
         return None
     parts = [part for part in PurePosixPath(normalized).parts if part not in {"/", ""}]
+
+    # Pattern 1: "Presupuesto XXXXXX" as a folder name (e.g. "Presupuesto 251234")
+    # This is the dominant convention in the TEST2025 dataset.
+    for part in reversed(parts):
+        m = re.match(r"(?i)^presupuesto\s+(\S+)", part)
+        if m:
+            candidate = _clean_budget_code(m.group(1))
+            if candidate:
+                return candidate
+
+    # Pattern 2: marker-based (inbox/processing/presupuestos → next folder)
     marker_candidates = ("inbox", "processing", "presupuestos")
+    lowered = [part.lower() for part in parts]
     for marker in marker_candidates:
-        lowered = [part.lower() for part in parts]
         if marker not in lowered:
             continue
         index = lowered.index(marker)
@@ -47,6 +58,8 @@ def extract_budget_code_from_path(path: str | None) -> str | None:
         candidate = _clean_budget_code(parts[index + 1])
         if candidate:
             return candidate
+
+    # Pattern 3: second-to-last folder (fallback)
     if len(parts) >= 2:
         candidate = _clean_budget_code(parts[-2])
         if candidate:
@@ -84,8 +97,36 @@ def assign_document_budget_scope(
         return None
     scope = ensure_budget_scope(db, resolved_code, source_path=document.source_path)
     document.budget_scope_id = scope.id
+    # Also persist the budget number as an entity so the relationship
+    # graph and search can find this document by its presupuesto number.
+    _upsert_budget_entity(db, document.id, resolved_code)
     db.flush()
     return scope
+
+
+def _upsert_budget_entity(db, document_id: int, budget_number: str) -> None:
+    """Create or update a budget_number entity for the document."""
+    from app.models import DocumentEntity
+
+    existing = db.scalar(
+        select(DocumentEntity).where(
+            DocumentEntity.document_id == document_id,
+            DocumentEntity.entity_type == "budget_number",
+        )
+    )
+    if existing:
+        existing.entity_value = budget_number
+        existing.normalized_value = budget_number.lower().strip()
+    else:
+        db.add(
+            DocumentEntity(
+                document_id=document_id,
+                entity_type="budget_number",
+                entity_value=budget_number,
+                normalized_value=budget_number.lower().strip(),
+                confidence=0.9,
+            )
+        )
 
 
 def get_budget_scope_by_code(db: Session, budget_code: str) -> BudgetScope | None:

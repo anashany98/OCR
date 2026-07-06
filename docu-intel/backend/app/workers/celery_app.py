@@ -28,8 +28,9 @@ celery_app.conf.update(
     timezone="Europe/Madrid",
     enable_utc=True,
     worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=50,
+    worker_max_tasks_per_child=200,
     worker_max_memory_bytes=4 * 1024 * 1024 * 1024,  # 4 GB — recycle worker on leak
+    worker_pool_prefork_timeout=300,
     broker_connection_retry_on_startup=True,
     task_acks_late=True,
     task_default_queue="text_fast",
@@ -118,8 +119,18 @@ def preload_worker_ocr_engine(**_kwargs) -> None:
         return
     try:
         from app.ocr.factory import preload_ocr_engine
+        import concurrent.futures
 
-        preload_ocr_engine()
+        # Warmup with a timeout — if the VLM Tier 4 hangs, the
+        # worker must not be blocked forever.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(preload_ocr_engine)
+            try:
+                future.result(timeout=180)
+            except concurrent.futures.TimeoutError:
+                logger.warning("OCR warmup timed out after 180s — continuing without Tier 4 warmup")
+            except Exception:
+                raise
     except Exception:
         # OCR-INIT-1: preserve the full stack trace (no more
         # ``logger.warning(exc)`` swallowing the chain) and emit
