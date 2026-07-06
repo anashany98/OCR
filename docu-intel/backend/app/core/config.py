@@ -101,11 +101,11 @@ class Settings(BaseSettings):
     # A document is marked processed_ok automatically (skipping manual review) if
     # its OCR confidence and classification confidence meet these thresholds, even
     # if some structured fields are missing. Set to 1.0 to disable the shortcut.
-    auto_approve_min_ocr: float = 0.90
-    auto_approve_min_classification: float = 0.80
+    auto_approve_min_ocr: float = 0.70
+    auto_approve_min_classification: float = 0.65
     auto_approve_allow_missing_fields: bool = True
     # Quality score below this value triggers processed_low_quality.
-    quality_score_threshold: float = 0.55
+    quality_score_threshold: float = 0.40
     # Penalty per quality flag when computing the score.
     quality_flag_penalty: float = 0.04
 

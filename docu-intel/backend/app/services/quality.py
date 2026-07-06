@@ -111,6 +111,23 @@ def evaluate_document_quality(
     # that is a pattern-gap issue, not a quality issue — the document
     # should still be auto-approved if the text is present and classified.
     is_digital = min_ocr >= 1.0
+
+    # Quick auto-approve for emails and well-classified documents.
+    # Emails (.msg) are always useful as-is; classified docs with
+    # some text should not block on missing structured fields.
+    has_text = any(
+        (page.text or "").strip()
+        for page in pages
+    )
+    is_email = document.document_type == "email_exportado"
+    well_classified = is_classified and classification_conf >= 0.6
+    if (
+        document.status != "failed"
+        and "page_failed" not in flags
+        and has_text
+        and (is_email or well_classified)
+    ):
+        status = "processed_ok"
     if (
         document.status != "failed"
         and "page_failed" not in flags
@@ -148,7 +165,23 @@ def evaluate_document_quality(
         }
         for flag in flags
     ):
-        status = "processed_missing_fields"
+        # Accept partial extraction: if at least one key field was
+        # found (budget_number OR supplier_name), don't block on
+        # missing fields. Only flag when ALL key fields are missing.
+        from app.models import DocumentEntity
+        existing_entities = list(
+            db.scalars(
+                select(DocumentEntity).where(DocumentEntity.document_id == document.id)
+            ).all()
+        )
+        has_any_key_field = any(
+            e.entity_type in {"budget_number", "supplier_name", "order_number", "invoice_number"}
+            for e in existing_entities
+        )
+        if has_any_key_field:
+            status = "processed_ok"
+        else:
+            status = "processed_missing_fields"
     elif business_needs_review or plan_needs_review or "document_type_unknown" in flags:
         status = "needs_human_review"
     else:
