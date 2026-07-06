@@ -229,10 +229,9 @@ def test_batch_generation_uses_local_client_when_provider_set(monkeypatch, fake_
     assert all(len(v) == 4 for v in out)
 
 
-def test_batch_generation_falls_back_to_hash_on_local_failure(monkeypatch):
-    """If the local model fails to load, fall back to the hash embeddings
-    so the pipeline keeps running (matches the existing OpenAI-compatible
-    fallback behaviour)."""
+def test_batch_generation_raises_on_local_failure(monkeypatch):
+    """If the local model fails to load, raise an error immediately.
+    Hash fallback is NOT supported — the policy is to fail fast."""
     from app.services import embeddings
 
     # Force the local client to raise on first encode.
@@ -241,13 +240,12 @@ def test_batch_generation_falls_back_to_hash_on_local_failure(monkeypatch):
             raise RuntimeError("model not loaded")
 
     monkeypatch.setattr(embeddings, "get_local_embedding_client", lambda: _BoomClient())
-    monkeypatch.setattr(settings, "embedding_fallback_to_hash", True)
 
-    out = embeddings._generate_embeddings_batch(
-        ["hola"], provider="local_sentence_transformers", dimensions=4
-    )
-    assert len(out) == 1
-    assert len(out[0]) == 4
+    import pytest
+    with pytest.raises(RuntimeError, match="model not loaded"):
+        embeddings._generate_embeddings_batch(
+            ["hola"], provider="local_sentence_transformers", dimensions=4
+        )
 
 
 # ---------------------------------------------------------------------------

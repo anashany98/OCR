@@ -290,7 +290,6 @@ def test_embedding_provider_failure_stores_unembedded_without_hash_fallback(tmp_
     input_dir, _ = _configure_pipeline(monkeypatch, tmp_path, create_embeddings=True)
     monkeypatch.setattr(settings, "embedding_provider", "openai_compatible")
     monkeypatch.setattr(settings, "embedding_base_url", "http://127.0.0.1:9")
-    monkeypatch.setattr(settings, "embedding_fallback_to_hash", True)
     monkeypatch.setattr(settings, "embedding_dimensions", 1024)
     source = input_dir / "embeddings.txt"
     source.parent.mkdir(parents=True)

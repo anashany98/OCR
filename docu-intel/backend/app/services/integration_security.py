@@ -47,7 +47,7 @@ import hmac
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -138,7 +138,7 @@ def _mark_used_throttled(client: IntegrationClient) -> None:
         if now - last < _LAST_USED_TTL_SECONDS:
             return
         _LAST_USED_SEEN[client.id] = now
-    client.last_used_at = datetime.utcnow()
+    client.last_used_at = datetime.now(UTC)
     # Caller is responsible for ``db.commit()`` at the end of the
     # request so the throttle is transactional.
 

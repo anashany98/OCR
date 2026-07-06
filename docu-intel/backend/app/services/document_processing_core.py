@@ -612,7 +612,7 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
                 document_id=document.id,
                 page_id=page.id,
                 page_number=page.page_number,
-                block_type="text",
+                block_type=block_payload.block_type or "text",
                 text=sanitize_text_for_database(block_payload.text),
                 bbox_x1=bbox[0],
                 bbox_y1=bbox[1],

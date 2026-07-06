@@ -4,6 +4,8 @@ from app.models.budget_scope import ApiClientBudgetScope, BudgetScope
 from app.models.business import (
     Budget,
     BudgetLine,
+    DeliveryNote,
+    DeliveryNoteLine,
     Order,
     OrderLine,
     Plan,
@@ -64,6 +66,8 @@ __all__ = [
     "BudgetLine",
     "BudgetScope",
     "ClassificationSuggestion",
+    "DeliveryNote",
+    "DeliveryNoteLine",
     "Document",
     "DocumentAccessMetadata",
     "DocumentBlock",

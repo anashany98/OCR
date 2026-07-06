@@ -99,10 +99,14 @@ class InvoiceRead(BaseModel):
     document_id: int
     invoice_number: str | None
     supplier_name: str | None
+    supplier_tax_id: str | None
     client_name: str | None
     date: date_type | None
+    taxable_base: float | None
+    vat_amount: float | None
     total_amount: float | None
     currency: str | None
+    related_order_number: str | None
     related_order_id: int | None
     confidence: float | None
     created_at: datetime
@@ -114,10 +118,14 @@ class InvoiceCreate(BaseModel):
     document_id: int
     invoice_number: str | None = Field(default=None, max_length=120)
     supplier_name: str | None = Field(default=None, max_length=255)
+    supplier_tax_id: str | None = Field(default=None, max_length=50)
     client_name: str | None = Field(default=None, max_length=255)
     date: date_type | None = None
+    taxable_base: float | None = None
+    vat_amount: float | None = None
     total_amount: float | None = None
     currency: str | None = "EUR"
+    related_order_number: str | None = Field(default=None, max_length=120)
     related_order_id: int | None = None
     confidence: float | None = None
 

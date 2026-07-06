@@ -2,6 +2,7 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    mem_limit: 4g
     environment:
       POSTGRES_DB: docuintel
       POSTGRES_USER: app
@@ -17,6 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    mem_limit: 1g
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -67,7 +69,6 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      - C:\Users\Usuario\Desktop\TEST2025:/app/data/input/TEST2025:ro
       - ./backend/app:/app/app
       - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
@@ -103,7 +104,6 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      - C:\Users\Usuario\Desktop\TEST2025:/app/data/input/TEST2025:ro
       - ./backend/app:/app/app
       - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
@@ -167,6 +167,7 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-0@%h
     restart: unless-stopped
+    mem_limit: 8g
     depends_on:
       postgres:
         condition: service_healthy
@@ -211,6 +212,7 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-1@%h
     restart: unless-stopped
+    mem_limit: 8g
     depends_on:
       postgres:
         condition: service_healthy
@@ -350,7 +352,7 @@ services:
     image: dpage/pgadmin4:8
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@local
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Set PGADMIN_PASSWORD in .env}
     ports:
       - "127.0.0.1:5050:80"
     depends_on:

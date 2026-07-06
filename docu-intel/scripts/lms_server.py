@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""lms_server.py — host-side HTTP shim for the ``lms`` CLI.
+"""lms_server.py â€” host-side HTTP shim for the ``lms`` CLI.
 
 LM Studio's CLI (``lms.exe``) only runs on the host (Windows / macOS /
 Linux desktop), but our backend runs inside a Linux container and

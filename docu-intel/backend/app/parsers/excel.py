@@ -42,15 +42,23 @@ def _frame_to_markdown(frame, sheet_name: str) -> str:
 
     header_idx = _detect_header_row(frame)
     if header_idx is not None:
+        # Save original state before attempting header promotion.
+        original_frame = frame.copy()
         # Promote the chosen row to header; drop everything above.
         frame.columns = [str(c).strip() for c in frame.iloc[header_idx]]
         frame = frame.iloc[header_idx + 1 :].reset_index(drop=True)
-        # Drop columns whose header ended up empty/duplicated.
-        keep = [
-            i for i, c in enumerate(frame.columns) if c and c.strip() and c.strip().lower() != "nan"
-        ]
-        frame = frame.iloc[:, keep]
-        frame.columns = [c.strip() for c in frame.columns]
+        # If promoting the header left no data rows, the "header" was
+        # actually the only data row (e.g. header=False in the source).
+        # Restore the original frame and skip header promotion.
+        if frame.empty:
+            frame = original_frame
+        else:
+            # Drop columns whose header ended up empty/duplicated.
+            keep = [
+                i for i, c in enumerate(frame.columns) if c and c.strip() and c.strip().lower() != "nan"
+            ]
+            frame = frame.iloc[:, keep]
+            frame.columns = [c.strip() for c in frame.columns]
 
     # Replace NaN with empty string and strip. Use positional indexing
     # (``frame.iloc[:, i]``) instead of label-based (``frame[col]``) so we
@@ -68,8 +76,8 @@ def _frame_to_markdown(frame, sheet_name: str) -> str:
     if frame.empty:
         return f"### Hoja: {sheet_name}\n\n*(Hoja sin datos)*"
 
-    # If only one column or one row, fall back to a simple "label | valor" layout.
-    if len(frame.columns) == 1 or len(frame) == 1:
+    # If only one column, fall back to a simple bullet list.
+    if len(frame.columns) == 1:
         lines = [f"### Hoja: {sheet_name}", ""]
         col0 = frame.columns[0]
         for _, row in frame.iterrows():

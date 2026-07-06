@@ -122,23 +122,18 @@ def parse_image(
 
     if needs_vision:
         try:
-            import asyncio
-
             from app.ai.local_client import LocalVisionClient
+            from app.parsers.pdf import _run_coro_sync
             from app.services.vision_manager import VisionManager
 
             VisionManager.cancel_pending_unload()
             if not VisionManager.is_loaded():
                 VisionManager.ensure_loaded()
             client = LocalVisionClient()
-            loop = asyncio.new_event_loop()
-            try:
-                prompt = _get_vision_prompt(content_route)
-                vision_text = loop.run_until_complete(
-                    client.describe(path, prompt=prompt, max_tokens=2000)
-                )
-            finally:
-                loop.close()
+            prompt = _get_vision_prompt(content_route)
+            vision_text = _run_coro_sync(
+                client.describe(path, prompt=prompt, max_tokens=2000)
+            )
             if vision_text:
                 page.blocks.append(
                     ExtractedBlock(
