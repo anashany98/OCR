@@ -1,0 +1,94 @@
+{
+  "final_statuses": {
+    "processed": 8,
+    "processing": 5,
+    "needs_review": 9,
+    "duplicate": 4
+  },
+  "ai_results": [
+    {
+      "q": "Que tipos de documentos hay en el sistema y de que tratan?",
+      "a": "En el sistema hay varios tipos de documentos relacionados principalmente con cotizaciones, presupuestos y comunicaciones comerciales entre empresas del sector de decoración y textiles. \n\nPor ejemplo, en la fuente 1 se encuentra una **cotización** para fundas de edredón, donde se detallan características del producto, precios y condiciones de envío. En la fuente 2 hay un **presupuesto** adjunto relacionado con materiales de decoración, como el modelo NATURTEX. La fuente 3 menciona una solicitud de **precio y stock** para productos específicos de la marca ELITIS. Las fuentes 4, 5 y 8 incluyen documentos etiquetados como **pto** (presupuesto), que contienen información sobre pedidos y facturación. En la fuente 6 se trata de una **comunicación sobre presupuesto de cortinas**, con detalles sobre fechas de instalación y transferencias bancarias. Finalmente, en la fuente 7 hay un intercambio relacionado con el **presupuesto para retapizar sillas** en Ibiza.\n\nEstos documentos tratan temas como precios, especificaciones técnicas de productos, logística, facturación y coordinación entre proveedores y clientes del sector de decoración.",
+      "confidence": 0.03237799801859966,
+      "sources": 8
+    },
+    {
+      "q": "Cuantos presupuestos hay y para que clientes?",
+      "a": "Según la información disponible en el documento \"Agregado budget/total\", hay 1 presupuesto registrado, y su valor total es de 9243631053.85 euros. Sin embargo, no se menciona el nombre del cliente asociado a este presupuesto en ninguno de los documentos proporcionados.",
+      "confidence": 0.23132003683208396,
+      "sources": 4
+    },
+    {
+      "q": "Que hotels aparecen en los documentos procesados?",
+      "a": "En los documentos procesados aparece mencionado el hotel **Cabot Tres Torres** y también se hace referencia a **Cabot Playa Grande**, según la fuente 2 y la fuente 4. No se mencionan otros hoteles en el contexto proporcionado.",
+      "confidence": 0.03131777585209211,
+      "sources": 8
+    },
+    {
+      "q": "Hay facturas de proveedores de textiles o cortinas? Cuales?",
+      "a": "No hay facturas de proveedores de textiles o cortinas mencionadas en los documentos proporcionados. Los archivos adjuntos mencionan facturas relacionadas con empresas como \"INVERSIONES EL LAUREL\" y presupuestos de \"SUAU INTERIORISME S.L.\", pero no se especifica que estos proveedores estén relacionados con textiles o cortinas.",
+      "confidence": 0.03557260489485868,
+      "sources": 5
+    },
+    {
+      "q": "Que materiales se mencionan en los presupuestos?",
+      "a": "En los presupuestos se mencionan varios materiales, principalmente melamina y tableros de distintas composiciones. En el archivo llodrà.pdf (página 1), aparece la **melamina Gama Duo de Finsa**, utilizada en armarios, mesas de escritorio y mesitas de noche. También se menciona **melamina playa wood boreal** en un mueble de baño.\n\nEn el archivo llodra 2.pdf (página 1), se mencionan materiales como **tablero multicapa rechapado en roble natural**, **tablero tricapa de roble**, y **tablero marino rechapado en roble**. Además, aparece la referencia a **HPL H1385 ST40 Roble Casella Natural** en un mueble DJ.\n\nEn resumen, los materiales mencionados incluyen diferentes tipos de melamina y tableros de madera, como el roble, utilizados para fabricar mobiliario.",
+      "confidence": 0.03187047056616434,
+      "sources": 8
+    },
+    {
+      "q": "Cuales son los precios mas habituales para cortinas?",
+      "a": "No se mencionan precios específicos para cortinas en ninguno de los documentos proporcionados. Los correos electrónicos incluyen solicitudes de presupuesto y conversaciones sobre medidas, materiales y fechas de instalación, pero no detallan importes ni rangos de precios.",
+      "confidence": 0.03292629598576298,
+      "sources": 7
+    },
+    {
+      "q": "Hay albaranes de entrega? De que productos?",
+      "a": "No se mencionan albaranes de entrega en ninguno de los documentos proporcionados. Los correos electrónicos y otros archivos adjuntos tratan temas relacionados con pedidos, presupuestos, facturas y comunicaciones comerciales, pero no incluyen información sobre albaranes ni productos específicos asociados a ellos.",
+      "confidence": 0.02725329759581591,
+      "sources": 8
+    },
+    {
+      "q": "Que empresas de decoracion aparecen como proveedoras?",
+      "a": "La única empresa de decoración que aparece como proveedora en los documentos proporcionados es **Decoraciones Egea**. Esta empresa se menciona en varios correos electrónicos como remitente o destinatario, lo que indica su participación en la gestión de pedidos y comunicaciones relacionadas con proyectos de decoración.\n\nNo se mencionan otras empresas de decoración como proveedoras en el contexto documental disponible.",
+      "confidence": 0.03702195924930615,
+      "sources": 8
+    },
+    {
+      "q": "Que cantidades y medidas de cortinas se manejan?",
+      "a": "No he encontrado informacion en el sistema para responder a eso. Si me das un numero de documento, un proveedor, un cliente, una fecha o el nombre de un archivo, lo busco mas a fondo.",
+      "confidence": 0.0,
+      "sources": 0
+    },
+    {
+      "q": "Hay documentos de proyectos de reforma hotelera? Que hotels?",
+      "a": "Sí, hay documentos relacionados con proyectos de reforma hotelera. En particular, se menciona el \"Proyecto de Reforma\" del Hotel S'alamera en Santa Eulalia del Rio, Ibiza, en la fuente 1: RV_ Petición de oferta - Pavimento vinilico.msg. Además, en la fuente 4: contrato.pdf, se hace referencia a un \"Proyecto de FF&E\" (Furniture, Fixtures and Equipment) y un \"Proyecto de Reforma\" para un hotel, aunque no se menciona el nombre del hotel específicamente en ese documento.",
+      "confidence": 0.032670931173122406,
+      "sources": 8
+    }
+  ],
+  "search_results": {
+    "presupuesto cortinas": {
+      "text": 2,
+      "semantic": 2,
+      "hybrid": 3
+    },
+    "hotel mallorca": {
+      "text": 0,
+      "semantic": 3,
+      "hybrid": 3
+    },
+    "factura proveedor": {
+      "text": 0,
+      "semantic": 3,
+      "hybrid": 3
+    },
+    "tapiceria hotel": {
+      "text": 0,
+      "semantic": 3,
+      "hybrid": 3
+    }
+  },
+  "ai_success": 10,
+  "ai_total": 10
+}
