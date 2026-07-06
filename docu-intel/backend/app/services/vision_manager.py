@@ -81,6 +81,11 @@ class VisionManager:
         return shutil.which("lms")
 
     @classmethod
+    def _lm_studio_url(cls) -> str:
+        from app.core.config import settings
+        return (settings.vision_base_url or settings.ai_base_url or "http://host.docker.internal:1234").rstrip("/").rstrip("/v1")
+
+    @classmethod
     def _http_call(
         cls, method: str, path: str, body: dict | None = None, timeout: float = 30.0
     ) -> tuple[bool, dict[str, Any]]:
@@ -104,14 +109,46 @@ class VisionManager:
             return (False, {"ok": False, "error": str(exc)})
 
     @classmethod
+    def _lm_studio_call(
+        cls, verb: str, model: str, timeout: float = 180.0
+    ) -> tuple[bool, dict[str, Any]]:
+        """Call LM Studio API directly to load/unload models."""
+        try:
+            import json as _json
+            import urllib.request
+
+            base = cls._lm_studio_url()
+            if verb == "load":
+                url = f"{base}/v1/models/{model}/load"
+            elif verb == "unload":
+                url = f"{base}/v1/models/{model}/unload"
+            elif verb == "status":
+                url = f"{base}/v1/models"
+            else:
+                return False, {"ok": False, "error": f"unknown verb: {verb}"}
+
+            req = urllib.request.Request(url, method="POST" if verb != "status" else "GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                payload = _json.loads(resp.read().decode("utf-8") or "{}")
+                return (resp.status == 200, payload)
+        except Exception as exc:
+            logger.debug("LM Studio API %s %s failed: %s", verb, model, exc)
+            return False, {"ok": False, "error": str(exc)}
+
+    @classmethod
     def _lms_call(
         cls, verb: str, model: str, timeout: float = 180.0
     ) -> tuple[bool, dict[str, Any]]:
-        """Try the HTTP shim first, fall back to direct lms subprocess."""
+        """Try LM Studio API directly, then HTTP shim, then lms subprocess."""
+        # 1. Direct LM Studio API (most reliable)
+        ok, payload = cls._lm_studio_call(verb, model, timeout=timeout)
+        if ok:
+            return True, payload
+        # 2. HTTP shim (lms_server.py on host)
         ok, payload = cls._http_call("POST", f"/{verb}", {"model": model}, timeout=timeout)
         if ok:
             return True, payload
-        # Fall back: direct lms subprocess
+        # 3. Direct lms subprocess (fallback)
         lms = cls._find_lms()
         if not lms:
             return False, {"ok": False, "error": "no lms shim and no lms binary"}
@@ -147,31 +184,35 @@ class VisionManager:
         now = time.time()
         if cls._loaded_cache is not None and (now - cls._loaded_cache_ts) < cls._LOADED_CACHE_TTL:
             return cls._loaded_cache
-        ok, payload = cls._http_call("GET", "/status", timeout=10)
-        if not ok:
-            # Fall back: shell out to lms ps
-            lms = cls._find_lms()
-            if not lms:
-                return False
-            try:
-                proc = subprocess.run(
-                    [lms, "ps"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
+
+        # Check LM Studio API directly
+        try:
+            import json as _json
+            import urllib.request
+            url = f"{cls._lm_studio_url()}/v1/models"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                payload = _json.loads(resp.read().decode("utf-8"))
+                loaded = any(
+                    m.get("id") == model for m in payload.get("data", [])
                 )
-                if proc.returncode != 0:
-                    return False
-                loaded = model in proc.stdout
-            except Exception:
-                return False
-        else:
+                cls._loaded_cache = loaded
+                cls._loaded_cache_ts = now
+                return loaded
+        except Exception:
+            pass
+
+        # Fallback: HTTP shim
+        ok, payload = cls._http_call("GET", "/status", timeout=10)
+        if ok:
             loaded = any(
                 m.get("id") == model and m.get("loaded") for m in payload.get("models", [])
             )
-        cls._loaded_cache = loaded
-        cls._loaded_cache_ts = now
-        return loaded
+            cls._loaded_cache = loaded
+            cls._loaded_cache_ts = now
+            return loaded
+
+        return False
 
     @classmethod
     def ensure_loaded(cls, model: str | None = None) -> bool:

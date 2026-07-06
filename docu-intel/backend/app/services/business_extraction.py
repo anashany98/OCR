@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.models import (
     Budget,
     BudgetLine,
+    DeliveryNote,
+    DeliveryNoteLine,
     Document,
     DocumentEntity,
     Invoice,
@@ -63,6 +65,19 @@ class OrderExtraction:
 
 
 @dataclass
+class DeliveryNoteExtraction:
+    document_id: int
+    delivery_number: str | None
+    supplier_name: str | None
+    client_name: str | None
+    date: date | None
+    total_amount: float | None
+    currency: str | None
+    confidence: float
+    lines: list[ExtractedLine] = field(default_factory=list)
+
+
+@dataclass
 class InvoiceExtraction:
     document_id: int
     invoice_number: str | None
@@ -76,6 +91,7 @@ class InvoiceExtraction:
     currency: str | None
     related_order_number: str | None
     confidence: float
+    lines: list[ExtractedLine] = field(default_factory=list)
 
 
 @dataclass
@@ -100,6 +116,7 @@ class PersistedBusinessExtraction:
     budget: Budget | None = None
     order: Order | None = None
     invoice: Invoice | None = None
+    delivery_note: DeliveryNote | None = None
     needs_review: bool = False
     # Concrete reasons behind ``needs_review`` so the admin UI can
     # show *why* the document needs attention instead of a bare flag.
@@ -119,11 +136,23 @@ def extract_budget(
     budget_number = _first_match(
         text,
         [
-            r"\bpresupuesto\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
-            r"\boferta\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
             r"\bn[ºo]\s*presupuesto\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
+            r"(?<!total\s)presupuesto\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
+            r"\boferta\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
         ],
     )
+    # Fallback: look for standalone 6-8 digit number after "presupuesto" keyword
+    if not budget_number:
+        lines = text.split("\n")
+        for i, line in enumerate(lines):
+            if "presupuesto" in line.lower():
+                for j in range(i + 1, min(len(lines), i + 8)):
+                    stripped = lines[j].strip()
+                    if re.match(r"^\d{6,8}$", stripped):
+                        budget_number = stripped
+                        break
+                if budget_number:
+                    break
     client_name = _line_value(text, ["cliente", "razon social", "razón social"])
     parsed_date = _date_from_label(text, ["fecha", "fecha presupuesto"])
     total_amount, currency = _total_amount(text, "presupuesto")
@@ -160,13 +189,33 @@ def extract_order(
     order_number = _first_match(
         text,
         [
+            r"\bn[ºo]\s*pedido\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
             r"\bpedido\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
             r"\borden\s+de\s+compra\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
-            r"\bn[ºo]\s*pedido\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
         ],
     )
-    supplier_name = _line_value(text, ["proveedor", "suministrador"])
-    client_name = _line_value(text, ["cliente"])
+    # If no match with standard patterns, look for standalone 5-6 digit number
+    # in lines near "pedido" keyword
+    if not order_number:
+        lines = text.split("\n")
+        for i, line in enumerate(lines):
+            if "pedido" in line.lower():
+                # Search in nearby lines (before and after)
+                for j in range(max(0, i - 2), min(len(lines), i + 8)):
+                    stripped = lines[j].strip()
+                    if re.match(r"^\d{5,6}$", stripped):
+                        order_number = stripped
+                        break
+                if order_number:
+                    break
+    supplier_name = _line_value(text, ["proveedor", "suministrador", "emisor", "empresa"])
+    # Fallback: detect company name pattern (S.L., S.A., etc.)
+    if not supplier_name:
+        supplier_name = _detect_company_name(text, after_keywords=["pedido", "documento"])
+    client_name = _line_value(text, ["cliente", "receptor", "destinatario"])
+    # Fallback: detect second company name as client
+    if not client_name and supplier_name:
+        client_name = _detect_second_company(text, supplier_name)
     parsed_date = _date_from_label(text, ["fecha pedido", "fecha"])
     total_amount, currency = _total_amount(text, "pedido")
     related_budget_number = _line_value(
@@ -194,7 +243,10 @@ def extract_order(
 
 
 def extract_invoice(
-    document_id: int, text: str, document_confidence: float | None
+    document_id: int,
+    text: str,
+    document_confidence: float | None,
+    pages: list[ExtractedPage] | None = None,
 ) -> InvoiceExtraction | None:
     if not text.strip():
         return None
@@ -202,13 +254,16 @@ def extract_invoice(
     invoice_number = _first_match(
         text,
         [
-            r"\bfactura\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{1,})",
-            r"\bn[ºo]\s*factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{1,})",
+            r"\bn[ºo]\s*factura\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
+            r"(?<!total\s)factura\s*(?:n[ºo]\s*)?[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
         ],
     )
     supplier_name = _line_value(
         text, ["proveedor", "emisor", "empresa", "razon social", "razón social"]
     )
+    # Fallback: detect company name at beginning of text
+    if not supplier_name:
+        supplier_name = _detect_company_name(text)
     supplier_tax_id = _tax_id(text)
     client_name = _line_value(text, ["cliente", "receptor"])
     parsed_date = _date_from_label(text, ["fecha factura", "fecha"])
@@ -219,6 +274,7 @@ def extract_invoice(
     if related_order_number:
         related_order_number = related_order_number.split()[0].strip(" .,:;")
     currency = total_currency or base_currency or vat_currency
+    lines = _extract_lines_for_document(text, pages)
 
     score = _confidence(
         document_confidence,
@@ -231,7 +287,7 @@ def extract_invoice(
             vat_amount,
             total_amount,
         ],
-        False,
+        bool(lines),
     )
     return InvoiceExtraction(
         document_id=document_id,
@@ -246,6 +302,50 @@ def extract_invoice(
         currency=currency,
         related_order_number=related_order_number,
         confidence=score,
+        lines=lines,
+    )
+
+
+def extract_delivery_note(
+    document_id: int,
+    text: str,
+    document_confidence: float | None,
+    pages: list[ExtractedPage] | None = None,
+) -> DeliveryNoteExtraction | None:
+    if not text.strip():
+        return None
+
+    delivery_number = _first_match(
+        text,
+        [
+            r"\bn[ºo]\s*albar[aá]n\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]{2,})",
+            r"\balbar[aá]n\s*(?:n[ºo]\s*)?[:#-]\s*([A-Z0-9][A-Z0-9./-]{2,})",
+            r"\bALB\s*[:#-]\s*([A-Z0-9][A-Z0-9./-]{2,})",
+        ],
+    )
+    supplier_name = _line_value(
+        text, ["proveedor", "emisor", "empresa", "razon social", "razón social", "entregado por"]
+    )
+    client_name = _line_value(text, ["cliente", "receptor", "recibido por", "destinatario"])
+    parsed_date = _date_from_label(text, ["fecha albarán", "fecha albaran", "fecha entrega", "fecha"])
+    total_amount, total_currency = _total_amount(text, "albaran")
+    lines = _extract_lines_for_document(text, pages)
+
+    score = _confidence(
+        document_confidence,
+        [delivery_number, supplier_name, parsed_date, total_amount],
+        bool(lines),
+    )
+    return DeliveryNoteExtraction(
+        document_id=document_id,
+        delivery_number=delivery_number,
+        supplier_name=supplier_name,
+        client_name=client_name,
+        date=parsed_date,
+        total_amount=total_amount,
+        currency=total_currency,
+        confidence=score,
+        lines=lines,
     )
 
 
@@ -357,7 +457,7 @@ def persist_business_extraction(
         )
 
     if document.document_type == "factura":
-        extraction = extract_invoice(document.id, text, document.confidence)
+        extraction = extract_invoice(document.id, text, document.confidence, pages=pages)
         if not extraction:
             return PersistedBusinessExtraction(
                 needs_review=True,
@@ -368,10 +468,14 @@ def persist_business_extraction(
             document_id=document.id,
             invoice_number=extraction.invoice_number,
             supplier_name=extraction.supplier_name,
+            supplier_tax_id=extraction.supplier_tax_id,
             client_name=extraction.client_name,
             date=extraction.date,
+            taxable_base=extraction.taxable_base,
+            vat_amount=extraction.vat_amount,
             total_amount=extraction.total_amount,
             currency=extraction.currency,
+            related_order_number=extraction.related_order_number,
             related_order_id=related_order_id,
             confidence=extraction.confidence,
         )
@@ -387,6 +491,45 @@ def persist_business_extraction(
             validation_issues=issues,
         )
 
+    if document.document_type == "albaran":
+        extraction = extract_delivery_note(document.id, text, document.confidence, pages=pages)
+        if not extraction:
+            return PersistedBusinessExtraction(
+                needs_review=True,
+                review_reasons=["sin_extraccion"],
+            )
+        delivery_note = DeliveryNote(
+            document_id=document.id,
+            delivery_number=extraction.delivery_number,
+            supplier_name=extraction.supplier_name,
+            client_name=extraction.client_name,
+            date=extraction.date,
+            total_amount=extraction.total_amount,
+            currency=extraction.currency,
+            confidence=extraction.confidence,
+        )
+        db.add(delivery_note)
+        db.flush()
+        _add_entities_for_delivery_note(db, document.id, extraction)
+        for line in extraction.lines:
+            db.add(
+                DeliveryNoteLine(
+                    delivery_note_id=delivery_note.id,
+                    reference=line.reference,
+                    description=line.description,
+                    quantity=line.quantity,
+                    unit=line.unit,
+                    unit_price=line.unit_price,
+                    total_price=line.total_price,
+                    confidence=line.confidence,
+                )
+            )
+        db.flush()
+        return PersistedBusinessExtraction(
+            delivery_note=delivery_note,
+            needs_review=not extraction.lines,
+        )
+
     return PersistedBusinessExtraction()
 
 
@@ -396,15 +539,32 @@ def _delete_existing_business_data(db: Session, document_id: int) -> None:
     invoice_ids = list(
         db.scalars(select(Invoice.id).where(Invoice.document_id == document_id)).all()
     )
+    delivery_note_ids = list(
+        db.scalars(
+            select(DeliveryNote.id).where(DeliveryNote.document_id == document_id)
+        ).all()
+    )
     if budget_ids:
         db.execute(delete(BudgetLine).where(BudgetLine.budget_id.in_(budget_ids)))
-        db.execute(delete(Order).where(Order.related_budget_id.in_(budget_ids)))
+        db.execute(
+            delete(Order).where(
+                Order.related_budget_id.in_(budget_ids),
+                Order.document_id == document_id,
+            )
+        )
         db.execute(delete(Budget).where(Budget.id.in_(budget_ids)))
     if order_ids:
         db.execute(delete(OrderLine).where(OrderLine.order_id.in_(order_ids)))
         db.execute(delete(Order).where(Order.id.in_(order_ids)))
     if invoice_ids:
         db.execute(delete(Invoice).where(Invoice.id.in_(invoice_ids)))
+    if delivery_note_ids:
+        db.execute(
+            delete(DeliveryNoteLine).where(
+                DeliveryNoteLine.delivery_note_id.in_(delivery_note_ids)
+            )
+        )
+        db.execute(delete(DeliveryNote).where(DeliveryNote.id.in_(delivery_note_ids)))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document_id))
     db.flush()
 
@@ -479,6 +639,30 @@ def _add_entities_for_invoice(db: Session, document_id: int, extraction: Invoice
         document_id,
         "related_order_number",
         extraction.related_order_number,
+        extraction.confidence,
+    )
+
+
+def _add_entities_for_delivery_note(
+    db: Session, document_id: int, extraction: DeliveryNoteExtraction
+) -> None:
+    _entity(
+        db, document_id, "delivery_number", extraction.delivery_number, extraction.confidence
+    )
+    _entity(db, document_id, "supplier_name", extraction.supplier_name, extraction.confidence)
+    _entity(db, document_id, "client_name", extraction.client_name, extraction.confidence)
+    _entity(
+        db,
+        document_id,
+        "delivery_date",
+        extraction.date.isoformat() if extraction.date else None,
+        extraction.confidence,
+    )
+    _entity(
+        db,
+        document_id,
+        "total_amount",
+        _amount_text(extraction.total_amount),
         extraction.confidence,
     )
 
@@ -607,17 +791,51 @@ def _first_match(text: str, patterns: list[str]) -> str | None:
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
-            return match.group(1).strip(" .,:;")
+            value = match.group(1).strip(" .,:;")
+            # Validate: order/invoice/budget numbers should contain digits
+            if value and re.search(r"\d", value):
+                return value
     return None
 
 
 def _line_value(text: str, labels: list[str]) -> str | None:
     for label in labels:
+        # Try with separator first (label: value)
         match = re.search(
             rf"^\s*{re.escape(label)}\s*[:#-]\s*(.+?)\s*$", text, flags=re.IGNORECASE | re.MULTILINE
         )
         if match:
             return match.group(1).strip(" .,:;")
+        # Try without separator - look for label on one line, value on next
+        match = re.search(
+            rf"^\s*{re.escape(label)}\s*\n\s*(.+?)\s*$", text, flags=re.IGNORECASE | re.MULTILINE
+        )
+        if match:
+            return match.group(1).strip(" .,:;")
+    return None
+
+
+def _detect_company_name(text: str, after_keywords: list[str] | None = None) -> str | None:
+    """Detect company name by pattern (S.L., S.A., S.L.U., etc.)."""
+    # Spanish company suffixes - look for line containing company suffix
+    company_pattern = r"^([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ\s.,&]{2,50}(?:S\.L\.?|S\.A\.?|S\.L\.U\.?))\s*$"
+    for line in text.split("\n"):
+        match = re.match(company_pattern, line.strip(), re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _detect_second_company(text: str, first_company: str) -> str | None:
+    """Detect a second company name (usually the client) different from the first."""
+    company_pattern = r"^([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ\s.,&]{2,50}(?:S\.L\.?|S\.A\.?|S\.L\.U\.?))\s*$"
+    for line in text.split("\n"):
+        match = re.match(company_pattern, line.strip(), re.IGNORECASE)
+        if match:
+            company = match.group(1).strip()
+            # Return if different from the first company
+            if company.lower() != first_company.lower():
+                return company
     return None
 
 
@@ -633,8 +851,9 @@ def _date_from_label(text: str, labels: list[str]) -> date | None:
 
 def _amount_from_label(text: str, labels: list[str]) -> tuple[float | None, str | None]:
     for label in labels:
+        # Allow colon, dash, or just whitespace between label and number
         pattern = (
-            rf"^\s*{re.escape(label)}(?:\s+\d{{1,2}}%)?\s*[:#-]\s*([0-9][0-9.,]*)\s*(€|eur|euros)?"
+            rf"^\s*{re.escape(label)}(?:\s+\d{{1,2}}%)?\s*[:#-]?\s+([0-9][0-9.,]*)\s*(€|eur|euros)?"
         )
         match = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
         if match:
@@ -646,7 +865,7 @@ def _tax_id(text: str) -> str | None:
     return _first_match(
         text,
         [
-            r"\b(?:nif|cif)\s*[:#-]?\s*([A-Z]\d{7,8}[A-Z0-9]?)",
+            r"\b(?:nif|cif)\s*[:#-]?\s*([A-Z][\-]?\d{7,8}[A-Z0-9]?)",
             r"\b(?:nif|cif)\s*[:#-]?\s*(\d{8}[A-Z])",
         ],
     )
@@ -665,15 +884,27 @@ def _parse_date(value: str) -> date | None:
 
 def _total_amount(text: str, qualifier: str) -> tuple[float | None, str | None]:
     patterns = [
-        rf"\btotal\s+{re.escape(qualifier)}\s*[:#-]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
-        r"\btotal\s*[:#-]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
+        rf"\btotal\s+{re.escape(qualifier)}\s*[:#-.]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
+        # "TOTAL PRESUP. 1.645,60 EUR" - word must be >= 5 chars to avoid "IVA 21%"
+        r"\btotal\s+(\w{5,})\.?\s*[:#-.]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
+        r"\btotal\s*[:#-.]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
+        r"\btotal\s+EUR\s+IVA\s+excl\.?\s*([0-9][0-9.,]*)",
     ]
     for pattern in patterns:
         matches = list(re.finditer(pattern, text, flags=re.IGNORECASE))
         if matches:
-            amount = _parse_amount(matches[-1].group(1))
-            currency = _currency(matches[-1].group(2))
-            return amount, currency
+            # Use last match (usually the final total)
+            m = matches[-1]
+            # Find the first capturing group that has a number
+            for g in range(1, (m.lastindex or 0) + 1):
+                val = m.group(g)
+                if val and re.match(r"[0-9][0-9.,]+", val):
+                    amount = _parse_amount(val)
+                    # Check next group for currency
+                    currency = None
+                    if m.lastindex and m.lastindex >= g + 1:
+                        currency = _currency(m.group(g + 1))
+                    return amount, currency
     return None, None
 
 
@@ -689,13 +920,10 @@ def _currency(raw: str | None) -> str | None:
 def _status(text: str) -> str | None:
     """Detect the budget status.
 
-    Scoped to the area around a status label ("Estado:", "Situación:",
-    "Status:") so stray text in the document body — clauses like
-    "política de cancelación" or "pendiente de revisión" in a footer
-    — does not flip the document status.
-
-    Falls back to a whole-document scan only if no label is present,
-    so documents that do not use a label still get a value.
+    Only classify when there is an explicit status label ("Estado:",
+    "Situación:", "Status:") in the document. Without a label, return
+    None to avoid false positives from stray text like "pendiente de
+    pago" in footers or "cancelación" in terms-and-conditions blocks.
     """
     label_match = re.search(
         r"^\s*(?:estado|situaci[oó]n|status)\s*[:#-]\s*(.+?)\s*$",
@@ -705,9 +933,7 @@ def _status(text: str) -> str | None:
     if label_match:
         value = label_match.group(1).lower()
         return _classify_status_value(value)
-    # Fallback: whole-document scan (preserves the old behaviour for
-    # documents that do not carry a status label).
-    return _classify_status_value(text.lower())
+    return None
 
 
 def _classify_status_value(value: str) -> str | None:

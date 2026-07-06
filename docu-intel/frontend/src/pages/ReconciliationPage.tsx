@@ -28,6 +28,7 @@ export function ReconciliationPage() {
     queryKey: ["reconciliation-issues"],
     queryFn: api.reconciliationIssues,
     refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   })
   const generate = useMutation({
     mutationFn: api.generateReconciliationIssues,

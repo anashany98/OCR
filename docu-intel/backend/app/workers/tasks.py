@@ -1,4 +1,8 @@
+import logging
+from datetime import datetime, timezone
+
 from celery.exceptions import Reject
+from sqlalchemy import select
 
 from app.database.session import SessionLocal
 from app.ingestion.scanner import scan_input_folders
@@ -11,6 +15,8 @@ from app.workers.errors import (
     mark_job_as_failed,
     notify_failed,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @celery_app.task(
@@ -97,5 +103,77 @@ def scan_input_folders_task() -> dict:
     db = SessionLocal()
     try:
         return scan_input_folders(db, user=None, enqueue=True)
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.sweep_stale_jobs_task")
+def sweep_stale_jobs_task() -> dict:
+    """Reset extraction jobs stuck in 'processing' for >30 minutes.
+
+    A worker killed mid-processing (between Celery ack and db.commit)
+    leaves the job in 'processing' permanently. This beat task sweeps
+    them every 5 minutes so the document can be re-queued.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import and_
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+        stale = db.scalars(
+            select(ExtractionJob).where(
+                and_(
+                    ExtractionJob.status == "processing",
+                    ExtractionJob.started_at < cutoff,
+                )
+            )
+        ).all()
+        reset_count = 0
+        for job in stale:
+            job.status = "failed"
+            job.error_message = "Worker died mid-processing (sweeper timeout)"
+            job.finished_at = datetime.now(timezone.utc)
+            reset_count += 1
+        if reset_count:
+            db.commit()
+            logger.warning("Sweeper reset %d stale processing jobs", reset_count)
+            from app.services.metrics.pipeline import track_stale_jobs_reset
+            track_stale_jobs_reset(reset_count)
+        return {"stale_reset": reset_count}
+    except Exception as exc:
+        db.rollback()
+        logger.error("Stale job sweeper failed: %s", exc)
+        return {"stale_reset": 0, "error": str(exc)}
+    finally:
+        db.close()
+
+
+@celery_app.task(
+    name="app.workers.tasks.refresh_active_documents_view",
+    queue="maintenance",
+)
+def refresh_active_documents_view() -> dict:
+    """Refresh the mv_active_documents materialized view.
+
+    Runs periodically (every 5 min via Celery beat) so the document
+    list endpoint can query the small materialized view instead of
+    filtering the full documents table each time.
+    """
+    db = SessionLocal()
+    try:
+        db.execute(
+            __import__("sqlalchemy").text(
+                "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_active_documents"
+            )
+        )
+        db.commit()
+        logger.info("Refreshed mv_active_documents materialized view")
+        return {"status": "ok"}
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Failed to refresh mv_active_documents: %s", exc)
+        return {"status": "error", "error": str(exc)}
     finally:
         db.close()

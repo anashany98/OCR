@@ -9,9 +9,10 @@ modes are supported:
                      primary result is too short or its confidence is
                      too low. **Default.**
 
-The factory is cached with :func:`functools.lru_cache` so the same
-engine instance is reused across calls in a worker. Tests patch this
-symbol on the ``app.services.document_service`` module to inject a fake.
+The factory uses an explicit singleton (``_engine_singleton``) so the
+same engine instance is reused across calls in a worker. Tests patch
+``get_ocr_engine_class`` on the ``app.services.document_service``
+module to inject a fake.
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ from __future__ import annotations
 import contextlib
 import logging
 import threading
-from functools import lru_cache
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine
@@ -28,10 +28,10 @@ logger = logging.getLogger("app.ocr.factory")
 
 
 _engine_singleton: BaseOCREngine | None = None
+_engine_class_singleton: type[BaseOCREngine] | None = None
 _engine_lock = threading.RLock()
 
 
-@lru_cache(maxsize=1)
 def get_ocr_engine_class() -> type[BaseOCREngine]:
     """Return the OCR engine class configured by ``OCR_ENGINE``.
 
@@ -40,43 +40,39 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
     engines, so the cascade owns both instances and shares the
     expensive PaddleOCR model between calls.
     """
+    global _engine_class_singleton
+    if _engine_class_singleton is not None:
+        return _engine_class_singleton
+
     engine = settings.ocr_engine
 
     if engine == "tesseract":
         from app.ocr.tesseract import TesseractOCREngine
+        _engine_class_singleton = TesseractOCREngine
 
-        return TesseractOCREngine
-
-    if engine == "paddleocr":
+    elif engine == "paddleocr":
         from app.ocr.paddle import PaddleOCREngine
+        _engine_class_singleton = PaddleOCREngine
 
-        return PaddleOCREngine
-
-    if engine == "pp_structure":
+    elif engine == "pp_structure":
         from app.ocr.pp_structure import PPStructureEngine
+        _engine_class_singleton = PPStructureEngine
 
-        return PPStructureEngine
+    elif engine == "cascading":
+        _engine_class_singleton = get_cascading_engine
 
-    if engine == "cascading":
-        from app.ocr.paddle import PaddleOCREngine
-        from app.ocr.tesseract import TesseractOCREngine
+    else:
+        raise ValueError(
+            f"Unknown ocr_engine: {engine!r}. "
+            "Expected 'tesseract', 'paddleocr', 'cascading', or 'pp_structure'."
+        )
 
-        # The class returned here is technically a "class" (callable) so
-        # existing call sites that do ``get_ocr_engine_class()()`` keep
-        # working, but CascadingOCREngine is a regular class so each
-        # call returns a fresh wrapper. We rely on the worker's
-        # engine-being-a-singleton convention to avoid rebuilding.
-        class _CascadingFactory:
-            name = "cascading"
+    return _engine_class_singleton
 
-            def __new__(cls) -> BaseOCREngine:  # type: ignore[override]
-                return _get_or_create_engine(_build_cascading_engine)
 
-        return _CascadingFactory  # type: ignore[return-value]
-
-    raise ValueError(
-        f"Unknown ocr_engine: {engine!r}. Expected 'tesseract', 'paddleocr', 'cascading', or 'pp_structure'."
-    )
+def get_cascading_engine() -> BaseOCREngine:
+    """Build a CascadingOCREngine (singleton via _get_or_create_engine)."""
+    return _get_or_create_engine(_build_cascading_engine)
 
 
 def get_ocr_engine() -> BaseOCREngine:
@@ -116,10 +112,10 @@ def preload_ocr_engine() -> BaseOCREngine:
 
 
 def clear_ocr_engine_cache() -> None:
-    global _engine_singleton
+    global _engine_singleton, _engine_class_singleton
     with _engine_lock:
         _engine_singleton = None
-    get_ocr_engine_class.cache_clear()
+        _engine_class_singleton = None
 
 
 def _get_or_create_engine(factory) -> BaseOCREngine:
@@ -182,8 +178,10 @@ def _build_cascading_engine() -> BaseOCREngine:
                 DotsMOCRConfig(
                     enabled=True,
                     endpoint=settings.dots_mocr_endpoint,
+                    model=settings.dots_mocr_model or settings.vision_model,
                     api_key=settings.dots_mocr_api_key or None,
                     timeout_seconds=settings.dots_mocr_timeout_seconds,
+                    domain=settings.dots_mocr_domain,
                 )
             )
         except Exception as exc:  # noqa: BLE001 - any constructor failure
@@ -195,20 +193,88 @@ def _build_cascading_engine() -> BaseOCREngine:
             kwargs["vlm_ocr"] = None
         else:
             kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
+    if settings.nuextract_enabled and settings.nuextract_tier4_enabled:
+        try:
+            from app.ocr.nuextract_ocr import NuExtractOCREngine
+
+            nuextract = NuExtractOCREngine()
+        except Exception as exc:  # noqa: BLE001 - any constructor failure
+            logger.warning(
+                "NuExtract3 (Tier 4) disabled at runtime: %s. "
+                "Cascade will keep existing Tier 4 fallback if configured.",
+                exc,
+            )
+        else:
+            if kwargs.get("vlm_ocr") is not None:
+                kwargs["tier4_fallback"] = kwargs["vlm_ocr"]
+            kwargs["vlm_ocr"] = nuextract
+            kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
     return CascadingOCREngine(**kwargs)  # type: ignore[arg-type]
 
 
 def _warm_ocr_engine(engine: BaseOCREngine) -> None:
-    if hasattr(engine, "fallback"):
-        _warm_ocr_engine(engine.fallback)
-    if hasattr(engine, "pp_structure") and engine.pp_structure is not None:
-        _warm_ocr_engine(engine.pp_structure)
-    if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:
-        _warm_ocr_engine(engine.vlm_ocr)
-    if hasattr(engine, "_engine"):
-        _ = engine._engine  # noqa: B018 - intentional touch to warm any lazy init
-    if hasattr(engine, "_pipeline"):
-        _ = engine._pipeline  # noqa: B018 - intentional touch to warm any lazy init
+    """Warm up the engine with a timeout. If init hangs, log ERROR and
+    mark the engine as unavailable rather than killing the worker.
+
+    M3: on timeout the previously-stuck sub-engines are flagged with
+    ``_init_failed = True`` (the same convention PaddleOCR uses) so any
+    later ``extract()`` raises a clear RuntimeError instead of silently
+    re-entering the hanging init. Sub-engines that don't expose
+    ``_init_failed`` are best-effort: the warning is logged but the flag
+    cannot be set, matching the prior behaviour."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+    warmup_timeout = getattr(settings, "ocr_engine_warmup_timeout", 180)
+
+    sub_engines = []
+    for attr in ("fallback", "pp_structure", "vlm_ocr", "tier4_fallback"):
+        sub = getattr(engine, attr, None)
+        if sub is not None:
+            sub_engines.append(sub)
+
+    def _do_warm():
+        for sub in sub_engines:
+            _warm_ocr_engine(sub)
+        if hasattr(engine, "_engine"):
+            _ = engine._engine  # noqa: B018 - intentional touch to warm any lazy init
+        if hasattr(engine, "_pipeline"):
+            _ = engine._pipeline  # noqa: B018 - intentional touch to warm any lazy init
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_do_warm)
+            future.result(timeout=warmup_timeout)
+    except FuturesTimeout:
+        logger.error(
+            "OCR engine warmup timed out after %ds. "
+            "Marking affected engine(s) as unavailable.",
+            warmup_timeout,
+        )
+        _mark_warmup_failed(engine)
+    except Exception:
+        logger.error("OCR engine warmup failed (best-effort)", exc_info=True)
+        _mark_warmup_failed(engine)
+
+
+def _mark_warmup_failed(engine: BaseOCREngine) -> None:
+    """Flag an engine and its sub-engines as unavailable after a failed
+    warmup. Sets ``_init_failed = True`` where supported; other engines
+    are left untouched (best-effort)."""
+    candidates = [engine]
+    for attr in ("fallback", "pp_structure", "vlm_ocr", "tier4_fallback"):
+        sub = getattr(engine, attr, None)
+        if sub is not None:
+            candidates.append(sub)
+    for cand in candidates:
+        if hasattr(cand, "_init_failed"):
+            try:
+                cand._init_failed = True  # type: ignore[attr-defined]
+            except Exception:
+                logger.error(
+                    "Could not mark %s as unavailable after warmup failure",
+                    type(cand).__name__,
+                    exc_info=True,
+                )
 
 
 def _warn_if_gpu_requested_but_unavailable(engine: BaseOCREngine) -> None:
@@ -262,6 +328,8 @@ def _collect_gpu_device_strings(engine: BaseOCREngine) -> set[str]:
         candidates.append(engine.pp_structure)
     if hasattr(engine, "vlm_ocr") and engine.vlm_ocr is not None:
         candidates.append(engine.vlm_ocr)
+    if hasattr(engine, "tier4_fallback") and engine.tier4_fallback is not None:
+        candidates.append(engine.tier4_fallback)
     for cand in candidates:
         device = getattr(cand, "device", None)
         if isinstance(device, str) and device.lower().startswith(("gpu", "cuda")):
@@ -284,6 +352,11 @@ def _exercise(engine: BaseOCREngine) -> None:
     abort the boot. The next real call will trigger the same
     compile (just slower) but the worker is up and serving
     jobs.
+
+    SKIP-VLM: the vision LLM warmup is skipped because it can
+    hang for minutes if the model is loading, blocking the
+    entire worker from starting. The VLM will still work on
+    real jobs — it just won't be preloaded during boot.
     """
     import tempfile
     from pathlib import Path
@@ -311,7 +384,12 @@ def _exercise(engine: BaseOCREngine) -> None:
         cv2.line(img, (16, 32), (48, 32), (200, 200, 200), 1)
         cv2.line(img, (32, 16), (32, 48), (200, 200, 200), 1)
         cv2.imwrite(str(image_path), img)
-        engine.extract(image_path)
+        # Exercise only the OCR tiers (1-3), skip Tier 4 (VLM)
+        # to avoid blocking the worker boot.
+        if hasattr(engine, "primary"):
+            engine.primary.extract(image_path)
+        if hasattr(engine, "fallback"):
+            engine.fallback.extract(image_path)
     except Exception as exc:
         logger.debug("OCR preload exercise failed (best-effort): %s", exc)
     finally:
@@ -319,4 +397,4 @@ def _exercise(engine: BaseOCREngine) -> None:
             image_path.unlink(missing_ok=True)
 
 
-__all__ = ["get_ocr_engine_class", "get_ocr_engine", "preload_ocr_engine", "clear_ocr_engine_cache"]
+__all__ = ["get_ocr_engine_class", "get_ocr_engine", "get_cascading_engine", "preload_ocr_engine", "clear_ocr_engine_cache"]

@@ -1,0 +1,41 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: Docu-Intel
+          - paragraph [ref=e14]: Puesto de trabajo documental
+      - generic [ref=e15]:
+        - paragraph [ref=e16]:
+          - img [ref=e17]
+          - text: Sistema interno
+        - heading "Revisión, búsqueda y control documental en un único puesto de trabajo." [level=1] [ref=e19]
+        - paragraph [ref=e20]: Procesa presupuestos, pedidos, facturas y planos con extracción OCR inteligente. Todo bajo control, todo accesible.
+        - blockquote [ref=e21]:
+          - text: “Lo importante no es la cantidad de papel que entra, sino cuántos documentos se quedan sin revisar.”
+          - generic [ref=e22]: — principio de operación
+      - generic [ref=e23]:
+        - generic [ref=e24]: Sistema interno · acceso restringido
+        - generic [ref=e25]: v0.1
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - img [ref=e31]
+          - heading "Iniciar sesión" [level=3] [ref=e34]
+          - paragraph [ref=e35]: Accede a tu puesto de trabajo documental.
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - text: Email corporativo
+            - textbox "Email corporativo" [ref=e39]:
+              - /placeholder: tecnico@empresa.com
+          - generic [ref=e40]:
+            - text: Contraseña
+            - textbox "Contraseña" [ref=e41]:
+              - /placeholder: ••••••••
+          - button "Entrar" [ref=e42] [cursor=pointer]:
+            - generic [ref=e43]:
+              - text: Entrar
+              - img [ref=e44]
+      - paragraph [ref=e46]: Sistema interno — acceso restringido a personal autorizado.
+  - region "Notifications alt+T"

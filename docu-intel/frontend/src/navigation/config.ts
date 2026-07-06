@@ -218,6 +218,19 @@ export const NAV_ITEMS_BY_PATH: ReadonlyMap<string, NavItem> = (() => {
   return map
 })()
 
+/** Extract all unique roles from NAV_GROUPS items. */
+export const ALL_NAV_ROLES: readonly string[] = (() => {
+  const roles = new Set<string>()
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (item.roles) {
+        for (const r of item.roles) roles.add(r)
+      }
+    }
+  }
+  return [...roles]
+})()
+
 // ---------------------------------------------------------------------------
 // Page titles (used by AppShell.getPageTitle as the canonical source)
 // ---------------------------------------------------------------------------

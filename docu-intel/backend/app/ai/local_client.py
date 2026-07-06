@@ -35,6 +35,26 @@ class LocalAICircuitOpen(RuntimeError):
     pass
 
 
+class ContextSizeExceededError(RuntimeError):
+    """The prompt exceeded the model's loaded context_length.
+
+    Raised when the LLM server returns a 400 with a "context size" /
+    "context length" message. This is a *caller* error (prompt too big),
+    NOT a server fault: it must NOT open the circuit breaker, and the
+    agent should retry with a smaller context budget rather than fail.
+    """
+
+    pass
+
+
+def _looks_like_context_size_error(status_code: int, body: bytes) -> bool:
+    """True when a 4xx response means 'prompt too long for the model'."""
+    if status_code != 400:
+        return False
+    text = body.decode(errors="replace").lower()
+    return "context size" in text or "context length" in text or "maximum context" in text
+
+
 @dataclass
 class _CircuitState:
     failures: int = 0
@@ -42,6 +62,21 @@ class _CircuitState:
 
 
 _LOCAL_AI_CIRCUITS: dict[tuple[str, str], _CircuitState] = {}
+
+# Concurrency limit: prevent too many simultaneous LLM calls from
+# exhausting VRAM or causing OOM. With 15 concurrent users this
+# keeps the LLM server responsive. Vision calls share the same
+# semaphore because they compete for the same GPU memory.
+_LLM_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _get_llm_semaphore() -> asyncio.Semaphore:
+    global _LLM_SEMAPHORE
+    if _LLM_SEMAPHORE is None:
+        _LLM_SEMAPHORE = asyncio.Semaphore(
+            settings.ai_max_concurrent_requests if settings.ai_max_concurrent_requests > 0 else 100
+        )
+    return _LLM_SEMAPHORE
 
 
 def reset_local_ai_circuit_breakers() -> None:
@@ -108,29 +143,52 @@ class LocalOpenAICompatibleClient:
         messages: list[dict],
         temperature: float = 0.0,
         timeout: float | None = None,
-        max_tokens: int = 2000,
+        max_tokens: int = 4000,
     ) -> str:
         if not self.base_url or not self.model:
             raise RuntimeError("Local AI is not configured")
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        payload = await self._post_chat_completion(
-            headers=headers,
-            timeout=timeout or settings.ai_request_timeout_seconds,
-            json_payload={
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
-        )
-        return payload["choices"][0]["message"]["content"]
+        async with _get_llm_semaphore():
+            payload = await self._post_chat_completion(
+                headers=headers,
+                timeout=timeout or settings.ai_request_timeout_seconds,
+                json_payload={
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                },
+            )
+        choices = payload.get("choices")
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            raise ValueError(
+                f"Malformed LLM response: 'choices' is empty or missing. "
+                f"Model={self.model}"
+            )
+        message = choices[0].get("message")
+        if not message or not isinstance(message, dict):
+            raise ValueError(
+                f"Malformed LLM response: 'message' is missing in first choice. "
+                f"Model={self.model}"
+            )
+        content = message.get("content") or ""
+        # Thinking models (qwen3-*) put the actual response in
+        # reasoning_content while content stays empty.
+        if not content.strip():
+            content = message.get("reasoning_content") or ""
+        if not content.strip():
+            raise ValueError(
+                f"Malformed LLM response: 'content' is empty in message. "
+                f"Model={self.model}"
+            )
+        return content
 
     async def chat_stream(
         self,
         messages: list[dict],
         temperature: float = 0.0,
         timeout: float | None = None,
-        max_tokens: int = 2000,
+        max_tokens: int = 4000,
     ) -> AsyncIterator[str | tuple[str, str]]:
         """Yield text chunks as the LLM produces them.
 
@@ -163,75 +221,90 @@ class LocalOpenAICompatibleClient:
         # while we are already mid-stream propagate
         # immediately so the partial answer is preserved.
         last_exc: Exception | None = None
-        for attempt in range(self.max_retries + 1):
-            self._raise_if_circuit_open()
-            try:
-                async with (
-                    httpx.AsyncClient(
-                        timeout=request_timeout,
-                        transport=self.transport,
-                    ) as client,
-                    client.stream(
-                        "POST",
-                        f"{self.base_url}/chat/completions",
-                        headers=headers,
-                        json=json_payload,
-                    ) as response,
-                ):
-                    response.raise_for_status()
-                    self._record_success()
-                    async for line in response.aiter_lines():
-                        if not line:
-                            continue
-                        if line.startswith("data:"):
-                            data = line[len("data:") :].strip()
-                            if data == "[DONE]":
-                                break
-                            try:
-                                import json
+        async with _get_llm_semaphore():
+            for attempt in range(self.max_retries + 1):
+                self._raise_if_circuit_open()
+                try:
+                    async with (
+                        httpx.AsyncClient(
+                            timeout=httpx.Timeout(
+                                connect=5.0,
+                                read=request_timeout,
+                                write=5.0,
+                                pool=10.0,
+                            ),
+                            transport=self.transport,
+                        ) as client,
+                        client.stream(
+                            "POST",
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=json_payload,
+                        ) as response,
+                    ):
+                        if response.status_code >= 400:
+                            import logging
+                            _log = logging.getLogger("app.ai.local_client")
+                            body = await response.aread()
+                            _log.warning(
+                                "LLM stream %s returned %s: %s",
+                                self.model,
+                                response.status_code,
+                                body[:2000].decode(errors="replace"),
+                            )
+                            # A prompt-too-big error is a caller fault, not a
+                            # server fault: do NOT record it as a circuit
+                            # failure (which would otherwise cascade-fail
+                            # every subsequent call for ~30s). Propagate a
+                            # dedicated error the agent can retry with less
+                            # context.
+                            if _looks_like_context_size_error(response.status_code, body):
+                                raise ContextSizeExceededError(
+                                    f"Prompt exceeded the model's loaded context_length "
+                                    f"for {self.model}"
+                                )
+                            response.raise_for_status()
+                        self._record_success()
+                        async for line in response.aiter_lines():
+                            if not line:
+                                continue
+                            if line.startswith("data:"):
+                                data = line[len("data:") :].strip()
+                                if data == "[DONE]":
+                                    break
+                                try:
+                                    import json
 
-                                payload = json.loads(data)
-                            except Exception:
-                                continue
-                            choices = payload.get("choices") or []
-                            if not choices:
-                                continue
-                            delta = (choices[0] or {}).get("delta") or {}
-                            # Qwen3 (and other reasoning models) stream their
-                            # internal reasoning in `reasoning_content`. We
-                            # surface it as a separate event so the UI can
-                            # show "razonando..." while the model is thinking.
-                            thinking = delta.get("reasoning_content")
-                            if thinking:
-                                yield ("thinking", thinking)
-                            piece = delta.get("content")
-                            if piece:
-                                yield piece
-                    # Stream completed cleanly: exit the retry
-                    # loop without raising.
-                    return
-            except Exception as exc:
-                last_exc = exc
-                # The stream was already producing chunks when
-                # this error fired (otherwise the
-                # ``raise_for_status`` / ``aiter_lines`` path
-                # would have raised before we yielded
-                # anything). Re-raise without consuming
-                # another retry so the caller keeps the
-                # partial answer it already saw.
-                if not _is_retryable_ai_error(exc) or attempt >= self.max_retries:
-                    self._record_failure()
-                    raise
-                await self._sleep_before_retry(attempt)
-                continue
-        # The loop only exits via the explicit ``return``
-        # above or the re-raise inside the except. If we ever
-        # land here it means a retry exhausted without an
-        # exception, which is a logic bug.
-        if last_exc is not None:
-            self._record_failure()
-            raise last_exc
-        raise RuntimeError("chat_stream retry loop exited without an exception")
+                                    payload = json.loads(data)
+                                except Exception:
+                                    continue
+                                choices = payload.get("choices") or []
+                                if not choices:
+                                    continue
+                                delta = (choices[0] or {}).get("delta") or {}
+                                thinking = delta.get("reasoning_content")
+                                if thinking:
+                                    yield ("thinking", thinking)
+                                piece = delta.get("content")
+                                if piece:
+                                    yield piece
+                        return
+                except Exception as exc:
+                    last_exc = exc
+                    # ContextSizeExceededError is a caller fault (prompt
+                    # too big), NOT a server fault. Do NOT trip the circuit
+                    # breaker — that would cascade-fail all subsequent calls.
+                    if isinstance(exc, ContextSizeExceededError):
+                        raise
+                    if not _is_retryable_ai_error(exc) or attempt >= self.max_retries:
+                        self._record_failure()
+                        raise
+                    await self._sleep_before_retry(attempt)
+                    continue
+            if last_exc is not None:
+                self._record_failure()
+                raise last_exc
+            raise RuntimeError("chat_stream retry loop exited without an exception")
 
     async def _post_chat_completion(
         self,
@@ -245,7 +318,12 @@ class LocalOpenAICompatibleClient:
         for attempt in range(self.max_retries + 1):
             try:
                 async with httpx.AsyncClient(
-                    timeout=timeout,
+                    timeout=httpx.Timeout(
+                        connect=5.0,
+                        read=timeout,
+                        write=5.0,
+                        pool=10.0,
+                    ),
                     transport=self.transport,
                 ) as client:
                     response = await client.post(
@@ -253,11 +331,35 @@ class LocalOpenAICompatibleClient:
                         headers=headers,
                         json=json_payload,
                     )
+                    if response.status_code >= 400:
+                        import logging
+                        _log = logging.getLogger("app.ai.local_client")
+                        _log.warning(
+                            "LLM %s returned %s: %s",
+                            self.model,
+                            response.status_code,
+                            response.text[:2000],
+                        )
+                        # Prompt-too-big is a caller fault, not a server fault:
+                        # do NOT trip the circuit breaker (which would cascade-
+                        # fail every call for ~30s). Raise a dedicated error so
+                        # the agent can retry with a smaller context budget.
+                        if _looks_like_context_size_error(
+                            response.status_code, response.content
+                        ):
+                            raise ContextSizeExceededError(
+                                f"Prompt exceeded the model's loaded context_length "
+                                f"for {self.model}"
+                            )
                     response.raise_for_status()
                     self._record_success()
                     return response.json()
             except Exception as exc:
                 last_exc = exc
+                # ContextSizeExceededError is a caller fault, not a server
+                # fault — do NOT record a circuit breaker failure.
+                if isinstance(exc, ContextSizeExceededError):
+                    raise
                 if attempt >= self.max_retries or not _is_retryable_ai_error(exc):
                     self._record_failure()
                     raise
@@ -339,6 +441,8 @@ class LocalVisionClient:
         self.api_key = (
             api_key if api_key is not None else (settings.vision_api_key or settings.ai_api_key)
         )
+        self.max_retries = max(0, getattr(settings, "vision_max_retries", 2))
+        self.retry_base_delay_seconds = 1.0
 
     def is_configured(self) -> bool:
         return bool(self.base_url and self.model)
@@ -411,15 +515,54 @@ class LocalVisionClient:
             "temperature": 0.0,
             "max_tokens": max_tokens,
         }
-        async with httpx.AsyncClient(timeout=timeout or settings.vision_timeout_seconds) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+        async with _get_llm_semaphore():
+            last_exc: Exception | None = None
+            for attempt in range(self.max_retries + 1):
+                try:
+                    async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(
+                            connect=5.0,
+                            read=timeout or settings.vision_timeout_seconds,
+                            write=5.0,
+                            pool=10.0,
+                        ),
+                    ) as client:
+                        response = await client.post(
+                            f"{self.base_url}/chat/completions",
+                            headers=headers,
+                            json=payload,
+                        )
+                        if response.status_code == 429 or response.status_code >= 500:
+                            last_exc = httpx.HTTPStatusError(
+                                f"Vision model returned {response.status_code}",
+                                request=response.request,
+                                response=response,
+                            )
+                            if attempt < self.max_retries:
+                                await asyncio.sleep(self.retry_base_delay_seconds * (2 ** attempt))
+                                continue
+                        response.raise_for_status()
+                        data = response.json()
+                        msg = data["choices"][0]["message"]
+                        # Thinking models (qwen3-vl-8b-thinking etc.) put
+                        # the actual response in reasoning_content while
+                        # content stays empty.  Fall back to content when
+                        # reasoning_content is missing or empty.
+                        answer = msg.get("content") or ""
+                        if not answer.strip():
+                            answer = msg.get("reasoning_content") or ""
+                        return answer
+                except httpx.HTTPStatusError:
+                    raise
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < self.max_retries:
+                        await asyncio.sleep(self.retry_base_delay_seconds * (2 ** attempt))
+                        continue
+                    raise
+            if last_exc is not None:
+                raise last_exc
+            raise RuntimeError("Vision model request failed without an exception")
 
     async def transcribe_table(
         self,

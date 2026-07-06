@@ -25,6 +25,7 @@ they stay cheap and predictable.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import unicodedata
 
@@ -35,6 +36,8 @@ from sqlalchemy.orm import Session
 from app.models import AIAnswer, AIQuestion, User
 
 from .context import ContextItem
+
+logger = logging.getLogger("app.ai.validation")
 
 # ---------------------------------------------------------------------------
 # Module-level setup
@@ -86,27 +89,65 @@ _SPANISH_HINTS = (
 def response_looks_spanish(answer: str) -> bool:
     """True when ``answer`` is plausibly in Spanish.
 
-    Layered detection:
+    Layered detection, tuned to avoid rejecting valid natural answers
+    that happen to be short or list-like (which carry little language
+    signal). The previous version demanded >= 2 function-word hits and
+    a hard langdetect threshold, which dropped terse Spanish answers
+    and fell back to the rigid template. This version errs on the side
+    of accepting, since the LLM is already told to answer in Spanish.
+
     1. If the text contains a Spanish diacritic, accept immediately.
-    2. If langdetect says it's Spanish with prob >= 0.55, accept.
-    3. If langdetect says it's NOT Spanish with prob >= 0.75, reject.
-    4. Fallback: count common Spanish function words; accept
-       when there are at least 2 hits.
+    2. Numeric/currency answers (e.g. "Total: 1234,56 €") are accepted
+       without language gate — they carry no language signal and are
+       valid in any context.
+    3. If langdetect says it's Spanish with prob >= 0.55, accept.
+    4. Reject ONLY when langdetect is confident (prob >= 0.85) it is
+       a language CLEARLY distinct from Spanish. Short Spanish answers
+       are routinely misclassified as Catalan / Portuguese / Galician
+       / Italian (mutually intelligible Ibero-Romance languages); those
+       are treated as "possibly Spanish" and not used to reject alone.
+    5. Fallback: count common Spanish function words; accept when
+       there is at least 1 hit (was 2).
     """
     if not answer or not answer.strip():
         return False
     if any(ch in answer for ch in "ñáéíóúü¿¡"):
         return True
+    # Numeric/currency answers carry no language signal — accept them.
+    # "Total: 1234,56 €", "1234.56 EUR", "1 234,56" are all valid.
+    _NUMERIC_CURRENCY = re.compile(
+        r"""
+        [\d.,\s]+        # digits with separators
+        (?:€|EUR|USD|\$|euros?)?  # optional currency
+        """,
+        re.VERBOSE,
+    )
+    stripped = answer.strip()
+    if _NUMERIC_CURRENCY.fullmatch(stripped):
+        return True
+    # Also accept short answers that are mostly numeric with a label
+    # like "Total:" or "Importe:" — common in invoice/budget answers.
+    if re.match(
+        r"^(?:total|importe|suma|base\s+imponible|iva|neto)\s*[:=]?\s*[\d.,\s]+(?:€|EUR|USD|\$|euros?)?\s*$",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return True
+    # Ibero-Romance languages langdetect confuses with short Spanish
+    # inputs. They share most function words and vocabulary, so a high
+    # confidence verdict on one of them is not reliable evidence that
+    # the answer is NOT Spanish.
+    _IBERO_ROMANCE_CLOSE = {"ca", "pt", "gl", "it", "la", "es"}
     detected = _detect_language(answer)
     if detected:
         language, probability = detected
         if language == "es" and probability >= 0.55:
             return True
-        if language != "es" and probability >= 0.75:
+        if language != "es" and probability >= 0.85 and language not in _IBERO_ROMANCE_CLOSE:
             return False
     lowered = " " + answer.lower() + " "
     hint_count = sum(1 for hint in _SPANISH_HINTS if hint in lowered)
-    return hint_count >= 2
+    return hint_count >= 1
 
 
 def question_is_spanish(question: str) -> bool:
@@ -159,6 +200,11 @@ def _detect_language(text: str) -> tuple[str, float] | None:
 #   ``B1234567``, ``pedido 442403``. Each match is normalised to
 # alphanumeric-only lower-case before the lookup, so hyphen / slash
 # separators are transparent to the comparison.
+#
+# Pure numeric patterns (\\d{5,8}) are anchored to a document-number
+# context word (nº, factura, presupuesto, pedido, albarán, expediente,
+# reference, ref.) to avoid matching phone numbers, ZIP codes, or other
+# generic numbers that are perfectly valid in an answer.
 _DOC_NUMBER_PATTERN = re.compile(
     r"""
     \b
@@ -168,27 +214,51 @@ _DOC_NUMBER_PATTERN = re.compile(
         |
         # Slashed or dashed: 2026/143, 2026-143, 2026.143
         \d{4}[/\-.]?\d{2,6}
-        |
-        # Pure long numeric: 442403, 2026044
-        \d{5,8}
     )
     \b
     """,
     re.VERBOSE | re.IGNORECASE,
 )
 
+# Pure numeric document numbers (e.g. "pedido 442403", "factura 12345678")
+# require a context word immediately before them to avoid matching phone
+# numbers, ZIP codes or generic IDs.
+_DOC_NUMBER_WITH_CONTEXT = re.compile(
+    r"""
+    (?:nº|n[°o]|num(?:ero)?|factura|presupuesto|pedido|albarán|albaran|
+     expediente|reference|ref\.?)
+    \s*[:#:;\-]?\s*
+    (\d{4,10})
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
 # Regex for plausible currency amounts. Captures the value so we
 # can normalise it the same way for both context and answer.
-# Covers es-ES (1.234,56 EUR) and en-US (1,234.56 USD) shapes.
+#
+# Stricter than before: requires EITHER a thousands/decimal separator
+# OR an explicit currency symbol. Plain 1-3 digit numbers (which are
+# almost always IDs, ZIP codes, codes or filename suffixes) are NOT
+# validated as amounts. This avoids rejecting the LLM when it cites
+# filenames like ``Empresarial(57).pdf`` or invoice codes like
+# ``CEO-001`` - those numbers are not currency.
 _AMOUNT_PATTERN = re.compile(
     r"""
-    (?<![\w.,])                   # not preceded by digit/dot/comma
-    (?:€|\$|eur(?:os?)?|usd|£)?   # optional currency symbol
-    \s*
-    \d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?  # 1.234,56 / 1,234.56 / 1234,5
-    \s*
-    (?:€|eur(?:os?)?|usd|\$|£)?   # optional trailing currency
-    (?![\w.,])                    # not followed by digit/dot/comma
+    (?<![\w.,])                                # not preceded by digit/dot/comma
+    (?:
+        # Currency symbol on either side of a number: 56 EUR / USD 100
+        (?:€|\$|eur(?:os?)?|usd|£)\s*\d+(?:[.,]\d{1,2})?
+        |
+        \d+(?:[.,]\d{1,2})?\s*(?:€|eur(?:os?)?|usd|\$|£)
+        |
+        # Grouped with thousands separator: 1.234,56 / 1,234.56 / 1.234
+        \d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?
+        |
+        # Decimals without grouping: 1234,56 / 1234.56 (>= 4 digits to
+        # avoid IDs and codes)
+        \d{4,}(?:[.,]\d{1,2})?
+    )
+    (?!\w)                                     # allow sentence punctuation after amount
     """,
     re.VERBOSE | re.IGNORECASE,
 )
@@ -253,9 +323,34 @@ def _extract_known_doc_numbers(context_items: list[ContextItem]) -> set[str]:
     return known
 
 
+def _extract_known_reference_numbers(context_items: list[ContextItem]) -> set[str]:
+    """Collect number-like references from all source labels.
+
+    The answer validator should reject invented invoice/order numbers, but
+    local models often cite a filename fragment from ``source_path`` rather
+    than the exact OCR text. Treat numbers present in source metadata as known.
+    """
+    known = _extract_known_doc_numbers(context_items)
+    for item in context_items:
+        for blob in (item.document_filename, item.title, item.source_path):
+            if not blob:
+                continue
+            for match in _DOC_NUMBER_PATTERN.finditer(blob):
+                normalised = _normalise_doc_number(match.group(0))
+                if len(normalised) >= 4:
+                    known.add(normalised)
+    return known
+
+
 def _extract_known_amounts(context_items: list[ContextItem]) -> set[str]:
-    """Collect every currency amount present in the context."""
-    known: set[str] = set()
+    """Collect every currency amount present in the context.
+
+    We also pull in the set of known document numbers (budget / order /
+    invoice codes) so that the answer's pure-digit numbers like
+    ``260011`` (a budget number) are NOT flagged as fabricated
+    amounts just because they look like an unsigned integer.
+    """
+    known = _extract_known_doc_numbers(context_items)
     for item in context_items:
         for blob in (item.summary, item.excerpt):
             if not blob:
@@ -273,12 +368,105 @@ def _filename_is_known(ref: str, known: set[str]) -> bool:
     check caused false positives like ``"FACTURA"`` matching
     ``"FACTURAS.pdf"``; the new check is exact on the full name
     *or* on the stem (basename without extension).
+
+    A second layer catches the common case where the LLM has split
+    a long filename on spaces and the regex captured only the last
+    token (``"APROBADO.pdf"`` from
+    ``"CEO-001 20040-IC13-2605-000024 APROBADO.pdf"``): we accept
+    when the stem of the captured ref appears as a whole token in
+    any known filename.
     """
     ref_low = ref.lower()
     if ref_low in known:
         return True
     stem = ref_low.rsplit(".", 1)[0] if "." in ref_low else ref_low
-    return stem in known
+    if stem in known:
+        return True
+    for name in known:
+        if name.endswith("/" + ref_low) or name.endswith("\\" + ref_low):
+            return True
+        if ("/" in ref_low or "\\" in ref_low) and ref_low in name:
+            return True
+    # Whole-token containment: stem must appear surrounded by
+    # separators in the known name (so ``APROBADO`` matches but
+    # ``PRO`` does not).
+    for name in known:
+        if not name.endswith(".pdf") and not name.endswith(".msg") and not name.endswith(".xlsx") and not name.endswith(".docx") and not name.endswith(".doc") and not name.endswith(".png") and not name.endswith(".jpg") and not name.endswith(".jpeg") and not name.endswith(".tif") and not name.endswith(".tiff"):
+            continue
+        name_stem = name.rsplit(".", 1)[0]
+        # Match if stem appears as a complete token (separated by
+        # spaces, slashes, underscores, or hyphens).
+        if any(
+            token == stem
+            for token in re.split(r"[\s/_\-]+", name_stem)
+        ):
+            return True
+    # Looser fallback: the LLM often cites a document by a meaningful
+    # fragment of its filename (e.g. "F-2026-044.pdf" when the stored
+    # name is "Factura_F-2026-044_cliente.pdf"). Accept when the stem
+    # of the cited ref appears as a substring of a known filename's
+    # stem, as long as that substring is long enough (>= 6 chars) to
+    # be meaningful and not a common generic token.
+    if len(stem) >= 6:
+        for name in known:
+            name_stem = name.rsplit(".", 1)[0] if "." in name else name
+            if stem in name_stem:
+                return True
+    return False
+
+
+def _is_filename_like_reference(ref: str) -> bool:
+    """Heuristic: is ``ref`` shaped like a real document filename we
+    should validate, or is it just a numeric suffix that happens to
+    end in ``.pdf`` / ``.msg`` / etc.?
+
+    Real filenames we want to validate contain at least one
+    alphabetical word (``FACTURA``, ``PIN``, ``PIN.pdf``,
+    ``Presupuesto_260011.pdf``). Pure numeric refs like
+    ``72477372772.pdf`` (a tax/NCF number inside a longer filename
+    that the LLM has shortened) are NOT validated because they are
+    not file *names* the LLM could have invented — they are
+    identifier substrings.
+    """
+    stem = ref.rsplit(".", 1)[0] if "." in ref else ref
+    return any(ch.isalpha() for ch in stem)
+
+
+def _looks_like_currency_amount(raw: str) -> bool:
+    """Stricter filter on top of ``_AMOUNT_PATTERN`` to avoid flagging
+    identifier-like numbers as fabricated amounts.
+
+    An amount is suspicious (and we will require it to appear in the
+    context to be considered safe) when it is:
+
+    - a short pure digit run (``57``, ``001``, ``2373``) without
+      any separator or currency symbol
+    - likely a numeric substring inside a filename or code
+      (``NCF 2373 72477372772.pdf``, ``CEO-001``)
+
+    If the candidate already has a thousands separator, a decimal,
+    or an explicit currency symbol, we let ``_AMOUNT_PATTERN`` have
+    decided and accept it as a real amount.
+
+    Bare 4-digit numbers are also filtered because in this domain
+    they are almost always years (``2026``), ZIP codes (``08025``),
+    document suffixes (``2373``) or sequence numbers. Real
+    currency amounts are either >= 5 digits without separator or
+    have an explicit currency symbol or decimal.
+    """
+    if not raw:
+        return False
+    body = raw.strip()
+    # Currency symbols / separators are already validated by
+    # ``_AMOUNT_PATTERN``; here we only filter the bare-number case.
+    if any(ch in body for ch in ".,€$£"):
+        return True
+    # Pure digits: only flag if it could plausibly be an amount.
+    # 1-4 digit IDs/codes/years/ZIPs are NEVER amounts in this app.
+    digits = "".join(ch for ch in body if ch.isdigit())
+    if not digits or len(digits) <= 4:
+        return False
+    return True
 
 
 def response_fabricates_documents(answer: str, context_items: list[ContextItem]) -> bool:
@@ -290,7 +478,10 @@ def response_fabricates_documents(answer: str, context_items: list[ContextItem])
 
     1. **Filenames** — any ``*.pdf`` / ``*.docx`` / ``*.msg`` reference
        in the answer must match (by full name or by basename) one of
-       the documents in the context.
+       the documents in the context. We only validate references
+       that look like real filenames (contain alpha); bare numeric
+       suffixes like ``72477372772.pdf`` (NCF inside a longer name)
+       are skipped.
     2. **Document numbers** — plausible budget / order / invoice
        numbers (e.g. ``F-2026-044``, ``2026/143``) mentioned in the
        answer must appear in the context. The previous version did
@@ -309,42 +500,83 @@ def response_fabricates_documents(answer: str, context_items: list[ContextItem])
     # 1) Filenames
     known_filenames: set[str] = set()
     for item in context_items:
-        for name in (item.document_filename, item.title):
+        for name in (item.document_filename, item.title, item.source_path):
             if name:
                 known_filenames.add(name.lower())
                 stem = name.rsplit(".", 1)[0].lower() if "." in name else name.lower()
                 known_filenames.add(stem)
+                # Basename only: the part after the last separator.
+                # The LLM usually cites files by basename (``PIN.pdf``)
+                # while context stores full paths, so we need to match
+                # both directions.
+                basename = stem.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+                if basename:
+                    known_filenames.add(basename)
+                    known_filenames.add(basename + "." + name.rsplit(".", 1)[-1].lower())
     found_refs = re.findall(
         r"[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|png|jpe?g|tiff?)\b",
         answer,
         flags=re.IGNORECASE,
     )
     for ref in found_refs:
+        if not _is_filename_like_reference(ref):
+            continue
         if not _filename_is_known(ref, known_filenames):
+            logger.warning("AI response rejected: unknown filename reference %r", ref)
             return True
 
     # 2) Document numbers
-    known_numbers = _extract_known_doc_numbers(context_items)
+    known_numbers = _extract_known_reference_numbers(context_items)
     if known_numbers:
+        # Prefixed/slash patterns (F-2026-044, 2026/143, etc.)
         for match in _DOC_NUMBER_PATTERN.finditer(answer):
             normalised = _normalise_doc_number(match.group(0))
             if len(normalised) < 4:
                 continue
             if normalised not in known_numbers:
+                logger.warning(
+                    "AI response rejected: unknown document number %r (normalised=%s)",
+                    match.group(0),
+                    normalised,
+                )
+                return True
+        # Pure numeric with context word (e.g. "pedido 442403")
+        for match in _DOC_NUMBER_WITH_CONTEXT.finditer(answer):
+            number_str = match.group(1)
+            normalised = _normalise_doc_number(number_str)
+            if len(normalised) < 4:
+                continue
+            if normalised not in known_numbers:
+                logger.warning(
+                    "AI response rejected: unknown document number %r (normalised=%s)",
+                    number_str,
+                    normalised,
+                )
                 return True
 
     # 3) Amounts
     known_amounts = _extract_known_amounts(context_items)
+    known_reference_numbers = _extract_known_reference_numbers(context_items)
     if known_amounts:
         for match in _AMOUNT_PATTERN.finditer(answer):
-            normalised = _normalise_amount(match.group(0))
+            raw = match.group(0)
+            if not _looks_like_currency_amount(raw):
+                continue
+            normalised = _normalise_amount(raw)
             if not normalised or normalised in known_amounts:
+                continue
+            if normalised in known_reference_numbers:
                 continue
             # Only flag amounts that look like currency-shaped values
             # (>= 2 digits and <= 9 digits, optional decimal in the
             # original). Sub-2-digit mentions like "10" or "1" are
             # too noisy and would over-trigger.
             if len(normalised) <= 9:
+                logger.warning(
+                    "AI response rejected: unknown amount %r (normalised=%s)",
+                    raw,
+                    normalised,
+                )
                 return True
     return False
 
@@ -415,8 +647,32 @@ def suggest_followups(
             suggestions.append("¿Cuanto suman los presupuestos aceptados?")
         elif "pedido" in normalized:
             suggestions.append("¿Que proveedor tiene mas pedidos en curso?")
+        elif "factura" in normalized:
+            suggestions.append("¿Que pedidos corresponden a estas facturas?")
+            suggestions.append("¿Cual es el importe total facturado?")
+        elif "albar" in normalized or "envio" in normalized:
+            suggestions.append("¿Que mercancia contiene el albaran?")
+        elif has_budget:
+            suggestions.append("¿Que lineas tiene este presupuesto?")
+            suggestions.append("¿Hay factura que pague este pedido?")
+        elif has_invoice:
+            suggestions.append("¿Que pedido origino esta factura?")
+        elif has_order:
+            suggestions.append("¿Hay factura que pague este pedido?")
         else:
-            suggestions.append("¿Cuales son los ultimos presupuestos aceptados?")
+            # Generic: derive from actual context item titles
+            doc_titles = [
+                it.document_filename or it.title
+                for it in context_items[:3]
+                if it.document_filename or it.title
+            ]
+            if doc_titles:
+                first = doc_titles[0]
+                suggestions.append(f"¿Que mas detalles hay sobre {first}?")
+                suggestions.append("¿Hay documentos relacionados?")
+            else:
+                suggestions.append("¿Cuales son los ultimos presupuestos aceptados?")
+                suggestions.append("¿Que facturas hay recientes?")
 
     # Deduplicate and cap at 3.
     seen: set[str] = set()
@@ -437,8 +693,9 @@ def suggest_followups(
 
 
 # Heuristics: short follow-up questions that need context from the prior turn.
+# Only triggers when the question is short AND contains a pronoun/reference
+# that cannot be resolved without prior context.
 _FOLLOWUP_HINTS = (
-    " y ",
     " y la",
     " y las",
     " y los",
@@ -449,15 +706,23 @@ _FOLLOWUP_HINTS = (
     "qué pasa con",
     "del mismo",
     "de la misma",
+    "de este",
+    "de esta",
     "de ese",
     "de esa",
+    "de aquel",
+    "de aquella",
     "esos mismos",
     "esas mismas",
-    "tambien",
-    "también",
     "ahora dime",
     "y cuanto",
     "y cuántos",
+    "este otro",
+    "ese otro",
+    "aquel otro",
+    "también",
+    "el siguiente",
+    "la siguiente",
 )
 
 
@@ -465,7 +730,7 @@ def looks_like_followup(question: str) -> bool:
     """Return True if the question is short and looks like a follow-up
     that needs context from the previous turn."""
     q = (question or "").strip().lower()
-    if len(q) > 110:
+    if len(q) > 80:
         return False
     if not q:
         return False
@@ -550,3 +815,4 @@ def _normalize(text: str) -> str:
     only used for the cheap, in-Python keyword checks."""
     normalized = unicodedata.normalize("NFKD", text.lower())
     return normalized.encode("ascii", "ignore").decode("ascii")
+

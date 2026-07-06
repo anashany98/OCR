@@ -27,6 +27,7 @@ export function LearningHealthCard() {
     queryKey: ["learning", "health"],
     queryFn: () => learningApi.health(),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   })
 
   const handleTrigger = async () => {

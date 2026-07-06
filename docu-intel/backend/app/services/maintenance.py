@@ -81,7 +81,7 @@ def build_operations_overview(db: Session) -> dict:
             .join(Document, Document.id == DocumentPage.document_id)
             .where(Document.deleted_at.is_(None))
             .where(DocumentPage.ocr_confidence.is_not(None))
-            .where(DocumentPage.ocr_confidence < 0.70)
+            .where(DocumentPage.ocr_confidence < settings.low_ocr_confidence_threshold)
             .where(DocumentPage.review_status != "approved")
         )
         or 0

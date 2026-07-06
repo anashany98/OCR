@@ -6,10 +6,12 @@
  * into a single cell. Selection, navigation, reprocess and download
  * stay as inline icon buttons to keep the row scannable.
  */
+import { useCallback } from "react"
 import { Link } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import { Download, Eye, FileSpreadsheet, RefreshCcw } from "lucide-react"
 
-import { downloadUrl } from "@/api/client"
+import { api, downloadUrl } from "@/api/client"
 import { StatusBadge } from "@/components/layout/StatusBadge"
 import { Button } from "@/components/ui/button"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -24,7 +26,17 @@ type DocumentRowProps = {
 }
 
 export function DocumentRow({ document, selected, onToggle, onReprocess }: DocumentRowProps) {
+  const queryClient = useQueryClient()
   const confidencePct = document.confidence != null ? Math.round(document.confidence * 100) : null
+
+  // Prefetch document detail on hover so navigation feels instant.
+  const prefetchDocument = useCallback(() => {
+    queryClient.prefetchQuery({
+      queryKey: ["document", document.id],
+      queryFn: () => api.document(document.id),
+      staleTime: 60_000,
+    })
+  }, [queryClient, document.id])
   const confidenceTone =
     confidencePct == null
       ? "bg-muted-foreground/30"
@@ -52,6 +64,7 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
               to={`/documents/${document.id}`}
               className="block truncate text-sm font-medium text-foreground hover:underline"
               title={document.original_filename}
+              onMouseEnter={prefetchDocument}
             >
               {document.original_filename}
             </Link>

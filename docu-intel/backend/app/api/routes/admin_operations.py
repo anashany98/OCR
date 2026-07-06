@@ -220,7 +220,7 @@ def ingestion_events(
 
 @router.get("/work-inbox", response_model=list[WorkInboxItemRead])
 def work_inbox(
-    max_ocr_confidence: float = Query(default=0.70, ge=0, le=1),
+    max_ocr_confidence: float = Query(default=settings.low_ocr_confidence_threshold, ge=0, le=1),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor", "auditor")),
@@ -466,7 +466,7 @@ def _work_inbox_counts(
 
 @router.get("/work-inbox/count", response_model=WorkInboxCountRead)
 def work_inbox_count(
-    max_ocr_confidence: float = Query(default=0.70, ge=0, le=1),
+    max_ocr_confidence: float = Query(default=settings.low_ocr_confidence_threshold, ge=0, le=1),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> WorkInboxCountRead:

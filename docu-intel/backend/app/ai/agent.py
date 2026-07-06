@@ -49,10 +49,11 @@ from dataclasses import dataclass
 import httpx
 from sqlalchemy.orm import Session
 
-from app.ai.local_client import LocalOpenAICompatibleClient
+from app.ai.local_client import ContextSizeExceededError, LocalOpenAICompatibleClient
+from app.ai.structured_output import to_structured_response
 from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
-from app.services.ai_cache import cache_answer_async, get_cached_answer_async
+from app.services.ai_cache import cache_answer_async
 from app.services.business_redaction import redact_business_payload_for_scope
 from app.services.tenant_access import (
     access_scope_cache_key,
@@ -166,6 +167,22 @@ _money_filters = _money_filters
 _context_text_for_ai = build_context_text
 
 
+def has_answer_context(context_items: list[ContextItem]) -> bool:
+    """True when the chat has real system context to answer from.
+
+    Conversation memory is useful for resolving follow-ups, but it is
+    not evidence. Do not let it trigger a free-form LLM answer on its own.
+    """
+    for item in context_items:
+        if item.title == "Memoria de la conversacion":
+            continue
+        if item.document_id is not None:
+            return True
+        if item.title.startswith("[Estructurado]"):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Public orchestrator
 # ---------------------------------------------------------------------------
@@ -179,8 +196,8 @@ async def answer_question(
     mode: str | None = None,
     session_id: str | None = None,
 ) -> AIAnswer:
-    """End-to-end: cache lookup, tool selection, context collection,
-    memory injection, grounded fallback, optional LLM call, and
+    """End-to-end: tool selection, context collection, memory injection,
+    grounded fallback, optional LLM call, and
     persistence to AIAnswer + AIAnswerSource rows.
 
     This is the function the API endpoint (``app.api.routes.ai``)
@@ -213,38 +230,6 @@ async def answer_question(
 
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
-    cached = await get_cached_answer_async(
-        question, user.id, mode, scope_key=scope_key, session_id=session_id
-    )
-    if cached:
-        # Return cached answer as AIAnswer object
-        question_row = AIQuestion(user_id=user.id, question=question)
-        db.add(question_row)
-        db.flush()
-
-        answer_row = AIAnswer(
-            question_id=question_row.id,
-            answer=cached["answer"],
-            confidence=cached["confidence"],
-            model_name=cached.get("model_name", "cached"),
-        )
-        db.add(answer_row)
-        db.flush()
-
-        for source in cached.get("sources", []):
-            answer_row.sources.append(
-                AIAnswerSource(
-                    document_id=source.get("document_id"),
-                    page_number=source.get("page_number"),
-                    block_id=source.get("block_id"),
-                    relevance_score=source.get("relevance_score"),
-                    excerpt=source.get("excerpt"),
-                )
-            )
-
-        db.commit()
-        db.refresh(answer_row)
-        return answer_row
 
     # CTX-3: from this point on, the rest of the orchestrator sees the
     # *resolved* question so the tool selector and the LLM prompt
@@ -319,10 +304,9 @@ async def answer_question(
     # the active budget explicitly when nothing was found inside it.
     warnings = scope_warnings + warnings
 
-    # CTX-8: evaluate the confidence gates. When a gate is open and
-    # the question expects an amount, the orchestrator will skip the
-    # LLM call and produce a safe fallback that lists the amount
-    # candidates so the user can verify the answer themselves.
+    # CTX-8: evaluate confidence gates as advisory warnings only.
+    # Internal workflow preference: always answer, even below the
+    # confidence threshold; the warning reaches both prompt and fallback.
     from .confidence_gates import evaluate_gates_for_turn
 
     gate_eval, gate_warning = evaluate_gates_for_turn(
@@ -363,15 +347,7 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    # CTX-8: when the gate blocks an amount question, build a safe
-    # answer that lists the amount candidates and skip the LLM call
-    # so the model cannot override the safety message with a
-    # fabricated number. The candidate list also gets attached to
-    # the AIAnswer row so the UI can render a verification table.
-    if gate_eval.is_blocked and gate_eval.requires_amount:
-        answer_text = _format_gate_blocked_answer(gate_eval, active_context)
-        model_name = "backend_grounded_fallback"
-    elif context_items:
+    if has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
@@ -384,6 +360,8 @@ async def answer_question(
         if ai_answer and ai_answer != grounded.answer:
             answer_text = ai_answer
             model_name = settings.ai_model or grounded.model_name
+
+    structured = to_structured_response(answer_text, context_items=context_items, warnings=warnings)
 
     # Snapshot the resolved document (entities + relations) for the UI.
     # Use hops=2 so the card on the frontend can show the full neighborhood.
@@ -438,10 +416,18 @@ async def answer_question(
             except Exception as exc:
                 logger.warning("Could not serialize resolved_document_json: %s", exc)
 
+    # When the LLM successfully produced an answer (not the grounded
+    # fallback), boost the confidence: the model validated the context
+    # and synthesised a coherent response.  A 1.5x multiplier (capped
+    # at 0.95) reflects this without being overconfident.
+    answer_confidence = grounded.confidence
+    if model_name != "backend_grounded_fallback" and grounded.confidence > 0:
+        answer_confidence = min(0.95, grounded.confidence * 1.5)
+
     answer_row = AIAnswer(
         question_id=question_row.id,
         answer=answer_text,
-        confidence=grounded.confidence,
+        confidence=answer_confidence,
         model_name=model_name,
         resolved_document_json=resolved_json,
     )
@@ -481,6 +467,7 @@ async def answer_question(
             "confidence": grounded.confidence,
             "model_name": model_name,
             "sources": sources_data,
+            "structured": structured.to_dict(),
         },
         mode=mode,
         scope_key=scope_key,
@@ -528,19 +515,22 @@ async def _try_local_ai_answer(
     context_text = build_context_text(context_items)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
     messages = build_ai_messages(question, context_text, warning_text)
+    client = LocalOpenAICompatibleClient()
     try:
-        client = LocalOpenAICompatibleClient()
-        # The non-stream ``chat()`` already enforces a per-request
-        # timeout (``settings.ai_request_timeout_seconds``,
-        # default 120s) and ``ai_max_retries`` (default 2)
-        # with exponential backoff + jitter inside
-        # ``LocalOpenAICompatibleClient._post_chat_completion``.
-        # Wrapping it in another ``asyncio.wait_for`` would cap
-        # the total wall-clock at 60s and **cut the retry
-        # chain short** (audit A6), so the call goes through
-        # unchanged and the inner timeout / retry handles the
-        # slow / flaky cases instead.
         answer = await client.chat(messages, temperature=0.0)
+    except ContextSizeExceededError:
+        # Prompt too big for the loaded context_length (caller fault — the
+        # client avoided the circuit breaker). Shrink the budget and retry ONCE.
+        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
+        logger.warning("Prompt exceeded context_length — retry budget=%d: %s", halved, question[:100])
+        messages = build_ai_messages(
+            question, build_context_text(context_items, max_tokens_override=halved), warning_text
+        )
+        try:
+            answer = await client.chat(messages, temperature=0.0)
+        except Exception as exc:
+            logger.warning("Context-shrunk retry failed: %s", exc)
+            answer = ""
     except TimeoutError:
         logger.warning("AI answer timed out for question: %s", question[:100])
         return None
@@ -552,13 +542,63 @@ async def _try_local_ai_answer(
             "Unexpected error in AI answer generation: %s - question: %s", exc, question[:100]
         )
         return None
+
+    # Qwen3 + LM Studio known failure: with ``/no_think`` the model can
+    # return an EMPTY answer (0 tokens, finish_reason='stop'). Retry once
+    # with thinking enabled before falling back to the grounded answer.
+    # Mirrors the streaming path's retry in ``_stream_local_ai_answer``.
+    if not answer and "qwen" in (settings.ai_model or "").lower():
+        logger.warning(
+            "Qwen3 returned an empty answer (0 tokens) with /no_think — "
+            "retrying once with thinking enabled for question: %s",
+            question[:100],
+        )
+        retry_messages = build_ai_messages(
+            question, context_text, warning_text, enable_thinking=True
+        )
+        try:
+            answer = await client.chat(retry_messages, temperature=0.0)
+        except Exception as exc:
+            logger.warning("Qwen3 thinking-enabled retry failed: %s", exc)
+            answer = ""
+
+    if not answer:
+        return fallback
     if question_is_spanish(question) and not response_looks_spanish(answer):
         logger.warning("AI response not in Spanish for Spanish question: %s", answer[:200])
         return fallback
     if response_fabricates_documents(answer, context_items):
         logger.warning("AI response mentions documents not in context: %s", answer[:200])
         return fallback
-    return answer
+    return _polish_answer_text(answer)
+
+
+def _polish_answer_text(answer: str) -> str:
+    """Minimal cleanup of model output.
+
+    The previous version replaced natural phrases like "segun la fuente 1"
+    with "segun la fuente principal", which made the assistant sound
+    bureaucratic and stripped the LLM of its own voice. The new system
+    prompt tells the model to cite the actual filename inline, so we
+    leave phrasing alone and only do a couple of safe mechanical
+    cleanups:
+
+    - strip leading/trailing whitespace
+    - drop a stray ``[DONE]`` token that some servers append on the
+      non-streaming path
+    - collapse runs of more than two blank lines
+    """
+    text = (answer or "").strip()
+    if not text:
+        return text
+    # Defensive cleanup: stray SSE control tokens that should never
+    # have leaked into the answer text.
+    text = text.replace("[DONE]", "").strip()
+    # Collapse 3+ consecutive newlines to 2 (one paragraph break).
+    import re
+
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text
 
 
 @dataclass
@@ -578,12 +618,17 @@ async def _stream_local_ai_answer(
     context_items: list[ContextItem],
     warnings: list[str],
 ) -> AsyncIterator[str | tuple[str, str] | StreamOutcome]:
-    """Stream chunks of the LLM's answer as they arrive. Yields
-    plain text deltas while the LLM is producing, optional
-    ``("thinking", chunk)`` tuples for the model's internal
-    reasoning (Qwen3 / reasoning models), and a final
-    :class:`StreamOutcome` telling the caller whether to use the
-    streamed text or fall back to the grounded answer."""
+    """Stream chunks of the LLM's answer. Yields plain-text deltas, optional
+    ``("thinking", chunk)`` tuples (reasoning models), and a final
+    :class:`StreamOutcome` (``ok=False`` → SSE endpoint swaps in the
+    grounded fallback).
+
+    Resilience retries (all buffered, since on retry nothing has been
+    streamed yet): (a) ``ContextSizeExceededError`` → halve the context
+    budget and retry once; (b) Qwen3 empty answer with ``/no_think`` →
+    retry once with thinking enabled. Both log a clear warning so the
+    operator can see the root cause.
+    """
     if not settings.ai_base_url or not settings.ai_model:
         return
 
@@ -595,17 +640,39 @@ async def _stream_local_ai_answer(
     base_messages = build_ai_messages(question, context_text, warning_text)
 
     accumulated: list[str] = []
+    thinking_accumulated: list[str] = []
     aborted = False
+    client = LocalOpenAICompatibleClient()
     try:
-        client = LocalOpenAICompatibleClient()
-        async for piece in client.chat_stream(base_messages, temperature=0.0, max_tokens=2000):
+        # 4000 tokens (was 2000) so Qwen3 thinking-mode can fit both its
+        # reasoning trace and a real answer in the same completion.
+        async for piece in client.chat_stream(
+            base_messages, temperature=0.0, max_tokens=4000
+        ):
             # Pass through ("thinking", ...) tuples unchanged so the SSE
             # endpoint can emit them as their own event type.
             if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
+                thinking_accumulated.append(piece[1])  # type: ignore[arg-type]
                 yield piece
                 continue
             accumulated.append(piece)  # type: ignore[arg-type]
             yield piece  # type: ignore[misc]
+    except ContextSizeExceededError:
+        # Prompt too big for the loaded context_length (caller fault — the
+        # client avoided the circuit breaker). Shrink the budget and retry
+        # ONCE, buffered (nothing was streamed yet).
+        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
+        logger.warning("Stream exceeded context_length — retry budget=%d: %s", halved, question[:100])
+        shrunk = build_ai_messages(
+            question, build_context_text(context_items, max_tokens_override=halved), warning_text
+        )
+        try:
+            async for piece in client.chat_stream(shrunk, temperature=0.0, max_tokens=4000):
+                if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
+                    continue
+                accumulated.append(piece)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Context-shrunk stream retry failed: %s", exc)
     except TimeoutError:
         logger.warning("AI stream timed out for question: %s", question[:100])
         aborted = True
@@ -617,7 +684,40 @@ async def _stream_local_ai_answer(
         aborted = True
 
     full = "".join(accumulated)
+    # Qwen3 + LM Studio: with ``/no_think`` it can return EMPTY (0 tokens).
+    # Retry ONCE with thinking enabled, buffered (nothing streamed yet);
+    # only in the pure-empty case (no text AND no reasoning).
+    if not full and not thinking_accumulated and not aborted and "qwen" in (settings.ai_model or "").lower():
+        logger.warning("Qwen3 empty with /no_think — retry thinking on: %s", question[:100])
+        retry_messages = build_ai_messages(question, context_text, warning_text, enable_thinking=True)
+        retry_parts: list[str] = []
+        try:
+            async for piece in client.chat_stream(retry_messages, temperature=0.0, max_tokens=4000):
+                if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
+                    continue
+                retry_parts.append(piece)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Qwen3 thinking-enabled retry stream failed: %s", exc)
+        full = "".join(retry_parts) or full
+
     if aborted or not full:
+        if not full and thinking_accumulated:
+            # Distinguish the "model reasoned but said nothing visible"
+            # case from a generic network failure: the user/operator
+            # wants to know whether the model is the bottleneck.
+            logger.warning(
+                "AI stream produced only internal reasoning (%d thinking chunks, "
+                "0 visible chunks) for question: %s. Likely cause: Qwen3 "
+                "thinking-mode consuming the entire max_tokens budget. "
+                "Falling back to grounded response.",
+                len(thinking_accumulated),
+                question[:100],
+            )
+        elif not full:
+            logger.warning(
+                "AI stream produced no visible content for question: %s",
+                question[:100],
+            )
         yield StreamOutcome(text=full, ok=False)
         return
     if question_is_spanish(question) and not response_looks_spanish(full):
@@ -628,7 +728,7 @@ async def _stream_local_ai_answer(
         logger.warning("Streamed AI response mentions documents not in context")
         yield StreamOutcome(text=full, ok=False)
         return
-    yield StreamOutcome(text=full, ok=True)
+    yield StreamOutcome(text=_polish_answer_text(full), ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -665,6 +765,7 @@ __all__ = [
     # Prompts
     "build_ai_messages",
     "build_context_text",
+    "has_answer_context",
     # Validation
     "response_looks_spanish",
     "question_is_spanish",

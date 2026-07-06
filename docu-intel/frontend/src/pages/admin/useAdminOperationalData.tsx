@@ -30,36 +30,42 @@ export function useAdminOperationalData() {
   const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats })
   const alerts = useQuery({ queryKey: ["alerts"], queryFn: api.alerts })
   const metrics = useQuery({ queryKey: ["processing-metrics"], queryFn: api.processingMetrics })
-  const queueStatus = useQuery({ queryKey: ["queues"], queryFn: api.queues, refetchInterval: 5000 })
+  const queueStatus = useQuery({ queryKey: ["queues"], queryFn: api.queues, refetchInterval: 5000, refetchIntervalInBackground: false })
   const operationsOverview = useQuery({
     queryKey: ["operations-overview"],
     queryFn: api.operationsOverview,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
   const operationsStatus = useQuery({
     queryKey: ["operations-status"],
     queryFn: api.operationsStatus,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
   const maintenanceReport = useQuery({
     queryKey: ["maintenance-report"],
     queryFn: api.maintenanceReport,
     refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   })
   const operationsDocuments = useQuery({
     queryKey: ["operations-documents"],
     queryFn: () => api.operationsDocuments({ limit: 10 }),
     refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   })
   const watchedFiles = useQuery({
     queryKey: ["watched-files"],
     queryFn: api.watchedFiles,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
   const ingestionEvents = useQuery({
     queryKey: ["ingestion-events"],
     queryFn: api.ingestionEvents,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
   const auditLogs = useQuery({ queryKey: ["audit-logs"], queryFn: api.auditLogs })
 

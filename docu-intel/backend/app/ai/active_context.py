@@ -166,7 +166,13 @@ def load_active_context(db: Session, user: User | None, session_uuid: str | None
     stmt = select(ChatSession).where(ChatSession.session_uuid == session_uuid)
     if user is not None:
         stmt = stmt.where(ChatSession.user_id == user.id)
-    row = db.scalar(stmt)
+    try:
+        row = db.scalar(stmt)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("active_context load failed: %s", exc)
+        with contextlib.suppress(Exception):  # noqa: BLE001
+            db.rollback()
+        return ActiveContext()
     if row is None:
         return ActiveContext()
     return ActiveContext.from_dict(row.state_json or {})
@@ -176,10 +182,16 @@ def save_active_context(
     db: Session, user: User | None, session_uuid: str | None, ctx: ActiveContext
 ) -> ChatSession:
     """Persist the :class:`ActiveContext` to the session row."""
-    row, _ = get_or_create_session(db, user, session_uuid)
-    row.state_json = ctx.to_dict()
-    db.flush()
-    return row
+    try:
+        row, _ = get_or_create_session(db, user, session_uuid)
+        row.state_json = ctx.to_dict()
+        db.flush()
+        return row
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("active_context save failed: %s", exc)
+        with contextlib.suppress(Exception):  # noqa: BLE001
+            db.rollback()
+        raise
 
 
 # ---------------------------------------------------------------------------

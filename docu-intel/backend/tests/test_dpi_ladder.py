@@ -10,7 +10,7 @@ fixture.
 """
 from __future__ import annotations
 
-from app.parsers.pdf import _DPI_LADDER, _DPI_MIN_CONFIDENCE, _DPI_MIN_TEXT_LENGTH, _ocr_is_usable
+from app.parsers.pdf import _get_dpi_ladder, _DPI_MIN_CONFIDENCE, _DPI_MIN_TEXT_LENGTH, _ocr_is_usable
 from app.services.metrics import _registry, track_ocr_dpi_escalation
 
 
@@ -20,7 +20,8 @@ from app.services.metrics import _registry, track_ocr_dpi_escalation
 
 
 def test_dpi_ladder_contains_expected_values():
-    assert _DPI_LADDER == [300, 400, 600]
+    ladder = _get_dpi_ladder()
+    assert ladder == [300, 400, 600]
 
 
 def test_dpi_min_text_length_is_reasonable():
@@ -28,7 +29,7 @@ def test_dpi_min_text_length_is_reasonable():
 
 
 def test_dpi_min_confidence_is_reasonable():
-    assert _DPI_MIN_CONFIDENCE == 0.40
+    assert _DPI_MIN_CONFIDENCE == 0.55
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +43,7 @@ def test_ocr_is_usable_true_when_enough_text_and_confidence():
 
 def test_ocr_is_usable_true_at_exact_thresholds():
     text = "a" * 30
-    assert _ocr_is_usable(text, 0.40) is True
+    assert _ocr_is_usable(text, 0.55) is True
 
 
 def test_ocr_is_usable_false_when_text_too_short():

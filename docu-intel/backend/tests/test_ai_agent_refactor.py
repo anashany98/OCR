@@ -239,6 +239,20 @@ def test_dedupe_sources_drops_duplicates_and_orphan_ids():
     assert [s.document_id for s in out] == [1, 2]
 
 
+def test_memory_context_alone_does_not_enable_llm_answer():
+    from app.ai.agent import ContextItem, has_answer_context
+
+    items = [
+        ContextItem(
+            title="Memoria de la conversacion",
+            summary="El usuario pregunto antes por un presupuesto.",
+            relevance_score=1.0,
+        )
+    ]
+
+    assert has_answer_context(items) is False
+
+
 def test_format_source_includes_page_when_present():
     from app.ai.agent import ContextItem, format_source
     with_page = ContextItem(title="t", summary="", document_filename="doc.pdf", page_number=3)

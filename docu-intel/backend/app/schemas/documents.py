@@ -88,6 +88,7 @@ class BulkReprocessRequest(BaseModel):
     document_type: str | None = None
     source_path_contains: str | None = None
     ids: list[int] | None = None
+    quality_flags: list[str] | None = None
     limit: int = Field(default=100, ge=1, le=1000)
     mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = (
         "full"

@@ -16,10 +16,16 @@ from app.ai.agent import (
     answer_question,
     build_grounded_response,
     collect_context,
+    has_answer_context,
     redact_context_items_for_scope,
     select_tools_for_question,
 )
+from app.ai.active_context import ActiveContext, load_active_context, persist_context_after_answer
+from app.ai.confidence_gates import evaluate_gates_for_turn
 from app.ai.local_client import LocalOpenAICompatibleClient  # noqa: F401
+from app.ai.reference_resolver import resolve_references
+from app.ai.scope_guard import enforce_budget_scope
+from app.ai.tools import ToolCall, select_structured_tools
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.rate_limit import limiter
@@ -27,6 +33,7 @@ from app.database.session import get_db
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
 from app.schemas.ai import AIAnswerRead, AIQuestionRead, AskRequest
 from app.services.ai_cache import get_cache_stats, invalidate_all_ai_cache
+from app.services.business_redaction import redact_business_payload_for_scope
 from app.services.tenant_access import (
     access_scope_cache_key,
     filter_documents_for_scope,
@@ -90,13 +97,38 @@ async def ask_stream(
     mode = payload.mode
     session_id = payload.session_id
 
-    # 1) build the same context the non-streaming path builds.
+    # 1) build the same context the non-streaming path builds:
+    # reference resolution, structured-first tools, active scope and
+    # confidence gates. The UI uses this endpoint, so a drift here makes
+    # chat ignore data that /ai/ask can already answer from.
+    active_context: ActiveContext = (
+        load_active_context(db, user, session_id) if session_id else ActiveContext()
+    )
+    question, _reference_resolution = resolve_references(question, active_context)
     tools = select_tools_for_question(question)
+    structured_tools = select_structured_tools(question, active_context=active_context)
+    if structured_tools:
+        tools = structured_tools + tools
+    scope_outcome = enforce_budget_scope(question=question, state=active_context, tools=tools)
+    tools = scope_outcome.tools
+    if mode == "semantic":
+        tools = [t for t in tools if t.name != "hybrid_search"] + [
+            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}})
+        ]
     access_scope = resolve_user_access_scope(db, user)
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
     )
+    warnings = list(scope_outcome.warnings) + warnings
     context_items = redact_context_items_for_scope(context_items, access_scope)
+    gate_eval, gate_warning = evaluate_gates_for_turn(
+        db,
+        question=question,
+        context_items=context_items,
+        resolved_doc_id=resolved_doc_id,
+    )
+    if gate_warning:
+        warnings.append(gate_warning)
 
     # Inject conversation memory.
     memory_block = _build_memory_block(db, user, question)
@@ -123,7 +155,7 @@ async def ask_stream(
     grounded = build_grounded_response(
         question=question, context_items=context_items, warnings=warnings
     )
-
+    answer_context_available = has_answer_context(context_items)
     # 3) serialise sources (deduped) for the end event.
     from app.ai.agent import _dedupe_sources  # local import
 
@@ -176,13 +208,21 @@ async def ask_stream(
                     if rel_details:
                         entry["entities"] = rel_details.get("entities", {})
                 related_payload.append(entry)
-            resolved_json = {"document": details, "related": related_payload}
+            resolved_json = redact_business_payload_for_scope(
+                {"document": details, "related": related_payload},
+                access_scope,
+            )
 
     async def event_stream() -> AsyncIterator[bytes]:
         # start event: announce the model + that the LLM is running
+        start_model = (
+            settings.ai_model
+            if answer_context_available and settings.ai_base_url and settings.ai_model
+            else "backend_grounded_fallback"
+        )
         yield (
             b"event: start\ndata: "
-            + json.dumps({"model": settings.ai_model or "backend_grounded_fallback"}).encode()
+            + json.dumps({"model": start_model}).encode()
             + b"\n\n"
         )
 
@@ -191,32 +231,59 @@ async def ask_stream(
         confidence = grounded.confidence
         use_fallback = True
 
-        if context_items and settings.ai_base_url and settings.ai_model:
+        if answer_context_available and settings.ai_base_url and settings.ai_model:
             try:
+                # Real token-by-token streaming: each plain-text piece the
+                # generator yields is emitted immediately as its own ``delta``
+                # event (the frontend appends them: ``assembled += ev.text``).
+                # Previously we buffered everything and emitted a single delta
+                # at the end, so the user saw no live typing.
                 async for chunk in _stream_local_ai_answer(question, context_items, warnings):
                     if isinstance(chunk, StreamOutcome):
+                        # Terminal outcome. ``chunk.text`` is the final
+                        # accumulated text. When the generator streamed
+                        # token-by-token, ``full_text`` already equals it
+                        # and this is a no-op. When the first attempt came
+                        # back EMPTY (Qwen3 + /no_think failure mode) the
+                        # generator retries internally and returns the
+                        # retry text here, which we must emit as a delta so
+                        # the user actually sees it (nothing was streamed
+                        # live during the silent retry).
                         if chunk.ok:
-                            full_text = chunk.text
+                            if chunk.text and chunk.text != full_text:
+                                full_text = chunk.text
+                                yield (
+                                    b"event: delta\ndata: "
+                                    + json.dumps({"text": full_text}).encode()
+                                    + b"\n\n"
+                                )
                             model_name = settings.ai_model
                             use_fallback = False
                         break
-                    # Reasoning-model pass-through: the agent yields
-                    # ("thinking", chunk) tuples for the model's internal
-                    # reasoning. Surface them as a separate SSE event so
-                    # the UI can show a "razonando..." indicator.
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "thinking":
+                        # Forward reasoning trace so the frontend can show
+                        # its "razonando..." state.
                         yield (
                             b"event: thinking\ndata: "
                             + json.dumps({"text": chunk[1]}).encode()
                             + b"\n\n"
                         )
                         continue
+                    # Plain-text incremental token.
                     full_text += chunk
-                    yield b"event: delta\ndata: " + json.dumps({"text": chunk}).encode() + b"\n\n"
+                    yield (
+                        b"event: delta\ndata: "
+                        + json.dumps({"text": chunk}).encode()
+                        + b"\n\n"
+                    )
             except Exception as exc:
                 logger.exception("Streaming failed: %s", exc)
 
         if use_fallback:
+            # The stream was rejected by validation, failed, or never ran.
+            # ``end.answer`` is authoritative for the frontend, so set it to
+            # the grounded fallback; the UI will replace any partially
+            # streamed text with this final answer.
             full_text = grounded.answer
             model_name = grounded.model_name
 
@@ -252,6 +319,14 @@ async def ask_stream(
                 )
             )
         db.commit()
+        persist_context_after_answer(
+            db,
+            user=user,
+            session_id=session_id,
+            intent=None,
+            resolved_doc_id=resolved_doc_id,
+            context_items=context_items,
+        )
 
         # Feed the answer into the AI cache so subsequent similar
         # questions (and exact re-asks) skip the LLM. The cache embeds

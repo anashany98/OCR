@@ -1,7 +1,8 @@
-﻿services:
+services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    mem_limit: 4g
     environment:
       POSTGRES_DB: docuintel
       POSTGRES_USER: app
@@ -17,6 +18,7 @@
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    mem_limit: 1g
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -57,10 +59,6 @@
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.0}
       - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
-      # Vision model on-demand management: the lms CLI lives on the host
-      # (Windows) and is bind-mounted into the container so the backend
-      # can call it to load / unload the vision model before / after
-      # image processing jobs.
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     depends_on:
@@ -71,19 +69,7 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      # M-2: mount the host's lms CLI so the backend can manage the
-      # vision model lifecycle (load / unload) on demand. Only useful
-      # on Linux hosts where lms is a native ELF binary; on Windows
-      # the container can't exec lms.exe and the backend falls back
-      # to the HTTP shim at LMS_SHIM_URL (see
-      # app/services/vision_manager.py).
-      #
-      # The previous default (``${USERPROFILE}/.lmstudio/bin/lms.exe``)
-      # broke on WSL because ``$USERPROFILE`` is empty there, leaving
-      # an empty source path that docker compose rejected at startup.
-      # Now the default is the lms_server.py shim that ships with the
-      # repo (always present) and the operator can override
-      # LMS_BIN_PATH to point at a real lms binary on Linux.
+      - ./backend/app:/app/app
       - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -98,12 +84,17 @@
     build:
       context: ./backend
     env_file: .env
+    environment:
+      - WORKER_NAME=worker-fast
+      - LMS_SHIM_URL=http://host.docker.internal:1235
+      - LMS_CLI_PATH=/usr/local/bin/lms
+      - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2} -n worker-fast@%h
     restart: unless-stopped
     # H-2: enabled. The image's ENTRYPOINT (docker-entrypoint.sh)
     # chowns bind-mounts that are still owned by root, so the
-    # non-root appuser can write to /app/data/files and
-    # /app/data/input on Linux/Windows hosts.
+    # non-root appuser can write to /app/data/files and /app/data/input
+    # on Linux/Windows hosts.
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
@@ -113,29 +104,26 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      - ./backend/app:/app/app
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Healthcheck: ping Celery every 30s. If 3 consecutive pings fail,
-    # Docker restarts the worker. ``start_period`` covers the slow
-    # initial model load on the GPU workers.
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d worker-fast@$$(hostname) || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 90s
 
   worker-heavy:
-    # H-3: this service is the CPU-only OCR worker. It used to be
-    # gated behind ``profiles: ["ocr-cpu"]``, which meant a fresh
-    # ``docker compose up`` (no profile) would leave the ``ocr_heavy``
-    # queue with no consumer — scanned PDFs would pile up forever.
-    # It now lives in the default profile; the GPU workers below
-    # stay under ``profiles: ["ocr-gpu"]`` because they need an
-    # NVIDIA runtime.
     build:
       context: ./backend
     env_file: .env
+    environment:
+      - WORKER_NAME=worker-heavy
+      - LMS_SHIM_URL=http://host.docker.internal:1235
+      - LMS_CLI_PATH=/usr/local/bin/lms
+      - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy@%h
     restart: unless-stopped
     # H-2: enabled. See worker-fast for the bind-mount chown design.
@@ -148,6 +136,8 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      - ./backend/app:/app/app
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # M-5: instead of a ``pgrep`` (which passes even when the worker
@@ -159,7 +149,7 @@
     healthcheck:
       test:
         - CMD-SHELL
-        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d celery@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
+        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -175,16 +165,21 @@
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-0@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-0@%h
     restart: unless-stopped
+    mem_limit: 8g
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
+      - WORKER_NAME=worker-heavy-gpu-0
       - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_VISIBLE_DEVICES=0
+      - LMS_SHIM_URL=http://host.docker.internal:1235
+      - LMS_CLI_PATH=/usr/local/bin/lms
+      - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     runtime: nvidia
     deploy:
       resources:
@@ -196,21 +191,14 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      - ./backend/app:/app/app
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # GPU workers take longer to start (CUDA init + PaddleOCR/Paddle
-    # model upload to VRAM). Use 3-min start_period.
-    # NOTE: celery's `inspect ping` (both targeted -d and broadcast)
-    # is timing-sensitive in this environment and returns "No nodes
-    # M-5: replace the previous ``pgrep`` process-alive check with a
-    # functional one — ``inspect registered`` returns the task names
-    # the worker has registered with the broker. If the worker cannot
-    # reach Redis (the broker), it never registers, the grep misses,
-    # and Docker restarts the container.
     healthcheck:
       test:
         - CMD-SHELL
-        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy-gpu-0@%h 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
+        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy-gpu-0@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -222,22 +210,24 @@
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=1 -n worker-heavy-gpu-1@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-1@%h
     restart: unless-stopped
+    mem_limit: 8g
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      # WORKAROUND for hosts with a single active GPU (e.g. Windows
-      # with WDDM where the secondary RTX 4070 is in P8/Off because
-      # no display is connected). This worker shares GPU 0 with
-      # worker-heavy-gpu-0 instead of using GPU 1. Restore to =1
-      # when the host has 2 active GPUs (Linux server, Windows with
-      # dummy HDMI plugs on both cards, etc.).
-      - CUDA_VISIBLE_DEVICES=0
-      - NVIDIA_VISIBLE_DEVICES=0
+      - WORKER_NAME=worker-heavy-gpu-1
+      # O2: Each GPU worker uses its own card. If your second RTX 4070
+      # shows as P8/Off in nvidia-smi, connect a dummy HDMI plug or
+      # set GPU persistence mode: nvidia-smi -pm 1
+      - CUDA_VISIBLE_DEVICES=1
+      - NVIDIA_VISIBLE_DEVICES=1
+      - LMS_SHIM_URL=http://host.docker.internal:1235
+      - LMS_CLI_PATH=/usr/local/bin/lms
+      - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     runtime: nvidia
     deploy:
       resources:
@@ -249,16 +239,14 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      - ./backend/app:/app/app
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # GPU workers take longer to start (CUDA init + PaddleOCR/Paddle
-    # model upload to VRAM). Use 3-min start_period.
-    # M-5: same functional check as worker-heavy-gpu-0; see comment
-    # there for the rationale.
     healthcheck:
       test:
         - CMD-SHELL
-        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy-gpu-1@%h 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
+        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy-gpu-1@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -268,6 +256,8 @@
     build:
       context: ./backend
     env_file: .env
+    environment:
+      - WORKER_NAME=worker-maintenance
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1} -n worker-maintenance@%h
     restart: unless-stopped
     # H-2: enabled. See worker-fast.
@@ -280,10 +270,11 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      - ./backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d worker-maintenance@$$(hostname) || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -305,6 +296,8 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      - C:\Users\Usuario\Desktop\TEST2025:/app/data/input/TEST2025:ro
+      - ./backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -327,6 +320,7 @@
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
+      - ./backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -358,7 +352,7 @@
     image: dpage/pgadmin4:8
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@local
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Set PGADMIN_PASSWORD in .env}
     ports:
       - "127.0.0.1:5050:80"
     depends_on:

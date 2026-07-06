@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Awaitable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TypeVar
 
@@ -248,10 +250,28 @@ def _run_coro_sync(coro: Awaitable[_T]) -> _T:
 # O1 — DPI ladder: when Tier 1 returns very little text on a
 # scanned page, the characters are probably too small for the
 # current DPI. We re-render at progressively higher DPI and
-# re-run the cascade, up to 3 attempts.
-_DPI_LADDER: list[int] = [300, 400, 600]
+# re-run the cascade, up to 3 attempts.  The 600 DPI level is
+# only tried when the previous two levels produced completely
+# empty text (not just low quality) to avoid wasting time on
+# pages that are readable at 400 DPI but below the quality bar.
 _DPI_MIN_TEXT_LENGTH = 30
-_DPI_MIN_CONFIDENCE = 0.40
+_DPI_MIN_CONFIDENCE = 0.55  # DPI-escalación umbral (relajado vs low_ocr=0.70)
+
+
+def _get_dpi_ladder(page_width: float = 0, page_height: float = 0) -> list[int]:
+    """Build the DPI ladder dynamically from the configured base DPI.
+
+    For small pages (width < 400pt), start at a higher DPI so the
+    rendered image is large enough for OCR. A 516pt-wide page at
+    144 DPI produces a ~516px image — too small for PaddleOCR.
+    Bumping to 244 DPI gives ~860px which is much better.
+    """
+    base = settings.pdf_ocr_dpi
+    min_side = min(page_width, page_height) if page_width and page_height else 999
+    # Small page: start 100 DPI higher
+    if min_side < 400:
+        base = min(base + 100, 400)
+    return [base, base + 100, base + 300]
 
 
 def _ocr_with_dpi_ladder(
@@ -267,6 +287,11 @@ def _ocr_with_dpi_ladder(
     file is the *highest* DPI render we tried (the one whose OCR
     result we kept). The function is fail-safe: on any exception
     we return the result of the *last successful* attempt.
+
+    DPI escalation is capped: 600 DPI is only attempted when both
+    300 and 400 produced completely empty text (0 chars), not just
+    low quality. This avoids spending 2-3 extra OCR rounds on pages
+    that are readable at 400 DPI but below the quality bar.
     """
     from app.ocr.base import OCRResult
 
@@ -274,14 +299,13 @@ def _ocr_with_dpi_ladder(
     best_ocr: OCRResult | None = None
     best_engine: str = ""
     prev_dpi = 0
+    prev_text_empty = True
 
-    for dpi in _DPI_LADDER:
-        # OPS-1: ``_render_page_to_image`` returns the on-disk
-        # extension actually used (``.jpg`` or ``.png``). The
-        # file is left with that suffix on disk so the browser
-        # infers the right Content-Type from the filename. We
-        # build the requested path with a placeholder suffix
-        # here and let the helper rewrite it.
+    for dpi in _get_dpi_ladder(page.rect.width, page.rect.height):
+        # Skip 600 DPI unless previous attempts returned no text at all.
+        if dpi == 600 and not prev_text_empty:
+            break
+
         image_file = output_dir / f"page_{page_number}_dpi{dpi}.tmp"
         rendered_ext = _render_page_to_image(page, image_file, dpi=dpi)
         if rendered_ext is None:
@@ -291,14 +315,6 @@ def _ocr_with_dpi_ladder(
         try:
             ocr = ocr_engine.extract(image_file)
         except Exception as exc:
-            # OPS-2: the OCR engine itself can crash on a
-            # particular image (corrupt raster, tesseract
-            # segfault caught by Python, paddle import race).
-            # The DPI ladder just moves on, but if every
-            # ladder step fails the page comes out blank and
-            # nobody knows whether it was a render or an OCR
-            # problem. Count the OCR-side failure so the
-            # operator can see which one is firing.
             logger.debug(
                 "OCR engine %s crashed on page %d dpi %d: %s: %s",
                 getattr(ocr_engine, "name", "?"),
@@ -320,6 +336,7 @@ def _ocr_with_dpi_ladder(
         if prev_dpi > 0 and dpi > prev_dpi:
             track_ocr_dpi_escalation(from_dpi=prev_dpi, to_dpi=dpi)
         prev_dpi = dpi
+        prev_text_empty = len(text) == 0
 
         if _ocr_is_usable(text, conf):
             break
@@ -327,7 +344,7 @@ def _ocr_with_dpi_ladder(
     # Fallback: render at the base DPI as the page preview image
     # so the viewer always has something to show.
     if best_image is None:
-        base_dpi = _DPI_LADDER[0]
+        base_dpi = _get_dpi_ladder()[0]
         image_file = output_dir / f"page_{page_number}.tmp"
         rendered_ext = _render_page_to_image(page, image_file, dpi=base_dpi)
         if rendered_ext is not None:
@@ -386,6 +403,128 @@ def _ocr_is_usable(text: str, confidence: float) -> bool:
     is about "did the re-render help at all?" not "is this
     production-quality text?"."""
     return len(text.strip()) >= _DPI_MIN_TEXT_LENGTH and confidence >= _DPI_MIN_CONFIDENCE
+
+
+def _ocr_scanned_page_by_index(
+    pdf_path: Path,
+    page_index_0: int,
+    output_dir: Path,
+    ocr_engine,
+) -> tuple[Path | None, object, str]:
+    """Thread-safe variant of ``_ocr_with_dpi_ladder``.
+
+    Instead of taking a live ``fitz.Page`` object (which is not safe to
+    share across threads), this opens its own ``fitz.open(pdf_path)``,
+    fetches the page by 0-based index, and runs the same DPI ladder +
+    canonical-rename logic. PyMuPDF supports multiple concurrent
+    readers on the same path, so each worker thread calling this is
+    isolated.
+
+    Returns ``(image_file, ocr_result, engine_name)`` — same contract
+    as ``_ocr_with_dpi_ladder``.
+    """
+    import fitz
+
+    page_number = page_index_0 + 1
+    with fitz.open(pdf_path) as pdf:
+        page = pdf[page_index_0]
+        return _ocr_with_dpi_ladder(page, output_dir, page_number, ocr_engine)
+
+
+def _process_scanned_page(
+    pdf_path: Path,
+    page_index_0: int,
+    output_dir: Path,
+    ocr_engine,
+    language: str | None,
+    rect_wh: tuple[float, float],
+    content_route: str,
+) -> ExtractedPage:
+    """Process one scanned PDF page, end to end. Thread-safe.
+
+    Opens its own fitz handle, runs the DPI-ladder OCR cascade, applies
+    the vision-table fallback when configured, and returns a complete
+    :class:`ExtractedPage`. Designed to run inside a worker thread so
+    the pages of a multi-page document are OCR'd in parallel.
+    """
+    import time as _time
+
+    from app.parsers.types import ExtractedBlock
+
+    # Set the per-page language on the cascade (thread-local attribute).
+    with contextlib.suppress(Exception):
+        ocr_engine.current_language = language
+
+    rect_w, rect_h = rect_wh
+    page_number = page_index_0 + 1
+    started = _time.perf_counter()
+
+    image_file, ocr, actual_engine = _ocr_scanned_page_by_index(
+        pdf_path, page_index_0, output_dir, ocr_engine
+    )
+    image_path = str(image_file) if image_file is not None else None
+    text = ocr.text or ""
+    ocr_confidence = ocr.confidence
+    blocks = [
+        ExtractedBlock(
+            block_type=block.block_type or "text",
+            text=block.text,
+            page_number=page_number,
+            bbox=block.bbox,
+            confidence=block.confidence,
+            source_engine=actual_engine,
+        )
+        for block in ocr.blocks
+    ]
+    page_engine = actual_engine if text else "empty"
+
+    # Vision-table recovery path (best-effort) when the OCR cascade
+    # returned nothing usable. Runs in the same worker thread.
+    if not text and settings.vision_table_transcription and settings.vision_model:
+        try:
+            vision_md = _run_coro_sync(
+                _maybe_vision_table(pdf_path, page_index_0, output_dir, content_route=content_route)
+            )
+            if vision_md:
+                text = vision_md
+                ocr_confidence = max(ocr_confidence or 0.0, 0.85)
+                blocks = [
+                    ExtractedBlock(
+                        block_type="table",
+                        text=vision_md,
+                        page_number=page_number,
+                        bbox=(0.0, 0.0, rect_w, rect_h),
+                        confidence=0.85,
+                        source_engine="vision",
+                    )
+                ]
+                page_engine = "vision"
+        except Exception as exc:
+            logger.warning(
+                "pdf vision-table fallback failed for %s page %d: %s: %s",
+                pdf_path,
+                page_number,
+                type(exc).__name__,
+                exc,
+            )
+            track_parser_fallback_failure(stage="pdf_vision_table", kind="exception")
+
+    elapsed_ms = int((_time.perf_counter() - started) * 1000)
+    page = ExtractedPage(
+        page_number=page_number,
+        width=rect_w,
+        height=rect_h,
+        text=text,
+        image_path=image_path,
+        ocr_confidence=ocr_confidence,
+        ocr_engine=page_engine,
+        blocks=blocks,
+    )
+    # Stash the per-page timing so the caller can persist it. The
+    # ExtractedPage dataclass doesn't carry this field; we attach it as
+    # an attribute that the persistence layer reads opportunistically.
+    page.processing_time_ms = elapsed_ms  # type: ignore[attr-defined]
+    return page
 
 
 def _extract_table_markdown(path: Path, page_index: int) -> str:
@@ -502,18 +641,16 @@ def _extract_table_markdown(path: Path, page_index: int) -> str:
     return ""
 
 
-async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> str:
+async def _maybe_vision_table(
+    path: Path,
+    page_index: int,
+    output_dir: Path,
+    content_route: str | None = None,
+) -> str:
     """If the vision LLM is configured and the page produced no
     structured text (i.e. it's scanned/photographed), ask the vision
-    model to transcribe the table as markdown. Returns empty string on
-    any failure (vision is best-effort).
-
-    OPS-2: failures used to be silently swallowed here too. The
-    sync caller (``parse_pdf``) wraps this coroutine with
-    ``_run_coro_sync`` and logs+counts the exception, so this
-    inner ``except`` is a no-op in practice — but if the
-    sync wrapper ever changes, this branch keeps a verbose
-    log so the failure isn't lost.
+    model to transcribe the content. Handles tables, handwritten text,
+    and scanned documents. Returns empty string on any failure.
     """
     if not settings.vision_table_transcription:
         return ""
@@ -521,9 +658,19 @@ async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> 
         return ""
     try:
         from app.ai.local_client import LocalVisionClient
+        from app.parsers.image import _get_vision_prompt
 
         client = LocalVisionClient()
-        return await client.transcribe_table_from_pdf_page(path, page_index, output_dir=output_dir)
+        prompt = _get_vision_prompt(content_route)
+        text = await client.transcribe_table_from_pdf_page(path, page_index, output_dir=output_dir)
+        if text and len(text.strip()) > 20:
+            return text
+        # Fallback: content-aware prompt for the specific page
+        return await client.describe(
+            path,
+            prompt=prompt,
+            max_tokens=2000,
+        )
     except Exception as exc:
         logger.warning(
             "vision-table async call failed for %s page %d: %s: %s",
@@ -536,7 +683,12 @@ async def _maybe_vision_table(path: Path, page_index: int, output_dir: Path) -> 
         return ""
 
 
-def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
+def parse_pdf(
+    path: Path,
+    output_dir: Path,
+    ocr_engine: BaseOCREngine,
+    folder_hint: str | None = None,
+) -> ExtractedDocument:
     """Extract text from a PDF, per-page.
 
     Decision is made **per page**, not per document:
@@ -554,7 +706,23 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
     """
     import fitz
 
-    pages: list[ExtractedPage] = []
+    # Content-aware routing: classify the PDF before processing.
+    # This runs a quick text scan on the first 3 pages to detect
+    # if it's a plan, interior design content, etc.
+    from app.parsers.content_router import classify_content
+
+    content_classification = classify_content(path, folder_hint=folder_hint)
+    content_route = content_classification.route.value
+    if content_classification.route.value != "standard_ocr":
+        logger.info(
+            "PDF content router: %s -> %s (confidence=%.2f, reason=%s)",
+            path.name,
+            content_classification.route.value,
+            content_classification.confidence,
+            content_classification.reason,
+        )
+
+    pages: list[ExtractedPage | None] = []
     output_dir.mkdir(parents=True, exist_ok=True)
     file_size_mb = path.stat().st_size / (1024 * 1024)
     with fitz.open(path) as pdf:
@@ -568,24 +736,28 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                 file_size_mb,
                 page_count,
             )
+        # Pre-size the pages list so results land in page order regardless
+        # of which worker thread finishes first.
+        pages = [None] * page_count
+        # Pages that need the OCR cascade (scanned) are collected here and
+        # processed in parallel; digital pages are handled inline below.
+        scanned_indices: list[int] = []
+
         # O2 — track the language we detected from the first *digital*
         # page so a scan-only page that comes later still gets the
         # right language pack (scans do not have any embedded text to
         # sniff). We also pass this profile to the cascade's
-        # ``current_language`` attribute so the per-language
-        # thresholds apply.
+        # ``current_language`` attribute so the per-language thresholds
+        # apply.
         document_language: str | None = None
-        for index, page in enumerate(pdf, start=1):
+
+        # ---- Phase 1 (single thread): digital pages + language sniff ----
+        # PyMuPDF is not thread-safe across pages of the same document, so
+        # all fitz access happens here, sequentially, before any OCR.
+        for index_0, page in enumerate(pdf):
+            index = index_0 + 1
             text = page.get_text("text").strip()
             rect = page.rect
-            blocks: list[ExtractedBlock] = []
-            image_path: str | None = None
-            ocr_confidence: float | None = None
-            # Empty string = "no engine picked yet". Using "" (falsy) so the
-            # ``or`` fallback below correctly promotes the OCR result's engine
-            # label when this page is scanned. Initialising to "empty"
-            # (a truthy string) would make the ``or`` always short-circuit.
-            page_engine: str = ""
 
             # O2 — per-page language detection. We sniff the embedded
             # text on every page; for scans we fall back to the
@@ -627,23 +799,12 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                     document_type=_guess_document_type_for_metrics(path),
                 )
 
-            # Tell the cascade the current page's language so the
-            # per-language thresholds apply. We use ``getattr`` /
-            # ``setattr`` instead of a direct attribute access
-            # because ``BaseOCREngine`` is a ``Protocol`` and the
-            # cascade-specific ``current_language`` is not part of
-            # the interface contract. Non-cascading engines (single
-            # Tesseract, single PaddleOCR) will simply ignore the
-            # attribute set.
-            with contextlib.suppress(Exception):  # pragma: no cover - defensive
-                ocr_engine.current_language = effective_profile.detected
-
             # --- Digital fast path: embedded text is enough ----------
             if len(text) >= 30:
                 table_md = _extract_table_markdown(path, index - 1)
                 if table_md:
                     text = f"{text}\n{table_md}" if text else table_md.lstrip()
-                blocks.append(
+                blocks = [
                     ExtractedBlock(
                         block_type="text",
                         text=text,
@@ -652,7 +813,7 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                         confidence=1.0,
                         source_engine="pymupdf",
                     )
-                )
+                ]
                 # Render a low-res preview so the document viewer has
                 # something to show, but skip the high-res render the
                 # OCR path would do. OPS-1: the filename follows
@@ -667,84 +828,60 @@ def parse_pdf(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extrac
                 image_path = str(image_file)
                 # Digital extraction has perfect confidence: the text
                 # is straight from the PDF's content stream, not guessed.
-                ocr_confidence = 1.0
-                page_engine = "pymupdf"
-            else:
-                # --- Scanned / image page: OCR cascade + O1 DPI ladder
-                image_file, ocr, actual_engine = _ocr_with_dpi_ladder(
-                    page,
-                    output_dir,
-                    index,
-                    ocr_engine,
-                )
-                image_path = str(image_file)
-                text = ocr.text or text
-                ocr_confidence = ocr.confidence
-                blocks = [
-                    ExtractedBlock(
-                        block_type="text",
-                        text=block.text,
-                        page_number=index,
-                        bbox=block.bbox,
-                        confidence=block.confidence,
-                        source_engine=actual_engine,
-                    )
-                    for block in ocr.blocks
-                ]
-                # If the cascade returned nothing useful, try the vision
-                # LLM as a recovery path for tables (best-effort).
-                if not text and settings.vision_table_transcription and settings.vision_model:
-                    try:
-                        vision_md = _run_coro_sync(_maybe_vision_table(path, index - 1, output_dir))
-                        if vision_md:
-                            text = vision_md
-                            ocr_confidence = max(ocr_confidence or 0.0, 0.85)
-                            blocks = [
-                                ExtractedBlock(
-                                    block_type="table",
-                                    text=vision_md,
-                                    page_number=index,
-                                    bbox=(0.0, 0.0, float(rect.width), float(rect.height)),
-                                    confidence=0.85,
-                                    source_engine="vision",
-                                )
-                            ]
-                            page_engine = "vision"
-                    except Exception as exc:
-                        # OPS-2: the vision-table fallback is
-                        # best-effort, but losing it silently used
-                        # to leave operators with no signal that
-                        # the vision model is misbehaving on PDF
-                        # pages. Log with the path + page index
-                        # and bump the counter so a sustained
-                        # outage shows up on /metrics.
-                        logger.warning(
-                            "pdf vision-table fallback failed for %s page %d: %s: %s",
-                            path,
-                            index,
-                            type(exc).__name__,
-                            exc,
-                        )
-                        track_parser_fallback_failure(stage="pdf_vision_table", kind="exception")
-                # Keep the engine label accurate: if the cascade got
-                # text, use the cascade's pick; if the page is still
-                # empty, mark it as "empty" so the admin can spot the
-                # pages that came in blank despite being routed to OCR.
-                page_engine = page_engine or (actual_engine if text else "empty")
-
-            pages.append(
-                ExtractedPage(
+                pages[index_0] = ExtractedPage(
                     page_number=index,
                     width=float(rect.width),
                     height=float(rect.height),
                     text=text,
                     image_path=image_path,
-                    ocr_confidence=ocr_confidence,
-                    ocr_engine=page_engine,
+                    ocr_confidence=1.0,
+                    ocr_engine="pymupdf",
                     blocks=blocks,
                 )
+            else:
+                # Scanned page: defer to Phase 2 (parallel OCR). We only
+                # record its index + geometry now; the OCR cascade runs
+                # in a worker thread that opens its own fitz handle.
+                scanned_indices.append(index_0)
+
+    # ---- Phase 2 (parallel): OCR cascade for scanned pages ----
+    # Each scanned page opens its own ``fitz.open(path)`` (PyMuPDF allows
+    # concurrent readers) and runs the full cascade independently. The
+    # thread-local preprocess/OSD caches and the cascade's thread-local
+    # ``current_language`` keep pages isolated. The OCR engines release
+    # the GIL in their C extensions, so real parallelism is achieved.
+    if scanned_indices:
+        # Resolve geometry for each scanned page from a fresh fitz handle
+        # (cheap: just rect lookup, no render).
+        page_rects: dict[int, tuple[float, float]] = {}
+        with fitz.open(path) as pdf:
+            for idx in scanned_indices:
+                rect = pdf[idx].rect
+                page_rects[idx] = (float(rect.width), float(rect.height))
+
+        max_workers = min(len(scanned_indices), settings.ocr_page_parallelism)
+
+        def _ocr_page(index_0: int) -> tuple[int, ExtractedPage]:
+            page = _process_scanned_page(
+                pdf_path=path,
+                page_index_0=index_0,
+                output_dir=output_dir,
+                ocr_engine=ocr_engine,
+                language=document_language,
+                rect_wh=page_rects[index_0],
+                content_route=content_route,
             )
-    return ExtractedDocument(pages=pages)
+            return index_0, page
+
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="pdf-ocr") as executor:
+            for index_0, page in executor.map(_ocr_page, scanned_indices):
+                pages[index_0] = page
+
+    # Drop any slots that remained None (e.g. scanned page processing failed
+    # and returned nothing). Filter defensively so the caller always gets a
+    # contiguous list.
+    final_pages = [p for p in pages if p is not None]
+    return ExtractedDocument(pages=final_pages)
 
 
 def is_digital_pdf(path: Path) -> bool:

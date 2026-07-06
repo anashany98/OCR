@@ -1,0 +1,138 @@
+{
+  "files_selected": 40,
+  "uploaded": 40,
+  "doc_ids": [
+    2736,
+    1714,
+    8586,
+    7350,
+    8587,
+    8588,
+    8589,
+    8590,
+    8591,
+    7678,
+    2014,
+    8592,
+    7263,
+    8593,
+    8594,
+    3185,
+    6940,
+    8595,
+    8596,
+    8597,
+    3180,
+    8598,
+    8599,
+    8600,
+    2959,
+    5555,
+    8601,
+    8602,
+    8603,
+    8604,
+    2668,
+    5998,
+    8605,
+    7251,
+    8606,
+    8607,
+    4348,
+    8608,
+    6588,
+    8609
+  ],
+  "final_statuses": {
+    "needs_review": 6,
+    "processed": 14,
+    "pending": 17,
+    "duplicate": 3
+  },
+  "confidence_good": 14,
+  "confidence_low": 0,
+  "ai_results": [
+    {
+      "q": "Que tipos de documentos hay en el sistema? Describe su contenido general.",
+      "a": "En base a los documentos disponibles en el sistema, se pueden identificar varios tipos de documentos relacionados principalmente con procesos comerciales y logísticos:\n\n1. **Cotizaciones y presupuestos**: Estos documentos incluyen información sobre productos o servicios ofrecidos por proveedores, como en el caso del archivo *RE_ HUJ _ Cotización Naturtex.msg*, donde se adjunta un presupuesto para una empresa llamada MOBAY LIMITED. También aparece otro ejemplo en *PRESUPUESTO FELPUDO COCO.msg*, donde se solicita una cotización para un producto específico.\n\n2. **Correos electrónicos relacionados con pedidos y consultas**: Los archivos como *CONFIR PROVEE CON EL CAMBIO.msg* o *precio Elitis.msg* muestran intercambios de correo entre empresas, donde se discuten detalles sobre productos, precios, fechas de entrega y otros aspectos logísticos.\n\n3. **Documentos legales y contractuales**: En el archivo *HBL EGEA.pdf*, se incluyen cláusulas relacionadas con transporte marítimo, responsabilidades del transportista, límites de daños y condiciones generales aplicables a la carga. Este tipo de documento es común en operaciones internacionales.\n\n4. **Correspondencia sobre instalación y servicios**: En *RE_ Presupuesto cortinas.msg*, se discute una posible fecha para la instalación de cortinas, lo que indica que este tipo de documentos también incluye coordinación entre proveedores y clientes para la ejecución de servicios.\n\n5. **Documentos relacionados con retapizado y otros trabajos de reforma**: En *Re_ PRESUPUESTO RETAPIZADO SILLAS IBIZA .msg*, se menciona una solicitud para cotizar el retapizado de 290 sillas, lo que sugiere que este tipo de documentos también abarca servicios de reparación y transformación.\n\nEn resumen, los tipos de documentos en el sistema incluyen cotizaciones, presupuestos, correos comerciales, contratos legales, coordinaciones para instalaciones y trabajos de reforma. Cada uno de estos documentos tiene un propósito específico dentro del proceso comercial o logístico.",
+      "confidence": 0.030942792690152873,
+      "sources": 8
+    },
+    {
+      "q": "Cuantos presupuestos hay? Para que clientes y que hotels?",
+      "a": "Según la información disponible en los documentos, hay **1 presupuesto** relacionado con la actividad de \"retapizado de sillas\" para el cliente **Azulinehotels**, específicamente para un hotel en **Ibiza**. El presupuesto fue solicitado por Andrea Cachón, coordinadora del departamento de calidad de Azulinehotels, y se menciona que se trata de retapizar 290 sillas.\n\nNo hay información sobre otros presupuestos ni clientes adicionales en los documentos revisados.",
+      "confidence": 0.22565903103044493,
+      "sources": 4
+    },
+    {
+      "q": "Que empresas proveedoras de textiles o decoracion aparecen?",
+      "a": "En las fuentes proporcionadas aparece mencionada una empresa proveedora de textiles: **Natural Fabrics, S.L.**, que se encuentra en la dirección C/ Treball, 3, 08960 Sant Just Desvern, Barcelona (España). Esta empresa fue contactada por parte de Decoraciones Egea para valorar un tejido certificado y proporcionar información sobre sus productos.\n\nAdemás, aparece mencionado **SUAU INTERIORISME S.L.**, que se encuentra en la calle Cirurians i Barbers nº 25 bajos, y que envía presupuestos relacionados con textiles o decoración a Decoraciones Egea. También se menciona **BUDIA DESIGN**, una empresa que proporciona presupuestos para elementos de decoración como esqueletos y gomas.\n\nNo aparecen mencionadas otras empresas proveedoras de textiles o decoración en el contexto documental disponible.",
+      "confidence": 0.02993780826516806,
+      "sources": 8
+    },
+    {
+      "q": "Hay facturas? De que proveedores y por que importes?",
+      "a": "Según el mensaje en el archivo \"RV_ abono FRA 1_251205 y cambio de facturas.msg\", se mencionan varias facturas adjuntas, como la Fra 8-250153, FRA 1_251669, FRA 1_251670 y otras relacionadas con \"INVERSIONES EL LAUREL\". Sin embargo, no se indican los importes específicos de estas facturas en el texto proporcionado. El proveedor asociado a estas facturas es \"INVERSIONES EL LAUREL SRL\" o \"INVERSIONES EL LAUREL SA\", según el documento.\n\nNo se mencionan otros proveedores ni facturas adicionales en los archivos revisados.",
+      "confidence": 0.27229148184609503,
+      "sources": 3
+    },
+    {
+      "q": "Que materiales se mencionan (cortinas, tapiceria, mobiliario)?",
+      "a": "En los documentos proporcionados se mencionan cortinas y mobiliario, pero no se hace referencia a tapicería. Específicamente:\n\n- **Cortinas**: Se mencionan en varios contextos, como el presupuesto de cortinas (Fuente 1), la solicitud de presupuesto con diferentes opciones de tejidos para dormitorios y salón (Fuente 7), y en la entrega de mobiliario donde se incluyen detalles sobre sillas y taburetes que podrían estar relacionados con el uso de cortinas (Fuente 5).\n\n- **Mobiliario**: Se mencionan varios tipos, como sillas, taburetes y muebles para zonas comunes. Por ejemplo, en la Fuente 5 se detallan sillas YANET, sillas MENORCA, sillas SHANN, entre otras.\n\nNo se menciona **tapicería** en ninguno de los documentos revisados.",
+      "confidence": 0.029395763401565283,
+      "sources": 8
+    },
+    {
+      "q": "Hay albaranes de entrega? De que productos y a que clientes?",
+      "a": "Según el albarán de entrega (archivo: albaran de entrega.pdf), se entregaron cortinas confeccionadas en tejido Rioma Horizonte color 21 y color 33, incluyendo rieles blancos modelo Javea con instalación a techo. Las cortinas fueron entregadas al cliente Bellver Internacional College, ubicado en la calle Josep Costa | Ferrer, 5, Palma de Mallorca.\n\nLos productos entregados son los siguientes:\n\n- Una cortina de medidas 0.45 ancho x 3.51 alto.\n- Otra cortina de medidas 0.42 ancho x 3.13 alto.\n- Dos cortinas en una hoja, con medidas 10.85 ancho x 3.51 alto.\n- Una cortina de medidas 5.55 ancho x 3.13 alto.\n\nEl cliente dispone de un plazo de 15 días para revisar los productos y comunicar cualquier defecto.",
+      "confidence": 0.022890170987731304,
+      "sources": 8
+    },
+    {
+      "q": "Que proyectos de reforma hotelera hay documentados?",
+      "a": "Según el documento contrato.pdf, página 3, hay documentado un Proyecto de Reforma general del Hotel, que incluye trabajos de arquitectura, estructura y otras partidas no comprendidas en el presente contrato. Este proyecto se denomina \"Proyecto de Reforma\" y forma parte integrante del contrato como Anexo II (proyecto básico) y Anexo III (proyecto de ejecución).",
+      "confidence": 0.0315895930442711,
+      "sources": 8
+    },
+    {
+      "q": "Que medidas y cantidades de productos se manejan?",
+      "a": "No he encontrado informacion en el sistema para responder a eso. Si me das un numero de documento, un proveedor, un cliente, una fecha o el nombre de un archivo, lo busco mas a fondo.",
+      "confidence": 0.0,
+      "sources": 0
+    },
+    {
+      "q": "Que precios o rangos de precios aparecen en los documentos?",
+      "a": "En **RE_ precio y plazo- budia.msg**, pagina 1 aparece lo siguiente:\n\nAsunto: RE: precio y plazo De: \"Ismael - BUDIA DESIGN\" <ismael@budiadesign.com> Para: 'Juan Cabrera · Decoraciones Egea' <juan.cabrera@decoracionesegea.com> Fecha: 2025-12-11 09:49 Adjuntos (6): image006.jpg, image007.png, image008.jpg, image009.jpg, image001.jpg, Presupuesto 1-001444.pdf  Buenos dias Juan.\r \r \r \r Te adjunto el ppto de los elementos que me comenta Pedro Budia, al parecer prepararíamos 3 esqueletos + 3 gomas, y os enviaríamos las plantillas de Corte y Confección.\r \r El plazo aproximadamente será de 30 dias hábiles, aunque no podemos confirmar fecha exacta.\r \r \r \r Gracias… Coincide ademas con lo que aparece en **Re_ cotizacion funda edredon.msg, pagina 1** y **llodrà.pdf, pagina 1**.",
+      "confidence": 0.03343708873749779,
+      "sources": 8
+    },
+    {
+      "q": "Resumen ejecutivo: de que trata la documentacion de este lote?",
+      "a": "En **Re_ cotizacion funda edredon.msg**, pagina 1 aparece lo siguiente:\n\nAsunto: Re: cotizacion De: MªEmilia - Secaneta |ECOTOWEL® <m.emilia@secaneta.com> Para: Bego · Decoraciones Egea <gestioncomercial2@decoracionesegea.com> Fecha: 2025-06-12 17:11 Adjuntos (4): image001.jpg, image002.jpg, image003.png, MoFpihONjpfuWru8.png  Buenas tardes Bego,\r \r \r \r \r Seguido pasamos precio para las sabanas en color arena.\r \r FUNDA NÓRDICA\r \r Tejido 30/27 50/50 tintada color arena\r \r Tamaño: 280x240 cm.\r \r Confección solapa interior o apertura inferior, ambas opciones con pasamanos\r \r Portes a Mallorca incluidos\r \r PRECIO:… Coincide ademas con lo que aparece en **RE_ VISITA TEXTILES.msg, pagina 1** y **pto 12500727.msg, pagina 1**.",
+      "confidence": 0.026596874854921817,
+      "sources": 8
+    }
+  ],
+  "search_results": {
+    "presupuesto cortinas hotel": {
+      "text": 0,
+      "semantic": 4,
+      "hybrid": 5
+    },
+    "factura proveedor decoracion": {
+      "text": 0,
+      "semantic": 5,
+      "hybrid": 5
+    },
+    "albaran entrega mobiliario": {
+      "text": 0,
+      "semantic": 5,
+      "hybrid": 5
+    },
+    "reforma hotelera ibiza mallorca": {
+      "text": 0,
+      "semantic": 5,
+      "hybrid": 5
+    }
+  }
+}

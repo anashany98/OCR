@@ -30,10 +30,11 @@ from functools import cached_property
 from pathlib import Path
 
 from app.ocr.base import OCRBlock, OCRResult
-from app.ocr.preprocess import preprocess_for_paddle
 from app.services.metrics import track_ocr_duration
 
-# Skip the HuggingFace connectivity probe that adds ~2 s to first init.
+# B7: skip the HuggingFace connectivity probe that adds ~2 s to first
+# init. Set at import time so it runs exactly once per process, not once
+# per PPStructureEngine instance.
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
 
@@ -56,27 +57,71 @@ class PPStructureEngine:
                 "'NotImplementedError: ConvertPirAttribute2RuntimeAttribute'. "
                 "Use PaddleOCR (Tier 2) on CPU workers."
             )
+        # B7: skip the HuggingFace connectivity probe that adds ~2 s to
+        # first init. Applied at module level (below) so it runs exactly
+        # once per process instead of per instance.
         self.device = device
         self.lang = lang
+        # O6/M3: when the lazy init fails or times out the engine is
+        # marked unavailable so subsequent calls raise a clear error
+        # instead of re-entering the broken state (same convention as
+        # PaddleOCR).
+        self._init_failed: bool = False
 
     @cached_property
     def _pipeline(self):
         """Lazily build the PaddleX pipeline on first use (thread-safe)."""
+        if getattr(self, "_init_failed", False):
+            raise RuntimeError(
+                "PP-Structure engine is unavailable: previous init attempt failed"
+            )
         from paddlex import create_pipeline
 
         return create_pipeline(
             pipeline="layout_parsing",
             device=self.device,
+            lang=self.lang,
         )
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
-        ocr_path = preprocess_for_paddle(image_path)
+        # Use preprocess_adaptive to benefit from caching across tiers
+        from app.ocr.preprocess import preprocess_adaptive
+        ocr_path = preprocess_adaptive(image_path, engine=self.name)
         try:
-            results = list(self._pipeline.predict(str(ocr_path)))
+            # PP-Structure predict() has no built-in timeout. Use a
+            # disposable ThreadPoolExecutor — on timeout the pool
+            # cleans up the thread (it becomes a zombie until the
+            # GIL is released, same as paddle.py).
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+            result_holder: list = []
+            exc_holder: list = []
+
+            def _run_predict():
+                try:
+                    result_holder.extend(self._pipeline.predict(str(ocr_path)))
+                except Exception as exc:  # noqa: BLE001
+                    exc_holder.append(exc)
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_run_predict)
+                try:
+                    future.result(timeout=120)
+                except FuturesTimeout:
+                    future.cancel()
+                    raise TimeoutError(
+                        f"PP-Structure predict() timed out after 120s on {image_path.name}"
+                    )
+            if exc_holder:
+                raise exc_holder[0]
+            results = result_holder
         except Exception:
             track_ocr_duration(time.perf_counter() - start)
             raise
+        finally:
+            if ocr_path != image_path:
+                ocr_path.unlink(missing_ok=True)
 
         if not results:
             track_ocr_duration(time.perf_counter() - start)

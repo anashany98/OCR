@@ -26,7 +26,8 @@ router = APIRouter()
 def csv_safe_cell(value) -> str:
     text = "" if value is None else str(value)
     stripped = text.lstrip()
-    if stripped and stripped[0] in {"=", "+", "-", "@"}:
+    # Excel treats =, +, -, @, tab, and carriage return as formula prefixes.
+    if stripped and stripped[0] in {"=", "+", "-", "@", "\t", "\r"}:
         return f"'{text}"
     return text
 

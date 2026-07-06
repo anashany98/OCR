@@ -8,7 +8,6 @@ helper unit tests that pin the contract of every new module:
 * :mod:`app.ai.scope_guard` — scope pinning + global intent.
 * :mod:`app.ai.intent_router` — heuristic classifier.
 * :mod:`app.ai.confidence_gates` — gate evaluation + safe fallback.
-* :mod:`app.ai.answer_format` — five-section grounded layout.
 * :mod:`app.ai.context` — friendly fallback (CTX-7).
 
 DB-touching tests use an in-memory SQLite session (same pattern as
@@ -271,6 +270,35 @@ def test_scope_guard_does_not_override_explicit_budget_number():
     # The user named a different budget; the scope guard must NOT
     # overwrite it.
     assert out.tools[0].arguments["budget_number"] == "260011"
+
+
+def test_collect_context_falls_back_to_budget_document_filename(monkeypatch):
+    from app.ai.context import collect_context
+    from app.ai.tools import ToolCall
+    from app.tools import internal
+
+    class Doc:
+        id = 110
+        original_filename = "ALEJANDRA/Presupuesto 260074/EXCEL/253434.xlsx"
+        source_path = "ALEJANDRA/Presupuesto 260074/EXCEL/253434.xlsx"
+        document_type = "presupuesto"
+        status = "needs_review"
+        confidence = 0.82
+        page_count = 1
+
+    monkeypatch.setattr(internal, "get_budget_by_number", lambda db, number: None)
+    monkeypatch.setattr(internal, "find_document_by_filename", lambda db, query: [Doc()])
+
+    context, warnings, resolved_doc_id = collect_context(
+        object(),
+        [ToolCall("get_budget_by_number", {"budget_number": "253434"})],
+        "de que trata el presupuesto 253434",
+    )
+
+    assert resolved_doc_id == 110
+    assert context[0].document_id == 110
+    assert "253434.xlsx" in context[0].source_path
+    assert "no esta en la tabla estructurada" in warnings[0]
 
 
 # ---------------------------------------------------------------------------
@@ -632,54 +660,6 @@ def test_confidence_gate_duplicate_status_blocks():
         },
     )
     assert "documento_duplicado" in ev.gates_open
-
-
-# ---------------------------------------------------------------------------
-# CTX-9: Standard answer format
-# ---------------------------------------------------------------------------
-
-
-def test_standard_answer_format_has_five_sections():
-    from app.ai.answer_format import format_grounded_answer
-    from app.ai.context import ContextItem
-
-    items = [
-        ContextItem(
-            title="Presupuesto 260009",
-            summary="Total 1234,56 EUR",
-            document_id=1,
-            document_filename="pres.pdf",
-            confidence=0.55,
-            ocr_confidence=0.55,
-            excerpt="Importe total 1.234,56 EUR",
-        )
-    ]
-    out = format_grounded_answer(
-        context_items=items,
-        warnings=["OCR al 55%"],
-        direct="No puedo confirmarlo con seguridad.",
-        missing=["No he encontrado un total claro."],
-        active_context=None,
-    )
-    assert "No puedo confirmarlo" in out
-    assert "Evidencia" in out
-    assert "Documentos usados" in out
-    assert "Advertencias" in out
-    assert "Que falta" in out or "Qué falta" in out
-
-
-def test_standard_answer_format_mentions_scope_when_no_results():
-    from app.ai.active_context import ActiveContext
-    from app.ai.answer_format import format_grounded_answer
-
-    out = format_grounded_answer(
-        context_items=[],
-        warnings=[],
-        direct=None,
-        missing=[],
-        active_context=ActiveContext(current_budget_number="260009"),
-    )
-    assert "260009" in out
 
 
 # ---------------------------------------------------------------------------

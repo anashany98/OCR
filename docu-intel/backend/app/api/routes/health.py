@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import time
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
@@ -15,6 +16,9 @@ from app.models import User
 router = APIRouter(tags=["health"])
 
 logger = logging.getLogger(__name__)
+
+_health_cache: dict[str, tuple[float, dict]] = {}
+_HEALTH_CACHE_TTL = 10  # seconds
 
 
 def _redis_client():
@@ -80,6 +84,14 @@ def health_full(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    # Serve from cache if fresh enough (avoids DB/Redis ping on every call).
+    cache_key = "health:full"
+    cached = _health_cache.get(cache_key)
+    if cached:
+        ts, data = cached
+        if time.monotonic() - ts < _HEALTH_CACHE_TTL:
+            return data
+
     checks = {}
 
     try:
@@ -101,4 +113,6 @@ def health_full(
             checks["redis"] = "error"
 
     overall = all(v == "ok" for v in checks.values())
-    return {"status": "healthy" if overall else "degraded", "checks": checks}
+    result = {"status": "healthy" if overall else "degraded", "checks": checks}
+    _health_cache[cache_key] = (time.monotonic(), result)
+    return result

@@ -59,21 +59,60 @@ def reset_dots_mocr_breaker() -> None:
         _dots_mocr_breaker.reset()
 
 
+# ---------------------------------------------------------------------------
+# Domain-specific prompts. The default prompt is generic OCR; the
+# "interior_design" prompt is tuned for hand-drawn sketches, furniture
+# measurements, fabric samples, and curtain dimensions — the typical
+# content found in interior design / carpentry budgets.
+# ---------------------------------------------------------------------------
+
+PROMPT_GENERIC = (
+    "Extrae todo el texto de esta imagen. "
+    "Si hay tablas, reproduce el contenido en Markdown. "
+    "Si hay texto manuscrito, transcríbelo. "
+    "Responde SOLO con el texto extraído, sin comentarios."
+)
+
+PROMPT_INTERIOR_DESIGN = (
+    "Esta imagen es parte de un presupuesto de mobiliario, cortinas o interiorismo. "
+    "Contiene probablemente: croquis a mano, fotos de muebles, muestras de telas, "
+    "o medidas tomadas en campo sobre objetos reales.\n\n"
+    "Analiza la imagen y responde con este formato EXACTO:\n\n"
+    "## OBJETOS DETECTADOS\n"
+    "Para cada objeto visible (mueble, cortina, tela, ventana, puerta, habitación, etc.):\n"
+    "- **Nombre del objeto**: descripción breve\n"
+    "- **Medidas asociadas**: ancho x largo x alto (las que aparezcan escritas o dibujadas)\n"
+    "- **Material/textura**: si se distingue (tela, madera, metal, etc.)\n"
+    "- **Notas**: cualquier anotación manuscrita relacionada\n\n"
+    "## COTAS Y MEDIDAS\n"
+    "Lista TODAS las medidas numéricas que aparezcan en la imagen, indicando:\n"
+    "- Valor numérico y unidad (cm, m, mm)\n"
+    "- A qué objeto o espacio pertenece\n"
+    "- Si la medida está escrita a mano o es una cota técnica\n\n"
+    "## TEXTO MANUSCRITO\n"
+    "Transcribe literalmente cualquier texto escrito a mano, sin interpretar.\n\n"
+    "## DESCRIPCIÓN VISUAL\n"
+    "Describe brevemente qué se ve en la imagen (foto de un mueble, croquis de una habitación, "
+    "muestra de tela, etc.).\n\n"
+    "Si no puedes leer una medida con certeza, indica 'ilegible' en vez de inventar un número."
+)
+
+PROMPTS_BY_DOMAIN = {
+    "generic": PROMPT_GENERIC,
+    "interior_design": PROMPT_INTERIOR_DESIGN,
+}
+
+
 @dataclass(frozen=True)
 class DotsMOCRConfig:
     enabled: bool = False
     endpoint: str | None = None
+    model: str = ""
     api_key: str | None = None
     timeout_seconds: float = 120.0
-    # A1: max retry attempts on transient HTTP errors before giving up.
-    # The retry happens *inside* the breaker so each attempt counts
-    # toward ``fail_max`` only on the final failure (the per-attempt
-    # transport errors are absorbed by the retry loop). Default 2 = up
-    # to 3 total attempts.
     max_retries: int = 2
-    # A1: base delay for exponential backoff in seconds. The actual
-    # sleep is ``base * 2 ** attempt + jitter``.
     retry_base_delay_seconds: float = 0.5
+    domain: str = "generic"
 
 
 class DotsMOCREngine:
@@ -94,27 +133,71 @@ class DotsMOCREngine:
         if not self.config.endpoint:
             raise RuntimeError("dots.mocr endpoint is not configured")
 
+        # Preprocess for VLM: gentle enhance without binarizing
+        from app.ocr.preprocess import preprocess_for_manuscript
+
+        processed_path = preprocess_for_manuscript(image_path)
+        try:
+            image_b64 = base64.b64encode(processed_path.read_bytes()).decode("ascii")
+        finally:
+            # Clean up temporary file if it was created
+            if processed_path != image_path:
+                import contextlib
+                with contextlib.suppress(OSError):
+                    processed_path.unlink(missing_ok=True)
+        suffix = image_path.suffix.lower().lstrip(".") or "png"
+        mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "tif": "tiff", "tiff": "tiff",
+                "bmp": "bmp", "webp": "webp"}.get(suffix, "png")
+
+        model = self.config.model or settings.vision_model
+        prompt = PROMPTS_BY_DOMAIN.get(self.config.domain, PROMPT_GENERIC)
         payload = {
-            "filename": image_path.name,
-            "image_base64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/{mime};base64,{image_b64}",
+                            },
+                        },
+                    ],
+                }
+            ],
+            "max_tokens": 4000,
+            "temperature": 0.0,
         }
         headers = (
             {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else None
         )
 
-        # A1: retry-with-backoff inside the breaker. We catch
-        # ``httpx.HTTPError`` (transport + 4xx/5xx) at this layer and
-        # let ``CircuitBreakerOpen`` bubble up to ``cascading.py`` so the
-        # cascade can fall back to Tier 1-3 immediately, the same way it
-        # already does for any other Tier 4 error.
         breaker = self._breaker or _get_dots_mocr_breaker()
         data = self._call_with_retry(breaker, payload, headers)
 
-        text = str(data.get("text") or "").strip()
+        if not isinstance(data, dict):
+            raise ValueError(f"Respuesta VLM-OCR inesperada: {type(data).__name__}")
+
+        # Parse OpenAI-compatible response format
+        text = ""
+        try:
+            choices = data.get("choices") or []
+            if choices:
+                msg = choices[0].get("message") or {}
+                text = str(msg.get("content") or "").strip()
+        except (AttributeError, IndexError):
+            text = str(data.get("text") or data.get("content") or "").strip()
+
         confidence = _coerce_confidence(data.get("confidence"))
         blocks = _parse_blocks(data.get("blocks"))
         if not blocks and text:
             blocks = [OCRBlock(text=text, confidence=confidence, bbox=None, block_type=None)]
+        # El endpoint VLM-OCR no aporta score fiable — no inventar 0.8
         return OCRResult(text=text, confidence=confidence, blocks=blocks, engine=self.name)
 
     def _call_with_retry(

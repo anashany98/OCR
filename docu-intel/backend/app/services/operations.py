@@ -4,7 +4,7 @@ import shutil
 from dataclasses import dataclass, replace
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -19,6 +19,7 @@ class BulkReprocessFilters:
     document_type: str | None = None
     source_path_contains: str | None = None
     ids: list[int] | None = None
+    quality_flags: list[str] | None = None
     limit: int = 100
     mode: Literal["full", "ocr", "text", "classification", "entities", "chunks", "embeddings"] = (
         "full"
@@ -136,6 +137,7 @@ def normalize_bulk_reprocess_filters(filters: BulkReprocessFilters) -> BulkRepro
             normalized.document_type,
             normalized.source_path_contains,
             normalized.ids,
+            normalized.quality_flags,
         ]
     ):
         raise ValueError("Bulk reprocess requires at least one selector")
@@ -165,6 +167,11 @@ def bulk_reprocess_documents(
         stmt = stmt.where(Document.document_type == normalized.document_type)
     if normalized.source_path_contains:
         stmt = stmt.where(Document.source_path.ilike(f"%{normalized.source_path_contains}%"))
+    if normalized.quality_flags:
+        for flag in normalized.quality_flags:
+            stmt = stmt.where(
+                text(f"quality_flags_json::jsonb ? :flag")
+            ).params(flag=flag)
 
     documents = list(db.scalars(stmt).all())
     job_ids: list[int] = []

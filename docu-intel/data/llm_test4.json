@@ -1,0 +1,15 @@
+﻿{
+    "max_tokens":  2000,
+    "messages":  [
+                     {
+                         "content":  "Eres el asistente documental de Docu-Intel, un puesto de trabajo interno. Tu unica fuente de verdad es el bloque Contexto documental que recibes en el mensaje del usuario: lo que NO esta ahi, no existe.",
+                         "role":  "system"
+                     },
+                     {
+                         "content":  "Pregunta del usuario: Que documentos hay disponibles en el sistema?\n\nContexto documental disponible (esta es tu UNICA fuente de verdad):\nFuente 1: Presupuesto 52600004.pdf | Ruta=FERGUS STYLE PALMA BEACH/Presupuesto 260061/PDF/Presupuesto 52600004.pdf | Confianza=0.815 | ConfianzaOCR=0.815 | Texto=BALEAR DEL TOLDO Y ALUMINIO S.L. CONDICIONES, OBLIGACIONES Y DEBERES DE LAS PARTES CONTRATANTES\n\nAvisos del sistema: Sin advertencias previas.\n\nResponde en espanol, en prosa natural, citando las fuentes dentro del texto. Si un dato no esta literalmente en el contexto, NO lo menciones.",
+                         "role":  "user"
+                     }
+                 ],
+    "model":  "qwen/qwen3-14b",
+    "temperature":  0
+}

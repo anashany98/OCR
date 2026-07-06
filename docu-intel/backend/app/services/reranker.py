@@ -112,9 +112,20 @@ def get_local_reranker() -> LocalSentenceTransformerReranker:
     with _local_reranker_lock:
         if _local_reranker is not None:
             return _local_reranker
+        device = settings.reranker_local_device
+        # Auto-detect CUDA: if configured for cuda but unavailable, fall back to cpu
+        if device == "cuda":
+            try:
+                import torch
+                if not torch.cuda.is_available():
+                    device = "cpu"
+                    logger.info("CUDA not available for reranker, using CPU")
+            except ImportError:
+                device = "cpu"
+                logger.info("torch not installed, reranker using CPU")
         _local_reranker = LocalSentenceTransformerReranker(
             model_name=settings.reranker_local_model,
-            device=settings.reranker_local_device,
+            device=device,
             max_length=settings.reranker_local_max_length,
         )
     return _local_reranker
@@ -174,7 +185,7 @@ async def rerank(
     if url is None:
         return candidates[:top_k]
 
-    documents = [c.excerpt for c in candidates]
+    documents = [getattr(c, "full_text", None) or c.excerpt for c in candidates]
 
     try:
         async with httpx.AsyncClient(timeout=RERANKER_TIMEOUT) as client:
@@ -246,7 +257,7 @@ def _rerank_local_sync(
     """Synchronous in-process rerank. Runs in a worker thread from the
     async ``rerank()`` to avoid blocking the event loop on GPU work."""
     reranker = get_local_reranker()
-    passages = [c.excerpt for c in candidates]
+    passages = [getattr(c, "full_text", None) or c.excerpt for c in candidates]
     scores = reranker.score(query, passages)
     order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
     reranked: list[SearchResult] = []

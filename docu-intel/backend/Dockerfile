@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --default-timeout=120 --retries=5 --prefix=/install -r /app/requirements.txt \
-    && python -m pip install --no-deps --prefix=/install paddlepaddle==3.3.1
+    && python -m pip install --no-deps --prefix=/install paddlepaddle==3.3.1 \
+    && python -m pip install --default-timeout=120 --retries=5 --prefix=/install 'paddlex[ocr]==3.5.2'
 
 # --- Runtime stage ---
 FROM python:3.11-slim
@@ -59,7 +60,8 @@ RUN groupadd --system --gid 10001 appuser \
 # Linux/Windows hosts and then drops to the non-root appuser. See
 # docker-entrypoint.sh for the full design.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 COPY app /app/app
 COPY alembic /app/alembic
@@ -90,4 +92,4 @@ ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # NOTE: do NOT wrap ${UVICORN_FORWARDED_ALLOW_IPS:-*} in single quotes
 # inside this sh -c string — single quotes prevent shell variable
 # expansion, and uvicorn would receive the literal placeholder text.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-*}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=${UVICORN_FORWARDED_ALLOW_IPS:-127.0.0.1}"]

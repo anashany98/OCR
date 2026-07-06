@@ -10,7 +10,65 @@ from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 logger = logging.getLogger("app.parsers.image")
 
 
-def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> ExtractedDocument:
+# Domain-specific prompts for the vision model fallback.
+_PROMPT_GENERIC = (
+    "Transcribe TODO el texto visible en esta imagen. "
+    "Si hay texto manuscrito, transcribelo tal cual. "
+    "Si hay una tabla, reproduce su contenido como tabla markdown. "
+    "Si es una foto sin texto legible, describe brevemente "
+    "que muestra la imagen. Responde en espanol."
+)
+
+_PROMPT_INTERIOR_DESIGN = (
+    "Esta imagen es parte de un presupuesto de mobiliario, cortinas o interiorismo. "
+    "Contiene probablemente: croquis a mano, fotos de muebles, muestras de telas, "
+    "o medidas tomadas en campo sobre objetos reales.\n\n"
+    "Analiza la imagen y responde con este formato EXACTO:\n\n"
+    "## OBJETOS DETECTADOS\n"
+    "Para cada objeto visible (mueble, cortina, tela, ventana, puerta, habitacion, etc.):\n"
+    "- Nombre del objeto: descripcion breve\n"
+    "- Medidas asociadas: ancho x largo x alto (las que aparezcan escritas o dibujadas)\n"
+    "- Material/textura: si se distingue (tela, madera, metal, etc.)\n"
+    "- Notas: cualquier anotacion manuscrita relacionada\n\n"
+    "## COTAS Y MEDIDAS\n"
+    "Lista TODAS las medidas numericas que aparezcan en la imagen, indicando:\n"
+    "- Valor numerico y unidad (cm, m, mm)\n"
+    "- A que objeto o espacio pertenece\n"
+    "- Si la medida esta escrita a mano o es una cota tecnica\n\n"
+    "## TEXTO MANUSCRITO\n"
+    "Transcribe literalmente cualquier texto escrito a mano, sin interpretar.\n\n"
+    "## DESCRIPCION VISUAL\n"
+    "Describe brevemente que se ve en la imagen.\n\n"
+    "Si no puedes leer una medida con certeza, indica 'ilegible' en vez de inventar un numero."
+)
+
+_PROMPT_FABRIC = (
+    "Esta imagen es una muestra de tela o textil de un presupuesto de interiorismo.\n\n"
+    "Describe:\n"
+    "- Tipo de tela (cortina, tapizado, visillo, etc.)\n"
+    "- Color y patron (liso, estampado, rayas, etc.)\n"
+    "- Textura visible\n"
+    "- Si hay medidas anotadas, listalas\n"
+    "- Si hay codigo de muestra o referencia, transcribelo\n"
+    "Responde en espanol."
+)
+
+
+def _get_vision_prompt(content_route: str | None = None) -> str:
+    """Return the appropriate vision prompt based on content classification."""
+    if content_route == "interior_design":
+        return _PROMPT_INTERIOR_DESIGN
+    if content_route == "fabric_description":
+        return _PROMPT_FABRIC
+    return _PROMPT_GENERIC
+
+
+def parse_image(
+    path: Path,
+    output_dir: Path,
+    ocr_engine: BaseOCREngine,
+    content_route: str | None = None,
+) -> ExtractedDocument:
     from PIL import Image
 
     with Image.open(path) as image:
@@ -21,10 +79,16 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extr
             f"max_image_megapixels exceeded: {megapixels:.2f} > {settings.max_image_megapixels}"
         )
 
-    result = ocr_engine.extract(path)
-    # ``result.engine`` reports which engine actually produced the
-    # text (the cascade's primary or fallback). Fall back to the
-    # engine's static name for engines that don't set the field.
+    # Skip OCR for photos/interior design images — no text expected
+    import logging
+    _log = logging.getLogger("app.parsers.image")
+    _log.info("parse_image content_route=%s path=%s", content_route, path.name)
+    if content_route in ("interior_design", "fabric_description"):
+        _log.info("OCR SKIPPED: photo/interior_design detected for %s", path.name)
+        from app.ocr.base import OCRResult
+        result = OCRResult(text="", confidence=0.0, blocks=[], engine="photo_skip")
+    else:
+        result = ocr_engine.extract(path)
     actual_engine = result.engine or ocr_engine.name
     blocks = [
         ExtractedBlock(
@@ -48,33 +112,29 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extr
         blocks=blocks,
     )
 
-    # On-demand vision fallback: if OCR (cascading tesseract+paddle) couldn't
-    # extract enough text, ask the vision model to transcribe the image.
-    # The vision model is loaded just for this call and then scheduled to
-    # unload.
-    if (
+    # Vision fallback: if OCR couldn't extract enough text, use the
+    # vision model with a content-aware prompt.
+    needs_vision = (
         settings.vision_table_transcription
         and settings.vision_model
-        and (not result.text or len(result.text.strip()) < 30 or (result.confidence or 0) < 0.4)
-    ):
-        try:
-            import asyncio
+        and (not result.text or len(result.text.strip()) < 30 or (result.confidence or 0) < 0.5)
+    )
 
+    if needs_vision:
+        try:
             from app.ai.local_client import LocalVisionClient
+            from app.parsers.pdf import _run_coro_sync
             from app.services.vision_manager import VisionManager
 
             VisionManager.cancel_pending_unload()
             if not VisionManager.is_loaded():
                 VisionManager.ensure_loaded()
             client = LocalVisionClient()
-            loop = asyncio.new_event_loop()
-            try:
-                vision_text = loop.run_until_complete(client.transcribe_table(path))
-            finally:
-                loop.close()
+            prompt = _get_vision_prompt(content_route)
+            vision_text = _run_coro_sync(
+                client.describe(path, prompt=prompt, max_tokens=2000)
+            )
             if vision_text:
-                # Append the vision transcription as an extra block so
-                # the LLM and the frontend can use it.
                 page.blocks.append(
                     ExtractedBlock(
                         block_type="table",
@@ -85,26 +145,12 @@ def parse_image(path: Path, output_dir: Path, ocr_engine: BaseOCREngine) -> Extr
                         source_engine="vision",
                     )
                 )
-                # If the OCR text is empty, replace the page text with
-                # the vision transcription so downstream stages see it.
                 if not result.text or len(result.text.strip()) < 30:
                     page.text = vision_text
                     page.ocr_engine = "vision"
                     page.ocr_confidence = 0.85
             VisionManager.schedule_unload()
         except Exception as exc:
-            # OPS-2: the vision fallback is best-effort, but
-            # silently swallowing the failure used to leave the
-            # operator with no signal that the vision model is
-            # down. We log a warning with the document path and
-            # the exception type so it shows up in the logs, and
-            # we increment a Prometheus counter so the on-call
-            # can spot a sustained outage from /metrics.
-            #
-            # The OCR result still stands: the page block we
-            # already built keeps whatever text the cascade
-            # produced. We do NOT raise — losing one optional
-            # vision transcription must not fail the document.
             from app.services.metrics import track_parser_fallback_failure
 
             logger.warning(

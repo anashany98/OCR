@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     ai_retry_base_delay_seconds: float = 0.25
     ai_circuit_breaker_failures: int = 3
     ai_circuit_breaker_reset_seconds: float = 30.0
+    # Max concurrent LLM/vision requests. Prevents VRAM exhaustion
+    # when many users ask questions simultaneously. Set to 0 to disable.
+    ai_max_concurrent_requests: int = 4
     # M11 (Sprint 4): hard token budget for the context sent to the LLM.
     # The system prompt + user prompt overhead is ~800 tokens; the
     # remainder is context.  Local 8B models typically have 8K context;
@@ -158,12 +161,29 @@ class Settings(BaseSettings):
     # wastes tokens on CoT and often returns empty content.
     vision_model_structured: str = ""
 
-    ocr_engine: Literal["tesseract", "paddleocr", "cascading"] = "cascading"
+    ocr_engine: Literal["tesseract", "paddleocr", "pp_structure", "cascading"] = "cascading"
+    ocr_engine_warmup_timeout: float = 180.0
     enable_dots_mocr: bool = False
     dots_mocr_endpoint: str = ""
+    dots_mocr_model: str = ""
     dots_mocr_api_key: str = ""
     dots_mocr_timeout_seconds: float = 120.0
     dots_mocr_quality_threshold: float = 0.62
+    # Domain-specific VLM prompt. "generic" uses standard OCR prompt;
+    # "interior_design" uses a specialized prompt for hand-drawn sketches,
+    # furniture measurements, fabric samples, and curtain dimensions.
+    dots_mocr_domain: str = "interior_design"
+    nuextract_enabled: bool = False
+    nuextract_base_url: str = "http://nuextract-vllm:8000/v1"
+    nuextract_model: str = "numind/NuExtract3"
+    nuextract_timeout_seconds: float = 120.0
+    nuextract_enable_thinking: bool = False
+    nuextract_max_concurrency: int = 1
+    nuextract_max_images: int = 4
+    nuextract_markdown_temperature: float = 0.2
+    nuextract_extraction_temperature: float = 0.2
+    nuextract_tier4_enabled: bool = False
+    nuextract_hyperextract_enabled: bool = False
     # Tesseract 5 settings (used as primary in the cascade and as the
     # only engine when ocr_engine == "tesseract").
     tesseract_lang: str = "spa+eng"
@@ -220,20 +240,30 @@ class Settings(BaseSettings):
     pp_structure_device: str = "gpu"
     pp_structure_lang: str = "es"
     paddle_lang: str = "es"
+    # Number of scanned pages to OCR in parallel within a single document.
+    # Each worker thread opens its own fitz handle and runs the cascade
+    # independently; the OCR C extensions release the GIL so this achieves
+    # real parallelism. Bounded to keep VRAM in check (each concurrent
+    # Paddle/PP-Structure instance holds model weights). Set to 1 to
+    # disable parallelism (serial behaviour, same as before).
+    ocr_page_parallelism: int = 2
 
     # Default to the OpenAI-compatible path so a fresh deployment that
     # forgets to set EMBEDDING_PROVIDER still tries to use a real model.
     # Operators that want a pure-offline, no-server mode can set
-    # ``local_hash`` explicitly. ``embedding_fallback_to_hash`` is the
-    # per-request failure policy (see the prior H7 finding).
+    # ``local_hash`` explicitly. Hash fallback is NOT supported — the
+    # policy is to fail fast if the embedding provider is unreachable.
     embedding_provider: str = "local_openai_compatible"
     embedding_base_url: str = ""
     embedding_model: str = "bge-m3"
     embedding_api_key: str = ""
-    embedding_dimensions: int = 1024
+    # Cambiar este valor requiere migración manual:
+    # ALTER COLUMN embedding TYPE VECTOR(<nueva_dim>) + rebuild del índice.
+    embedding_dimensions: int = 768
     embedding_allow_dimension_coercion: bool = False
     embedding_timeout_seconds: float = 30.0
-    embedding_fallback_to_hash: bool = False
+    embedding_query_instruction: str | None = None
+    embedding_passage_instruction: str | None = None
     # E2 — BM25 (PostgreSQL full-text) hybrid-search knobs. When
     # ``search_use_bm25`` is true (default) ``search_hybrid`` runs
     # the BM25 branch alongside the cosine and ILIKE branches and
@@ -268,6 +298,10 @@ class Settings(BaseSettings):
     # n-gram similarity matrix cheap. Override only when the
     # operator needs to push diversity harder.
     search_mmr_pool_size: int = 0  # 0 = use the default
+    # Multi-query expansion: generate N query variations to improve
+    # recall when the user's phrasing differs from the document's.
+    search_multi_query_enabled: bool = True
+    search_multi_query_max_variants: int = 3
     # R2 — Prompt-injection defence knobs. ``sensitivity``
     # controls how aggressive the regex detector is
     # (``low`` catches only obvious patterns, ``high`` is very
@@ -421,7 +455,15 @@ class Settings(BaseSettings):
     reembed_enabled: bool = True
     reembed_interval_seconds: int = 900  # 15 min
     reembed_batch_size: int = 5
-    reembed_low_confidence_threshold: float = 0.70
+    reembed_low_confidence_threshold: float = 0.60
+
+    # Centralised OCR-confidence threshold. Lowered from 0.70 to 0.60
+    # per user request: real-world scans with 60-69% confidence still
+    # carry recoverable text and were being silently dropped from
+    # the LLM context under the old threshold. This single value is
+    # the canonical source for every consumer (quality scoring, work
+    # inbox, OCR review, re-embed beat, plan needs_review trigger).
+    low_ocr_confidence_threshold: float = 0.60
 
     # P2 — Plan symbol detection (YOLO). The default model is the
     # ``SamirShabani/Architect`` YOLOv8m fine-tuned on FloorPlanCAD
@@ -449,15 +491,15 @@ class Settings(BaseSettings):
     # automatically. Bump this when you upgrade PaddleOCR / Tesseract /
     # pp-structure and the next ``reprocess_with_new_ocr_engine_task``
     # tick will pick them up.
-    current_ocr_engine_version: str = "paddleocr-v3"
+    current_ocr_engine_version: str = "paddleocr-v3-adaptive-v1"
     # Cap the number of re-OCR jobs enqueued per tick by the engine
     # version sweep. Mirrors ``reembed_reocr_per_tick`` to keep the
     # heavy queue from being flooded.
-    reocr_versioned_per_tick: int = 1
+    reocr_versioned_per_tick: int = 50
     # Master switch for the periodic engine-version sweep. Disabled by
     # default so deployments that have not migrated pick up no extra
     # work; set ``OCR_REPROCESS_ON_VERSION_DRIFT=true`` to enable.
-    ocr_reprocess_on_version_drift: bool = False
+    ocr_reprocess_on_version_drift: bool = True
 
     # =========================================================================
     # Hyper-Extract — optional structured-extraction layer on top of OCR
@@ -614,6 +656,18 @@ class Settings(BaseSettings):
         # already validated above; this is a defensive second check.
         if "*" in value:
             raise ValueError("CORS_ORIGINS must not contain '*' in non-local environments")
+        return value
+
+    @field_validator("embedding_allow_dimension_coercion", mode="after")
+    @classmethod
+    def _warn_coercion(cls, value: bool) -> bool:
+        if value:
+            import warnings
+            warnings.warn(
+                "EMBEDDING_ALLOW_DIMENSION_COERCION activo: vectores pueden "
+                "corromperse. Solo para migración.",
+                stacklevel=2,
+            )
         return value
 
 

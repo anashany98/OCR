@@ -1,4 +1,4 @@
-﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/api/client"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
@@ -25,6 +25,7 @@ export function JobsPage() {
     queryKey: ["jobs"],
     queryFn: api.jobs,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
   const retryJob = useMutation({
     mutationFn: api.retryJob,

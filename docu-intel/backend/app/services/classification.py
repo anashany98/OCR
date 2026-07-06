@@ -36,6 +36,20 @@ RULES: dict[str, list[str]] = {
     "pedido": ["pedido", "orden de compra", "proveedor", "fecha pedido", "referencia pedido"],
     "factura": ["factura", "nº factura", "no factura", "base imponible", "iva", "total factura"],
     "albaran": ["albaran", "albarán", "entrega", "recibido", "mercancia", "mercancía"],
+    "hoja_confeccion": [
+        "hoja de confeccion",
+        "hoja de confección",
+        "instrucciones de confeccion",
+        "instrucciones de confección",
+        "proceso de confeccion",
+        "proceso de confección",
+        "montaje",
+        "costura",
+        "patron",
+        "patrón",
+        "tela",
+        "muestra",
+    ],
     "plano": [
         "escala",
         "planta",
@@ -56,7 +70,6 @@ FOLDER_HINTS = {
     "presupuestos": "presupuesto",
     "pedidos": "pedido",
     "facturas": "factura",
-    "planos": "plano",
     "imagenes": "imagen",
 }
 
@@ -109,6 +122,14 @@ def classify_document(
             scores[doc_type] = scores.get(doc_type, 0) + 0.65
             matches.setdefault(doc_type, []).append(f"folder:{folder}")
 
+    if re.search(r"(^|/|\\)planos($|/|\\)", normalized_path) and _has_strong_plan_signal(
+        normalized_filename,
+        normalized_text,
+        extension,
+    ):
+        scores["plano"] = scores.get("plano", 0) + 0.65
+        matches.setdefault("plano", []).append("folder:planos")
+
     for doc_type, keywords in RULES.items():
         for keyword in keywords:
             keyword_norm = _normalize(keyword)
@@ -128,4 +149,25 @@ def classify_document(
 
 
 def _normalize(value: str) -> str:
-    return " ".join(value.lower().replace("\\", "/").split())
+    return " ".join(
+        value.lower()
+        .replace("\\", "/")
+        .replace("_", " ")
+        .replace("-", " ")
+        .split()
+    )
+
+
+def _has_strong_plan_signal(filename: str, text: str, extension: str) -> bool:
+    if re.search(r"\b(plano|planta|alzado|seccion|secci[oó]n|cotas?)\b", filename):
+        return True
+    if re.search(r"\bescala\s*[:\-]?\s*1\s*[:/]\s*\d{1,5}\b", text):
+        return True
+    if extension in EXTENSION_HINTS:
+        return False
+    signals = {
+        keyword
+        for keyword in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
+        if keyword in text
+    }
+    return len(signals) >= 3

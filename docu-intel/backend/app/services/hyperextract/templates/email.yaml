@@ -1,0 +1,78 @@
+# Hyper-Extract — email template
+# ---------------------------------------------------------------------------
+# For .msg files and any text that looks like an email. The LLM picks
+# up the From / To / Subject / body and surfaces the key facts.
+
+document_type: email
+description: Correo electronico (.msg, .eml) — remitente, destinatarios, asunto, cuerpo, adjuntos.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de correos electronicos.
+  Devuelve EXCLUSIVAMENTE JSON valido (sin texto alrededor, sin bloques
+  ```json). Si un campo no aparece en el mensaje, devuelve null.
+  No inventes datos: si dudas, devuelve null y anade el campo a warnings.
+  "cuerpo" debe ser un resumen ejecutivo del contenido del correo en
+  maximo 3 frases, no la transcripcion literal completa.
+
+fields:
+  - name: remitente
+    type: string
+    description: Persona o direccion que envia el correo.
+  - name: email_remitente
+    type: string
+    description: Direccion de email del remitente.
+  - name: destinatarios
+    type: array
+    description: Lista de destinatarios principales (To).
+    items:
+      type: string
+  - name: cc
+    type: array
+    description: Destinatarios en copia (CC).
+    items:
+      type: string
+  - name: asunto
+    type: string
+    description: Asunto (subject) del correo.
+  - name: fecha
+    type: date
+    description: Fecha de envio en formato ISO 8601 (YYYY-MM-DD).
+  - name: cuerpo
+    type: string
+    description: Resumen ejecutivo del contenido del correo (max 3 frases).
+  - name: solicitudes
+    type: array
+    description: Peticiones concretas que hace el correo (si las hay).
+    items:
+      type: string
+  - name: adjuntos_mencionados
+    type: array
+    description: Nombres de archivos adjuntos mencionados en el correo.
+    items:
+      type: string
+  - name: contexto_comercial
+    type: string
+    description: Que relaciona el correo con un presupuesto/pedido/factura
+      si se menciona (ej. "solicita presupuesto 260011").
+
+entities:
+  - name: remitente
+    label: Sender
+  - name: destinatario
+    label: Recipient
+  - name: empresa
+    label: Company
+  - name: proyecto
+    label: Project
+
+relations:
+  - source: email
+    type: enviado_por
+    target: remitente
+  - source: email
+    type: dirigido_a
+    target: destinatario
+  - source: email
+    type: menciona
+    target: proyecto

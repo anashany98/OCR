@@ -4,12 +4,14 @@ import hashlib
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
+from app.database.session import get_engine
 from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_query_text
@@ -18,8 +20,11 @@ from app.services.vector_store import PgvectorStore, _is_postgres
 
 logger = logging.getLogger(__name__)
 
+# Shared thread pool for parallel search strategies.
+_search_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="search")
 
-SEARCH_CACHE_TTL = 300
+
+SEARCH_CACHE_TTL = 60  # 60s — reducido para evitar resultados obsoletos tras re-embed
 
 
 def _make_search_cache_key(query: str, limit: int, filters: dict | None, search_type: str) -> str:
@@ -44,6 +49,12 @@ class SearchResult:
     # "presupuestos/245745/foo.pdf"). Helps the IA agent disambiguate
     # documents that share a name but live in different folders.
     source_path: str | None = None
+    # Full chunk text, available on the semantic/BM25 paths where we
+    # have the untruncated ``chunk_text``. The cross-encoder reranker
+    # reads this in preference to ``excerpt`` (which is capped at ~320
+    # chars) so long passages are scored on their actual content, not
+    # a window around the query. Not serialized (transient, per-query).
+    full_text: str | None = None
 
 
 def _search_result_to_dict(result: SearchResult) -> dict:
@@ -59,6 +70,7 @@ def _search_result_to_dict(result: SearchResult) -> dict:
         "ocr_confidence": result.ocr_confidence,
         "source_type": result.source_type,
         "source_path": result.source_path,
+        "full_text": result.full_text,
     }
 
 
@@ -355,9 +367,50 @@ def _run_semantic_search(
                 ocr_confidence=None,
                 source_type="semantic_chunk",
                 source_path=document.source_path,
+                # Carry the full chunk text so the cross-encoder reranker
+                # scores the whole passage, not a ~320-char excerpt.
+                full_text=chunk.chunk_text,
             )
         )
     return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+
+
+def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -> list[SearchResult]:
+    """Apply the cross-encoder reranker and the MMR diversity pass to a
+    result list, mirroring what :func:`search_hybrid` does.
+
+    Used by :func:`search_semantic` so the semantic-only path also
+    benefits from the reranker (the hybrid path already applies it).
+    Both passes are no-ops when the candidate pool is small enough that
+    they would not change the top-``limit``.
+    """
+    # Cross-encoder rerank: needs a larger pool than the final limit to
+    # actually re-order anything meaningful.
+    if len(results) > limit:
+        try:
+            from app.services.reranker import rerank_sync
+
+            results = rerank_sync(query.strip(), results, top_k=limit)
+        except Exception as exc:  # noqa: BLE001 - reranker is best-effort
+            logger.debug("semantic rerank failed (best-effort): %s", exc)
+
+    # MMR diversity pass, same policy as the hybrid path.
+    if settings.search_use_mmr and len(results) > limit:
+        try:
+            from app.services.mmr import mmr_rerank
+
+            pool_size = settings.search_mmr_pool_size or max(limit * 3, 15)
+            mmr_pool = results[:pool_size]
+            mmr_outcome = mmr_rerank(
+                mmr_pool,
+                top_k=limit,
+                lambda_param=settings.search_mmr_lambda,
+            )
+            results = mmr_outcome.results
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("semantic MMR failed (best-effort): %s", exc)
+
+    return results
 
 
 def search_semantic(
@@ -380,15 +433,19 @@ def search_semantic(
         # terms*. Falls back to the raw query on any error.
         query_embedding = _hyde_embed(normalized)
 
+        # Over-fetch so the reranker has a candidate pool to reorder;
+        # the rerank + trim to ``limit`` happens at the end.
+        rerank_pool_size = max(limit * 3, 15)
+
         if _use_multi_query_strategy():
             # Multi-query: embed the original + reformulations, run a
             # search per embedding, then merge with RRF. Each per-pass
-            # ``limit`` is the same as the final ``limit`` so the fusion
-            # has enough candidates. Failures on individual
-            # reformulations (e.g. provider outage) degrade gracefully
-            # to a single-query search.
+            # ``limit`` is the pool size so the fusion has enough
+            # candidates. Failures on individual reformulations
+            # (e.g. provider outage) degrade gracefully to a
+            # single-query search.
             reformulations = _multi_query_reformulations(normalized)
-            per_pass_limit = max(limit, 10)
+            per_pass_limit = max(rerank_pool_size, 10)
             per_pass: list[list[SearchResult]] = []
             for reformulation in reformulations:
                 try:
@@ -415,25 +472,24 @@ def search_semantic(
                     db,
                     query_embedding=query_embedding,
                     normalized_query=normalized,
-                    limit=limit,
+                    limit=rerank_pool_size,
                     filters=filters,
                 )
             else:
-                results_sorted = _merge_reformulation_results(per_pass, limit=limit)
-            cache_service.set(
-                cache_key,
-                [_search_result_to_dict(r) for r in results_sorted],
-                SEARCH_CACHE_TTL,
+                results_sorted = _merge_reformulation_results(per_pass, limit=rerank_pool_size)
+        else:
+            results_sorted = _run_semantic_search(
+                db,
+                query_embedding=query_embedding,
+                normalized_query=normalized,
+                limit=rerank_pool_size,
+                filters=filters,
             )
-            return results_sorted
 
-        results_sorted = _run_semantic_search(
-            db,
-            query_embedding=query_embedding,
-            normalized_query=normalized,
-            limit=limit,
-            filters=filters,
-        )
+        # Apply cross-encoder rerank + MMR, same as the hybrid path, so
+        # the semantic-only results benefit from the reranker too.
+        results_sorted = _apply_rerank_and_mmr(normalized, results_sorted, limit)
+
         cache_service.set(
             cache_key,
             [_search_result_to_dict(r) for r in results_sorted],
@@ -457,11 +513,52 @@ def search_hybrid(
         from app.services.bm25 import search_bm25
         from app.services.metrics import track_search_strategy_used
 
-        text_results = search_text(db, query, limit=max(limit, 10), filters=filters)
-        semantic_results = search_semantic(db, query, limit=max(limit, 10), filters=filters)
+        effective_limit = max(limit, 10)
+
+        # Run text, semantic, and BM25 searches in parallel for
+        # lower latency. Each strategy is independent and hits a
+        # different code path (ILIKE, pgvector, tsvector).
+        #
+        # CRITICAL: Each thread gets its own DB session because
+        # SQLAlchemy sessions are NOT thread-safe. Sharing the
+        # same session across ThreadPoolExecutor threads causes
+        # data corruption and InvalidRequestError under load.
+        _thread_factory = sessionmaker(bind=get_engine())
+        futures = {}
+        text_results: list[SearchResult] = []
+        semantic_results: list[SearchResult] = []
         bm25_results: list[SearchResult] = []
+
+        def _run_with_session(fn, *args, **kwargs):
+            sess = _thread_factory()
+            try:
+                return fn(sess, *args, **kwargs)
+            finally:
+                sess.close()
+
+        futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters)] = "text"
+        futures[
+            _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters)
+        ] = "semantic"
         if settings.search_use_bm25:
-            bm25_results = search_bm25(db, query, limit=max(limit, 10), filters=filters)
+            futures[
+                _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters)
+            ] = "bm25"
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                result = future.result()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("%s search failed: %s", name, exc)
+                continue
+            if name == "text":
+                text_results = result
+            elif name == "semantic":
+                semantic_results = result
+            elif name == "bm25":
+                bm25_results = result
+
         track_search_strategy_used("hybrid", "executed")
 
         # Merge with a larger pool so the reranker has enough

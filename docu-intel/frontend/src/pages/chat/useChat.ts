@@ -15,7 +15,9 @@ import type { AIAnswer, AIQuestion } from "@/types/api"
 
 import { composeQuestion } from "./composeQuestion"
 
-const STORAGE_KEY = "docu-intel:chat:messages"
+const CONVERSATIONS_KEY = "docu-intel:chat:conversations"
+const ACTIVE_CONV_KEY = "docu-intel:chat:active-conv"
+const SESSION_KEY = "docu-intel:chat:session-id"
 
 export type ChatMessage = {
   id: string
@@ -27,25 +29,57 @@ export type ChatMessage = {
   pending?: boolean
 }
 
-/**
- * F8b - chat state hook.
- *
- * Owns the local-only state for the chat: the message list, the
- * draft, the filter inputs, the streaming state and the
- * ``AbortController`` for an in-flight request. The hook
- * persists the message list to ``localStorage`` and rehydrates
- * it on mount; the persistence is debounced to the
- * ``useEffect`` reruns on every ``setMessages``.
- *
- * ``useChat`` is a thin shell over the previous in-component
- * logic. The goal of F8b is to make that logic testable in
- * isolation: the hook accepts the only side-effect
- * (``api.askAIStream``) through a default parameter that
- * tests can override, and it returns a small object with
- * every imperative action the UI used to wire up inline.
- */
+export type Conversation = {
+  id: string
+  title: string
+  messages: ChatMessage[]
+  createdAt: string
+  updatedAt: string
+  pinned?: boolean
+}
+
+function generateId(): string {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `conv-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function getActiveSessionId(): string {
+  let value = localStorage.getItem(SESSION_KEY)
+  if (!value) {
+    value = generateId()
+    localStorage.setItem(SESSION_KEY, value)
+  }
+  return value
+}
+
+function loadConversations(): Conversation[] {
+  try {
+    const raw = localStorage.getItem(CONVERSATIONS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch { /* ignore */ }
+  return []
+}
+
+function saveConversations(convs: Conversation[]) {
+  try {
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(convs))
+  } catch { /* quota / private mode */ }
+}
+
+function extractTitle(messages: ChatMessage[]): string {
+  const firstUser = messages.find((m) => m.role === "user")
+  if (!firstUser) return "Nueva conversación"
+  const text = firstUser.content
+  return text.length > 60 ? text.slice(0, 57) + "…" : text
+}
+
 export function useChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConvId, setActiveConvId] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [draft, setDraft] = useState("")
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -54,6 +88,8 @@ export function useChat() {
   const [documentType, setDocumentType] = useState("")
   const [markedIncorrect, setMarkedIncorrect] = useState<Set<string>>(new Set())
   const [isStreaming, setIsStreaming] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   const streamControllerRef = useRef<AbortController | null>(null)
   const isComposingRef = useRef(false)
 
@@ -61,40 +97,42 @@ export function useChat() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Load conversation from localStorage on mount.
+  // Load conversations from localStorage on mount.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as ChatMessage[]
-        if (Array.isArray(parsed)) setMessages(parsed)
-      }
-    } catch {
-      // ignore corrupted storage
+    const loaded = loadConversations()
+    setConversations(loaded)
+    const savedActive = localStorage.getItem(ACTIVE_CONV_KEY)
+    if (savedActive && loaded.some((c) => c.id === savedActive)) {
+      setActiveConvId(savedActive)
+    } else if (loaded.length > 0) {
+      setActiveConvId(loaded[0].id)
     }
     setHydrated(true)
   }, [])
 
-  // Persist conversation (skip transient pending markers).
+  // Persist conversations.
   useEffect(() => {
     if (!hydrated) return
-    try {
-      const slim = messages.map((m) => ({ ...m, pending: false }))
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(slim))
-    } catch {
-      // quota / private mode — non-fatal
-    }
-  }, [messages, hydrated])
+    saveConversations(conversations)
+  }, [conversations, hydrated])
 
-  // Auto-scroll to bottom whenever messages change or a new
-  // pending message appears.
+  // Persist active conversation id.
+  useEffect(() => {
+    if (activeConvId) localStorage.setItem(ACTIVE_CONV_KEY, activeConvId)
+  }, [activeConvId])
+
+  // Active conversation.
+  const activeConv = conversations.find((c) => c.id === activeConvId) ?? null
+  const messages = activeConv?.messages ?? []
+
+  // Auto-scroll.
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
     el.scrollTo({ top: el.scrollHeight, behavior: isStreaming ? "smooth" : "auto" })
   }, [messages, isStreaming])
 
-  // Auto-resize the textarea up to a max height.
+  // Auto-resize textarea.
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -102,10 +140,109 @@ export function useChat() {
     el.style.height = Math.min(el.scrollHeight, 180) + "px"
   }, [draft])
 
+  // Update a conversation's messages.
+  const updateConvMessages = useCallback(
+    (convId: string, updater: (msgs: ChatMessage[]) => ChatMessage[]) => {
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== convId) return c
+          const nextMsgs = updater(c.messages)
+          return {
+            ...c,
+            messages: nextMsgs,
+            title: c.messages.length === 0 ? extractTitle(nextMsgs) : c.title,
+            updatedAt: new Date().toISOString(),
+          }
+        }),
+      )
+    },
+    [],
+  )
+
+  // Create a new conversation.
+  const newConversation = useCallback(() => {
+    const id = generateId()
+    const conv: Conversation = {
+      id,
+      title: "Nueva conversación",
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    setConversations((prev) => [conv, ...prev])
+    setActiveConvId(id)
+    setSidebarOpen(false)
+    textareaRef.current?.focus()
+  }, [])
+
+  // Switch conversation.
+  const switchConversation = useCallback((convId: string) => {
+    setActiveConvId(convId)
+    setSidebarOpen(false)
+    setMarkedIncorrect(new Set())
+  }, [])
+
+  // Delete conversation.
+  const deleteConversation = useCallback(
+    (convId: string) => {
+      setConversations((prev) => {
+        const next = prev.filter((c) => c.id !== convId)
+        if (activeConvId === convId) {
+          setActiveConvId(next.length > 0 ? next[0].id : null)
+        }
+        return next
+      })
+    },
+    [activeConvId],
+  )
+
+  // Pin/unpin conversation.
+  const togglePin = useCallback((convId: string) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === convId ? { ...c, pinned: !c.pinned } : c)),
+    )
+  }, [])
+
+  // Filtered conversations for search.
+  const filteredConversations = searchQuery.trim()
+    ? conversations.filter(
+        (c) =>
+          c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.messages.some((m) =>
+            m.content.toLowerCase().includes(searchQuery.toLowerCase()),
+          ),
+      )
+    : conversations
+
+  // Sorted: pinned first, then by updatedAt.
+  const sortedConversations = [...filteredConversations].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1
+    if (!a.pinned && b.pinned) return 1
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  })
+
+  // Send message via streaming.
   const sendStream = useCallback(
     async (value: string) => {
       const trimmed = value.trim()
       if (!trimmed || isStreaming) return
+
+      // Ensure there's an active conversation.
+      let convId = activeConvId
+      if (!convId || !conversations.some((c) => c.id === convId)) {
+        const id = generateId()
+        const conv: Conversation = {
+          id,
+          title: extractTitle([{ id: "tmp", role: "user", content: trimmed, createdAt: new Date().toISOString() }]),
+          messages: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        setConversations((prev) => [conv, ...prev])
+        setActiveConvId(id)
+        convId = id
+      }
+
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: "user",
@@ -121,7 +258,8 @@ export function useChat() {
         question: trimmed,
         pending: true,
       }
-      setMessages((current) => [...current, userMsg, pendingMsg])
+
+      updateConvMessages(convId, (prev) => [...prev, userMsg, pendingMsg])
       setDraft("")
       setIsStreaming(true)
       history.refetch()
@@ -142,30 +280,26 @@ export function useChat() {
         for await (const ev of api.askAIStream(
           composeQuestion(trimmed, { supplier, documentType }),
           mode,
+          getActiveSessionId(),
           controller.signal,
         )) {
           if (ev.type === "thinking") {
-            // Reasoning models (Qwen3) emit "thinking" tokens
-            // before the final answer. We count them and use
-            // that to flip the UI from "pensando" to
-            // "razonando..." so the user knows the model is
-            // working on a non-trivial query.
             thinkingPieces += 1
             if (thinkingPieces === 1) {
-              setMessages((current) => {
-                const idx = current.findIndex((m) => m.id === pendingId)
-                if (idx === -1) return current
-                const next = [...current]
+              updateConvMessages(convId, (prev) => {
+                const idx = prev.findIndex((m) => m.id === pendingId)
+                if (idx === -1) return prev
+                const next = [...prev]
                 next[idx] = { ...next[idx], content: "razonando…" }
                 return next
               })
             }
           } else if (ev.type === "delta") {
             assembled += ev.text
-            setMessages((current) => {
-              const idx = current.findIndex((m) => m.id === pendingId)
-              if (idx === -1) return current
-              const next = [...current]
+            updateConvMessages(convId, (prev) => {
+              const idx = prev.findIndex((m) => m.id === pendingId)
+              if (idx === -1) return prev
+              const next = [...prev]
               next[idx] = { ...next[idx], content: assembled }
               return next
             })
@@ -181,15 +315,15 @@ export function useChat() {
           }
         }
       } catch (err) {
-        setMessages((current) => {
-          const idx = current.findIndex((m) => m.id === pendingId)
-          if (idx === -1) return current
-          const next = [...current]
+        updateConvMessages(convId, (prev) => {
+          const idx = prev.findIndex((m) => m.id === pendingId)
+          if (idx === -1) return prev
+          const next = [...prev]
           next[idx] = {
             ...next[idx],
             content:
               assembled ||
-              "Lo siento, no he podido completar la busqueda. Revisa tu conexion o intentalo de nuevo en unos segundos.",
+              "Lo siento, no he podido completar la busqueda. Revisa tu conexion o intentalo de nuevo.",
             pending: false,
           }
           return next
@@ -201,13 +335,10 @@ export function useChat() {
         streamControllerRef.current = null
       }
 
-      // Finalise the assistant message: replace the pending
-      // placeholder with a fully-populated AIAnswer so the
-      // card / followups / etc. render.
-      setMessages((current) => {
-        const idx = current.findIndex((m) => m.id === pendingId)
-        if (idx === -1) return current
-        const next = [...current]
+      updateConvMessages(convId, (prev) => {
+        const idx = prev.findIndex((m) => m.id === pendingId)
+        if (idx === -1) return prev
+        const next = [...prev]
         const fullAnswer: AIAnswer = {
           id: dbId ?? 0,
           question_id: 0,
@@ -227,20 +358,15 @@ export function useChat() {
         }
         return next
       })
+
       history.refetch()
       if (usedFallback) {
-        notify.info(
-          "Usando fallback estructurado",
-          "El LLM no respondio; mostramos el resumen grounded.",
-        )
+        notify.info("Usando fallback estructurado", "El LLM no respondio.")
       } else if (confidence != null && confidence < 0.5) {
-        notify.warning(
-          "Respuesta con baja confianza",
-          "La IA no encontró evidencia sólida. Verifica las fuentes.",
-        )
+        notify.warning("Respuesta con baja confianza", "Verifica las fuentes.")
       }
     },
-    [history, isStreaming, mode, supplier, documentType],
+    [activeConvId, conversations, history, isStreaming, mode, supplier, documentType, updateConvMessages],
   )
 
   const stop = useCallback(() => {
@@ -248,21 +374,15 @@ export function useChat() {
   }, [])
 
   const clearConversation = useCallback(() => {
-    if (!messages.length) return
-    if (!confirm("¿Borrar toda la conversacion?")) return
-    setMessages([])
+    if (!activeConvId) return
+    updateConvMessages(activeConvId, () => [])
     setMarkedIncorrect(new Set())
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // private mode — non-fatal
-    }
-  }, [messages.length])
+  }, [activeConvId, updateConvMessages])
 
   const copyAnswer = useCallback((message: ChatMessage) => {
     if (!message.answer) return
     navigator.clipboard.writeText(message.answer.answer).catch(() => {})
-    notify.success("Respuesta copiada al portapapeles")
+    notify.success("Respuesta copiada")
   }, [])
 
   const exportToExcel = useCallback((message: ChatMessage) => {
@@ -292,12 +412,36 @@ export function useChat() {
     URL.revokeObjectURL(url)
   }, [])
 
+  const exportConversation = useCallback(() => {
+    if (!activeConv) return
+    const lines: string[] = [`# ${activeConv.title}`, `_${new Date(activeConv.createdAt).toLocaleString()}_`, ""]
+    for (const m of activeConv.messages) {
+      if (m.role === "user") {
+        lines.push(`**Tú:** ${m.content}`, "")
+      } else if (m.answer) {
+        lines.push(`**IA:** ${m.answer.answer}`, "")
+        if (m.answer.sources.length > 0) {
+          lines.push(
+            `_Fuentes: ${m.answer.sources.map((s) => `Doc #${s.document_id ?? "?"}`).join(", ")}_`,
+            "",
+          )
+        }
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `docu-intel-chat-${activeConv.id.slice(0, 8)}.md`
+    link.click()
+    URL.revokeObjectURL(url)
+    notify.success("Conversación exportada")
+  }, [activeConv])
+
   const createTask = useCallback(
     (message: ChatMessage) => {
       if (!message.answer) return
       const question = (message.question || "").trim() || "Pregunta IA"
-      // Extract only the conversational "Respuesta:" prose for
-      // the description, not the whole structured audit block.
       const respuestaMatch = message.answer.answer.match(
         /\*\*Respuesta:\*\*\s*([\s\S]*?)(?=\n\n\*\*|$)/,
       )
@@ -309,24 +453,20 @@ export function useChat() {
           kind: "manual",
           title: `Revisar respuesta IA: ${question.slice(0, 80)}`,
           description: [
-            `Pregunta del usuario: ${question}`,
+            `Pregunta: ${question}`,
             "",
-            "Respuesta de la IA:",
+            "Respuesta:",
             truncatedProse,
             "",
-            `Fuentes citadas: ${message.answer.sources.length}`,
-            `Confianza: ${
-              message.answer.confidence != null
-                ? Math.round(message.answer.confidence * 100) + "%"
-                : "n/d"
-            }`,
+            `Fuentes: ${message.answer.sources.length}`,
+            `Confianza: ${message.answer.confidence != null ? Math.round(message.answer.confidence * 100) + "%" : "n/d"}`,
             `Modelo: ${message.answer.model_name ?? "n/d"}`,
           ].join("\n"),
           priority: "normal",
         })
         .then(() => {
           history.refetch()
-          notify.success("Tarea creada para revisar la respuesta")
+          notify.success("Tarea creada")
         })
         .catch((err) => notify.error(err, "No se pudo crear la tarea"))
     },
@@ -338,12 +478,14 @@ export function useChat() {
       if (isStreaming) return
       const question = (assistantMessage.question || "").trim()
       if (!question) return
-      notify.info("Regenerando respuesta", "Volviendo a lanzar la consulta al modelo.")
-      setMessages((current) => current.filter((m) => m.id !== assistantMessage.id))
+      notify.info("Regenerando respuesta")
+      if (activeConvId) {
+        updateConvMessages(activeConvId, (prev) => prev.filter((m) => m.id !== assistantMessage.id))
+      }
       setDraft("")
       void sendStream(question)
     },
-    [isStreaming, sendStream],
+    [isStreaming, sendStream, activeConvId, updateConvMessages],
   )
 
   const markIncorrect = useCallback((id: string) => {
@@ -381,11 +523,16 @@ export function useChat() {
   }, [])
 
   return {
-    // state
+    // conversations
+    conversations: sortedConversations,
+    activeConv,
+    activeConvId,
     messages,
     hydrated,
+    // draft
     draft,
     setDraft,
+    // filters
     filtersOpen,
     setFiltersOpen,
     mode,
@@ -396,15 +543,21 @@ export function useChat() {
     setDocumentType,
     markedIncorrect,
     isStreaming,
-    // refs (must be forwarded to the underlying DOM)
+    // sidebar
+    sidebarOpen,
+    setSidebarOpen,
+    searchQuery,
+    setSearchQuery,
+    // refs
     scrollRef,
     textareaRef,
-    // imperative actions
+    // actions
     sendStream,
     stop,
     clearConversation,
     copyAnswer,
     exportToExcel,
+    exportConversation,
     createTask,
     regenerate,
     markIncorrect,
@@ -413,6 +566,11 @@ export function useChat() {
     onKeyDown,
     onCompositionStart,
     onCompositionEnd,
+    // conversation management
+    newConversation,
+    switchConversation,
+    deleteConversation,
+    togglePin,
     // queries
     history: history.data ?? ([] as AIQuestion[]),
   }

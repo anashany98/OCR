@@ -1,9 +1,8 @@
 import { useMemo } from "react"
 import { NavLink, useLocation } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
 
-import { api } from "@/api/client"
 import { useAuth } from "@/hooks/useAuth"
+import { useWorkInboxCount } from "@/hooks/useWorkInboxCount"
 import {
   canSeeNavItem,
   NAV_GROUPS,
@@ -32,11 +31,7 @@ export function SidebarNav({
   const location = useLocation()
   const recentPaths = useRecentNav()
 
-  const inbox = useQuery({
-    queryKey: ["work-inbox-count"],
-    queryFn: () => api.workInboxCount(),
-    refetchInterval: 30000,
-  })
+  const inbox = useWorkInboxCount()
   const inboxCount = inbox.data?.count ?? 0
 
   const recentItems = useMemo(() => {

@@ -34,7 +34,7 @@ class PendingFileRegistry:
     _paths: dict[Path, float] = field(default_factory=dict)
     _retry_counts: dict[Path, int] = field(default_factory=dict)
     MAX_RETRIES: int = 3
-    MAX_ENTRIES: int = 10_000
+    MAX_ENTRIES: int = 50_000
 
     def add(self, path: Path, *, now: float | None = None) -> None:
         if is_ignored_path(path):
@@ -272,7 +272,7 @@ def enqueue_existing_files(
     pending: PendingFileRegistry,
     root: Path,
     *,
-    limit: int = 10_000,
+    limit: int = 50_000,
 ) -> int:
     """Walk ``root`` and add every allowed file to ``pending``.
 

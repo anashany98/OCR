@@ -123,6 +123,7 @@ __all__ = [
     "track_ocr_tier4_invoked",
     "track_ocr_language_detected",
     "track_ocr_language_threshold_used",
+    "track_preprocess_path_chosen",
     # Embedding
     "track_embedding_latency",
     "track_embedding_duration",

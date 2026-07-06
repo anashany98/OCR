@@ -1,0 +1,275 @@
+- generic [ref=e2]:
+  - generic [ref=e52]:
+    - banner [ref=e53]:
+      - generic [ref=e54]:
+        - button "Abrir menú de navegación" [ref=e55] [cursor=pointer]:
+          - img [ref=e56]
+        - heading "Dashboard" [level=1] [ref=e57]
+        - generic "105 tareas pendientes" [ref=e58] [cursor=pointer]:
+          - generic [ref=e59]: 105 tareas
+        - button "Abrir paleta de comandos" [ref=e60] [cursor=pointer]:
+          - img [ref=e61]
+          - generic [ref=e63]: Buscar…
+          - generic [ref=e64]: ⌘K
+        - generic [ref=e67]: Sistema
+        - button "Cambiar a tema oscuro" [ref=e68] [cursor=pointer]:
+          - img [ref=e69]
+        - button "Menú de usuario" [ref=e72] [cursor=pointer]:
+          - generic [ref=e73]: A
+          - generic [ref=e74]: Administrador
+          - img [ref=e75]
+        - button "Cerrar sesión" [ref=e77] [cursor=pointer]:
+          - img [ref=e78]
+    - main [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e84]:
+          - generic [ref=e85]:
+            - paragraph [ref=e86]: jueves, 18 de junio de 2026
+            - heading "111 documentos bajo control" [level=1] [ref=e427]
+            - paragraph [ref=e88]: Vista general del procesamiento automático, la calidad de extracción y las tareas que necesitan tu atención.
+          - generic [ref=e90]:
+            - paragraph [ref=e91]: Procesados hoy
+            - paragraph [ref=e92]: "30"
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - heading "Atención inmediata" [level=2] [ref=e95]
+            - generic [ref=e96]: 3 asuntos requieren intervención
+          - generic [ref=e97]:
+            - link "64 Documentos en revisión 64 documentos pendientes de validación" [ref=e98] [cursor=pointer]:
+              - /url: /ocr-review
+              - generic [ref=e99]:
+                - img [ref=e100]
+                - generic [ref=e102]: "64"
+              - paragraph [ref=e103]: Documentos en revisión
+              - paragraph [ref=e104]: 64 documentos pendientes de validación
+              - img [ref=e105]
+            - link "7 OCR de baja confianza 7 páginas con OCR dudoso" [ref=e107] [cursor=pointer]:
+              - /url: /ocr-review
+              - generic [ref=e108]:
+                - img [ref=e109]
+                - generic [ref=e111]: "7"
+              - paragraph [ref=e112]: OCR de baja confianza
+              - paragraph [ref=e113]: 7 páginas con OCR dudoso
+              - img [ref=e114]
+            - link "2 Pptos. sin pedido 2 presupuestos aceptados sin pedido asociado" [ref=e116] [cursor=pointer]:
+              - /url: /budgets
+              - generic [ref=e117]:
+                - img [ref=e118]
+                - generic [ref=e120]: "2"
+              - paragraph [ref=e121]: Pptos. sin pedido
+              - paragraph [ref=e122]: 2 presupuestos aceptados sin pedido asociado
+              - img [ref=e123]
+        - generic [ref=e125]:
+          - heading "Operación de hoy" [level=2] [ref=e126]
+          - generic [ref=e127]:
+            - generic [ref=e128]:
+              - generic [ref=e130]:
+                - paragraph [ref=e131]: Procesados
+                - img [ref=e133]
+              - generic [ref=e136]: "30"
+              - paragraph [ref=e137]: 111 totales
+            - generic [ref=e138]:
+              - generic [ref=e140]:
+                - paragraph [ref=e141]: En cola
+                - img [ref=e143]
+              - generic [ref=e146]: "0"
+              - paragraph [ref=e147]: "- restantes"
+            - generic [ref=e148]:
+              - generic [ref=e150]:
+                - paragraph [ref=e151]: Fallidos
+                - img [ref=e153]
+              - generic [ref=e155]: "0"
+              - paragraph [ref=e156]: Requieren atención
+            - generic [ref=e157]:
+              - generic [ref=e159]:
+                - paragraph [ref=e160]: En revisión
+                - img [ref=e162]
+              - generic [ref=e164]: "64"
+              - paragraph [ref=e165]: Sin cola
+            - generic [ref=e166]:
+              - generic [ref=e168]:
+                - paragraph [ref=e169]: Pipeline
+                - img [ref=e171]
+              - generic [ref=e175]: "0"
+              - paragraph [ref=e176]: Workers disponibles
+            - generic [ref=e177]:
+              - generic [ref=e179]:
+                - paragraph [ref=e180]: Incidencias
+                - img [ref=e182]
+              - generic [ref=e185]: "50"
+              - paragraph [ref=e186]: Sin críticas
+        - generic [ref=e187]:
+          - generic [ref=e188]:
+            - generic [ref=e189]:
+              - generic [ref=e190]:
+                - generic [ref=e191]:
+                  - heading "Trabajo prioritario" [level=3] [ref=e192]
+                  - paragraph [ref=e193]: 50 incidencias abiertas
+                - link "Ver todas" [ref=e194] [cursor=pointer]:
+                  - /url: /work-inbox
+                  - text: Ver todas
+                  - img [ref=e195]
+              - list [ref=e198]:
+                - listitem [ref=e199]:
+                  - 'link "OCR de baja confianza ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2655_001.pdf, pagina 1: 53%" [ref=e200] [cursor=pointer]':
+                    - /url: /ocr-review?document=152&page=420
+                    - generic [ref=e202]:
+                      - paragraph [ref=e203]: OCR de baja confianza
+                      - paragraph [ref=e204]: "ALEJANDRA COMPANY LASERE/Presupuesto 260009/PDF/2655_001.pdf, pagina 1: 53%"
+                    - img [ref=e205]
+                - listitem [ref=e207]:
+                  - link "Presupuesto aceptado sin pedido 142/25" [ref=e208] [cursor=pointer]:
+                    - /url: /budgets/112
+                    - generic [ref=e210]:
+                      - paragraph [ref=e211]: Presupuesto aceptado sin pedido
+                      - paragraph [ref=e212]: 142/25
+                    - img [ref=e213]
+                - listitem [ref=e215]:
+                  - 'link "OCR de baja confianza ALEJANDRA COMPANY LASERE/Presupuesto 260074/PDF/VISTA ALEGRE.pptx2.pdf, pagina 6: 68%" [ref=e216] [cursor=pointer]':
+                    - /url: /ocr-review?document=80&page=391
+                    - generic [ref=e218]:
+                      - paragraph [ref=e219]: OCR de baja confianza
+                      - paragraph [ref=e220]: "ALEJANDRA COMPANY LASERE/Presupuesto 260074/PDF/VISTA ALEGRE.pptx2.pdf, pagina 6: 68%"
+                    - img [ref=e221]
+                - listitem [ref=e223]:
+                  - 'link "OCR de baja confianza ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg, pagina 1: 40%" [ref=e224] [cursor=pointer]':
+                    - /url: /ocr-review?document=105&page=384
+                    - generic [ref=e226]:
+                      - paragraph [ref=e227]: OCR de baja confianza
+                      - paragraph [ref=e228]: "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59.jpeg, pagina 1: 40%"
+                    - img [ref=e229]
+                - listitem [ref=e231]:
+                  - 'link "OCR de baja confianza ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59 (1).jpeg, pagina 1: 0%" [ref=e232] [cursor=pointer]':
+                    - /url: /ocr-review?document=103&page=381
+                    - generic [ref=e234]:
+                      - paragraph [ref=e235]: OCR de baja confianza
+                      - paragraph [ref=e236]: "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/WhatsApp Image 2025-11-26 at 15.13.59 (1).jpeg, pagina 1: 0%"
+                    - img [ref=e237]
+                - listitem [ref=e239]:
+                  - 'link "OCR de baja confianza ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejidos.jpeg, pagina 1: 56%" [ref=e240] [cursor=pointer]':
+                    - /url: /ocr-review?document=100&page=376
+                    - generic [ref=e242]:
+                      - paragraph [ref=e243]: OCR de baja confianza
+                      - paragraph [ref=e244]: "ALEJANDRA COMPANY LASERE/Presupuesto 260074/IMAGENES/tejidos.jpeg, pagina 1: 56%"
+                    - img [ref=e245]
+            - generic [ref=e247]:
+              - generic [ref=e248]:
+                - heading "Distribución" [level=3] [ref=e249]
+                - paragraph [ref=e250]: Cómo se reparten los documentos y los jobs en curso.
+              - generic [ref=e252]:
+                - generic [ref=e253]:
+                  - paragraph [ref=e254]: Por estado
+                  - generic [ref=e255]:
+                    - generic [ref=e257]:
+                      - generic [ref=e258]: needs review
+                      - generic [ref=e259]: "64"
+                    - generic [ref=e263]:
+                      - generic [ref=e264]: duplicate
+                      - generic [ref=e265]: "17"
+                    - generic [ref=e269]:
+                      - generic [ref=e270]: processed
+                      - generic [ref=e271]: "30"
+                - generic [ref=e274]:
+                  - paragraph [ref=e275]: Por tipo
+                  - generic [ref=e276]:
+                    - generic [ref=e278]:
+                      - generic [ref=e279]: imagen
+                      - generic [ref=e280]: "35"
+                    - generic [ref=e284]:
+                      - generic [ref=e285]: desconocido
+                      - generic [ref=e286]: "15"
+                    - generic [ref=e290]:
+                      - generic [ref=e291]: factura
+                      - generic [ref=e292]: "2"
+                    - generic [ref=e296]:
+                      - generic [ref=e297]: pedido
+                      - generic [ref=e298]: "1"
+                    - generic [ref=e302]:
+                      - generic [ref=e303]: presupuesto
+                      - generic [ref=e304]: "48"
+                    - generic [ref=e308]:
+                      - generic [ref=e309]: albaran
+                      - generic [ref=e310]: "6"
+                    - generic [ref=e314]:
+                      - generic [ref=e315]: excel
+                      - generic [ref=e316]: "4"
+                - generic [ref=e319]:
+                  - paragraph [ref=e320]: Jobs
+                  - generic [ref=e323]:
+                    - generic [ref=e324]: processed
+                    - generic [ref=e325]: "155"
+          - generic [ref=e328]:
+            - generic [ref=e329]:
+              - heading "Infraestructura" [level=3] [ref=e331]
+              - generic [ref=e332]:
+                - generic [ref=e333]:
+                  - generic [ref=e336]: PostgreSQL
+                  - generic [ref=e338]: OK
+                - generic [ref=e339]:
+                  - generic [ref=e342]: Redis
+                  - generic [ref=e344]: OK
+                - generic [ref=e345]:
+                  - generic [ref=e348]: Workers
+                  - generic [ref=e350]: —
+                - generic [ref=e351]:
+                  - generic [ref=e354]: Watcher
+                  - generic [ref=e356]: OK
+                - generic [ref=e357]:
+                  - generic [ref=e360]: Disco entrada
+                  - generic [ref=e361]:
+                    - generic [ref=e362]: 883.5 / 930.6 GB
+                    - generic [ref=e363]: FAIL
+                - generic [ref=e364]:
+                  - generic [ref=e367]: Disco archivos
+                  - generic [ref=e368]:
+                    - generic [ref=e369]: 883.5 / 930.6 GB
+                    - generic [ref=e370]: FAIL
+            - generic [ref=e371]:
+              - generic [ref=e372]:
+                - heading "Alertas" [level=3] [ref=e373]
+                - generic [ref=e374]: "6"
+              - list [ref=e376]:
+                - listitem [ref=e377]:
+                  - generic [ref=e378]:
+                    - paragraph [ref=e379]: Presupuestos aceptados sin pedido
+                    - paragraph [ref=e380]: Presupuestos marcados como aceptados que no tienen pedido relacionado.
+                  - generic [ref=e381]: "2"
+                - listitem [ref=e382]:
+                  - generic [ref=e383]:
+                    - paragraph [ref=e384]: Documentos con OCR/error para revisar
+                    - paragraph [ref=e385]: Documentos fallidos o con estado de revisión humana.
+                  - generic [ref=e386]: "64"
+                - listitem [ref=e387]:
+                  - generic [ref=e388]:
+                    - paragraph [ref=e389]: Planos sin escala válida
+                    - paragraph [ref=e390]: Planos donde no se puede convertir geometría a metros de forma fiable.
+                  - generic [ref=e391]: "2"
+                - listitem [ref=e392]:
+                  - generic [ref=e393]:
+                    - paragraph [ref=e394]: Documentos duplicados
+                    - paragraph [ref=e395]: Archivos con SHA256 repetido registrados como duplicados.
+                  - generic [ref=e396]: "17"
+            - generic [ref=e397]:
+              - generic [ref=e398]:
+                - heading "Atajos" [level=3] [ref=e399]
+                - paragraph [ref=e400]: Tres accesos rápidos para las tareas más habituales.
+              - generic [ref=e401]:
+                - link "Escanear documentos" [ref=e402] [cursor=pointer]:
+                  - /url: /documents
+                  - generic [ref=e403]:
+                    - img [ref=e404]
+                    - text: Escanear documentos
+                  - img [ref=e409]
+                - link "Buscar documentos" [ref=e412] [cursor=pointer]:
+                  - /url: /search
+                  - generic [ref=e413]:
+                    - img [ref=e414]
+                    - text: Buscar documentos
+                  - img [ref=e417]
+                - link "Panel de operación" [ref=e420] [cursor=pointer]:
+                  - /url: /admin
+                  - generic [ref=e421]:
+                    - img [ref=e422]
+                    - text: Panel de operación
+                  - img [ref=e424]
+  - region "Notifications alt+T"

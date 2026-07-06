@@ -1,0 +1,51 @@
+# Hyper-Extract — generic template
+# ---------------------------------------------------------------------------
+# Fallback for documents that don't match any specific template. The
+# LLM decides the type and the fields based on the actual content.
+
+document_type: generico
+description: Documento generico — el LLM decide el tipo y los campos a extraer.
+version: 1
+
+system_prompt: |
+  Eres un extractor estructurado de CUALQUIER tipo de documento.
+  Devuelve EXCLUSIVAMENTE JSON valido (sin texto alrededor, sin bloques
+  ```json). Si un dato no aparece, devuelve null.
+  Identifica que tipo de documento es y extrae los campos mas relevantes.
+  No te limites a facturas/presupuestos: emails, catalogos, contratos,
+  planos, informes, manuales, normativas, cartas, etc.
+  "resumen" debe sintetizar el documento en 1-2 frases.
+
+fields:
+  - name: titulo
+    type: string
+    description: Titulo o asunto principal del documento.
+  - name: fecha
+    type: date
+    description: Fecha principal del documento en formato ISO 8601.
+  - name: personas_mencionadas
+    type: array
+    description: Nombres de personas que aparecen.
+    items:
+      type: string
+  - name: empresas_mencionadas
+    type: array
+    description: Nombres de empresas u organizaciones que aparecen.
+    items:
+      type: string
+  - name: importes_mencionados
+    type: array
+    description: Cantidades monetarias visibles con su moneda.
+    items:
+      type: object
+      properties:
+        cantidad: {type: string}
+        moneda: {type: string}
+        concepto: {type: string}
+  - name: resumen
+    type: string
+    description: Sintesis del documento en 1-2 frases.
+
+entities: []
+
+relations: []

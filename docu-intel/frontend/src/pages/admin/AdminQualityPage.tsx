@@ -1,6 +1,8 @@
 import type { FormEvent } from "react"
 import { RefreshCw } from "lucide-react"
 
+import { useConfirm } from "@/hooks/useConfirm"
+
 import type {
   BulkTagsResponse,
   Document,
@@ -88,6 +90,7 @@ function QualityView({
   hotels,
   updateDocumentAccess,
 }: QualityViewProps) {
+  const confirmAction = useConfirm()
   return (
     <div className="space-y-4">
       <Card>
@@ -304,16 +307,16 @@ function QualityView({
         <CardContent className="space-y-2 text-sm">
           <form
             className="grid gap-2"
-            onSubmit={(event: FormEvent) => {
+            onSubmit={async (event: FormEvent) => {
               event.preventDefault()
               if (ids(bulkTagDocumentIds).length) {
-                if (
-                  window.confirm(
-                    "¿Aplicar tags en lote a " + ids(bulkTagDocumentIds).length + " documentos?",
-                  )
-                ) {
-                  applyBulkTags.mutate()
-                }
+                const ok = await confirmAction({
+                  title: "¿Aplicar tags en lote?",
+                  description: `Se aplicarán tags a ${ids(bulkTagDocumentIds).length} documentos.`,
+                  confirmLabel: "Aplicar",
+                  tone: "danger",
+                })
+                if (ok) applyBulkTags.mutate()
               }
             }}
           >
@@ -349,6 +352,7 @@ function QualityView({
 /** F4b - Quality admin sub-page. Lazy-loaded via the router. */
 export function AdminQualityPage() {
   const { state, queries, mutations, tenantAdminEnabled } = useAdminQualityData()
+  const confirmAction = useConfirm()
 
   return (
     <QualityView

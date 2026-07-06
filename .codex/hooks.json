@@ -1,0 +1,46 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Users\\PC\\.cce\\hooks\\cce_hook.cmd\" PostToolUse"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Users\\PC\\.cce\\hooks\\cce_hook.cmd\" SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Users\\PC\\.cce\\hooks\\cce_hook.cmd\" UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Users\\PC\\.cce\\hooks\\cce_hook.cmd\" Stop"
+          }
+        ]
+      }
+    ]
+  }
+}

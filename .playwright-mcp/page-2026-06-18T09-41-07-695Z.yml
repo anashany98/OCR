@@ -1,0 +1,525 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Docu-Intel
+          - paragraph [ref=e12]: Operación documental
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]:
+            - generic [ref=e18]: General
+          - list [ref=e19]:
+            - listitem [ref=e20]:
+              - link "Dashboard" [ref=e21] [cursor=pointer]:
+                - /url: /
+                - img [ref=e22]
+                - generic [ref=e27]: Dashboard
+            - listitem [ref=e28]:
+              - link "Tareas 3 tareas pendientes" [ref=e184] [cursor=pointer]:
+                - /url: /work-inbox
+                - img [ref=e30]
+                - generic [ref=e32]: Tareas
+                - generic "3 tareas pendientes" [ref=e185]: "3"
+        - generic [ref=e33]:
+          - paragraph [ref=e34]:
+            - generic [ref=e36]: Documentos
+          - list [ref=e37]:
+            - listitem [ref=e38]:
+              - link "Todos los documentos" [ref=e39] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e40]
+                - generic [ref=e43]: Todos los documentos
+            - listitem [ref=e44]:
+              - link "Buscar" [ref=e45] [cursor=pointer]:
+                - /url: /search
+                - img [ref=e46]
+                - generic [ref=e49]: Buscar
+            - listitem [ref=e50]:
+              - link "Preguntar a documentos" [ref=e51] [cursor=pointer]:
+                - /url: /chat
+                - img [ref=e52]
+                - generic [ref=e54]: Preguntar a documentos
+            - listitem [ref=e55]:
+              - link "Planos β" [ref=e56] [cursor=pointer]:
+                - /url: /plans
+                - img [ref=e57]
+                - generic [ref=e59]: Planos
+                - generic [ref=e60]: β
+        - generic [ref=e61]:
+          - paragraph [ref=e62]:
+            - generic [ref=e64]: Operación
+          - list [ref=e65]:
+            - listitem [ref=e66]:
+              - link "Presupuestos" [ref=e67] [cursor=pointer]:
+                - /url: /budgets
+                - img [ref=e68]
+                - generic [ref=e71]: Presupuestos
+            - listitem [ref=e72]:
+              - link "Pedidos" [ref=e73] [cursor=pointer]:
+                - /url: /orders
+                - img [ref=e74]
+                - generic [ref=e77]: Pedidos
+            - listitem [ref=e78]:
+              - link "Facturas" [ref=e79] [cursor=pointer]:
+                - /url: /invoices
+                - img [ref=e80]
+                - generic [ref=e83]: Facturas
+            - listitem [ref=e84]:
+              - link "Incidencias" [ref=e85] [cursor=pointer]:
+                - /url: /reconciliation
+                - img [ref=e86]
+                - generic [ref=e90]: Incidencias
+            - listitem [ref=e91]:
+              - link "OCR y calidad" [ref=e92] [cursor=pointer]:
+                - /url: /ocr-review
+                - img [ref=e93]
+                - generic [ref=e96]: OCR y calidad
+            - listitem [ref=e97]:
+              - link "Duplicados" [ref=e98] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e99]
+                - generic [ref=e101]: Duplicados
+            - listitem [ref=e102]:
+              - link "Cuarentena" [ref=e103] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e104]
+                - generic [ref=e106]: Cuarentena
+        - generic [ref=e107]:
+          - paragraph [ref=e108]:
+            - generic [ref=e110]: Sistema
+          - list [ref=e111]:
+            - listitem [ref=e112]:
+              - link "Procesamiento" [ref=e113] [cursor=pointer]:
+                - /url: /jobs
+                - img [ref=e114]
+                - generic [ref=e119]: Procesamiento
+            - listitem [ref=e120]:
+              - link "Estado técnico" [ref=e121] [cursor=pointer]:
+                - /url: /admin/sistema
+                - img [ref=e123]
+                - generic [ref=e126]: Estado técnico
+            - listitem [ref=e127]:
+              - link "Usuarios y permisos" [ref=e128] [cursor=pointer]:
+                - /url: /admin/acceso
+                - img [ref=e129]
+                - generic [ref=e134]: Usuarios y permisos
+            - listitem [ref=e135]:
+              - link "Integraciones" [ref=e136] [cursor=pointer]:
+                - /url: /admin/integraciones
+                - img [ref=e137]
+                - generic [ref=e140]: Integraciones
+            - listitem [ref=e141]:
+              - link "Aprendizaje IA" [ref=e142] [cursor=pointer]:
+                - /url: /admin/aprendizaje
+                - img [ref=e143]
+                - generic [ref=e153]: Aprendizaje IA
+    - generic [ref=e154]:
+      - banner [ref=e155]:
+        - generic [ref=e156]:
+          - heading "Administración · Estado técnico" [level=1] [ref=e157]
+          - generic "3 tareas pendientes" [ref=e186] [cursor=pointer]:
+            - generic [ref=e187]: 3 tareas
+          - button "Abrir paleta de comandos" [ref=e158] [cursor=pointer]:
+            - img [ref=e159]
+            - generic [ref=e161]: Buscar…
+            - generic [ref=e162]: ⌘K
+          - generic [ref=e165]: Sistema
+          - button "Cambiar a tema oscuro" [ref=e166] [cursor=pointer]:
+            - img [ref=e167]
+          - button "Menú de usuario" [ref=e170] [cursor=pointer]:
+            - generic [ref=e171]: A
+            - generic [ref=e172]: Admin
+            - img [ref=e173]
+          - button "Cerrar sesión" [ref=e175] [cursor=pointer]:
+            - img [ref=e176]
+      - main [ref=e179]:
+        - generic [ref=e190]:
+          - heading "Administración" [level=1] [ref=e191]
+          - generic [ref=e192]: Operación documental, integración segura, colas y auditoría.
+        - generic [ref=e193]:
+          - link "Operativa" [ref=e194] [cursor=pointer]:
+            - /url: /admin/operativa
+            - generic [ref=e195]:
+              - img [ref=e196]
+              - text: Operativa
+          - link "Estado técnico" [ref=e199] [cursor=pointer]:
+            - /url: /admin/sistema
+            - generic [ref=e200]:
+              - img [ref=e201]
+              - text: Estado técnico
+          - link "Integraciones" [ref=e204] [cursor=pointer]:
+            - /url: /admin/integraciones
+            - generic [ref=e205]:
+              - img [ref=e206]
+              - text: Integraciones
+          - link "Usuarios y permisos" [ref=e209] [cursor=pointer]:
+            - /url: /admin/acceso
+            - generic [ref=e210]:
+              - img [ref=e211]
+              - text: Usuarios y permisos
+          - link "Calidad" [ref=e216] [cursor=pointer]:
+            - /url: /admin/calidad
+            - generic [ref=e217]:
+              - img [ref=e218]
+              - text: Calidad
+          - link "Aprendizaje IA" [ref=e225] [cursor=pointer]:
+            - /url: /admin/aprendizaje
+            - generic [ref=e226]:
+              - img [ref=e227]
+              - text: Aprendizaje IA
+        - generic [ref=e237]:
+          - complementary [ref=e238]:
+            - navigation "Secciones de sistema" [ref=e240]:
+              - paragraph [ref=e241]: Secciones
+              - list [ref=e242]:
+                - listitem [ref=e243]:
+                  - link "PostgreSQL Conexión y salud de la base de datos" [ref=e244] [cursor=pointer]:
+                    - /url: "#postgres"
+                    - img [ref=e245]
+                    - generic [ref=e249]:
+                      - generic [ref=e250]: PostgreSQL
+                      - generic [ref=e251]: Conexión y salud de la base de datos
+                - listitem [ref=e252]:
+                  - link "Redis y Workers Colas Celery y latencia de workers" [ref=e253] [cursor=pointer]:
+                    - /url: "#redis-workers"
+                    - img [ref=e254]
+                    - generic [ref=e257]:
+                      - generic [ref=e258]: Redis y Workers
+                      - generic [ref=e259]: Colas Celery y latencia de workers
+                - listitem [ref=e260]:
+                  - link "Disco y almacenamiento Uso de disco e integridad de archivos" [ref=e261] [cursor=pointer]:
+                    - /url: "#storage"
+                    - img [ref=e262]
+                    - generic [ref=e264]:
+                      - generic [ref=e265]: Disco y almacenamiento
+                      - generic [ref=e266]: Uso de disco e integridad de archivos
+                - listitem [ref=e267]:
+                  - link "Readiness y producción Checklist y readiness para puesta en producción" [ref=e268] [cursor=pointer]:
+                    - /url: "#readiness"
+                    - img [ref=e269]
+                    - generic [ref=e272]:
+                      - generic [ref=e273]: Readiness y producción
+                      - generic [ref=e274]: Checklist y readiness para puesta en producción
+                - listitem [ref=e275]:
+                  - link "Usuarios y notificaciones Cuentas admin y reglas de notificación" [ref=e276] [cursor=pointer]:
+                    - /url: "#access"
+                    - img [ref=e277]
+                    - generic [ref=e280]:
+                      - generic [ref=e281]: Usuarios y notificaciones
+                      - generic [ref=e282]: Cuentas admin y reglas de notificación
+                - listitem [ref=e283]:
+                  - link "Configuración IA/OCR Motores, dimensiones y datos de demostración" [ref=e284] [cursor=pointer]:
+                    - /url: "#ai-config"
+                    - img [ref=e285]
+                    - generic [ref=e289]:
+                      - generic [ref=e290]: Configuración IA/OCR
+                      - generic [ref=e291]: Motores, dimensiones y datos de demostración
+          - generic [ref=e292]:
+            - region "Resumen" [ref=e293]:
+              - generic [ref=e294]:
+                - img [ref=e296]
+                - generic [ref=e298]:
+                  - heading "Resumen del sistema" [level=3] [ref=e299]
+                  - paragraph [ref=e300]: Indicadores críticos. Baja en cada sección para detalles.
+              - generic [ref=e301]:
+                - generic [ref=e303]:
+                  - generic [ref=e304]:
+                    - img [ref=e305]
+                    - text: PostgreSQL
+                  - generic [ref=e309]: ok
+                - generic [ref=e311]:
+                  - generic [ref=e312]:
+                    - img [ref=e313]
+                    - text: Readiness
+                  - generic [ref=e316]: degradado
+                - generic [ref=e318]:
+                  - generic [ref=e319]:
+                    - img [ref=e320]
+                    - text: Mantenimiento
+                  - generic [ref=e324]: ok
+            - region "PostgreSQL" [ref=e325]:
+              - heading "PostgreSQL" [level=4] [ref=e326]
+              - generic [ref=e327]:
+                - img [ref=e329]
+                - generic [ref=e333]:
+                  - heading "PostgreSQL" [level=3] [ref=e334]
+                  - paragraph [ref=e335]: Conexión y salud de la base de datos
+              - generic [ref=e336]:
+                - generic [ref=e338]:
+                  - paragraph [ref=e339]: Checks en vivo
+                  - generic [ref=e340]:
+                    - generic [ref=e341]: ok
+                    - generic [ref=e342]: "database: ok"
+                    - generic [ref=e343]: "postgresql: ok"
+                - generic [ref=e345]:
+                  - paragraph [ref=e346]: Estado operativo
+                  - generic [ref=e347]:
+                    - paragraph [ref=e348]: Estado
+                    - generic [ref=e350]: operativo
+            - region "Redis y Workers" [ref=e351]:
+              - heading "Redis y Workers" [level=4] [ref=e352]
+              - generic [ref=e353]:
+                - img [ref=e355]
+                - generic [ref=e358]:
+                  - heading "Redis y Workers" [level=3] [ref=e359]
+                  - paragraph [ref=e360]: Colas Celery y latencia de workers
+              - generic [ref=e361]:
+                - generic [ref=e363]:
+                  - paragraph [ref=e364]: Estado de workers
+                  - generic [ref=e365]:
+                    - generic [ref=e366]: "redis: ok"
+                    - generic [ref=e367]: "celery: ok"
+                    - generic [ref=e368]: "worker: warning"
+                - generic [ref=e370]:
+                  - paragraph [ref=e371]: Colas por tipo
+                  - generic [ref=e372]:
+                    - paragraph
+                    - generic [ref=e373]:
+                      - generic [ref=e374]: "ocr_heavy: 7"
+                      - generic [ref=e375]: "text_fast: 2"
+                      - generic [ref=e376]: "embeddings: 0"
+                      - generic [ref=e377]: "maintenance: 1"
+            - region "Disco y almacenamiento" [ref=e378]:
+              - heading "Disco y almacenamiento" [level=4] [ref=e379]
+              - generic [ref=e380]:
+                - img [ref=e382]
+                - generic [ref=e384]:
+                  - heading "Disco y almacenamiento" [level=3] [ref=e385]
+                  - paragraph [ref=e386]: Uso de disco e integridad de archivos
+              - generic [ref=e387]:
+                - generic [ref=e389]:
+                  - paragraph [ref=e390]: Volúmenes montados
+                  - generic [ref=e391]:
+                    - generic [ref=e392]:
+                      - generic [ref=e393]:
+                        - img [ref=e394]
+                        - text: Directorio de entrada
+                      - generic [ref=e396]: 47% usado
+                    - paragraph [ref=e399]: /data/input
+                  - generic [ref=e400]:
+                    - generic [ref=e401]:
+                      - generic [ref=e402]:
+                        - img [ref=e403]
+                        - text: Archivos originales
+                      - generic [ref=e405]: 61% usado
+                    - paragraph [ref=e408]: /data/files
+                - generic [ref=e410]:
+                  - paragraph [ref=e411]: Integridad de almacenamiento
+                  - generic [ref=e412]:
+                    - generic [ref=e413]:
+                      - paragraph [ref=e414]: Comprobados
+                      - paragraph [ref=e415]: "1247"
+                    - generic [ref=e416]:
+                      - paragraph [ref=e417]: Sin fichero
+                      - paragraph [ref=e418]: "0"
+                    - generic [ref=e419]:
+                      - paragraph [ref=e420]: Huérfanos
+                      - paragraph [ref=e421]: "3"
+                    - generic [ref=e422]:
+                      - paragraph [ref=e423]: Hash dudoso
+                      - paragraph [ref=e424]: "1"
+            - region "Readiness y producción" [ref=e425]:
+              - heading "Readiness y producción" [level=4] [ref=e426]
+              - generic [ref=e427]:
+                - img [ref=e429]
+                - generic [ref=e432]:
+                  - heading "Readiness y producción" [level=3] [ref=e433]
+                  - paragraph [ref=e434]: Checklist y readiness para puesta en producción
+              - generic [ref=e435]:
+                - generic [ref=e437]:
+                  - generic [ref=e438]:
+                    - paragraph [ref=e439]: Readiness productivo
+                    - generic [ref=e440]: warning
+                  - generic [ref=e441]:
+                    - generic [ref=e442]:
+                      - generic [ref=e443]:
+                        - paragraph [ref=e444]: db
+                        - generic [ref=e445]: ok
+                      - paragraph [ref=e446]: Postgres OK
+                    - generic [ref=e447]:
+                      - generic [ref=e448]:
+                        - paragraph [ref=e449]: redis
+                        - generic [ref=e450]: ok
+                      - paragraph [ref=e451]: Redis OK
+                    - generic [ref=e452]:
+                      - generic [ref=e453]:
+                        - paragraph [ref=e454]: workers
+                        - generic [ref=e455]: warning
+                      - paragraph [ref=e456]: Worker heavy saturado
+                    - generic [ref=e457]:
+                      - generic [ref=e458]:
+                        - paragraph [ref=e459]: disk
+                        - generic [ref=e460]: ok
+                      - paragraph [ref=e461]: Directorios con espacio
+                    - generic [ref=e462]:
+                      - generic [ref=e463]:
+                        - paragraph [ref=e464]: watcher
+                        - generic [ref=e465]: ok
+                      - paragraph [ref=e466]: Watcher activo
+                - generic [ref=e468]:
+                  - paragraph [ref=e469]: Checklist de producción
+                  - generic [ref=e470]:
+                    - generic [ref=e471]:
+                      - generic [ref=e472]:
+                        - paragraph [ref=e473]: Base de datos
+                        - generic [ref=e474]: ok
+                      - paragraph [ref=e475]: Conexión y migraciones al día
+                    - generic [ref=e476]:
+                      - generic [ref=e477]:
+                        - paragraph [ref=e478]: Redis
+                        - generic [ref=e479]: ok
+                      - paragraph [ref=e480]: Broker accesible
+                    - generic [ref=e481]:
+                      - generic [ref=e482]:
+                        - paragraph [ref=e483]: Workers Celery
+                        - generic [ref=e484]: ok
+                      - paragraph [ref=e485]: 3 workers reportando
+                    - generic [ref=e486]:
+                      - generic [ref=e487]:
+                        - paragraph [ref=e488]: Watcher de ingesta
+                        - generic [ref=e489]: warning
+                      - paragraph [ref=e490]: Latencia > 30s en cola OCR
+                    - generic [ref=e491]:
+                      - generic [ref=e492]:
+                        - paragraph [ref=e493]: Almacenamiento
+                        - generic [ref=e494]: ok
+                      - paragraph [ref=e495]: 92% usado, por debajo del umbral
+                    - generic [ref=e496]:
+                      - generic [ref=e497]:
+                        - paragraph [ref=e498]: Backups
+                        - generic [ref=e499]: warning
+                      - paragraph [ref=e500]: Último backup > 24h
+            - region "Usuarios y notificaciones" [ref=e501]:
+              - heading "Usuarios y notificaciones" [level=4] [ref=e502]
+              - generic [ref=e503]:
+                - img [ref=e505]
+                - generic [ref=e508]:
+                  - heading "Usuarios y notificaciones" [level=3] [ref=e509]
+                  - paragraph [ref=e510]: Cuentas admin y reglas de notificación
+              - generic [ref=e511]:
+                - generic [ref=e513]:
+                  - generic [ref=e514]:
+                    - img [ref=e515]
+                    - paragraph [ref=e518]: Crear usuario admin
+                  - generic [ref=e519]:
+                    - textbox "email@empresa.com" [ref=e520]
+                    - textbox "Nombre" [ref=e521]
+                    - combobox [ref=e522]:
+                      - option "Operario" [selected]
+                      - option "Gestor"
+                      - option "Auditor"
+                      - option "Admin"
+                    - textbox "Contraseña (12+ caracteres)" [ref=e523]
+                    - generic [ref=e524]:
+                      - paragraph [ref=e525]: Mínimo 12 caracteres. El usuario recibirá acceso inmediato al rol seleccionado.
+                      - button "Crear usuario" [disabled]
+                  - table [ref=e528]:
+                    - rowgroup [ref=e529]:
+                      - row "Usuario Rol Estado" [ref=e530]:
+                        - columnheader "Usuario" [ref=e531]
+                        - columnheader "Rol" [ref=e532]
+                        - columnheader "Estado" [ref=e533]
+                        - columnheader [ref=e534]
+                    - rowgroup [ref=e535]:
+                      - row "Admin Local admin@local admin activo Desactivar" [ref=e536]:
+                        - cell "Admin Local admin@local" [ref=e537]:
+                          - paragraph [ref=e538]: Admin Local
+                          - paragraph [ref=e539]: admin@local
+                        - cell "admin" [ref=e540]:
+                          - generic [ref=e541]: admin
+                        - cell "activo" [ref=e542]:
+                          - generic [ref=e543]: activo
+                        - cell "Desactivar" [ref=e544]:
+                          - button "Desactivar" [ref=e545] [cursor=pointer]
+                      - row "María Gestora gestor@local gestor activo Desactivar" [ref=e546]:
+                        - cell "María Gestora gestor@local" [ref=e547]:
+                          - paragraph [ref=e548]: María Gestora
+                          - paragraph [ref=e549]: gestor@local
+                        - cell "gestor" [ref=e550]:
+                          - generic [ref=e551]: gestor
+                        - cell "activo" [ref=e552]:
+                          - generic [ref=e553]: activo
+                        - cell "Desactivar" [ref=e554]:
+                          - button "Desactivar" [ref=e555] [cursor=pointer]
+                      - row "Carlos Auditor auditor@local auditor activo Desactivar" [ref=e556]:
+                        - cell "Carlos Auditor auditor@local" [ref=e557]:
+                          - paragraph [ref=e558]: Carlos Auditor
+                          - paragraph [ref=e559]: auditor@local
+                        - cell "auditor" [ref=e560]:
+                          - generic [ref=e561]: auditor
+                        - cell "activo" [ref=e562]:
+                          - generic [ref=e563]: activo
+                        - cell "Desactivar" [ref=e564]:
+                          - button "Desactivar" [ref=e565] [cursor=pointer]
+                      - row "Juan Operario operario@local operario inactivo Activar" [ref=e566]:
+                        - cell "Juan Operario operario@local" [ref=e567]:
+                          - paragraph [ref=e568]: Juan Operario
+                          - paragraph [ref=e569]: operario@local
+                        - cell "operario" [ref=e570]:
+                          - generic [ref=e571]: operario
+                        - cell "inactivo" [ref=e572]:
+                          - generic [ref=e573]: inactivo
+                        - cell "Activar" [ref=e574]:
+                          - button "Activar" [ref=e575] [cursor=pointer]
+                - generic [ref=e577]:
+                  - generic [ref=e578]:
+                    - img [ref=e579]
+                    - paragraph [ref=e582]: Crear regla de notificación
+                  - generic [ref=e583]:
+                    - textbox "Nombre regla" [ref=e584]
+                    - textbox "Evento" [ref=e585]: ocr_failed
+                    - combobox [ref=e586]:
+                      - option "Webhook" [selected]
+                      - option "Email"
+                      - option "Teams"
+                    - textbox "URL o email" [ref=e587]
+                    - button "Crear regla" [ref=e589] [cursor=pointer]
+                  - generic [ref=e590]:
+                    - generic [ref=e591]:
+                      - generic [ref=e592]:
+                        - paragraph [ref=e593]: OCR crítico
+                        - generic [ref=e594]: webhook
+                      - paragraph [ref=e595]: ocr_failed → https://hooks.example.com/ocr
+                    - generic [ref=e596]:
+                      - generic [ref=e597]:
+                        - paragraph [ref=e598]: Disco bajo
+                        - generic [ref=e599]: email
+                      - paragraph [ref=e600]: disk_low → ops@example.com
+            - region "Configuración IA/OCR" [ref=e601]:
+              - heading "Configuración IA/OCR" [level=4] [ref=e602]
+              - generic [ref=e603]:
+                - img [ref=e605]
+                - generic [ref=e609]:
+                  - heading "Configuración IA/OCR" [level=3] [ref=e610]
+                  - paragraph [ref=e611]: Motores, dimensiones y datos de demostración
+              - generic [ref=e612]:
+                - generic [ref=e614]:
+                  - paragraph [ref=e615]: Estado de configuración
+                  - generic [ref=e616]:
+                    - generic [ref=e617]:
+                      - paragraph [ref=e618]: Readiness
+                      - generic [ref=e620]: warning
+                    - generic [ref=e621]:
+                      - paragraph [ref=e622]: OCR
+                      - generic [ref=e624]: paddleocr
+                    - generic [ref=e625]:
+                      - paragraph [ref=e626]: Embeddings
+                      - generic [ref=e628]: backend
+                    - generic [ref=e629]:
+                      - paragraph [ref=e630]: Backups
+                      - generic [ref=e632]: auditable
+                  - generic [ref=e633]:
+                    - generic [ref=e634]: AI_PROVIDER=local_openai_compatible
+                    - generic [ref=e635]: OCR_ENGINE=paddleocr
+                    - generic [ref=e636]: "Docs en revisión: 14"
+                - generic [ref=e638]:
+                  - generic [ref=e639]:
+                    - img [ref=e640]
+                    - paragraph [ref=e645]: Datos de demostración
+                  - paragraph [ref=e646]: Crea un conjunto reducido de documentos, presupuestos y pedidos para mostrar el funcionamiento del sistema sin afectar datos reales.
+                  - button "Activar demo" [ref=e648] [cursor=pointer]:
+                    - img [ref=e649]
+                    - text: Activar demo
+  - region "Notifications alt+T"

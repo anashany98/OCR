@@ -37,6 +37,7 @@ import {
   UnsupportedPreviewCard,
   VisorCardHeader,
 } from "./components"
+import { ExcelViewer } from "./ExcelViewer"
 import { useDocumentDetail } from "./useDocumentDetail"
 
 // ---------------------------------------------------------------------------
@@ -240,11 +241,18 @@ function ActionToolbar({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
 function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const document = d.document
   const page = d.selectedPage
+  const isExcel = [".xlsx", ".xls", ".xlsm"].includes(document?.extension ?? "")
+  const excelText = isExcel && d.pages.length > 0 ? d.pages.map((p) => p.text || "").join("\n\n") : ""
+
   return (
     <Card className="overflow-hidden">
       <VisorCardHeader>Visor</VisorCardHeader>
       <CardContent className="p-0">
-        {page?.page_number && document?.id ? (
+        {isExcel && excelText ? (
+          <div className="max-h-[540px] overflow-auto">
+            <ExcelViewer text={excelText} />
+          </div>
+        ) : page?.page_number && document?.id ? (
           <div className="overflow-hidden bg-slate-100">
             <img
               className="max-h-[540px] w-full object-contain"
@@ -271,7 +279,7 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
             />
           </div>
         )}
-        {d.pages.length > 1 && (
+        {d.pages.length > 1 && !isExcel && (
           <div className="flex flex-wrap gap-1.5 border-t bg-slate-50 px-3 py-2">
             {d.pages.map((p) => (
               <Button

@@ -1,0 +1,72 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - button "Abrir menú de navegación" [ref=e7] [cursor=pointer]:
+          - img [ref=e8]
+        - heading "Revisión OCR" [level=1] [ref=e9]
+        - button "Abrir paleta de comandos" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+          - generic [ref=e13]: Buscar…
+          - generic [ref=e14]: ⌘K
+        - generic [ref=e17]: Sistema
+        - button "Cambiar a tema oscuro" [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+        - button "Menú de usuario" [ref=e22] [cursor=pointer]:
+          - generic [ref=e23]: A
+          - generic [ref=e24]: Administrador
+          - img [ref=e25]
+        - button "Cerrar sesión" [ref=e27] [cursor=pointer]:
+          - img [ref=e28]
+    - main [ref=e31]:
+      - generic [ref=e32]:
+        - navigation "Breadcrumb" [ref=e33]:
+          - list [ref=e34]:
+            - listitem [ref=e35]:
+              - link "Inicio" [ref=e36] [cursor=pointer]:
+                - /url: /
+                - img [ref=e37]
+                - generic [ref=e40]: Inicio
+            - listitem [ref=e41]:
+              - img [ref=e42]
+            - listitem [ref=e44]:
+              - generic [ref=e46]: Revisión OCR
+        - generic [ref=e47]:
+          - generic [ref=e50]:
+            - heading "Verificación OCR" [level=1] [ref=e51]
+            - generic [ref=e52]: Revisión humana de páginas con confianza OCR inferior al umbral.
+          - generic [ref=e53]:
+            - generic [ref=e54]:
+              - generic [ref=e55]: Umbral OCR
+              - generic [ref=e56]:
+                - spinbutton "Umbral OCR" [ref=e57]: "70"
+                - generic: "%"
+            - combobox "Tipo de documento" [ref=e58]:
+              - option "Todos los tipos" [selected]
+              - option "Presupuesto"
+              - option "Pedido"
+              - option "Factura"
+              - option "Plano"
+              - option "Imagen"
+              - option "Excel"
+            - combobox "Estado de revisión" [ref=e59]:
+              - option "Todos los estados" [selected]
+              - option "Necesita revisión"
+              - option "Procesado"
+              - option "Fallido"
+            - button "Actualizar lista" [disabled]:
+              - img
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - generic [ref=e63]:
+              - heading "Cola de revisión" [level=3] [ref=e64]
+              - generic [ref=e65]: 0 pág. · <70%
+            - generic [ref=e67]:
+              - img [ref=e69]
+              - paragraph [ref=e72]: No hay páginas bajo el umbral
+              - paragraph [ref=e73]: Sube el umbral o espera a que entren más documentos.
+          - generic [ref=e75]:
+            - img [ref=e77]
+            - paragraph [ref=e80]: Selecciona una página de la cola
+            - paragraph [ref=e81]: Para revisar OCR, aprobar o denegar.
+  - region "Notifications alt+T"

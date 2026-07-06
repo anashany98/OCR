@@ -1,0 +1,197 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Docu-Intel
+          - paragraph [ref=e12]: Operación documental
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - paragraph [ref=e16]:
+            - generic [ref=e18]: Recientes
+          - list [ref=e19]:
+            - listitem [ref=e20]:
+              - link "OCR y calidad" [ref=e21] [cursor=pointer]:
+                - /url: /ocr-review
+                - img [ref=e22]
+                - generic [ref=e25]: OCR y calidad
+        - generic [ref=e26]:
+          - paragraph [ref=e27]:
+            - generic [ref=e29]: General
+          - list [ref=e30]:
+            - listitem [ref=e31]:
+              - link "Dashboard" [ref=e32] [cursor=pointer]:
+                - /url: /
+                - img [ref=e33]
+                - generic [ref=e38]: Dashboard
+            - listitem [ref=e39]:
+              - link "Tareas 3 tareas pendientes" [ref=e195] [cursor=pointer]:
+                - /url: /work-inbox
+                - img [ref=e41]
+                - generic [ref=e43]: Tareas
+                - generic "3 tareas pendientes" [ref=e196]: "3"
+        - generic [ref=e44]:
+          - paragraph [ref=e45]:
+            - generic [ref=e47]: Documentos
+          - list [ref=e48]:
+            - listitem [ref=e49]:
+              - link "Todos los documentos" [ref=e50] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e51]
+                - generic [ref=e54]: Todos los documentos
+            - listitem [ref=e55]:
+              - link "Buscar" [ref=e56] [cursor=pointer]:
+                - /url: /search
+                - img [ref=e57]
+                - generic [ref=e60]: Buscar
+            - listitem [ref=e61]:
+              - link "Preguntar a documentos" [ref=e62] [cursor=pointer]:
+                - /url: /chat
+                - img [ref=e63]
+                - generic [ref=e65]: Preguntar a documentos
+            - listitem [ref=e66]:
+              - link "Planos β" [ref=e67] [cursor=pointer]:
+                - /url: /plans
+                - img [ref=e68]
+                - generic [ref=e70]: Planos
+                - generic [ref=e71]: β
+        - generic [ref=e72]:
+          - paragraph [ref=e73]:
+            - generic [ref=e75]: Operación
+          - list [ref=e76]:
+            - listitem [ref=e77]:
+              - link "Presupuestos" [ref=e78] [cursor=pointer]:
+                - /url: /budgets
+                - img [ref=e79]
+                - generic [ref=e82]: Presupuestos
+            - listitem [ref=e83]:
+              - link "Pedidos" [ref=e84] [cursor=pointer]:
+                - /url: /orders
+                - img [ref=e85]
+                - generic [ref=e88]: Pedidos
+            - listitem [ref=e89]:
+              - link "Facturas" [ref=e90] [cursor=pointer]:
+                - /url: /invoices
+                - img [ref=e91]
+                - generic [ref=e94]: Facturas
+            - listitem [ref=e95]:
+              - link "Incidencias" [ref=e96] [cursor=pointer]:
+                - /url: /reconciliation
+                - img [ref=e97]
+                - generic [ref=e101]: Incidencias
+            - listitem [ref=e102]:
+              - link "OCR y calidad" [ref=e103] [cursor=pointer]:
+                - /url: /ocr-review
+                - img [ref=e105]
+                - generic [ref=e108]: OCR y calidad
+            - listitem [ref=e109]:
+              - link "Duplicados" [ref=e110] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e111]
+                - generic [ref=e113]: Duplicados
+            - listitem [ref=e114]:
+              - link "Cuarentena" [ref=e115] [cursor=pointer]:
+                - /url: /admin/calidad
+                - img [ref=e116]
+                - generic [ref=e118]: Cuarentena
+        - generic [ref=e119]:
+          - paragraph [ref=e120]:
+            - generic [ref=e122]: Sistema
+          - list [ref=e123]:
+            - listitem [ref=e124]:
+              - link "Procesamiento" [ref=e125] [cursor=pointer]:
+                - /url: /jobs
+                - img [ref=e126]
+                - generic [ref=e131]: Procesamiento
+            - listitem [ref=e132]:
+              - link "Estado técnico" [ref=e133] [cursor=pointer]:
+                - /url: /admin/sistema
+                - img [ref=e134]
+                - generic [ref=e137]: Estado técnico
+            - listitem [ref=e138]:
+              - link "Usuarios y permisos" [ref=e139] [cursor=pointer]:
+                - /url: /admin/acceso
+                - img [ref=e140]
+                - generic [ref=e145]: Usuarios y permisos
+            - listitem [ref=e146]:
+              - link "Integraciones" [ref=e147] [cursor=pointer]:
+                - /url: /admin/integraciones
+                - img [ref=e148]
+                - generic [ref=e151]: Integraciones
+            - listitem [ref=e152]:
+              - link "Aprendizaje IA" [ref=e153] [cursor=pointer]:
+                - /url: /admin/aprendizaje
+                - img [ref=e154]
+                - generic [ref=e164]: Aprendizaje IA
+    - generic [ref=e165]:
+      - banner [ref=e166]:
+        - generic [ref=e167]:
+          - heading "Revisión OCR" [level=1] [ref=e168]
+          - generic "3 tareas pendientes" [ref=e197] [cursor=pointer]:
+            - generic [ref=e198]: 3 tareas
+          - button "Abrir paleta de comandos" [ref=e169] [cursor=pointer]:
+            - img [ref=e170]
+            - generic [ref=e172]: Buscar…
+            - generic [ref=e173]: ⌘K
+          - generic [ref=e176]: Sistema
+          - button "Cambiar a tema oscuro" [ref=e177] [cursor=pointer]:
+            - img [ref=e178]
+          - button "Menú de usuario" [ref=e181] [cursor=pointer]:
+            - generic [ref=e182]: A
+            - generic [ref=e183]: Admin
+            - img [ref=e184]
+          - button "Cerrar sesión" [ref=e186] [cursor=pointer]:
+            - img [ref=e187]
+      - main [ref=e190]:
+        - generic [ref=e199]:
+          - navigation "Breadcrumb" [ref=e200]:
+            - list [ref=e201]:
+              - listitem [ref=e202]:
+                - link "Inicio" [ref=e203] [cursor=pointer]:
+                  - /url: /
+                  - img [ref=e204]
+                  - generic [ref=e207]: Inicio
+              - listitem [ref=e208]:
+                - img [ref=e209]
+              - listitem [ref=e211]:
+                - generic [ref=e213]: Revisión OCR
+          - generic [ref=e214]:
+            - generic [ref=e217]:
+              - heading "Verificación OCR" [level=1] [ref=e218]
+              - generic [ref=e219]: Revisión humana de páginas con confianza OCR inferior al umbral.
+            - generic [ref=e220]:
+              - generic [ref=e221]:
+                - generic [ref=e222]: Umbral OCR
+                - generic [ref=e223]:
+                  - spinbutton "Umbral OCR" [ref=e224]: "70"
+                  - generic: "%"
+              - combobox "Tipo de documento" [ref=e225]:
+                - option "Todos los tipos" [selected]
+                - option "Presupuesto"
+                - option "Pedido"
+                - option "Factura"
+                - option "Plano"
+                - option "Imagen"
+                - option "Excel"
+              - combobox "Estado de revisión" [ref=e226]:
+                - option "Todos los estados" [selected]
+                - option "Necesita revisión"
+                - option "Procesado"
+                - option "Fallido"
+              - button "Actualizar lista" [disabled]:
+                - img
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - generic [ref=e230]:
+                - heading "Cola de revisión" [level=3] [ref=e231]
+                - generic [ref=e232]: 0 pág. · <70%
+              - generic [ref=e234]:
+                - img [ref=e236]
+                - paragraph [ref=e239]: No hay páginas bajo el umbral
+                - paragraph [ref=e240]: Sube el umbral o espera a que entren más documentos.
+            - generic [ref=e242]:
+              - img [ref=e244]
+              - paragraph [ref=e247]: Selecciona una página de la cola
+              - paragraph [ref=e248]: Para revisar OCR, aprobar o denegar.
+  - region "Notifications alt+T"

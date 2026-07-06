@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Budget, Document, DocumentPage, Order, Plan
-from app.services.dates import DATE_PATTERN as _DATE_PATTERN
+from app.services.dates import find_dates_in_text
 
-LOW_OCR_THRESHOLD = 0.70
+LOW_OCR_THRESHOLD = settings.low_ocr_confidence_threshold
 MIN_TEXT_CHARS = 40
 
 
@@ -59,8 +59,12 @@ def evaluate_document_quality(
     if failed_page_id is not None:
         flags.add("page_failed")
 
-    if low_ocr_confidences:
+    low_ocr_count = len(low_ocr_confidences or [])
+    low_ocr_ratio = low_ocr_count / max(int(page_count or low_ocr_count or 1), 1)
+    if low_ocr_count and (page_count in {None, 0, 1} or low_ocr_ratio >= 0.50):
         flags.add("low_ocr_confidence")
+    elif low_ocr_count:
+        flags.add("partial_low_ocr_confidence")
 
     if document.document_type in {"desconocido", "", None}:
         flags.add("document_type_unknown")
@@ -82,7 +86,7 @@ def evaluate_document_quality(
             flags.add("supplier_missing")
     elif document.document_type == "factura":
         # Only flag missing date if the text has no recognisable date at all.
-        if not _DATE_PATTERN.search(clean_text):
+        if not find_dates_in_text(clean_text):
             flags.add("invoice_date_missing")
     elif document.document_type == "plano":
         plan = db.scalar(select(Plan).where(Plan.document_id == document.id).limit(1))
@@ -100,12 +104,22 @@ def evaluate_document_quality(
 
     # Trust shortcut: high-confidence extraction → auto-approve, even with some
     # missing structured fields. The audit log keeps a record for rollback.
+    #
+    # Digital PDFs (min_ocr == 1.0) get a relaxed path: text comes straight
+    # from the PDF content stream, so it is always readable.  Business
+    # extraction may fail to match its regex patterns (missing fields), but
+    # that is a pattern-gap issue, not a quality issue — the document
+    # should still be auto-approved if the text is present and classified.
+    is_digital = min_ocr >= 1.0
     if (
         document.status != "failed"
         and "page_failed" not in flags
         and "page_without_text" not in flags
         and min_ocr >= settings.auto_approve_min_ocr
-        and classification_conf >= settings.auto_approve_min_classification
+        and (
+            is_digital
+            or classification_conf >= settings.auto_approve_min_classification
+        )
         and is_classified
         and (
             settings.auto_approve_allow_missing_fields
@@ -186,6 +200,10 @@ def _quality_score(db: Session, document: Document, flags: set[str]) -> float:
     ocr_values = [page.ocr_confidence for page in pages if page.ocr_confidence is not None]
     base = document.confidence if document.confidence is not None else 0.80
     if ocr_values:
-        base = (base + sum(ocr_values) / len(ocr_values)) / 2
+        # Use minimum OCR confidence instead of average.
+        # A single bad page should penalize the whole document,
+        # not be diluted by many good pages.
+        min_ocr = min(ocr_values)
+        base = (base + min_ocr) / 2
     penalty = min(0.55, len(flags) * settings.quality_flag_penalty)
     return round(max(0.0, min(1.0, base - penalty)), 4)

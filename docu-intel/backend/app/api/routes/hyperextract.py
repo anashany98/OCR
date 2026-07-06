@@ -78,6 +78,12 @@ def _persist_result(
     The status ``disabled`` is **not** persisted: there is nothing to
     audit and the caller already knows why nothing happened. Every other
     status (``success``, ``failed``, ``pending``) becomes a row.
+
+    When the LLM returns a ``document_type`` different from the one
+    stored on the document, we update ``documents.document_type`` so
+    the rest of the pipeline (chat IA, search, lists) sees the LLM's
+    verdict. The update is conservative: we only overwrite when the
+    extraction succeeded AND the LLM emitted a non-empty type.
     """
     if payload.get("status") == "disabled":
         return None
@@ -96,6 +102,22 @@ def _persist_result(
         latency_ms=int(payload.get("latency_ms") or 0),
     )
     db.add(row)
+    # Promote the LLM-detected document_type to the main document row
+    # when extraction succeeded. The chat IA prompt no longer relies
+    # on this field (it classifies from the text directly), but the
+    # rest of the system (filters, lists, KPIs) still benefits from a
+    # accurate type label.
+    new_type = payload.get("document_type")
+    if (
+        payload.get("status") == "success"
+        and isinstance(new_type, str)
+        and new_type.strip()
+        and new_type.strip().lower() not in {"desconocido", "unknown", ""}
+    ):
+        normalised = new_type.strip().lower()
+        current = (document.document_type or "").strip().lower()
+        if normalised != current:
+            document.document_type = normalised
     db.commit()
     db.refresh(row)
     return row

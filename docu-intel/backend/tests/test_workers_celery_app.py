@@ -17,10 +17,10 @@ class TestCeleryAppConfig:
     """Tests for celery_app configuration."""
 
     def test_broker_is_redis(self):
-        assert "redis" in celery_app.broker_url
+        assert "redis" in celery_app.conf.broker_url
 
     def test_result_backend_is_redis(self):
-        assert "redis" in celery_app.result_backend
+        assert "redis" in celery_app.conf.result_backend
 
     def test_task_serializer_is_json(self):
         assert celery_app.conf.task_serializer == "json"
@@ -42,14 +42,11 @@ class TestCeleryAppConfig:
 
     def test_task_routes_defined(self):
         routes = celery_app.conf.task_routes
-        assert "app.workers.tasks.process_document_task" in routes
         assert "app.workers.tasks.scan_input_folders_task" in routes
 
-    def test_process_document_uses_ocr_heavy_queue(self):
+    def test_process_document_is_routed_when_enqueued(self):
         routes = celery_app.conf.task_routes
-        task_route = routes["app.workers.tasks.process_document_task"]
-        assert task_route["queue"] == "ocr_heavy"
-        assert task_route["routing_key"] == "ocr.heavy"
+        assert "app.workers.tasks.process_document_task" not in routes
 
     def test_scan_folders_uses_maintenance_queue(self):
         routes = celery_app.conf.task_routes

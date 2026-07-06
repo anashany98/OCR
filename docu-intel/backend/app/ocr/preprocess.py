@@ -2,10 +2,64 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import threading
 from pathlib import Path
 
 logger = logging.getLogger("app.ocr.preprocess")
 UPSCALE_MIN_SIDE = 1500
+
+# Thread-local storage for the per-page preprocessing caches.
+#
+# The cascading OCR processes one page per call to ``extract``. When pages
+# are processed in parallel (a ThreadPoolExecutor in the PDF parser), each
+# thread runs its own cascade and must have its own cache — otherwise two
+# pages racing on the same dict would corrupt each other's entries or clear
+# them mid-cascade. A thread-local makes each page self-contained without
+# any locking overhead.
+#
+# Each cache lives only for the duration of a single page; the cascade
+# clears it at the start of ``extract`` via :func:`clear_preprocess_cache`.
+_local = threading.local()
+
+
+def _preprocess_cache() -> dict[tuple[str, str], Path]:
+    cache = getattr(_local, "preprocess", None)
+    if cache is None:
+        cache = {}
+        _local.preprocess = cache
+    return cache
+
+
+def _osd_cache() -> dict[str, int]:
+    cache = getattr(_local, "osd", None)
+    if cache is None:
+        cache = {}
+        _local.osd = cache
+    return cache
+
+
+def clear_preprocess_cache() -> None:
+    """Drop cached preprocessed images and OSD results. Called by the cascading
+    OCR before each new page so the dicts never leak across pages.
+
+    Thread-local: only clears the calling thread's cache, so parallel pages
+    do not interfere with each other.
+    """
+    cache = getattr(_local, "preprocess", None)
+    if cache is not None:
+        cache.clear()
+    osd = getattr(_local, "osd", None)
+    if osd is not None:
+        osd.clear()
+
+
+def _track_preprocess_path(path_type: str) -> None:
+    """Track which preprocessing path was chosen."""
+    try:
+        from app.services.metrics import track_preprocess_path_chosen
+        track_preprocess_path_chosen(path_type)
+    except Exception:
+        pass  # Don't fail on metric errors
 
 
 def preprocess_for_tesseract(path: Path) -> Path:
@@ -24,6 +78,8 @@ def preprocess_for_tesseract(path: Path) -> Path:
         image = _correct_orientation(image)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        denoised = _enhance_contrast(denoised)
+        denoised = _sharpen_if_blurry(denoised)
         deskewed = _deskew_gray(denoised)
         scaled = _upscale_if_small(deskewed)
         threshold = cv2.adaptiveThreshold(
@@ -52,6 +108,7 @@ def preprocess_for_paddle(path: Path) -> Path:
             return path
         image = _correct_orientation(image)
         denoised = cv2.fastNlMeansDenoisingColored(image, None, 4, 4, 7, 21)
+        denoised = _enhance_contrast_color(denoised)
         gray = cv2.cvtColor(denoised, cv2.COLOR_BGR2GRAY)
         deskewed = _deskew_color(denoised, gray)
         scaled = _upscale_if_small(deskewed)
@@ -63,9 +120,75 @@ def preprocess_for_paddle(path: Path) -> Path:
         return path
 
 
-def preprocess_for_ocr(path: Path) -> Path:
-    """Backward-compatible alias for older parser code."""
-    return preprocess_for_tesseract(path)
+def _looks_like_scan(gray) -> bool:
+    """Detect if the image is a scan (mostly B/W, large empty areas).
+
+    Scans have a bimodal histogram (lots of pixels near 0 or 255,
+    few in between) and small laplacian variance. Photos are smoother
+    and continuous-tone.
+    """
+    import cv2
+    import numpy as np
+
+    hist = cv2.calcHist([gray], [0], None, [16], [0, 256]).ravel()
+    total = hist.sum() or 1
+    extreme = hist[0] + hist[-1]
+    extreme_ratio = extreme / total
+    laplacian = cv2.Laplacian(gray, cv2.CV_64F).var()
+    color_var = float(gray.std())
+    if extreme_ratio > 0.55 and color_var < 70:
+        return True
+    if laplacian < 50 and color_var < 60:
+        return True
+    return False
+
+
+def preprocess_adaptive(path: Path, *, engine: str) -> Path:
+    """Adaptive preprocessor that picks the right pipeline by content type.
+
+    - Scans (mostly B/W): Tesseract gets denoise + deskew + adaptive
+      binarization. PaddleOCR gets grayscale + deskew (no binarization,
+      which would destroy tabular data and hurt PP-Structure).
+    - Photos / continuous-tone (the bulk of the 178 low-quality docs
+      from phone cameras): both engines get the manuscript-style path
+      that preserves color information and never binarizes.
+
+    Results are cached per (path, engine) within a cascade run so the
+    same page is never preprocessed twice when Tesseract → Paddle →
+    PP-Structure all need it.
+    """
+    cache_key = (str(path.resolve()), engine)
+    cache = _preprocess_cache()
+    cached = cache.get(cache_key)
+    if cached is not None and cached.exists():
+        return cached
+
+    try:
+        import cv2
+
+        image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+        if image is None:
+            return path
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        is_scan = _looks_like_scan(gray)
+
+        if is_scan:
+            engine_path = preprocess_for_tesseract(path) if engine == "tesseract" else preprocess_for_paddle(path)
+            _track_preprocess_path("scan")
+        else:
+            engine_path = preprocess_for_manuscript(path)
+            _track_preprocess_path("manuscript")
+
+        cache[cache_key] = engine_path
+        return engine_path
+    except Exception as exc:
+        logger.warning("Adaptive preprocess failed for %s: %s", path, exc)
+        # Fall back to the appropriate engine-specific preprocessing
+        # instead of always using Tesseract (which binarizes and degrades
+        # PaddleOCR/PP-Structure quality).
+        if engine == "tesseract":
+            return preprocess_for_tesseract(path)
+        return preprocess_for_paddle(path)
 
 
 def _temporary_output_path(path: Path, engine: str) -> Path:
@@ -93,8 +216,37 @@ def _correct_orientation(image):
 
 
 def _detect_osd_rotation(image) -> int:
+    """Detect rotation needed using Tesseract OSD.
+
+    Results are cached by a cheap fingerprint of the image so the OSD
+    call (which launches the Tesseract binary, ~100-300 ms) is not
+    repeated for the same page across the cascade tiers. The cache is
+    thread-local so parallel pages do not interfere.
+
+    The fingerprint avoids ``image.tobytes()``, which would serialise
+    the whole array (tens of MB for a 4K page) before discarding most of
+    it. Instead we hash ``shape`` plus a small fixed-size sample of
+    contiguous pixels — enough to distinguish pages, cheap to compute.
+    """
+    import hashlib
+
+    import cv2
+
+    # Build a cheap, low-allocation fingerprint: shape + up to ~8 KB of
+    # pixel data. A numpy slice is a view (no copy); ``tobytes()`` then
+    # only serialises the sampled region.
+    flat = image.reshape(-1)
+    sample = flat[:2048]
+    fingerprint = hashlib.md5(
+        b"%dx%d|" % (image.shape[0], image.shape[1])
+    )
+    fingerprint.update(sample.tobytes())
+    cache_key = fingerprint.hexdigest()
+    cache = _osd_cache()
+    if cache_key in cache:
+        return cache[cache_key]
+
     try:
-        import cv2
         import pytesseract
         from PIL import Image
 
@@ -102,6 +254,7 @@ def _detect_osd_rotation(image) -> int:
         osd = pytesseract.image_to_osd(Image.fromarray(rgb))
     except Exception as exc:
         logger.debug("Tesseract OSD orientation detection failed: %s", exc)
+        cache[cache_key] = 0
         return 0
 
     for line in str(osd).splitlines():
@@ -109,8 +262,13 @@ def _detect_osd_rotation(image) -> int:
             try:
                 value = int(line.split(":", 1)[1].strip())
             except ValueError:
+                cache[cache_key] = 0
                 return 0
-            return value if value in {90, 180, 270} else 0
+            result = value if value in {90, 180, 270} else 0
+            cache[cache_key] = result
+            return result
+
+    cache[cache_key] = 0
     return 0
 
 
@@ -165,3 +323,77 @@ def _upscale_if_small(image):
     if min(height, width) >= UPSCALE_MIN_SIDE:
         return image
     return cv2.resize(image, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
+
+def _enhance_contrast(gray):
+    """Apply CLAHE to improve contrast on washed-out scans."""
+    import cv2
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    return clahe.apply(gray)
+
+
+def _enhance_contrast_color(image):
+    """Apply CLAHE to the L channel of LAB color space."""
+    import cv2
+
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+
+
+def _sharpen_if_blurry(gray):
+    """Apply unsharp masking if the image appears blurry."""
+    import cv2
+
+    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+    if laplacian_var < 100:
+        blurred = cv2.GaussianBlur(gray, (0, 0), 3)
+        return cv2.addWeighted(gray, 1.5, blurred, -0.5, 0)
+    return gray
+
+
+def preprocess_for_manuscript(path: Path) -> Path:
+    """Prepare hand-drawn sketches, furniture photos, and fabric samples
+    for the VLM (Tier 4). Unlike Tesseract preprocessing, this does NOT
+    binarize — the VLM needs color/texture to identify objects and
+    associate measurements with them.
+
+    Optimizations:
+    - Gentle denoise (preserves pencil/pen strokes)
+    - Contrast enhancement (makes handwritten numbers more readable)
+    - Upscaling if small (phone photos are often low-res)
+    - NO deskew (hand-drawn sketches are intentionally angled)
+    - NO binarization (VLM needs visual context)
+    """
+    try:
+        import cv2
+
+        image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+        if image is None:
+            return path
+
+        # Gentle denoise — keep pencil strokes, remove sensor noise
+        denoised = cv2.fastNlMeansDenoisingColored(image, None, 3, 3, 7, 21)
+
+        # Enhance contrast on the L channel (makes handwriting pop)
+        lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        enhanced = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+
+        # Upscale phone photos — VLM works better on larger images
+        height, width = enhanced.shape[:2]
+        if min(height, width) < UPSCALE_MIN_SIDE:
+            scale = min(2.0, UPSCALE_MIN_SIDE / min(height, width))
+            enhanced = cv2.resize(enhanced, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+        output = _temporary_output_path(path, "manuscript")
+        cv2.imwrite(str(output), enhanced)
+        return output
+    except Exception as exc:
+        logger.warning("Manuscript preprocess failed for %s: %s", path, exc)
+        return path

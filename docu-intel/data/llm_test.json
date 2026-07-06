@@ -1,0 +1,1 @@
+﻿{"model":"qwen/qwen3-14b","messages":[{"role":"system","content":"Eres un asistente util."},{"role":"user","content":"Hola, responde en una frase."}],"temperature":0.0,"max_tokens":200}

@@ -4,6 +4,7 @@ import fnmatch
 import hashlib
 import json
 import re
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
@@ -22,6 +23,48 @@ from app.models import (
     Hotel,
     User,
 )
+
+
+# ---------------------------------------------------------------------------
+# Access scope cache — avoids repeated DB queries for the same user
+# within a short window. The scope is user-specific and changes only
+# when group memberships change, which is rare in production.
+# ---------------------------------------------------------------------------
+
+_SCOPE_CACHE_TTL = 60  # seconds
+_scope_cache: dict[str, tuple[float, AccessScope]] = {}
+
+
+def _scope_cache_key(user_id: int) -> str:
+    return f"scope:{user_id}"
+
+
+def _get_cached_scope(user_id: int) -> AccessScope | None:
+    key = _scope_cache_key(user_id)
+    entry = _scope_cache.get(key)
+    if entry is None:
+        return None
+    ts, scope = entry
+    if time.monotonic() - ts > _SCOPE_CACHE_TTL:
+        _scope_cache.pop(key, None)
+        return None
+    return scope
+
+
+def _set_cached_scope(user_id: int, scope: AccessScope) -> None:
+    key = _scope_cache_key(user_id)
+    _scope_cache[key] = (time.monotonic(), scope)
+
+
+def invalidate_scope_cache(user_id: int | None = None) -> int:
+    """Invalidate cached scopes. If user_id is None, clear all."""
+    if user_id is None:
+        count = len(_scope_cache)
+        _scope_cache.clear()
+        return count
+    key = _scope_cache_key(user_id)
+    removed = _scope_cache.pop(key, 1)
+    return 0 if removed is None else 1
 
 
 class HasDocumentId(Protocol):
@@ -72,6 +115,18 @@ def resolve_user_access_scope(db: Session, user: User) -> AccessScope:
     Admin users ALWAYS get the full access scope regardless of the
     flag — admin is the break-glass role.
     """
+    # Fast path: return cached scope if available (avoids DB queries
+    # for repeated requests from the same user within 60s).
+    cached = _get_cached_scope(user.id)
+    if cached is not None:
+        return cached
+
+    scope = _resolve_user_access_scope_uncached(db, user)
+    _set_cached_scope(user.id, scope)
+    return scope
+
+
+def _resolve_user_access_scope_uncached(db: Session, user: User) -> AccessScope:
     if user.role == "admin":
         return AccessScope(
             principal_type="user",

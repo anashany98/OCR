@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date as date_type, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -135,10 +135,14 @@ class Invoice(Base):
     )
     invoice_number: Mapped[str | None] = mapped_column(String(120), index=True)
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    supplier_tax_id: Mapped[str | None] = mapped_column(String(50), index=True)
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
-    date: Mapped[Any | None] = mapped_column(Date)
+    date: Mapped[date_type | None] = mapped_column(Date)
+    taxable_base: Mapped[float | None] = mapped_column(Float)
+    vat_amount: Mapped[float | None] = mapped_column(Float)
     total_amount: Mapped[float | None] = mapped_column(Float)
     currency: Mapped[str | None] = mapped_column(String(12))
+    related_order_number: Mapped[str | None] = mapped_column(String(120))
     related_order_id: Mapped[int | None] = mapped_column(
         ForeignKey("orders.id", ondelete="SET NULL"), index=True
     )

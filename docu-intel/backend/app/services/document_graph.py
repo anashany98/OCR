@@ -16,20 +16,29 @@ def build_document_graph(db: Session, document_id: int, *, limit: int = 50) -> d
     documents[source.id] = source
 
     budgets = list(db.scalars(select(Budget).where(Budget.document_id == document_id)).all())
-    for budget in budgets:
-        orders = list(db.scalars(select(Order).where(Order.related_budget_id == budget.id)).all())
+    if budgets:
+        budget_ids = [b.id for b in budgets]
+        orders = list(
+            db.scalars(
+                select(Order).where(Order.related_budget_id.in_(budget_ids))
+            ).all()
+        )
+        orders_by_budget: dict[int, list[Order]] = {}
         for order in orders:
-            related = db.get(Document, order.document_id)
-            if related:
-                documents[related.id] = related
-                edges.append(
-                    {
-                        "from_document_id": document_id,
-                        "to_document_id": related.id,
-                        "relation": "budget_order",
-                        "label": budget.budget_number,
-                    }
-                )
+            orders_by_budget.setdefault(order.related_budget_id, []).append(order)
+        for budget in budgets:
+            for order in orders_by_budget.get(budget.id, []):
+                related = db.get(Document, order.document_id)
+                if related:
+                    documents[related.id] = related
+                    edges.append(
+                        {
+                            "from_document_id": document_id,
+                            "to_document_id": related.id,
+                            "relation": "budget_order",
+                            "label": budget.budget_number,
+                        }
+                    )
 
     references = {
         entity.normalized_value or entity.entity_value

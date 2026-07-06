@@ -261,10 +261,12 @@ def test_status_scoped_to_label_only():
     assert result.status == "aceptado"
 
 
-def test_status_falls_back_to_whole_document_when_no_label():
+def test_status_returns_none_when_no_label():
+    """Without an explicit 'Estado:' label, status is None to avoid
+    false positives from stray text like 'cancelado' in body text."""
     text = "Presupuesto 2026/143 para cliente X. Marcado como cancelado por el jefe de obra."
     result = extract_budget(document_id=1, text=text, document_confidence=0.9)
-    assert result.status == "cancelado"
+    assert result.status is None
 
 
 def test_status_unknown_returns_none():

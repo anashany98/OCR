@@ -39,6 +39,9 @@ class AIAnswerRead(BaseModel):
     # for this answer (entities + relations). Parsed from
     # `resolved_document_json` by the model_validator below.
     resolved_document: dict[str, Any] | None = None
+    # Structured response with sources, amounts, dates, format hint.
+    # Built on-the-fly from the answer text (not persisted).
+    structured: dict[str, Any] | None = None
     # Suggested follow-up questions (not persisted, generated on-the-fly).
     followups: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -58,6 +61,35 @@ class AIAnswerRead(BaseModel):
             except Exception:
                 data.resolved_document = None
         return data
+
+    @model_validator(mode="after")
+    def _build_structured_output(self) -> "AIAnswerRead":
+        """Build structured response on-the-fly from the answer text."""
+        if self.structured is not None:
+            return self
+        try:
+            from app.ai.structured_output import to_structured_response
+
+            # Build a minimal context list from sources
+            context_items = []
+            for src in self.sources:
+                context_items.append(
+                    type("CtxItem", (), {
+                        "document_id": src.document_id,
+                        "document_filename": None,
+                        "page_number": src.page_number,
+                        "relevance_score": src.relevance_score or 0.0,
+                        "summary": src.excerpt or "",
+                    })()
+                )
+            structured = to_structured_response(
+                self.answer,
+                context_items=context_items,
+            )
+            self.structured = structured.to_dict()
+        except Exception:
+            self.structured = None
+        return self
 
 
 class AIQuestionRead(BaseModel):

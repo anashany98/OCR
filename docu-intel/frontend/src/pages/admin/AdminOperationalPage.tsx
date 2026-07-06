@@ -2,6 +2,8 @@ import type { FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { Activity, AlertTriangle, FileWarning, Network, Pause, Play, RefreshCw } from "lucide-react"
 
+import { useConfirm } from "@/hooks/useConfirm"
+
 import type {
   AdminAlert,
   AdminStats,
@@ -74,6 +76,7 @@ interface OperationalViewProps {
 }
 
 function OperationalView(props: OperationalViewProps) {
+  const confirmAction = useConfirm()
   const {
     alerts,
     queueStatus,
@@ -162,8 +165,14 @@ function OperationalView(props: OperationalViewProps) {
             </div>
             <Button
               variant="outline"
-              onClick={() => {
-                if (window.confirm("¿Pausar?")) pauseQueues.mutate()
+              onClick={async () => {
+                const ok = await confirmAction({
+                  title: "¿Pausar ingesta?",
+                  description: "Se detendrán los nuevos escaneos hasta que reanudes.",
+                  confirmLabel: "Pausar",
+                  tone: "danger",
+                })
+                if (ok) pauseQueues.mutate()
               }}
               disabled={pauseQueues.isPending || queueStatus?.ingestion_paused}
             >
@@ -172,8 +181,13 @@ function OperationalView(props: OperationalViewProps) {
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                if (window.confirm("¿Reanudar?")) resumeQueues.mutate()
+              onClick={async () => {
+                const ok = await confirmAction({
+                  title: "¿Reanudar ingesta?",
+                  description: "Se reanudarán los escaneos de nuevos documentos.",
+                  confirmLabel: "Reanudar",
+                })
+                if (ok) resumeQueues.mutate()
               }}
               disabled={resumeQueues.isPending || !queueStatus?.ingestion_paused}
             >
@@ -463,6 +477,7 @@ export function AdminOperationalPage() {
   const { state, queries, mutations, handlers, reprocessContextValue, AdminReprocessContext } =
     useAdminOperationalData()
   const { reprocess } = useAdminReprocess()
+  const confirmAction = useConfirm()
 
   return (
     <AdminReprocessContext.Provider value={reprocessContextValue}>
