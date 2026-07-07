@@ -95,7 +95,7 @@ export function ReconciliationPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/80">
+        <CardHeader className="flex-row items-center justify-between border-b bg-[var(--bg-surface-2)]/80">
           <CardTitle>Incidencias de negocio</CardTitle>
           <Badge variant="neutral">{items.length} registros</Badge>
         </CardHeader>

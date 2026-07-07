@@ -340,7 +340,7 @@ export function PlansPage() {
                 <section className="space-y-2">
                   <h3 className="text-sm font-semibold">Mediciones manuales</h3>
                   <form
-                    className="grid gap-2 rounded-md border bg-slate-50 p-3 md:grid-cols-[1fr_120px_120px_auto]"
+                    className="grid gap-2 rounded-md border bg-[var(--bg-surface-2)] p-3 md:grid-cols-[1fr_120px_120px_auto]"
                     onSubmit={(event) => {
                       event.preventDefault()
                       if (measurementLabel.trim()) measurementMutation.mutate()

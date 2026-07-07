@@ -235,7 +235,7 @@ export function FilterPanel({
 }) {
   if (!show) return null
   return (
-    <div className="grid gap-2 rounded-md border bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-2 rounded-md border bg-[var(--bg-surface-2)] p-3 sm:grid-cols-2 lg:grid-cols-4">
       <FilterSelect
         label="Tipo documental"
         value={filterType}
@@ -306,7 +306,7 @@ function FilterSelect({
         {label}
       </label>
       <select
-        className="h-8 w-full rounded-md border bg-white px-2 text-xs"
+        className="h-8 w-full rounded-md border bg-[var(--bg-surface)] px-2 text-xs"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -508,7 +508,7 @@ export function SearchResultCard({
         {matchReason && (
           <p className="text-[11px] italic text-[var(--text-muted)]">{matchReason}</p>
         )}
-        <p className="rounded-md bg-slate-50 p-3 text-[13px] leading-6 text-[var(--text-secondary)]">
+        <p className="rounded-md bg-[var(--bg-surface-2)] p-3 text-[13px] leading-6 text-[var(--text-secondary)]">
           {result.excerpt || "Sin extracto disponible."}
         </p>
         <div className="flex flex-wrap gap-1.5">
@@ -543,9 +543,9 @@ export function ScoreBadge({ label, value }: { label: string; value: number }) {
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-        tone === "emerald" && "bg-[var(--emerald-light)] text-[#065F46]",
-        tone === "amber" && "bg-[var(--amber-light)] text-[#92400E]",
-        tone === "rose" && "bg-[var(--rose-light)] text-[#9F1239]",
+        tone === "emerald" && "bg-[var(--success-light)] text-[var(--text-on-success)]",
+        tone === "amber" && "bg-[var(--warning-light)] text-[var(--text-on-warning)]",
+        tone === "rose" && "bg-[var(--danger-light)] text-[var(--text-on-danger)]",
       )}
     >
       {label}: {pct}%
@@ -576,7 +576,7 @@ export function SavedSearchesCard({
           <button
             key={item.id}
             type="button"
-            className="w-full rounded-md border p-2.5 text-left text-sm transition-colors hover:bg-slate-50"
+            className="w-full rounded-md border p-2.5 text-left text-sm transition-colors hover:bg-[var(--bg-surface-2)]"
             onClick={() => onPick({ query: item.query, mode: toSearchMode(item.mode) })}
           >
             <span className="flex items-center gap-2 text-[13px] font-medium">

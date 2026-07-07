@@ -235,7 +235,7 @@ export function DocumentPreview({
     <div className="mt-2 flex items-stretch gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-2)]/50 p-2">
       <a
         href={`/documents/${documentId}`}
-        className="block flex-shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-white"
+        className="block flex-shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-surface)]"
         title="Abrir documento"
         target="_blank"
         rel="noreferrer"

@@ -182,7 +182,7 @@ function LearningView({
               return (
                 <div
                   key={s.id}
-                  className="rounded-lg border border-[var(--border)] bg-white p-4 transition-all hover:border-[var(--border-2)] hover:shadow-sm"
+                  className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 transition-all hover:border-[var(--border-2)] hover:shadow-sm"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1 space-y-2">
@@ -206,7 +206,7 @@ function LearningView({
                         {s.reason}
                       </p>
                       {s.suggested_document_type && (
-                        <div className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-1.5">
+                        <div className="flex items-center gap-2 rounded-md bg-[var(--bg-surface-2)] px-3 py-1.5">
                           <span className="text-xs text-[var(--text-muted)]">Tipo actual:</span>
                           <Badge variant="outline" className="text-[10px]">
                             {s.current_document_type ?? "desconocido"}
@@ -218,7 +218,7 @@ function LearningView({
                         </div>
                       )}
                       {s.pattern_value && (
-                        <div className="rounded-md bg-slate-50 px-3 py-1.5">
+                        <div className="rounded-md bg-[var(--bg-surface-2)] px-3 py-1.5">
                           <code className="text-xs text-[var(--text-secondary)]">
                             Patrón: {s.pattern_value}
                           </code>
@@ -231,7 +231,7 @@ function LearningView({
                           <summary className="cursor-pointer text-[var(--sky)] hover:underline">
                             Ver evidencia
                           </summary>
-                          <pre className="mt-1 max-h-[120px] overflow-auto rounded-md bg-slate-50 p-2 text-[11px]">
+                          <pre className="mt-1 max-h-[120px] overflow-auto rounded-md bg-[var(--bg-surface-2)] p-2 text-[11px]">
                             {JSON.stringify(s.evidence, null, 2)}
                           </pre>
                         </details>
@@ -333,7 +333,7 @@ function LearningView({
         <button
           type="button"
           onClick={() => setShowHistory(!showHistory)}
-          className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-slate-50/80"
+          className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-[var(--bg-surface-2)]/80"
         >
           <CardTitle className="text-[14px] flex items-center gap-2">
             <History className="h-4 w-4 text-[var(--text-muted)]" />
@@ -431,7 +431,7 @@ function LearningView({
                   "rounded-lg border p-4 transition-all",
                   p.status === "active"
                     ? "border-[var(--emerald-light)] bg-[var(--emerald-light)]/10"
-                    : "border-[var(--border)] bg-slate-50/50",
+                    : "border-[var(--border)] bg-[var(--bg-surface-2)]/50",
                 )}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -451,7 +451,7 @@ function LearningView({
                       </Badge>
                       <ConfidenceBadge value={p.confidence} />
                     </div>
-                    <code className="text-xs bg-slate-100 rounded px-2 py-0.5 block">
+                    <code className="text-xs bg-[var(--bg-surface-2)] rounded px-2 py-0.5 block">
                       {p.pattern_value}
                     </code>
                     <p className="text-xs text-[var(--text-secondary)]">
@@ -611,7 +611,7 @@ function SuggestionDetailCard({
             <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">
               Evidencia
             </h4>
-            <pre className="rounded-md bg-slate-50 p-3 text-xs overflow-auto max-h-[200px]">
+            <pre className="rounded-md bg-[var(--bg-surface-2)] p-3 text-xs overflow-auto max-h-[200px]">
               {JSON.stringify(suggestion.evidence, null, 2)}
             </pre>
           </div>
@@ -622,7 +622,7 @@ function SuggestionDetailCard({
             <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)] mb-1">
               Patrón detectado
             </h4>
-            <code className="rounded bg-slate-100 px-2 py-1 text-xs">
+            <code className="rounded bg-[var(--bg-surface-2)] px-2 py-1 text-xs">
               {suggestion.pattern_value}
             </code>
             <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -699,7 +699,7 @@ function SuggestionDetailCard({
 
 function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-md border bg-white px-3 py-2">
+    <div className="rounded-md border bg-[var(--bg-surface)] px-3 py-2">
       <p className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">{label}</p>
       <div className="mt-0.5 text-sm">{value}</div>
     </div>
@@ -720,7 +720,7 @@ function CountBadge({
     success: "border-[var(--emerald-light)] bg-[var(--emerald-light)]/30 text-[#065F46]",
     danger: "border-[var(--rose-light)] bg-[var(--rose-light)]/30 text-[#9F1239]",
     info: "border-[var(--sky-light)] bg-[var(--sky-light)]/30 text-[#075985]",
-    neutral: "border-[var(--border)] bg-white text-[var(--text-primary)]",
+    neutral: "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]",
   }
   return (
     <div className={cn("flex items-center gap-2 rounded-lg border px-4 py-2.5", colors[variant])}>

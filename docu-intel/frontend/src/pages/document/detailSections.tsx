@@ -207,7 +207,7 @@ export function ViewerCard({ d }: { d: DocumentDetail }) {
       <VisorCardHeader>Visor</VisorCardHeader>
       <CardContent className="p-0">
         {page?.page_number && document?.id ? (
-          <div className="overflow-hidden bg-slate-100">
+          <div className="overflow-hidden bg-[var(--bg-surface-2)]">
             <img
               className="max-h-[540px] w-full object-contain"
               src={pageImageUrl(document.id, page.page_number)}
@@ -215,7 +215,7 @@ export function ViewerCard({ d }: { d: DocumentDetail }) {
             />
           </div>
         ) : document && d.hasThumbnailExt ? (
-          <div className="flex justify-center bg-slate-100 py-4">
+          <div className="flex justify-center bg-[var(--bg-surface-2)] py-4">
             <img
               className="max-h-[540px] max-w-full rounded-md object-contain shadow-md"
               src={thumbnailUrl(document.id)}
@@ -234,7 +234,7 @@ export function ViewerCard({ d }: { d: DocumentDetail }) {
           </div>
         )}
         {d.pages.length > 1 && (
-          <div className="flex flex-wrap gap-1.5 border-t bg-slate-50 px-3 py-2">
+          <div className="flex flex-wrap gap-1.5 border-t bg-[var(--bg-surface-2)] px-3 py-2">
             {d.pages.map((p) => (
               <Button
                 key={p.id}
@@ -261,7 +261,7 @@ export function OcrCard({ d }: { d: DocumentDetail }) {
   const page = d.selectedPage
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/80 py-3">
+      <CardHeader className="flex-row items-center justify-between border-b bg-[var(--bg-surface-2)]/80 py-3">
         <CardTitle className="text-[14px] font-semibold">Texto OCR</CardTitle>
         <OcrSearchInput value={d.textQuery} onChange={d.setTextQuery} />
       </CardHeader>
@@ -298,7 +298,7 @@ function OcrPageSection({
   onPick: () => void
 }) {
   return (
-    <section className="rounded-md border bg-white p-3">
+    <section className="rounded-md border bg-[var(--bg-surface)] p-3">
       <div className="mb-2 flex justify-between text-[11px] text-[var(--text-muted)]">
         <button
           className="font-medium text-[var(--primary)] hover:underline"
@@ -322,7 +322,7 @@ function OcrRevisionEditor({ d }: { d: DocumentDetail }) {
   const page = d.selectedPage
   if (!page) return null
   return (
-    <section className="mt-4 rounded-md border bg-slate-50 p-3">
+    <section className="mt-4 rounded-md border bg-[var(--bg-surface-2)] p-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <h4 className="text-[13px] font-semibold">Corrección OCR</h4>
@@ -343,7 +343,7 @@ function OcrRevisionEditor({ d }: { d: DocumentDetail }) {
         </Button>
       </div>
       <textarea
-        className="min-h-[100px] w-full rounded-md border bg-white p-2.5 font-mono text-[12px] leading-6 outline-none focus:ring-2 focus:ring-[var(--primary)]"
+        className="min-h-[100px] w-full rounded-md border bg-[var(--bg-surface)] p-2.5 font-mono text-[12px] leading-6 outline-none focus:ring-2 focus:ring-[var(--primary)]"
         value={d.editedText}
         onChange={(e) => d.setEditedText(e.target.value)}
       />

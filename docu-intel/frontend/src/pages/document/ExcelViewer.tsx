@@ -102,8 +102,8 @@ export function ExcelViewer({ text }: { text: string }) {
               key={i}
               className={`rounded-t-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 i === activeSheet
-                  ? "bg-white text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-white/50"
+                  ? "bg-[var(--bg-surface)] text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-[var(--bg-surface)]/50"
               }`}
               onClick={() => {
                 setActiveSheet(i)
@@ -135,13 +135,13 @@ export function ExcelViewer({ text }: { text: string }) {
 
       <div className="overflow-auto">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-slate-50">
+          <thead className="sticky top-0 bg-[var(--bg-surface-2)]">
             <tr>
               <th className="w-8 border-b px-2 py-1.5 text-left text-muted-foreground">#</th>
               {sheet.headers.map((h, i) => (
                 <th
                   key={i}
-                  className="cursor-pointer whitespace-nowrap border-b px-2 py-1.5 text-left font-medium text-foreground hover:bg-slate-100"
+                  className="cursor-pointer whitespace-nowrap border-b px-2 py-1.5 text-left font-medium text-foreground hover:bg-[var(--bg-surface-2)]"
                   onClick={() => toggleSort(i)}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -159,7 +159,7 @@ export function ExcelViewer({ text }: { text: string }) {
           </thead>
           <tbody>
             {sortedRows.map((row, ri) => (
-              <tr key={ri} className="hover:bg-slate-50/50">
+              <tr key={ri} className="hover:bg-[var(--bg-surface-2)]/50">
                 <td className="border-b px-2 py-1 text-muted-foreground">{ri + 1}</td>
                 {row.map((cell, ci) => (
                   <td key={ci} className="border-b px-2 py-1">
