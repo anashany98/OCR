@@ -32,6 +32,13 @@ _engine_class_singleton: type[BaseOCREngine] | None = None
 _engine_lock = threading.RLock()
 
 
+def cache_clear() -> None:
+    """Reset the engine class singleton. Used by tests."""
+    global _engine_class_singleton, _engine_singleton
+    _engine_class_singleton = None
+    _engine_singleton = None
+
+
 def get_ocr_engine_class() -> type[BaseOCREngine]:
     """Return the OCR engine class configured by ``OCR_ENGINE``.
 
@@ -68,6 +75,10 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
         )
 
     return _engine_class_singleton
+
+
+# Allow tests to call get_ocr_engine_class.cache_clear()
+get_ocr_engine_class.cache_clear = cache_clear  # type: ignore[attr-defined]
 
 
 def get_cascading_engine() -> BaseOCREngine:

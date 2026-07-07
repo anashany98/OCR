@@ -26,7 +26,6 @@ from PIL import Image
 
 from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.preprocess import preprocess_adaptive
-from app.services.metrics import track_ocr_duration
 
 
 class TesseractOCREngine:
@@ -92,7 +91,6 @@ class TesseractOCREngine:
             full_text, blocks = self._group_tokens_into_lines(tokens)
 
             avg_conf = sum(confidences) / len(confidences) if confidences else None
-            track_ocr_duration(time.perf_counter() - start)
             return OCRResult(text=full_text, confidence=avg_conf, blocks=blocks, engine=self.name)
         finally:
             if ocr_path != image_path:

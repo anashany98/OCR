@@ -416,6 +416,53 @@ class CascadingOCREngine:
         """
         return _quality(candidate) > _quality(baseline) + QUALITY_EPSILON
 
+    def extract_batch(
+        self, image_paths: list[Path], max_workers: int = 4
+    ) -> list[OCRResult]:
+        """Process multiple pages in parallel using ThreadPoolExecutor.
+
+        Tesseract is stateless per page, so parallel processing is safe.
+        GPU engines (PaddleOCR, PP-Structure) use their own internal locks.
+
+        Args:
+            image_paths: List of page image paths to process.
+            max_workers: Max parallel threads (default 4, matches CPU cores
+                         for Tesseract; GPU engines serialize internally).
+
+        Returns:
+            List of OCRResults in the same order as image_paths.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        if len(image_paths) <= 1:
+            return [self.extract(image_paths[0])] if image_paths else []
+
+        results: list[OCRResult | None] = [None] * len(image_paths)
+        path_to_idx = {path: idx for idx, path in enumerate(image_paths)}
+
+        logger.info(
+            "OCR batch: processing %d pages with %d workers",
+            len(image_paths),
+            max_workers,
+        )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_path = {
+                executor.submit(self.extract, path): path for path in image_paths
+            }
+            for future in as_completed(future_to_path):
+                path = future_to_path[future]
+                idx = path_to_idx[path]
+                try:
+                    results[idx] = future.result()
+                except Exception as exc:
+                    logger.error("OCR batch: page %s failed: %s", path.name, exc)
+                    results[idx] = OCRResult(
+                        text="", confidence=None, blocks=[], engine=self.name
+                    )
+
+        return results  # type: ignore[return-value]
+
     def _record_winner(self, tier: str, result: OCRResult) -> OCRResult:
         self._tls.name = tier
         track_ocr_tier_used(tier)

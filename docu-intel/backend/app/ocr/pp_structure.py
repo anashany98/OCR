@@ -24,13 +24,20 @@ Install: ``pip install 'paddlex[ocr]==3.5.2'`` (only on the GPU image).
 
 from __future__ import annotations
 
+import concurrent.futures
+import logging
 import os
 import time
-from functools import cached_property
 from pathlib import Path
 
 from app.ocr.base import OCRBlock, OCRResult
-from app.services.metrics import track_ocr_duration
+
+logger = logging.getLogger("app.ocr.pp_structure")
+
+_PP_INIT_TIMEOUT_SECONDS: float = 120.0
+
+# Process-level flag: prevents repeated init attempts after timeout.
+_PROCESS_INIT_FAILED_PP: bool = False
 
 # B7: skip the HuggingFace connectivity probe that adds ~2 s to first
 # init. Set at import time so it runs exactly once per process, not once
@@ -68,20 +75,57 @@ class PPStructureEngine:
         # PaddleOCR).
         self._init_failed: bool = False
 
-    @cached_property
+    @property
     def _pipeline(self):
-        """Lazily build the PaddleX pipeline on first use (thread-safe)."""
-        if getattr(self, "_init_failed", False):
+        """Lazily build the PaddleX pipeline on first use with timeout protection."""
+        global _PROCESS_INIT_FAILED_PP
+        if _PROCESS_INIT_FAILED_PP or getattr(self, "_init_failed", False):
             raise RuntimeError(
                 "PP-Structure engine is unavailable: previous init attempt failed"
             )
-        from paddlex import create_pipeline
+        if not hasattr(self, "_pipeline_instance"):
+            self._init_pipeline_with_timeout()
+        return self._pipeline_instance
 
-        return create_pipeline(
-            pipeline="layout_parsing",
-            device=self.device,
-            lang=self.lang,
-        )
+    def _init_pipeline_with_timeout(self):
+        """Load the PaddleX pipeline with a timeout to prevent indefinite blocking."""
+        try:
+            from paddlex import create_pipeline
+        except ImportError:
+            self._init_failed = True
+            raise RuntimeError(
+                "paddlex is not installed. Install with: pip install 'paddlex[ocr]==3.5.2'"
+            )
+
+        def _build():
+            return create_pipeline(
+                pipeline="layout_parsing",
+                device=self.device,
+                lang=self.lang,
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="ppstructure-init"
+        ) as executor:
+            future = executor.submit(_build)
+            try:
+                self._pipeline_instance = future.result(timeout=_PP_INIT_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                global _PROCESS_INIT_FAILED_PP
+                future.cancel()
+                _PROCESS_INIT_FAILED_PP = True
+                self._init_failed = True
+                logger.error(
+                    "PP-Structure init timed out after %.0fs (device=%s, lang=%s). "
+                    "Process marked — all future PP-Structure inits will skip.",
+                    _PP_INIT_TIMEOUT_SECONDS, self.device, self.lang,
+                )
+                raise RuntimeError(
+                    f"PP-Structure model init timed out after {_PP_INIT_TIMEOUT_SECONDS}s"
+                ) from None
+            except Exception:
+                self._init_failed = True
+                raise
 
     def extract(self, image_path: Path) -> OCRResult:
         start = time.perf_counter()
@@ -117,7 +161,6 @@ class PPStructureEngine:
                 raise exc_holder[0]
             results = result_holder
         except Exception:
-            track_ocr_duration(time.perf_counter() - start)
             raise
         finally:
             if ocr_path != image_path:
@@ -168,7 +211,6 @@ class PPStructureEngine:
                 confidences = []
 
         avg_conf = sum(confidences) / len(confidences) if confidences else None
-        track_ocr_duration(time.perf_counter() - start)
         return OCRResult(
             text="\n".join(text_parts),
             confidence=avg_conf,
