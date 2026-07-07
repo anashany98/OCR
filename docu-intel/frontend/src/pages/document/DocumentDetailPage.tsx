@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -5,12 +6,14 @@ import {
   Download,
   FileText,
   FileWarning,
+  Info,
   MapPin,
   Network,
   RefreshCcw,
   RotateCcw,
   Save,
   ShieldAlert,
+  Type,
 } from "lucide-react"
 
 import { pageImageUrl, thumbnailUrl, downloadUrl } from "@/api/client"
@@ -23,7 +26,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { formatBytes, formatDate } from "@/lib/utils"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { cn, formatBytes, formatDate } from "@/lib/utils"
 import type { DocumentPage } from "@/types/api"
 
 import {
@@ -41,256 +47,142 @@ import {
 import { ExcelViewer } from "./ExcelViewer"
 import { useDocumentDetail } from "./useDocumentDetail"
 
-// ---------------------------------------------------------------------------
-// F8b-cont2 - document detail page composition
-//
-// The previous file was 34 KB / 704 lines mixing data fetching,
-// local UI state, a search input, an OCR revision editor, a
-// viewer card, a key-entities card, a timeline, a collapsible
-// blocks table, a collapsible graph view and inline
-// sub-components (EntityCard, TimelineEventRow,
-// DocumentGraphView, UnsupportedPreviewCard,
-// HighlightedText).
-//
-// After F8b-cont2:
-// - useDocumentDetail() owns every piece of state and side
-//   effect (queries, draft, mutations, helpers);
-// - AnnotationSidebar / plan components were already
-//   extracted earlier;
-// - Components.tsx provides HighlightedText, EntityCard,
-//   TimelineEventRow, DocumentGraphView,
-//   UnsupportedPreviewCard, OcrSearchInput,
-//   CollapsibleCard, BlocksTable, OtherEntitiesTable and
-//   VisorCardHeader;
-// - this file is the layout shell: header, two-column
-//   viewer+text row, second row with timeline + (other
-//   entities, blocks, graph).
-// ---------------------------------------------------------------------------
 export function DocumentDetailPage() {
   const id = Number(useParams().id)
   const d = useDocumentDetail(id)
+  const [activeTab, setActiveTab] = useState("info")
 
   return (
-    <div className="space-y-4">
-      <Breadcrumbs
-        items={[
-          { label: "Documentos", to: "/documents" },
-          { label: d.document?.original_filename ?? "Cargando…" },
-        ]}
-      />
-
+    <div className="flex h-[calc(100vh-3rem)] flex-col gap-3">
+      <Breadcrumbs items={[{ label: "Documentos", to: "/documents" }, { label: d.document?.original_filename ?? "…" }]} />
       <DocumentHeader d={d} />
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ViewerCard d={d} />
-        <div className="space-y-4">
-          <OcrCard d={d} />
-          {d.keyEnts.length > 0 && <KeyEntitiesCard entities={d.keyEnts} />}
+      {/* Split pane: viewer left | tabbed panel right */}
+      <div className="flex min-h-0 flex-1 gap-3 lg:flex-row">
+        {/* Left: Viewer */}
+        <div className="flex min-w-0 flex-1 flex-col lg:flex-[2]">
+          <ViewerCard d={d} />
         </div>
-      </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <TimelineCard d={d} />
-        <BelowSection d={d} />
+        {/* Right: Tabbed panel */}
+        <div className="flex min-w-0 flex-1 flex-col lg:flex-[1]">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+            <TabsList className="w-full justify-start rounded-lg bg-[var(--bg-surface-2)] px-1">
+              <TabsTrigger value="info" className="gap-1.5 text-[12px]"><Info className="h-3 w-3" /> Info</TabsTrigger>
+              <TabsTrigger value="ocr" className="gap-1.5 text-[12px]"><Type className="h-3 w-3" /> OCR</TabsTrigger>
+              <TabsTrigger value="entities" className="gap-1.5 text-[12px]"><ShieldAlert className="h-3 w-3" /> Entidades</TabsTrigger>
+              <TabsTrigger value="timeline" className="gap-1.5 text-[12px]"><Network className="h-3 w-3" /> Timeline</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="info" className="mt-2 min-h-0 flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
+                <InfoPanel d={d} />
+              </ScrollArea>
+            </TabsContent>
+            <TabsContent value="ocr" className="mt-2 min-h-0 flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
+                <OcrPanel d={d} />
+              </ScrollArea>
+            </TabsContent>
+            <TabsContent value="entities" className="mt-2 min-h-0 flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
+                <EntitiesPanel d={d} />
+              </ScrollArea>
+            </TabsContent>
+            <TabsContent value="timeline" className="mt-2 min-h-0 flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
+                <TimelinePanel d={d} />
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// DocumentHeader
+// DocumentHeader — compact top bar
 // ---------------------------------------------------------------------------
 function DocumentHeader({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
-  const document = d.document
+  const doc = d.document
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <Button
-              asChild
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 flex-shrink-0"
-              aria-label="Volver al listado"
-            >
-              <Link to="/documents">
-                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            </Button>
-            <div className="min-w-0">
-              <h1 className="truncate text-[16px] font-semibold text-[var(--text-primary)]">
-                {document?.original_filename ?? "Cargando..."}
-              </h1>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                {document?.document_type && (
-                  <Badge variant="neutral" className="text-[11px] capitalize">
-                    {document.document_type}
-                  </Badge>
-                )}
-                {document?.status && <StatusBadge status={document.status} />}
-                {document?.status &&
-                  (document.status === "uploaded" ||
-                    document.status === "queued" ||
-                    document.status === "processing" ||
-                    document.status === "processed") && (
-                    <DocumentProgressBar status={document.status} />
-                  )}
-                {document?.quality_status && document.quality_status !== "processed_ok" && (
-                  <StatusBadge status={document.quality_status} />
-                )}
-                <ConfidenceBadge value={document?.confidence} />
-                {document?.error_message && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded bg-[var(--rose-light)] px-2 py-0.5 text-[11px] text-[var(--text-on-danger)]"
-                    title={document.error_message}
-                  >
-                    <ShieldAlert className="h-3 w-3" />
-                    Error
-                  </span>
-                )}
-                {document?.duplicate_of_document_id && (
-                  <Badge variant="info" className="text-[11px]">
-                    Duplicado de #{document.duplicate_of_document_id}
-                  </Badge>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
-                {document?.created_at && <span>{formatDate(document.created_at)}</span>}
-                {document?.file_size != null && <span>{formatBytes(document.file_size)}</span>}
-                {document?.mime_type && <span>{document.mime_type}</span>}
-                <span className="select-all font-mono text-[10px]" title={document?.file_hash}>
-                  SHA256: {d.hashShort}
-                </span>
-                {(document?.page_count ?? d.pages.length) > 0 && (
-                  <span>{document?.page_count ?? d.pages.length} páginas</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <ActionToolbar d={d} />
+    <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2.5">
+      <Button asChild variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0">
+        <Link to="/documents"><ArrowLeft className="h-4 w-4" /></Link>
+      </Button>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{doc?.original_filename ?? "…"}</h1>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+          {doc?.document_type && <Badge variant="neutral" className="text-[10px] capitalize">{doc.document_type}</Badge>}
+          {doc?.status && <StatusBadge status={doc.status} />}
+          {doc?.quality_status && doc.quality_status !== "processed_ok" && <StatusBadge status={doc.quality_status} />}
+          <ConfidenceBadge value={doc?.confidence} />
+          {doc?.error_message && (
+            <span className="inline-flex items-center gap-0.5 rounded bg-[var(--danger-light)] px-1.5 py-0.5 text-[10px] text-[var(--text-on-danger)]" title={doc.error_message}>
+              <ShieldAlert className="h-2.5 w-2.5" /> Error
+            </span>
+          )}
+          {doc?.created_at && <span className="text-[10px] text-[var(--text-muted)]">{formatDate(doc.created_at)}</span>}
+          {doc?.file_size != null && <span className="text-[10px] text-[var(--text-muted)]">{formatBytes(doc.file_size)}</span>}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+      <ActionToolbar d={d} />
+    </div>
   )
 }
 
 function ActionToolbar({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const id = d.document?.id
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1">
       {d.document?.document_type === "plano" && id && (
         <PermissionGate roles={["admin", "gestor"]}>
-          <Button asChild variant="outline" size="sm" className="h-8 text-xs">
-            <Link to={`/documents/${id}/annotate-plan`}>
-              <MapPin className="mr-1 h-3.5 w-3.5" />
-              Anotar plano
-            </Link>
-          </Button>
+          <Button asChild variant="outline" size="sm" className="h-7 text-[11px]"><Link to={`/documents/${id}/annotate-plan`}><MapPin className="mr-1 h-3 w-3" /> Anotar</Link></Button>
         </PermissionGate>
       )}
       <PermissionGate roles={["admin"]}>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => d.reprocess.mutate()}
-          disabled={d.reprocess.isPending}
-        >
-          <RefreshCcw className="mr-1 h-3.5 w-3.5" />
-          Reprocesar
-        </Button>
+        <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => d.reprocess.mutate()} disabled={d.reprocess.isPending}><RefreshCcw className="mr-1 h-3 w-3" /> Reprocesar</Button>
       </PermissionGate>
-      <PermissionGate roles={["admin", "gestor"]}>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => toast.info("Funcionalidad próximamente")}
-        >
-          <RotateCcw className="mr-1 h-3.5 w-3.5" />
-          Corregir tipo
-        </Button>
-      </PermissionGate>
-      <PermissionGate roles={["admin", "gestor"]}>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => toast.info("Funcionalidad próximamente")}
-        >
-          <FileWarning className="mr-1 h-3.5 w-3.5" />
-          Enviar a revisión
-        </Button>
-      </PermissionGate>
-      {id && (
-        <Button asChild size="sm" className="h-8 text-xs">
-          <a href={downloadUrl(id)}>
-            <Download className="mr-1 h-3.5 w-3.5" />
-            Descargar
-          </a>
-        </Button>
-      )}
+      {id && <Button asChild size="sm" className="h-7 text-[11px]"><a href={downloadUrl(id)}><Download className="mr-1 h-3 w-3" /> Descargar</a></Button>}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// ViewerCard
+// ViewerCard — full-height image viewer
 // ---------------------------------------------------------------------------
 function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
-  const document = d.document
+  const doc = d.document
   const page = d.selectedPage
-  const isExcel = [".xlsx", ".xls", ".xlsm"].includes(document?.extension ?? "")
+  const isExcel = [".xlsx", ".xls", ".xlsm"].includes(doc?.extension ?? "")
   const excelText = isExcel && d.pages.length > 0 ? d.pages.map((p) => p.text || "").join("\n\n") : ""
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <VisorCardHeader>Visor</VisorCardHeader>
-      <CardContent className="p-0">
-        {isExcel && excelText ? (
-          <div className="max-h-[540px] overflow-auto">
-            <ExcelViewer text={excelText} />
-          </div>
-        ) : page?.page_number && document?.id ? (
-          <div className="overflow-hidden bg-[var(--bg-surface-2)]">
-            <img
-              className="max-h-[540px] w-full object-contain"
-              src={pageImageUrl(document.id, page.page_number)}
-              alt={`Página ${page.page_number}`}
-            />
-          </div>
-        ) : document && d.hasThumbnailExt ? (
-          <div className="flex justify-center bg-[var(--bg-surface-2)] py-4">
-            <img
-              className="max-h-[540px] max-w-full rounded-md object-contain shadow-md"
-              src={thumbnailUrl(document.id)}
-              alt="Vista previa del documento"
-            />
-          </div>
-        ) : document ? (
-          <UnsupportedPreviewCard document={document} />
-        ) : (
-          <div className="flex items-center justify-center py-16">
-            <EmptyState
-              title="Sin preview visual"
-              description="Este documento no tiene imagen de página disponible."
-              icon={<FileText className="h-5 w-5" />}
-            />
-          </div>
-        )}
+      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+        <div className="flex min-h-0 flex-1 flex-col">
+          {isExcel && excelText ? (
+            <div className="flex-1 overflow-auto"><ExcelViewer text={excelText} /></div>
+          ) : page?.page_number && doc?.id ? (
+            <div className="flex flex-1 items-center justify-center overflow-auto bg-[var(--bg-surface-2)]">
+              <img className="max-h-full max-w-full object-contain" src={pageImageUrl(doc.id, page.page_number)} alt={`Página ${page.page_number}`} />
+            </div>
+          ) : doc && d.hasThumbnailExt ? (
+            <div className="flex flex-1 items-center justify-center bg-[var(--bg-surface-2)] p-4">
+              <img className="max-h-full max-w-full rounded object-contain shadow-sm" src={thumbnailUrl(doc.id)} alt="Vista previa" />
+            </div>
+          ) : doc ? (
+            <UnsupportedPreviewCard document={doc} />
+          ) : (
+            <div className="flex flex-1 items-center justify-center"><EmptyState title="Sin preview" description="Sin imagen disponible." icon={<FileText className="h-5 w-5" />} /></div>
+          )}
+        </div>
         {d.pages.length > 1 && !isExcel && (
-          <div className="flex flex-wrap gap-1.5 border-t bg-[var(--bg-surface-2)] px-3 py-2">
+          <div className="flex flex-wrap gap-1 border-t border-[var(--border)] bg-[var(--bg-surface-2)] px-3 py-1.5">
             {d.pages.map((p) => (
-              <Button
-                key={p.id}
-                type="button"
-                size="sm"
-                variant={p.page_number === page?.page_number ? "default" : "outline"}
-                className="h-7 text-xs"
-                onClick={() => d.setSelectedPageNumber(p.page_number)}
-              >
+              <Button key={p.id} type="button" size="sm" variant={p.page_number === page?.page_number ? "default" : "ghost"} className="h-6 px-2 text-[10px]" onClick={() => d.setSelectedPageNumber(p.page_number)}>
                 P{p.page_number}
               </Button>
             ))}
@@ -302,236 +194,142 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
 }
 
 // ---------------------------------------------------------------------------
-// OcrCard
+// Info Panel — metadata + entities
 // ---------------------------------------------------------------------------
-function OcrCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
-  const page = d.selectedPage
+function InfoPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
+  const doc = d.document
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex-row items-center justify-between border-b bg-[var(--bg-surface-2)]/80 py-3">
-        <CardTitle className="text-[14px] font-semibold">Texto OCR</CardTitle>
-        <OcrSearchInput value={d.textQuery} onChange={d.setTextQuery} />
-      </CardHeader>
-      <CardContent className="max-h-[460px] overflow-auto p-3">
-        <div className="space-y-3">
-          {d.visiblePages.map((p) => (
-            <OcrPageSection
-              key={p.id}
-              page={p}
-              query={d.textQuery}
-              onPick={() => d.setSelectedPageNumber(p.page_number)}
-            />
-          ))}
-          {!d.visiblePages.length && (
-            <EmptyState
-              title="Sin coincidencias"
-              description="No hay páginas que coincidan con la búsqueda actual."
-            />
-          )}
-        </div>
-        {page && <OcrRevisionEditor d={d} />}
-      </CardContent>
-    </Card>
-  )
-}
-
-function OcrPageSection({
-  page,
-  query,
-  onPick,
-}: {
-  page: DocumentPage
-  query: string
-  onPick: () => void
-}) {
-  return (
-    <section className="rounded-md border bg-[var(--bg-surface)] p-3">
-      <div className="mb-2 flex justify-between text-[11px] text-[var(--text-muted)]">
-        <button
-          className="font-medium text-[var(--primary)] hover:underline"
-          type="button"
-          onClick={onPick}
-        >
-          Página {page.page_number}
-        </button>
-        <span>
-          OCR {page.ocr_confidence != null ? `${Math.round(page.ocr_confidence * 100)}%` : "—"}
-        </span>
-      </div>
-      <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6">
-        <HighlightedText text={page.text || "Sin texto extraído."} query={query} />
-      </pre>
-    </section>
-  )
-}
-
-function OcrRevisionEditor({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
-  const page = d.selectedPage
-  if (!page) return null
-  return (
-    <section className="mt-4 rounded-md border bg-[var(--bg-surface-2)] p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div>
-          <h4 className="text-[13px] font-semibold">Corrección OCR</h4>
-          <p className="text-[11px] text-[var(--text-muted)]">
-            Página {page.page_number} · {d.revisionsQ.data?.length ?? 0} revisiones
-          </p>
-        </div>
-        <Button
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => d.saveRevision.mutate()}
-          disabled={
-            d.saveRevision.isPending || !d.editedText.trim() || d.editedText === (page.text ?? "")
-          }
-        >
-          <Save className="mr-1 h-3 w-3" />
-          Guardar
-        </Button>
-      </div>
-      <textarea
-        className="min-h-[100px] w-full rounded-md border bg-[var(--bg-surface)] p-2.5 font-mono text-[12px] leading-6 outline-none focus:ring-2 focus:ring-[var(--primary)]"
-        value={d.editedText}
-        onChange={(e) => d.setEditedText(e.target.value)}
-      />
-      <Input
-        className="mt-2 h-8 text-xs"
-        value={d.revisionReason}
-        onChange={(e) => d.setRevisionReason(e.target.value)}
-        placeholder="Motivo de corrección (opcional)"
-      />
-      {d.saveRevision.isError && (
-        <p className="mt-2 text-xs text-destructive">{d.saveRevision.error.message}</p>
-      )}
-    </section>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// KeyEntitiesCard
-// ---------------------------------------------------------------------------
-function KeyEntitiesCard({
-  entities,
-}: {
-  entities: ReturnType<typeof useDocumentDetail>["keyEnts"]
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-[14px] font-semibold">Entidades clave</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-2 sm:grid-cols-2">
-        {entities.map((entity) => (
-          <EntityCard key={entity.id} entity={entity} />
-        ))}
-      </CardContent>
-    </Card>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// TimelineCard
-// ---------------------------------------------------------------------------
-function TimelineCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
-  const id = d.document?.id
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-[14px] font-semibold">Timeline de eventos</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {d.timelineEvents.length > 0 ? (
-          <div className="space-y-1">
-            {d.timelineEvents.map((event, index) => (
-              <TimelineEventRow
-                key={event.id}
-                event={event}
-                isLast={index === d.timelineEvents.length - 1}
-              />
-            ))}
+    <div className="space-y-3 p-1">
+      <Card>
+        <CardContent className="space-y-2 p-3 text-[12px]">
+          <div className="grid grid-cols-2 gap-2">
+            <InfoRow label="Tipo" value={doc?.document_type ?? "—"} />
+            <InfoRow label="Estado" value={doc?.status ?? "—"} />
+            <InfoRow label="Calidad" value={doc?.quality_status ?? "—"} />
+            <InfoRow label="Páginas" value={String(doc?.page_count ?? d.pages.length)} />
+            <InfoRow label="Tamaño" value={doc?.file_size != null ? formatBytes(doc.file_size) : "—"} />
+            <InfoRow label="MIME" value={doc?.mime_type ?? "—"} />
+            <InfoRow label="Creado" value={doc?.created_at ? formatDate(doc.created_at) : "—"} />
+            <InfoRow label="SHA256" value={d.hashShort} mono />
           </div>
-        ) : (
-          <div className="space-y-1">
-            <TimelineEventRow
-              event={{
-                id: 0,
-                document_id: id ?? 0,
-                event_type: "registered",
-                title: "Documento registrado",
-                description: null,
-                actor_user_id: null,
-                details_json: null,
-                created_at: d.document?.created_at ?? "",
-              }}
-              isLast={false}
-            />
-            {d.document?.processed_at && (
-              <TimelineEventRow
-                event={{
-                  id: 1,
-                  document_id: id ?? 0,
-                  event_type: "processed",
-                  title: "Procesamiento completado",
-                  description: null,
-                  actor_user_id: null,
-                  details_json: null,
-                  created_at: d.document.processed_at,
-                }}
-                isLast
-              />
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// BelowSection — other entities, blocks, graph
-// ---------------------------------------------------------------------------
-function BelowSection({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
-  return (
-    <div className="space-y-4">
-      {d.otherEnts.length > 0 && (
+        </CardContent>
+      </Card>
+      {d.keyEnts.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[14px] font-semibold">
-              Otras entidades ({d.otherEnts.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <OtherEntitiesTable entities={d.otherEnts} />
+          <CardHeader className="pb-2"><CardTitle className="text-[13px]">Entidades clave</CardTitle></CardHeader>
+          <CardContent className="grid gap-1.5 p-3 pt-0 sm:grid-cols-2">
+            {d.keyEnts.map((e) => <EntityCard key={e.id} entity={e} />)}
           </CardContent>
         </Card>
       )}
+      {d.otherEnts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-[13px]">Otras entidades ({d.otherEnts.length})</CardTitle></CardHeader>
+          <CardContent className="p-0"><OtherEntitiesTable entities={d.otherEnts} /></CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
 
-      <CollapsibleCard
-        title={`Bloques OCR (${d.blocksQ.data?.length ?? 0})`}
-        open={d.showBlocks}
-        onToggle={() => d.setShowBlocks(!d.showBlocks)}
-      >
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <span className="text-[var(--text-muted)]">{label}</span>
+      <span className={cn("text-right text-[var(--text-primary)]", mono && "font-mono text-[10px]")}>{value}</span>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// OCR Panel
+// ---------------------------------------------------------------------------
+function OcrPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
+  const page = d.selectedPage
+  return (
+    <div className="space-y-2 p-1">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-[13px] font-semibold">Texto OCR</h3>
+        <OcrSearchInput value={d.textQuery} onChange={d.setTextQuery} />
+      </div>
+      <div className="space-y-2">
+        {d.visiblePages.map((p) => (
+          <section key={p.id} className="rounded-md border bg-[var(--bg-surface)] p-2.5">
+            <div className="mb-1.5 flex justify-between text-[10px] text-[var(--text-muted)]">
+              <button className="font-medium text-[var(--accent)] hover:underline" type="button" onClick={() => d.setSelectedPageNumber(p.page_number)}>Página {p.page_number}</button>
+              <span>OCR {p.ocr_confidence != null ? `${Math.round(p.ocr_confidence * 100)}%` : "—"}</span>
+            </div>
+            <pre className="whitespace-pre-wrap font-sans text-[12px] leading-5"><HighlightedText text={page?.text || "Sin texto extraído."} query={d.textQuery} /></pre>
+          </section>
+        ))}
+        {!d.visiblePages.length && <EmptyState title="Sin coincidencias" description="No hay páginas que coincidan." />}
+      </div>
+      {page && (
+        <div className="rounded-md border bg-[var(--bg-surface-2)] p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <h4 className="text-[12px] font-semibold">Corrección OCR</h4>
+            <Button size="sm" className="h-6 text-[10px]" onClick={() => d.saveRevision.mutate()} disabled={d.saveRevision.isPending || !d.editedText.trim() || d.editedText === (page.text ?? "")}><Save className="mr-1 h-2.5 w-2.5" /> Guardar</Button>
+          </div>
+          <textarea className="min-h-[80px] w-full rounded border bg-[var(--bg-surface)] p-2 font-mono text-[11px] leading-5 outline-none focus:ring-1 focus:ring-[var(--accent)]" value={d.editedText} onChange={(e) => d.setEditedText(e.target.value)} />
+          <Input className="mt-1.5 h-7 text-[11px]" value={d.revisionReason} onChange={(e) => d.setRevisionReason(e.target.value)} placeholder="Motivo (opcional)" />
+          {d.saveRevision.isError && <p className="mt-1 text-[11px] text-[var(--danger)]">{d.saveRevision.error.message}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Entities Panel
+// ---------------------------------------------------------------------------
+function EntitiesPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
+  return (
+    <div className="space-y-2 p-1">
+      {d.keyEnts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-[13px]">Entidades clave</CardTitle></CardHeader>
+          <CardContent className="grid gap-1.5 p-3 pt-0 sm:grid-cols-2">{d.keyEnts.map((e) => <EntityCard key={e.id} entity={e} />)}</CardContent>
+        </Card>
+      )}
+      {d.otherEnts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-[13px]">Otras entidades ({d.otherEnts.length})</CardTitle></CardHeader>
+          <CardContent className="p-0"><OtherEntitiesTable entities={d.otherEnts} /></CardContent>
+        </Card>
+      )}
+      <CollapsibleCard title={`Bloques OCR (${d.blocksQ.data?.length ?? 0})`} open={d.showBlocks} onToggle={() => d.setShowBlocks(!d.showBlocks)}>
         <BlocksTable blocks={d.blocksQ.data ?? []} />
       </CollapsibleCard>
-
-      <CollapsibleCard
-        title="Grafo de relaciones"
-        icon={<Network className="h-4 w-4 text-[var(--text-muted)]" />}
-        open={d.showGraph}
-        onToggle={() => d.setShowGraph(!d.showGraph)}
-      >
-        {d.graphQ.isLoading && (
-          <p className="text-sm text-[var(--text-muted)]">Cargando grafo...</p>
-        )}
+      <CollapsibleCard title="Grafo de relaciones" icon={<Network className="h-4 w-4 text-[var(--text-muted)]" />} open={d.showGraph} onToggle={() => d.setShowGraph(!d.showGraph)}>
+        {d.graphQ.isLoading && <p className="text-[12px] text-[var(--text-muted)]">Cargando...</p>}
         {d.graphQ.data && <DocumentGraphView graph={d.graphQ.data} />}
-        {d.graphQ.isError && <p className="text-sm text-destructive">{d.graphQ.error?.message}</p>}
-        {!d.graphQ.data && !d.graphQ.isLoading && !d.graphQ.isError && (
-          <EmptyState
-            title="Sin relaciones"
-            description="No se han detectado relaciones documentales para este documento."
-          />
-        )}
+        {d.graphQ.isError && <p className="text-[12px] text-[var(--danger)]">{d.graphQ.error?.message}</p>}
+        {!d.graphQ.data && !d.graphQ.isLoading && !d.graphQ.isError && <EmptyState title="Sin relaciones" description="No se detectaron relaciones." />}
       </CollapsibleCard>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Timeline Panel
+// ---------------------------------------------------------------------------
+function TimelinePanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
+  const id = d.document?.id
+  return (
+    <div className="space-y-2 p-1">
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-[13px]">Timeline</CardTitle></CardHeader>
+        <CardContent>
+          {d.timelineEvents.length > 0 ? (
+            <div className="space-y-0.5">{d.timelineEvents.map((e, i) => <TimelineEventRow key={e.id} event={e} isLast={i === d.timelineEvents.length - 1} />)}</div>
+          ) : (
+            <div className="space-y-0.5">
+              <TimelineEventRow event={{ id: 0, document_id: id ?? 0, event_type: "registered", title: "Documento registrado", description: null, actor_user_id: null, details_json: null, created_at: d.document?.created_at ?? "" }} isLast={!d.document?.processed_at} />
+              {d.document?.processed_at && <TimelineEventRow event={{ id: 1, document_id: id ?? 0, event_type: "processed", title: "Procesamiento completado", description: null, actor_user_id: null, details_json: null, created_at: d.document.processed_at }} isLast />}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
