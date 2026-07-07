@@ -6,6 +6,7 @@ import { Toaster } from "sonner"
 
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { ConfirmDialogHost } from "@/hooks/useConfirm"
+import { DensityProvider } from "@/hooks/useDensity"
 import { AuthProvider } from "@/hooks/useAuth"
 import { router } from "@/routes/router"
 import { SentryErrorBoundary, initSentry } from "@/lib/sentry"
@@ -43,7 +44,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ConfirmDialogHost>
+        <DensityProvider>
+          <ConfirmDialogHost>
           <RootErrorBoundary>
             <RouterProvider router={router} />
             <Toaster
@@ -60,7 +62,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               }}
             />
           </RootErrorBoundary>
-        </ConfirmDialogHost>
+          </ConfirmDialogHost>
+        </DensityProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>,

@@ -16,11 +16,14 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-r
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useTableState } from "@/lib/useTableState"
 import { cn } from "@/lib/utils"
 
 export interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
+  /** Unique ID for state persistence. */
+  tableId?: string
   /** Enable client-side pagination. For server-side, handle externally. */
   pagination?: boolean
   /** Page size for client-side pagination. */
@@ -44,6 +47,7 @@ export interface DataTableProps<TData, TValue> {
 export function DataTable<TData, TValue>({
   columns,
   data,
+  tableId,
   pagination = true,
   pageSize = 25,
   onRowClick,
@@ -54,11 +58,16 @@ export function DataTable<TData, TValue>({
   loading = false,
   className,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([])
+  const saved = useTableState(tableId ?? "default")
+  const [sorting, setSorting] = useState<SortingState>(
+    saved.sort ? [saved.sort] : [],
+  )
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    saved.columnVisibility ?? {},
+  )
   const [rowSelection, setRowSelection] = useState({})
-  const [pageIndex, setPageIndex] = useState(0)
+  const [pageIndex, setPageIndex] = useState(saved.pagination?.pageIndex ?? 0)
 
   const allColumns: ColumnDef<TData, TValue>[] = selectable
     ? [
@@ -98,7 +107,11 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: pagination ? getPaginationRowModel() : undefined,
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
+    onSortingChange: (updater) => {
+      const next = typeof updater === "function" ? updater(sorting) : updater
+      setSorting(next)
+      saved.setSort(next[0])
+    },
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
@@ -114,6 +127,7 @@ export function DataTable<TData, TValue>({
       if (typeof updater === "function") {
         const next = updater({ pageIndex, pageSize })
         setPageIndex(next.pageIndex)
+        saved.setPagination({ pageIndex: next.pageIndex, pageSize })
       }
     },
     enableRowSelection: selectable,

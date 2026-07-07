@@ -17,7 +17,8 @@ import { api } from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDensity } from "@/hooks/useDensity"
 import { CommandPalette } from "@/components/layout/CommandPalette"
 import { SidebarNav } from "@/components/layout/Sidebar"
 import { SidebarDrawer, useSidebarDrawerHotkey } from "@/components/layout/SidebarDrawer"
@@ -70,6 +71,7 @@ export function AppShell() {
   }
 
   const systemOk = health.data?.status === "ok" || health.data?.status === "ready"
+  const { density, toggleDensity } = useDensity()
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -150,6 +152,23 @@ export function AppShell() {
             </div>
 
             <ThemeToggle />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={toggleDensity}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)]"
+                  aria-label={`Densidad: ${density === "compact" ? "compacta" : "cómoda"}`}
+                >
+                  {density === "compact" ? (
+                    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2" y1="3" x2="14" y2="3" /><line x1="2" y1="7" x2="14" y2="7" /><line x1="2" y1="11" x2="14" y2="11" /><line x1="2" y1="15" x2="14" y2="15" /></svg>
+                  ) : (
+                    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="2" y1="3" x2="14" y2="3" /><line x1="2" y1="8" x2="14" y2="8" /><line x1="2" y1="13" x2="14" y2="13" /></svg>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{density === "compact" ? "Modo compacto" : "Modo cómodo"}</TooltipContent>
+            </Tooltip>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
