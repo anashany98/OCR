@@ -35,7 +35,6 @@ import type { DocumentPage } from "@/types/api"
 import {
   BlocksTable,
   CollapsibleCard,
-  DocumentGraphView,
   EntityCard,
   HighlightedText,
   OcrSearchInput,
@@ -45,6 +44,7 @@ import {
   VisorCardHeader,
 } from "./components"
 import { ExcelViewer } from "./ExcelViewer"
+import { GraphView } from "./GraphView"
 import { useDocumentDetail } from "./useDocumentDetail"
 
 export function DocumentDetailPage() {
@@ -302,7 +302,7 @@ function EntitiesPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
       </CollapsibleCard>
       <CollapsibleCard title="Grafo de relaciones" icon={<Network className="h-4 w-4 text-[var(--text-muted)]" />} open={d.showGraph} onToggle={() => d.setShowGraph(!d.showGraph)}>
         {d.graphQ.isLoading && <p className="text-[12px] text-[var(--text-muted)]">Cargando...</p>}
-        {d.graphQ.data && <DocumentGraphView graph={d.graphQ.data} />}
+        {d.graphQ.data && <GraphView graph={d.graphQ.data} currentDocId={d.document?.id} />}
         {d.graphQ.isError && <p className="text-[12px] text-[var(--danger)]">{d.graphQ.error?.message}</p>}
         {!d.graphQ.data && !d.graphQ.isLoading && !d.graphQ.isError && <EmptyState title="Sin relaciones" description="No se detectaron relaciones." />}
       </CollapsibleCard>
