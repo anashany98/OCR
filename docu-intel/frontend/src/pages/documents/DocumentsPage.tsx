@@ -287,7 +287,7 @@ export function DocumentsPage() {
               className={cn(
                 "rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
                 item.id === view
-                  ? "bg-[var(--bg-surface-2)] text-[var(--text-primary)] shadow-paper"
+                  ? "bg-[var(--bg-surface-2)] text-[var(--text-primary)] shadow-xs"
                   : "text-muted-foreground hover:text-[var(--text-primary)]",
               )}
             >

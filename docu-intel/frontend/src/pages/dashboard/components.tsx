@@ -62,7 +62,7 @@ export function DashboardHero({
     year: "numeric",
   })
   return (
-    <header className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-6 shadow-paper md:p-8">
+    <header className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-6 shadow-xs md:p-8">
       <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0 space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">

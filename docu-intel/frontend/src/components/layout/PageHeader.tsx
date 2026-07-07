@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
  * stacked below the title on small viewports.
  *
  * Variants:
- *  - default: cream paper card with hairline border, prominent serif title
+ *  - default: surface card with border, prominent title
  *  - plain: no background, used when the header sits inside another container
  *  - minimal: title only, no description
  */
@@ -58,7 +58,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "mb-6 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] px-6 py-5 shadow-paper md:px-8 md:py-6",
+        "mb-6 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-6 py-5 shadow-sm md:px-8 md:py-6",
         className,
       )}
     >

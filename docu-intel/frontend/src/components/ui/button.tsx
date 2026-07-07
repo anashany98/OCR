@@ -20,7 +20,7 @@ const buttonVariants = cva(
           "text-[var(--text-secondary)] hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)]",
         link: "text-[var(--accent)] underline-offset-4 hover:underline",
         editorial:
-          "bg-[var(--ink)] text-[var(--bg-base)] shadow-paper hover:bg-[var(--ink-soft)] tracking-tight",
+          "bg-[var(--text-primary)] text-[var(--bg-surface)] shadow-sm hover:bg-[var(--text-secondary)] tracking-tight",
       },
       size: {
         default: "h-9 px-4",
