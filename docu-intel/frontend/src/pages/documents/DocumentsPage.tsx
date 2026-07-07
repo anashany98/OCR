@@ -156,6 +156,21 @@ export function DocumentsPage() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
+          {docs.isLoading ? (
+            <div className="space-y-0">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-2.5">
+                  <div className="h-3.5 w-3.5 rounded bg-[var(--bg-surface-2)]" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 w-48 rounded bg-[var(--bg-surface-2)]" />
+                    <div className="h-2.5 w-32 rounded bg-[var(--bg-surface-2)]" />
+                  </div>
+                  <div className="h-5 w-16 rounded bg-[var(--bg-surface-2)]" />
+                  <div className="h-5 w-12 rounded bg-[var(--bg-surface-2)]" />
+                </div>
+              ))}
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -192,6 +207,7 @@ export function DocumentsPage() {
               {!rows.length && <TableRow><TableCell colSpan={7}><EmptyState title="Sin documentos" description="Sube archivos o escanea carpetas." /></TableCell></TableRow>}
             </TableBody>
           </Table>
+          )}
           <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-2 text-[11px]">
             <span className="text-[var(--text-muted)]">{rows.length ? offset + 1 : 0}–{offset + rows.length} de {total}</span>
             <div className="flex gap-1">
