@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { StyledSelect } from "@/components/ui/styled-select"
 import { SimpleTable } from "./shared"
 import type {
   AccessGroupsSectionProps,
@@ -52,10 +53,10 @@ export function ChainsHotelsSection({
         <CardHeader><CardTitle>Hoteles</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <form className="grid gap-2 md:grid-cols-[1fr_1fr_100px_auto]" onSubmit={(e: FormEvent) => { e.preventDefault(); if (hotelName.trim() && hotelChainId) createHotel.mutate() }}>
-            <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={hotelChainId} onChange={(e) => setHotelChainId(e.target.value)}>
+            <StyledSelect value={hotelChainId} onChange={(e) => setHotelChainId(e.target.value)}>
               <option value="">Cadena</option>
               {chains.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </StyledSelect>
             <Input value={hotelName} onChange={(e) => setHotelName(e.target.value)} placeholder="Hotel" />
             <Input value={hotelCode} onChange={(e) => setHotelCode(e.target.value)} placeholder="Código" />
             <Button disabled={createHotel.isPending}>Crear</Button>
@@ -84,14 +85,14 @@ export function FolderRulesSection({
         <form className="grid gap-2 lg:grid-cols-[1fr_1.4fr_180px_180px_1fr_auto]" onSubmit={(e: FormEvent) => { e.preventDefault(); if (rulePattern.trim()) createFolderRule.mutate() }}>
           <Input value={ruleName} onChange={(e) => setRuleName(e.target.value)} placeholder="Nombre" />
           <Input value={rulePattern} onChange={(e) => setRulePattern(e.target.value)} placeholder="/presupuestos/cadena/hotel/" />
-          <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={ruleChainId} onChange={(e) => setRuleChainId(e.target.value)}>
+          <StyledSelect value={ruleChainId} onChange={(e) => setRuleChainId(e.target.value)}>
             <option value="">Cadena</option>
             {chains.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={ruleHotelId} onChange={(e) => setRuleHotelId(e.target.value)}>
+          </StyledSelect>
+          <StyledSelect value={ruleHotelId} onChange={(e) => setRuleHotelId(e.target.value)}>
             <option value="">Hotel</option>
             {hotels.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
+          </StyledSelect>
           <Input value={ruleTags} onChange={(e) => setRuleTags(e.target.value)} placeholder="tags separados por coma" />
           <Button disabled={createFolderRule.isPending}>Crear</Button>
         </form>
@@ -182,14 +183,14 @@ export function MembersSection({
       <CardHeader><CardTitle>Asignar miembros</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <form className="grid gap-2" onSubmit={(e: FormEvent) => { e.preventDefault(); if (memberGroupId && memberPrincipalId.trim()) upsertMember.mutate() }}>
-          <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={memberGroupId} onChange={(e) => setMemberGroupId(e.target.value)}>
+          <StyledSelect value={memberGroupId} onChange={(e) => setMemberGroupId(e.target.value)}>
             <option value="">Grupo</option>
             {accessGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-          <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={memberType} onChange={(e) => setMemberType(e.target.value as "user" | "technician")}>
+          </StyledSelect>
+          <StyledSelect value={memberType} onChange={(e) => setMemberType(e.target.value as "user" | "technician")}>
             <option value="technician">Técnico externo</option>
             <option value="user">Usuario interno</option>
-          </select>
+          </StyledSelect>
           <Input value={memberPrincipalId} onChange={(e) => setMemberPrincipalId(e.target.value)} placeholder="ID técnico o ID usuario" />
           <Button disabled={upsertMember.isPending}>Asignar</Button>
         </form>
@@ -233,10 +234,10 @@ export function AccessSimulatorSection({
       <CardHeader><CardTitle>Simulador de acceso</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <form className="grid gap-2" onSubmit={(e: FormEvent) => { e.preventDefault(); if (explainPrincipalId.trim() && Number(explainDocumentId) > 0) explainAccess.mutate() }}>
-          <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={explainPrincipalType} onChange={(e) => setExplainPrincipalType(e.target.value as "user" | "technician")}>
+          <StyledSelect value={explainPrincipalType} onChange={(e) => setExplainPrincipalType(e.target.value as "user" | "technician")}>
             <option value="technician">Técnico externo</option>
             <option value="user">Usuario interno</option>
-          </select>
+          </StyledSelect>
           <div className="grid gap-2 md:grid-cols-[1fr_120px_auto]">
             <Input value={explainPrincipalId} onChange={(e) => setExplainPrincipalId(e.target.value)} placeholder="ID principal" />
             <Input value={explainDocumentId} onChange={(e) => setExplainDocumentId(e.target.value)} placeholder="Doc ID" />
@@ -304,10 +305,10 @@ export function RedactionPreviewSection({
       <CardHeader><CardTitle>Preview redacción</CardTitle></CardHeader>
       <CardContent className="space-y-2 text-sm">
         <form className="grid gap-2" onSubmit={(e: FormEvent) => { e.preventDefault(); if (redactionPrincipalId.trim() && redactionText.trim()) previewRedaction.mutate() }}>
-          <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={redactionPrincipalType} onChange={(e) => setRedactionPrincipalType(e.target.value as "user" | "technician")}>
+          <StyledSelect value={redactionPrincipalType} onChange={(e) => setRedactionPrincipalType(e.target.value as "user" | "technician")}>
             <option value="technician">Técnico</option>
             <option value="user">Usuario</option>
-          </select>
+          </StyledSelect>
           <Input value={redactionPrincipalId} onChange={(e) => setRedactionPrincipalId(e.target.value)} placeholder="ID principal" />
           <Input value={redactionText} onChange={(e) => setRedactionText(e.target.value)} placeholder="Texto con importes" />
           <Button disabled={previewRedaction.isPending}>Ver redacción</Button>

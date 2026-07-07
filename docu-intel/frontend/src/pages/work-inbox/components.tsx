@@ -209,7 +209,7 @@ export function WorkInboxFiltersToolbar({
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-2">
       <Filter className="ml-1 h-3.5 w-3.5 text-[var(--text-muted)]" />
       <select
-        className="h-8 rounded-md border bg-background px-2 text-xs"
+        className="h-8 rounded-md border bg-[var(--bg-canvas)] px-2 text-xs"
         value={kindFilter}
         onChange={(e) => setKindFilter(e.target.value)}
       >
@@ -221,7 +221,7 @@ export function WorkInboxFiltersToolbar({
         ))}
       </select>
       <select
-        className="h-8 rounded-md border bg-background px-2 text-xs"
+        className="h-8 rounded-md border bg-[var(--bg-canvas)] px-2 text-xs"
         value={priorityFilter}
         onChange={(e) => setPriorityFilter(e.target.value)}
       >
@@ -527,7 +527,7 @@ export function NewManualTaskCard({
           />
           <div className="flex gap-2">
             <select
-              className="h-9 flex-1 rounded-md border bg-background px-3 text-sm"
+              className="h-9 flex-1 rounded-md border bg-[var(--bg-canvas)] px-3 text-sm"
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
             >
@@ -608,7 +608,7 @@ export function BatchActionsCard({
           Reprocesar baja calidad
         </Button>
         {result && (
-          <p className="rounded-md border bg-[var(--bg-surface-2)] p-2 text-xs text-muted-foreground">
+          <p className="rounded-md border bg-[var(--bg-surface-2)] p-2 text-xs text-[var(--text-muted)]">
             Encontrados: {result.matched}. Actualizados: {result.updated}. Encolados:{" "}
             {result.enqueued}.
           </p>
@@ -667,7 +667,7 @@ export function KindSummaryCard({
           )
         })}
         {!entries.length && (
-          <p className="text-sm text-muted-foreground">Sin incidencias abiertas.</p>
+          <p className="text-sm text-[var(--text-muted)]">Sin incidencias abiertas.</p>
         )}
       </CardContent>
     </Card>

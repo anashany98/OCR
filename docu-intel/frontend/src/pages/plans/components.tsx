@@ -50,7 +50,7 @@ function ScaleSection({ data }: { data: PlansData }) {
   const { state, mutations } = data
   return (
     <div className="grid gap-2 rounded-md border p-3">
-      <label className="text-xs font-medium text-muted-foreground">Escala manual</label>
+      <label className="text-xs font-medium text-[var(--text-muted)]">Escala manual</label>
       <div className="flex gap-2">
         <Input
           onChange={(event) => state.setScaleText(event.target.value)}
@@ -62,7 +62,7 @@ function ScaleSection({ data }: { data: PlansData }) {
           Guardar
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-[var(--text-muted)]">
         Sin escala válida no se convierten geometrías de píxeles a metros. Las superficies OCR se
         conservan como texto fuente.
       </p>
@@ -170,7 +170,7 @@ function RoomsSection({ data }: { data: PlansData }) {
         </TableBody>
       </Table>
       {!rooms.length ? (
-        <p className="rounded-md border p-3 text-sm text-muted-foreground">
+        <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
           Sin habitaciones detectadas.
         </p>
       ) : null}
@@ -211,7 +211,7 @@ function DimensionsSection({ data }: { data: PlansData }) {
         </TableBody>
       </Table>
       {!dimensions.length ? (
-        <p className="rounded-md border p-3 text-sm text-muted-foreground">
+        <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
           Sin cotas textuales fiables.
         </p>
       ) : null}
@@ -284,7 +284,7 @@ function MeasurementsSection({ data }: { data: PlansData }) {
         </TableBody>
       </Table>
       {!measurements.length ? (
-        <p className="rounded-md border p-3 text-sm text-muted-foreground">
+        <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
           Sin mediciones manuales guardadas.
         </p>
       ) : null}

@@ -55,7 +55,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 classNames: {
                   toast: "font-sans",
                   title: "text-[13px] font-medium",
-                  description: "text-[12px] text-muted-foreground",
+                  description: "text-[12px] text-[var(--text-muted)]",
                 },
               }}
             />

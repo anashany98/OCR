@@ -108,7 +108,7 @@ function IntegrationsView({
         {latestApiKey ? (
           <div className="rounded-md border border-warning/50 bg-warning/10 p-3 text-sm">
             <p className="font-medium">API key generada. Se muestra solo una vez.</p>
-            <code className="mt-2 block break-all rounded bg-background px-2 py-1">
+            <code className="mt-2 block break-all rounded bg-[var(--bg-canvas)] px-2 py-1">
               {latestApiKey}
             </code>
           </div>
@@ -161,7 +161,7 @@ function IntegrationsView({
         <div className="rounded-md border p-3">
           <div className="mb-3">
             <p className="text-sm font-medium">Sandbox de tools</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-[var(--text-muted)]">
               Ejecuta una tool como la ver&iacute;a la IA externa, con redacciones y fuentes.
             </p>
           </div>
@@ -174,7 +174,7 @@ function IntegrationsView({
             }}
           >
             <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+              className="h-9 rounded-md border bg-[var(--bg-canvas)] px-3 text-sm"
               value={sandboxClientId}
               onChange={(event) => setSandboxClientId(event.target.value)}
             >
@@ -203,7 +203,7 @@ function IntegrationsView({
             <Button disabled={runIntegrationSandbox.isPending}>Probar</Button>
           </form>
           <div className="flex items-center gap-3 mt-3">
-            <label className="text-sm text-muted-foreground flex items-center gap-2">
+            <label className="text-sm text-[var(--text-muted)] flex items-center gap-2">
               Round-trip (ms):
               <Input
                 type="number"

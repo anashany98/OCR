@@ -220,11 +220,10 @@ services:
         condition: service_healthy
     environment:
       - WORKER_NAME=worker-heavy-gpu-1
-      # O2: Each GPU worker uses its own card. If your second RTX 4070
-      # shows as P8/Off in nvidia-smi, connect a dummy HDMI plug or
-      # set GPU persistence mode: nvidia-smi -pm 1
-      - CUDA_VISIBLE_DEVICES=1
-      - NVIDIA_VISIBLE_DEVICES=1
+      # Only 1 GPU available (RTX 4070). Both GPU workers share it.
+      # PaddleOCR auto-detects CUDA via CUDA_VISIBLE_DEVICES.
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}

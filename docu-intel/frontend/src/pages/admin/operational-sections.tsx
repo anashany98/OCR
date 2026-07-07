@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { StyledSelect } from "@/components/ui/styled-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useConfirm } from "@/hooks/useConfirm"
 import { formatDuration, formatGigabytes, inputFolders, MetricBlock, MetricTile } from "./shared"
@@ -169,16 +170,16 @@ export function BulkReprocessSection({
       <Card>
         <CardContent className="pt-4">
           <form className="grid gap-3 md:grid-cols-5" onSubmit={onReprocessSubmit}>
-            <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <StyledSelect value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="failed">Fallidos</option><option value="needs_review">Revisión</option><option value="processed">Procesados</option><option value="pending">Pendientes</option><option value="">Cualquier estado</option>
-            </select>
-            <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
+            </StyledSelect>
+            <StyledSelect value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
               <option value="">Cualquier tipo</option><option value="presupuesto">Presupuesto</option><option value="pedido">Pedido</option><option value="factura">Factura</option><option value="plano">Plano</option><option value="imagen">Imagen</option><option value="excel">Excel</option>
-            </select>
+            </StyledSelect>
             <Input value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} placeholder="Carpeta contiene..." />
-            <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-3 text-sm" value={mode} onChange={(e) => setMode(e.target.value)}>
+            <StyledSelect value={mode} onChange={(e) => setMode(e.target.value)}>
               <option value="full">Completo</option><option value="ocr">Solo OCR</option><option value="classification">Clasificación</option><option value="embeddings">Embeddings</option>
-            </select>
+            </StyledSelect>
             <Button disabled={reprocessPending || (!status && !documentType && !sourcePath)}><RefreshCw data-icon="inline-start" /> Reprocesar</Button>
           </form>
           {reprocessResult && <p className="mt-3 text-sm text-[var(--text-muted)]">Encontrados: {reprocessResult.matched}. Encolados: {reprocessResult.enqueued}.</p>}

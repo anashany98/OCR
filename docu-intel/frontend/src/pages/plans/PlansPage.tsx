@@ -182,7 +182,7 @@ export function PlansPage() {
             {selectedPlan ? (
               <>
                 <div className="grid gap-2 rounded-md border p-3">
-                  <label className="text-xs font-medium text-muted-foreground">Escala manual</label>
+                  <label className="text-xs font-medium text-[var(--text-muted)]">Escala manual</label>
                   <div className="flex gap-2">
                     <Input
                       value={scaleText}
@@ -197,7 +197,7 @@ export function PlansPage() {
                       Guardar
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-[var(--text-muted)]">
                     Sin escala válida no se convierten geometrías de píxeles a metros. Las
                     superficies OCR se conservan como texto fuente.
                   </p>
@@ -296,7 +296,7 @@ export function PlansPage() {
                     </TableBody>
                   </Table>
                   {!rooms.data?.length ? (
-                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
                       Sin habitaciones detectadas.
                     </p>
                   ) : null}
@@ -331,7 +331,7 @@ export function PlansPage() {
                     </TableBody>
                   </Table>
                   {!dimensions.data?.length ? (
-                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
                       Sin cotas textuales fiables.
                     </p>
                   ) : null}
@@ -395,14 +395,14 @@ export function PlansPage() {
                     </TableBody>
                   </Table>
                   {!measurements.data?.length ? (
-                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
                       Sin mediciones manuales guardadas.
                     </p>
                   ) : null}
                 </section>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">No hay planos registrados todavía.</p>
+              <p className="text-sm text-[var(--text-muted)]">No hay planos registrados todavía.</p>
             )}
           </CardContent>
         </Card>

@@ -14,8 +14,9 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { StyledSelect } from "@/components/ui/styled-select"
 import {
   Table,
   TableBody,
@@ -369,12 +370,12 @@ export function AccessSection({
             >
               <Input value={adminUserEmail} onChange={(e) => setAdminUserEmail(e.target.value)} placeholder="email@empresa.com" className="h-9" />
               <Input value={adminUserName} onChange={(e) => setAdminUserName(e.target.value)} placeholder="Nombre" className="h-9" />
-              <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-2 text-sm" value={adminUserRole} onChange={(e) => setAdminUserRole(e.target.value)}>
+              <StyledSelect value={adminUserRole} onChange={(e) => setAdminUserRole(e.target.value)}>
                 <option value="operario">Operario</option>
                 <option value="gestor">Gestor</option>
                 <option value="auditor">Auditor</option>
                 <option value="admin">Admin</option>
-              </select>
+              </StyledSelect>
               <Input type="password" value={adminUserPassword} onChange={(e) => setAdminUserPassword(e.target.value)} placeholder="Contraseña (12+ caracteres)" className="h-9" />
               <div className="md:col-span-2 flex items-center justify-between gap-2">
                 <p className="text-[11px] text-[var(--text-muted)]">Mínimo 12 caracteres.</p>
@@ -429,11 +430,11 @@ export function AccessSection({
             >
               <Input value={notificationName} onChange={(e) => setNotificationName(e.target.value)} placeholder="Nombre regla" className="h-9" />
               <Input value={notificationEventType} onChange={(e) => setNotificationEventType(e.target.value)} placeholder="Evento" className="h-9" />
-              <select className="h-9 rounded-md border bg-[var(--bg-surface)] px-2 text-sm" value={notificationChannel} onChange={(e) => setNotificationChannel(e.target.value)}>
+              <StyledSelect value={notificationChannel} onChange={(e) => setNotificationChannel(e.target.value)}>
                 <option value="webhook">Webhook</option>
                 <option value="email">Email</option>
                 <option value="teams">Teams</option>
-              </select>
+              </StyledSelect>
               <Input value={notificationTarget} onChange={(e) => setNotificationTarget(e.target.value)} placeholder="URL o email" className="h-9" />
               <div className="md:col-span-2 flex justify-end">
                 <Button disabled={createNotificationRule.isPending}>Crear regla</Button>

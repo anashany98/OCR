@@ -99,7 +99,7 @@ function ModeButton({
       className={cn(
         "rounded px-3 py-1.5 text-xs font-medium transition-colors",
         active
-          ? "bg-background text-[var(--text-primary)] shadow-sm"
+          ? "bg-[var(--bg-canvas)] text-[var(--text-primary)] shadow-sm"
           : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
       )}
       onClick={onClick}

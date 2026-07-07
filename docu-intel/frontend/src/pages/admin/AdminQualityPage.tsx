@@ -115,19 +115,19 @@ function QualityView({
                   <p className="font-medium">{key}</p>
                   <Badge variant={value.count > 0 ? "warning" : "outline"}>{value.count}</Badge>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{value.description}</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">{value.description}</p>
               </div>
             ))}
           </div>
           <MetricBlock title="Estados de calidad" values={qualitySummary?.by_quality_status} />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[var(--text-muted)]">
             Umbral OCR bajo:{" "}
             {qualityRules?.low_ocr_threshold != null
               ? Math.round(qualityRules.low_ocr_threshold * 100) + "%"
               : "-"}
           </p>
           {recalculateQuality.data ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-[var(--text-muted)]">
               Recalculados: {recalculateQuality.data.updated}. En revisi&oacute;n:{" "}
               {recalculateQuality.data.needs_review}.
             </p>
@@ -175,7 +175,7 @@ function QualityView({
                 ))}
                 {!ocrReviewPages.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell colSpan={4} className="text-center text-[var(--text-muted)]">
                       Sin p&aacute;ginas en revisi&oacute;n.
                     </TableCell>
                   </TableRow>
@@ -214,7 +214,7 @@ function QualityView({
                 ))}
                 {!duplicates.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell colSpan={4} className="text-center text-[var(--text-muted)]">
                       Sin duplicados detectados.
                     </TableCell>
                   </TableRow>
@@ -244,7 +244,7 @@ function QualityView({
                 placeholder="Doc ID"
               />
               <select
-                className="h-9 rounded-md border bg-background px-3 text-sm"
+                className="h-9 rounded-md border bg-[var(--bg-canvas)] px-3 text-sm"
                 value={assignChainId}
                 onChange={(event) => setAssignChainId(event.target.value)}
               >
@@ -256,7 +256,7 @@ function QualityView({
                 ))}
               </select>
               <select
-                className="h-9 rounded-md border bg-background px-3 text-sm"
+                className="h-9 rounded-md border bg-[var(--bg-canvas)] px-3 text-sm"
                 value={assignHotelId}
                 onChange={(event) => setAssignHotelId(event.target.value)}
               >
@@ -338,7 +338,7 @@ function QualityView({
             <Button disabled={applyBulkTags.isPending}>Aplicar tags</Button>
           </form>
           {applyBulkTags.data ? (
-            <p className="text-muted-foreground">Actualizados: {applyBulkTags.data.updated}</p>
+            <p className="text-[var(--text-muted)]">Actualizados: {applyBulkTags.data.updated}</p>
           ) : null}
           {applyBulkTags.isError ? (
             <p className="text-sm text-destructive">{applyBulkTags.error?.message}</p>

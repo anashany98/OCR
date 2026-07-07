@@ -60,7 +60,7 @@ export function ExcelViewer({ text }: { text: string }) {
   const sheet = sheets[activeSheet]
   if (!sheet || sheet.rows.length === 0) {
     return (
-      <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+      <div className="flex items-center justify-center py-10 text-sm text-[var(--text-muted)]">
         Sin datos para mostrar
       </div>
     )
@@ -103,7 +103,7 @@ export function ExcelViewer({ text }: { text: string }) {
               className={`rounded-t-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 i === activeSheet
                   ? "bg-[var(--bg-surface)] text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-[var(--bg-surface)]/50"
+                  : "text-[var(--text-muted)] hover:bg-[var(--bg-surface)]/50"
               }`}
               onClick={() => {
                 setActiveSheet(i)
@@ -112,22 +112,22 @@ export function ExcelViewer({ text }: { text: string }) {
               }}
             >
               {s.name}
-              <span className="ml-1 text-[10px] text-muted-foreground">({s.rows.length})</span>
+              <span className="ml-1 text-[10px] text-[var(--text-muted)]">({s.rows.length})</span>
             </button>
           ))}
         </div>
       )}
 
       <div className="flex items-center gap-2 border-b px-3 py-2">
-        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+        <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
         <input
-          className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          className="flex-1 bg-transparent text-xs outline-none placeholder:text-[var(--text-muted)]"
           placeholder="Filtrar filas..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         {search && (
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[10px] text-[var(--text-muted)]">
             {sortedRows.length}/{sheet.rows.length}
           </span>
         )}
@@ -137,7 +137,7 @@ export function ExcelViewer({ text }: { text: string }) {
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-[var(--bg-surface-2)]">
             <tr>
-              <th className="w-8 border-b px-2 py-1.5 text-left text-muted-foreground">#</th>
+              <th className="w-8 border-b px-2 py-1.5 text-left text-[var(--text-muted)]">#</th>
               {sheet.headers.map((h, i) => (
                 <th
                   key={i}
@@ -160,10 +160,10 @@ export function ExcelViewer({ text }: { text: string }) {
           <tbody>
             {sortedRows.map((row, ri) => (
               <tr key={ri} className="hover:bg-[var(--bg-surface-2)]/50">
-                <td className="border-b px-2 py-1 text-muted-foreground">{ri + 1}</td>
+                <td className="border-b px-2 py-1 text-[var(--text-muted)]">{ri + 1}</td>
                 {row.map((cell, ci) => (
                   <td key={ci} className="border-b px-2 py-1">
-                    {cell || <span className="text-muted-foreground">—</span>}
+                    {cell || <span className="text-[var(--text-muted)]">—</span>}
                   </td>
                 ))}
               </tr>

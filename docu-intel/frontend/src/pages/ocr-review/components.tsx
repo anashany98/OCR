@@ -77,7 +77,7 @@ export function OcrReviewFilters({ data }: { data: OcrReviewData }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="flex items-center gap-2">
-        <label className="text-xs font-medium text-muted-foreground" htmlFor="ocr-threshold">
+        <label className="text-xs font-medium text-[var(--text-muted)]" htmlFor="ocr-threshold">
           Umbral OCR
         </label>
         <div className="relative">
@@ -91,7 +91,7 @@ export function OcrReviewFilters({ data }: { data: OcrReviewData }) {
             onChange={(event) => state.setThresholdPercent(event.target.value)}
             className="h-8 w-20 pr-7 text-right tabular-nums"
           />
-          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)]">
             %
           </span>
         </div>
@@ -154,7 +154,7 @@ export function OcrReviewQueue({ data }: { data: OcrReviewData }) {
           <CardTitle className="text-sm font-semibold uppercase tracking-wide">
             Cola de revisión
           </CardTitle>
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="text-xs text-[var(--text-muted)] tabular-nums">
             {items.length} pág. · &lt;{Math.round(threshold * 100)}%
           </span>
         </div>
@@ -163,10 +163,10 @@ export function OcrReviewQueue({ data }: { data: OcrReviewData }) {
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
             <div className="rounded-full bg-muted p-3">
-              <FileText className="h-5 w-5 text-muted-foreground" />
+              <FileText className="h-5 w-5 text-[var(--text-muted)]" />
             </div>
             <p className="text-sm font-medium">No hay páginas bajo el umbral</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-[var(--text-muted)]">
               Sube el umbral o espera a que entren más documentos.
             </p>
           </div>
@@ -192,12 +192,12 @@ export function OcrReviewQueue({ data }: { data: OcrReviewData }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="truncate text-sm font-medium">{item.original_filename}</p>
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        <span className="shrink-0 text-xs tabular-nums text-[var(--text-muted)]">
                           pág. {item.page_number}
                         </span>
                       </div>
                       <div className="mt-1 flex items-center gap-2">
-                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
                           {item.document_type}
                         </span>
                         <ReviewBadge status={item.review_status} />
@@ -228,10 +228,10 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
       <Card className="flex h-full min-h-[400px] items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="rounded-full bg-muted p-4">
-            <FileText className="h-6 w-6 text-muted-foreground" />
+            <FileText className="h-6 w-6 text-[var(--text-muted)]" />
           </div>
           <p className="text-sm font-medium">Selecciona una página de la cola</p>
-          <p className="text-xs text-muted-foreground">Para revisar OCR, aprobar o denegar.</p>
+          <p className="text-xs text-[var(--text-muted)]">Para revisar OCR, aprobar o denegar.</p>
         </div>
       </Card>
     )
@@ -248,9 +248,9 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
             </CardTitle>
             <CardDescription className="mt-1 flex items-center gap-3 text-xs">
               <span>Página {selected.page_number}</span>
-              <span className="text-muted-foreground/60">·</span>
+              <span className="text-[var(--text-muted)]/60">·</span>
               <span className="tabular-nums">OCR {formatPercent(selected.ocr_confidence)}</span>
-              <span className="text-muted-foreground/60">·</span>
+              <span className="text-[var(--text-muted)]/60">·</span>
               <span>{formatDate(selected.created_at)}</span>
             </CardDescription>
             <div className="mt-2 flex items-center gap-2">
@@ -337,7 +337,7 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
       {/* Notes + flags */}
       <div className="border-b bg-muted/10 px-6 py-4">
         <textarea
-          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full resize-none rounded-md border border-input bg-[var(--bg-canvas)] px-3 py-2 text-sm leading-relaxed placeholder:text-[var(--text-muted)]/60 focus:outline-none focus:ring-2 focus:ring-ring"
           rows={2}
           value={state.reviewNotes}
           onChange={(event) => state.setReviewNotes(event.target.value)}
@@ -385,7 +385,7 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
 function PreviewPane({ selected }: { selected: SelectedPage }) {
   if (!selected.preview_url) {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center p-8 text-sm text-muted-foreground">
+      <div className="flex h-full min-h-[320px] items-center justify-center p-8 text-sm text-[var(--text-muted)]">
         No hay imagen de preview para esta página.
       </div>
     )
@@ -410,7 +410,7 @@ function TextPane({ selected }: { selected: SelectedPage }) {
           {text}
         </pre>
       ) : (
-        <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
+        <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-[var(--text-muted)]">
           Sin texto OCR disponible.
         </div>
       )}
@@ -422,7 +422,7 @@ function BlocksPane({ selected }: { selected: SelectedPage }) {
   const blocks: NonNullable<SelectedPage["blocks"]> = selected.blocks ?? []
   if (blocks.length === 0) {
     return (
-      <div className="flex h-full min-h-[200px] items-center justify-center p-8 text-sm text-muted-foreground">
+      <div className="flex h-full min-h-[200px] items-center justify-center p-8 text-sm text-[var(--text-muted)]">
         No hay bloques OCR para esta página.
       </div>
     )
@@ -477,7 +477,7 @@ function ConfidenceDot({ value, withLabel }: { value: number | null; withLabel?:
     <span className="inline-flex items-center gap-1.5">
       <span className={cn("h-2 w-2 rounded-full", tone)} aria-hidden="true" />
       {withLabel && (
-        <span className="text-xs tabular-nums text-muted-foreground">
+        <span className="text-xs tabular-nums text-[var(--text-muted)]">
           {Math.round(value * 100)}%
         </span>
       )}
@@ -515,7 +515,7 @@ function SelectPill<T extends string>({
       {...rest}
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
-      className="h-8 rounded-md border border-input bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+      className="h-8 rounded-md border border-input bg-[var(--bg-canvas)] px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -536,7 +536,7 @@ function Tabs<T extends string>({
   items: { value: T; label: string; icon?: ReactNode }[]
 }) {
   return (
-    <div className="flex border-b bg-background px-6" role="tablist">
+    <div className="flex border-b bg-[var(--bg-canvas)] px-6" role="tablist">
       {items.map((item) => {
         const active = item.value === value
         return (
@@ -550,7 +550,7 @@ function Tabs<T extends string>({
               "relative -mb-px flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
               active
                 ? "border-[var(--accent)] text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
+                : "border-transparent text-[var(--text-muted)] hover:text-foreground",
             )}
           >
             {item.icon}

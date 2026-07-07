@@ -53,7 +53,7 @@ export function MetricBlock({ title, values }: { title: string; values?: Record<
           </Badge>
         ))}
         {!Object.keys(values ?? {}).length ? (
-          <span className="text-muted-foreground">Sin datos</span>
+          <span className="text-[var(--text-muted)]">Sin datos</span>
         ) : null}
       </div>
     </div>
@@ -63,7 +63,7 @@ export function MetricBlock({ title, values }: { title: string; values?: Record<
 export function MetricTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xs text-[var(--text-muted)]">{label}</p>
       <p className="mt-1 text-xl font-semibold">{value}</p>
     </div>
   )
@@ -80,7 +80,7 @@ export function ConfigStatus({
 }) {
   return (
     <div className="rounded-md border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xs text-[var(--text-muted)]">{label}</p>
       <div className="mt-2">
         <Badge variant={tone}>{value}</Badge>
       </div>
@@ -100,15 +100,15 @@ export function DiskLine({
     <div className="rounded-md border p-2">
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="flex items-center gap-2 font-medium">
-          <HardDrive className="size-4 text-muted-foreground" />
+          <HardDrive className="size-4 text-[var(--text-muted)]" />
           {label}
         </span>
-        <span className="text-muted-foreground">{usedPercent}% usado</span>
+        <span className="text-[var(--text-muted)]">{usedPercent}% usado</span>
       </div>
       <div className="h-2 overflow-hidden rounded bg-muted">
         <div className="h-full bg-primary" style={{ width: `${Math.min(usedPercent, 100)}%` }} />
       </div>
-      <p className="mt-1 truncate text-xs text-muted-foreground">{usage?.path ?? "-"}</p>
+      <p className="mt-1 truncate text-xs text-[var(--text-muted)]">{usage?.path ?? "-"}</p>
     </div>
   )
 }

@@ -88,9 +88,10 @@ export function SidebarDrawer({ open, onClose }: { open: boolean; onClose: () =>
         aria-modal="true"
         aria-label="Menú de navegación"
         className={cn(
-          "absolute inset-y-0 left-0 flex w-[288px] max-w-[85vw] flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] shadow-2xl",
+          "absolute inset-y-0 left-0 flex w-[288px] max-w-[85vw] flex-col border-r border-[var(--sidebar-border)] text-[var(--sidebar-text)] shadow-2xl",
           "animate-slide-in-right",
         )}
+        style={{ background: "linear-gradient(180deg, var(--sidebar-bg) 0%, #070b14 100%)" }}
       >
         {/* Header: brand + close button */}
         <div className="flex h-14 items-center gap-2.5 border-b border-[var(--sidebar-border)] px-3">

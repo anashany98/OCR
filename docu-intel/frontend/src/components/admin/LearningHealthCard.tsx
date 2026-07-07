@@ -112,7 +112,7 @@ export function LearningHealthCard() {
 
         {data.top_clients_by_pending.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
               Top clientes por volumen pendiente ({data.circuit_breaker.window_seconds / 3600}h)
             </h4>
             <ul className="mt-1 space-y-1 text-sm">
@@ -134,14 +134,14 @@ export function LearningHealthCard() {
         )}
 
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
             Patrones aprendidos
           </h4>
           <div className="mt-1 flex flex-wrap gap-2 text-sm">
             <Badge variant="success">{patterns.counts.active ?? 0} activos</Badge>
             <Badge variant="neutral">{patterns.counts.disabled ?? 0} desactivados</Badge>
             {patterns.top_active[0] && (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-[var(--text-muted)]">
                 Más usado: <code>{patterns.top_active[0].pattern_value}</code> →{" "}
                 {patterns.top_active[0].target_class} ({patterns.top_active[0].applied_count} usos)
               </span>
@@ -156,7 +156,7 @@ export function LearningHealthCard() {
 function Metric({ label, value }: { label: string; value: number | undefined }) {
   return (
     <div className="rounded border border-[var(--border)] bg-[var(--bg-surface-2)] p-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xs text-[var(--text-muted)]">{label}</div>
       <div className="text-lg font-semibold tabular-nums">{value ?? 0}</div>
     </div>
   )

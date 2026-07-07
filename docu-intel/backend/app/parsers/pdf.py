@@ -724,6 +724,13 @@ def parse_pdf(
 
     pages: list[ExtractedPage | None] = []
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Ensure the directory is writable by the current user (fixes root-owned dirs)
+    import os as _os
+    try:
+        _os.chmod(str(output_dir), 0o755)
+        _os.chmod(str(output_dir.parent), 0o755)
+    except OSError:
+        pass
     file_size_mb = path.stat().st_size / (1024 * 1024)
     with fitz.open(path) as pdf:
         page_count = len(pdf)

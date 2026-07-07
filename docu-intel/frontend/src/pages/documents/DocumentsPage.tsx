@@ -288,7 +288,7 @@ export function DocumentsPage() {
                 "rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
                 item.id === view
                   ? "bg-[var(--bg-surface-2)] text-[var(--text-primary)] shadow-xs"
-                  : "text-muted-foreground hover:text-[var(--text-primary)]",
+                  : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
               )}
             >
               {item.label}
@@ -298,7 +298,7 @@ export function DocumentsPage() {
 
         {/* Search + filters */}
         <div className="relative min-w-[220px] flex-1 md:max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-[var(--text-muted)]" />
           <Input
             className="h-9 pl-8"
             value={query}
@@ -395,7 +395,7 @@ export function DocumentsPage() {
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 border-b bg-muted/20 px-5 py-3">
           <div className="flex items-center gap-3">
             <CardTitle className="text-sm font-semibold">Listado</CardTitle>
-            <span className="text-xs text-muted-foreground tabular-nums">{total} documentos</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{total} documentos</span>
           </div>
           <div className="flex items-center gap-2">
             {selected.length > 0 ? (
@@ -487,7 +487,7 @@ export function DocumentsPage() {
             </TableBody>
           </Table>
           <div className="flex items-center justify-between border-t bg-[var(--bg-surface-2)] px-5 py-3 text-sm">
-            <span className="text-muted-foreground tabular-nums">
+            <span className="text-[var(--text-muted)] tabular-nums">
               Mostrando {rows.length ? offset + 1 : 0}–{offset + rows.length} de {total}
             </span>
             <div className="flex gap-2">
@@ -534,7 +534,7 @@ function StyledSelect<T extends string>({
       {...rest}
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
-      className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+      className="h-9 rounded-md border border-input bg-[var(--bg-canvas)] px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
