@@ -78,7 +78,7 @@ export function CommandPalette() {
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-[var(--border)] bg-white shadow-2xl"
+        className="w-full max-w-xl overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-lg"
         onClick={(event) => event.stopPropagation()}
       >
         <Command label="Paleta de comandos" shouldFilter loop className="flex flex-col">
@@ -148,7 +148,7 @@ function Hint({ keys, children }: { keys: string; children: React.ReactNode }) {
     <span className="inline-flex items-center gap-1">
       <kbd
         className={cn(
-          "rounded border border-[var(--border)] bg-white px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]",
+          "rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]",
         )}
       >
         {keys}

@@ -31,7 +31,7 @@ export function EmptyState({
         </div>
       )}
       <div className="space-y-1.5">
-        <h3 className="font-display text-[18px] font-medium leading-tight tracking-tight text-[var(--text-primary)]">
+        <h3 className="text-[18px] font-semibold leading-tight tracking-tight text-[var(--text-primary)]">
           {title}
         </h3>
         <p className="mx-auto max-w-md text-[13px] text-[var(--text-muted)] leading-relaxed">

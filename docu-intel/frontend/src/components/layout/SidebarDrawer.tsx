@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { FileText, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { useWorkInboxCount } from "@/hooks/useWorkInboxCount"
 import { cn } from "@/lib/utils"
 import { SidebarNav } from "./Sidebar"
 
@@ -16,6 +17,8 @@ const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1
 export function SidebarDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const inbox = useWorkInboxCount()
+  const inboxCount = inbox.data?.count ?? 0
 
   // Lock body scroll while open
   useEffect(() => {
@@ -95,7 +98,7 @@ export function SidebarDrawer({ open, onClose }: { open: boolean; onClose: () =>
             <FileText className="h-4 w-4" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-display text-[15px] font-medium leading-tight tracking-tight text-[var(--sidebar-text)]">
+            <p className="text-[15px] font-semibold leading-tight tracking-tight text-[var(--sidebar-text)]">
               Docu-Intel
             </p>
             <p className="truncate text-[10px] uppercase tracking-[0.12em] text-[var(--sidebar-muted)]">
@@ -116,7 +119,7 @@ export function SidebarDrawer({ open, onClose }: { open: boolean; onClose: () =>
 
         {/* Nav (scrollable) */}
         <div className="flex-1 overflow-y-auto">
-          <SidebarNav embedded onNavigate={onClose} />
+          <SidebarNav embedded onNavigate={onClose} inboxCount={inboxCount} />
         </div>
       </aside>
     </div>
