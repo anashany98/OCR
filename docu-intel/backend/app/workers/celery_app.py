@@ -28,8 +28,8 @@ celery_app.conf.update(
     timezone="Europe/Madrid",
     enable_utc=True,
     worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=200,
-    worker_max_memory_bytes=4 * 1024 * 1024 * 1024,  # 4 GB — recycle worker on leak
+    worker_max_tasks_per_child=10000,  # Very high — PaddleOCR reload is expensive
+    worker_max_memory_bytes=8 * 1024 * 1024 * 1024,  # 8 GB — GPU workers need more headroom
     worker_pool_prefork_timeout=300,
     broker_connection_retry_on_startup=True,
     task_acks_late=True,
@@ -122,15 +122,26 @@ def preload_worker_ocr_engine(**_kwargs) -> None:
         import concurrent.futures
 
         # Warmup with a timeout — if the VLM Tier 4 hangs, the
-        # worker must not be blocked forever.
+        # worker must not be blocked forever. Also skip Tier 4
+        # warmup entirely to avoid blocking on vision model loading.
+        def _warmup():
+            from app.ocr.factory import get_ocr_engine
+            engine = get_ocr_engine()
+            # Only warm up Tesseract and PaddleOCR (Tiers 1-2),
+            # skip Tier 4 (VLM) to avoid blocking on model loading.
+            if hasattr(engine, "primary"):
+                engine.primary.extract(Path("/dev/null") if Path("/dev/null").exists() else Path(__file__))
+            if hasattr(engine, "fallback"):
+                engine.fallback.extract(Path("/dev/null") if Path("/dev/null").exists() else Path(__file__))
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(preload_ocr_engine)
+            future = pool.submit(_warmup)
             try:
-                future.result(timeout=180)
+                future.result(timeout=120)
             except concurrent.futures.TimeoutError:
-                logger.warning("OCR warmup timed out after 180s — continuing without Tier 4 warmup")
-            except Exception:
-                raise
+                logger.warning("OCR warmup timed out after 120s — continuing (models load lazily)")
+            except Exception as exc:
+                logger.warning("OCR warmup failed (continuing): %s", exc)
     except Exception:
         # OCR-INIT-1: preserve the full stack trace (no more
         # ``logger.warning(exc)`` swallowing the chain) and emit

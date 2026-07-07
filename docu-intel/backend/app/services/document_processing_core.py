@@ -55,9 +55,13 @@ class _LazyOCREngine:
 
     def _load(self):
         if self._engine is None:
-            engine_class = _get_effective_ocr_engine_class()
-            engine = engine_class()
-            self._engine = engine() if isinstance(engine, type) else engine
+            # Use get_ocr_engine() which returns the singleton
+            # (already instantiated by preload_ocr_engine during worker boot).
+            # The old code called get_ocr_engine_class()() which broke
+            # for cascading mode because get_cascading_engine is a function,
+            # not a class.
+            from app.ocr.factory import get_ocr_engine
+            self._engine = get_ocr_engine()
             if self._current_language is not None:
                 with contextlib.suppress(Exception):
                     self._engine.current_language = self._current_language
