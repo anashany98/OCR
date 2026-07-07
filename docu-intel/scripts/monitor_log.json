@@ -1,0 +1,124 @@
+[
+  {
+    "time": "2026-07-06T14:56:22.318640",
+    "elapsed_s": 0,
+    "documents": {
+      "processed": 4889,
+      "needs_review": 1773,
+      "duplicate": 798,
+      "processing": 546,
+      "pending": 85
+    },
+    "jobs": {
+      "pending": 1,
+      "processing": 2
+    }
+  },
+  {
+    "time": "2026-07-06T15:01:22.470248",
+    "elapsed_s": 300,
+    "documents": {
+      "processed": 4946,
+      "needs_review": 1832,
+      "duplicate": 801,
+      "processing": 550,
+      "pending": 84
+    },
+    "jobs": {
+      "processing": 1
+    }
+  },
+  {
+    "time": "2026-07-06T15:06:22.615975",
+    "elapsed_s": 600,
+    "documents": {
+      "processed": 5016,
+      "needs_review": 1885,
+      "duplicate": 805,
+      "processing": 557,
+      "pending": 84
+    },
+    "jobs": {}
+  },
+  {
+    "time": "2026-07-06T15:11:22.761360",
+    "elapsed_s": 900,
+    "documents": {
+      "processed": 5076,
+      "needs_review": 1909,
+      "duplicate": 814,
+      "processing": 592,
+      "pending": 84
+    },
+    "jobs": {}
+  },
+  {
+    "time": "2026-07-06T15:16:22.919977",
+    "elapsed_s": 1200,
+    "documents": {
+      "processed": 5101,
+      "needs_review": 1954,
+      "duplicate": 817,
+      "processing": 596,
+      "pending": 84
+    },
+    "jobs": {
+      "processing": 2
+    }
+  },
+  {
+    "time": "2026-07-06T15:21:23.075213",
+    "elapsed_s": 1501,
+    "documents": {
+      "processed": 5172,
+      "needs_review": 2000,
+      "duplicate": 817,
+      "processing": 613,
+      "pending": 85
+    },
+    "jobs": {
+      "pending": 1,
+      "processing": 3
+    }
+  },
+  {
+    "time": "2026-07-06T15:26:23.225919",
+    "elapsed_s": 1801,
+    "documents": {
+      "processed": 5235,
+      "needs_review": 2044,
+      "duplicate": 826,
+      "processing": 628,
+      "pending": 84
+    },
+    "jobs": {}
+  },
+  {
+    "time": "2026-07-06T15:31:23.398502",
+    "elapsed_s": 2101,
+    "documents": {
+      "processed": 5298,
+      "needs_review": 2080,
+      "duplicate": 830,
+      "processing": 650,
+      "pending": 84
+    },
+    "jobs": {
+      "processing": 4
+    }
+  },
+  {
+    "time": "2026-07-06T15:36:23.579319",
+    "elapsed_s": 2401,
+    "documents": {
+      "processed": 5349,
+      "needs_review": 2155,
+      "duplicate": 833,
+      "processing": 652,
+      "pending": 84
+    },
+    "jobs": {
+      "processing": 4
+    }
+  }
+]
