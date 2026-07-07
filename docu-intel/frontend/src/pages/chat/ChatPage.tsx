@@ -1,17 +1,9 @@
-import {
-  ChevronDown,
-  ChevronUp,
-  Download,
-  Loader2,
-  Menu,
-  Send,
-  X,
-} from "lucide-react"
+import { ChevronDown, ChevronUp, Download, Loader2, Plus, Send, X } from "lucide-react"
 
-import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { AutoBreadcrumbs } from "@/components/layout/AutoBreadcrumbs"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 import { ConversationSidebar, ConversationSidebarMobile } from "./ConversationSidebar"
 import { TypingIndicator, WelcomeCard } from "./components"
@@ -23,202 +15,124 @@ export function ChatPage() {
   const hasMessages = chat.messages.length > 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <Breadcrumbs items={[{ label: "Preguntar a documentos" }]} />
-      <PageHeader
-        title="Preguntar a documentos"
-        variant="plain"
-        actions={
-          <div className="flex items-center gap-2">
-            {hasMessages && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={chat.exportConversation}
-                className="gap-1.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Exportar
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={chat.newConversation}
-              className="gap-1.5"
-            >
-              + Nueva
-            </Button>
-          </div>
-        }
-      />
+    <div className="flex h-[calc(100vh-3rem)] flex-col gap-3">
+      <AutoBreadcrumbs />
 
-      <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[18px] font-semibold text-[var(--text-primary)]">Chat IA</h1>
+          <p className="text-[12px] text-[var(--text-muted)]">Pregunta a tus documentos con inteligencia artificial.</p>
+        </div>
+        <div className="flex gap-2">
+          {hasMessages && (
+            <Button variant="outline" size="sm" onClick={chat.exportConversation} className="gap-1.5 text-[11px]">
+              <Download className="h-3 w-3" /> Exportar
+            </Button>
+          )}
+          <Button size="sm" onClick={chat.newConversation} className="gap-1.5 text-[11px]">
+            <Plus className="h-3 w-3" /> Nueva conversación
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-3">
         {/* Desktop sidebar */}
-        <aside className="hidden min-h-0 flex-col border-r border-[var(--border)] bg-[var(--bg-surface)]/50 lg:flex">
+        <aside className="hidden w-[240px] flex-shrink-0 flex-col rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] lg:flex">
           <ConversationSidebar chat={chat} />
         </aside>
 
         {/* Mobile sidebar */}
-        <ConversationSidebarMobile
-          chat={chat}
-          open={chat.sidebarOpen}
-          onClose={() => chat.setSidebarOpen(false)}
-        />
+        <ConversationSidebarMobile chat={chat} open={chat.sidebarOpen} onClose={() => chat.setSidebarOpen(false)} />
 
-        {/* Main chat column */}
-        <div className="flex min-h-0 flex-col">
-          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 border-l-0 border-t-0">
-            {/* Mobile menu button */}
-            <div className="flex items-center border-b border-[var(--border)] px-3 py-2 lg:hidden">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => chat.setSidebarOpen(true)}
-                className="gap-1.5"
-              >
-                <Menu className="h-4 w-4" />
-                Conversaciones
-              </Button>
-              {chat.activeConv && (
-                <span className="ml-2 truncate text-[12px] text-[var(--text-muted)]">
-                  {chat.activeConv.title}
-                </span>
+        {/* Main chat area */}
+        <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+          {/* Mobile menu */}
+          <div className="flex items-center border-b border-[var(--border)] px-4 py-2 lg:hidden">
+            <Button variant="ghost" size="sm" onClick={() => chat.setSidebarOpen(true)} className="gap-1.5 text-[12px]">
+              Conversaciones
+            </Button>
+            {chat.activeConv && <span className="ml-2 truncate text-[11px] text-[var(--text-muted)]">{chat.activeConv.title}</span>}
+          </div>
+
+          {/* Messages */}
+          <div ref={chat.scrollRef} className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
+            <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-5 sm:px-6">
+              {!hasMessages && chat.hydrated && <WelcomeCard onPick={chat.pickQuestion} />}
+              {chat.messages.map((m) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  isIncorrect={chat.markedIncorrect.has(m.id)}
+                  onCopy={() => chat.copyAnswer(m)}
+                  onExport={() => chat.exportToExcel(m)}
+                  onTask={() => chat.createTask(m)}
+                  onRegenerate={() => chat.regenerate(m)}
+                  onMarkIncorrect={() => chat.markIncorrect(m.id)}
+                  onPickFollowup={chat.pickQuestion}
+                />
+              ))}
+              {chat.isStreaming && !chat.messages.some((m) => m.pending) && <TypingIndicator />}
+            </div>
+          </div>
+
+          {/* Composer */}
+          <div className="border-t border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 sm:px-6">
+            <div className="mx-auto max-w-3xl">
+              <form onSubmit={chat.onSubmit} className="flex items-end gap-2">
+                <div className="flex-1 rounded-xl border border-[var(--border-2)] bg-[var(--bg-canvas)] transition-colors focus-within:border-[var(--accent)] focus-within:bg-[var(--bg-surface)] focus-within:shadow-xs">
+                  <textarea
+                    ref={chat.textareaRef}
+                    value={chat.draft}
+                    onChange={(e) => chat.setDraft(e.target.value)}
+                    onKeyDown={chat.onKeyDown}
+                    onCompositionStart={chat.onCompositionStart}
+                    onCompositionEnd={chat.onCompositionEnd}
+                    rows={1}
+                    placeholder="Escribe tu pregunta..."
+                    className="block w-full resize-none bg-transparent px-4 py-3 text-[13px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                    disabled={chat.isStreaming}
+                  />
+                  <div className="flex items-center justify-between border-t border-[var(--border)]/50 px-3 py-1.5">
+                    <button type="button" onClick={() => chat.setFiltersOpen((v) => !v)} className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-secondary)]">
+                      {chat.filtersOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                      Filtros
+                      {activeFilterCount(chat.supplier, chat.documentType) > 0 && (
+                        <span className="ml-0.5 rounded bg-[var(--accent-light)] px-1 text-[9px] font-semibold text-[var(--accent)]">{activeFilterCount(chat.supplier, chat.documentType)}</span>
+                      )}
+                    </button>
+                    <span className="text-[10px] text-[var(--text-muted)]">
+                      {chat.isStreaming ? (
+                        <span className="inline-flex items-center gap-1 text-[var(--accent)]"><Loader2 className="h-2.5 w-2.5 animate-spin" /> pensando...</span>
+                      ) : `${chat.draft.length} caracteres`}
+                    </span>
+                  </div>
+                </div>
+                {chat.isStreaming ? (
+                  <Button type="button" onClick={chat.stop} className="h-10 w-10 flex-shrink-0 rounded-xl p-0" variant="outline" aria-label="Detener">
+                    <X className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button type="submit" disabled={!chat.draft.trim() || chat.isStreaming} className="h-10 w-10 flex-shrink-0 rounded-xl p-0" aria-label="Enviar">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                )}
+              </form>
+
+              {chat.filtersOpen && (
+                <div className="mt-2 grid gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-2)] p-2 sm:grid-cols-3">
+                  <select className="h-8 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-[12px] text-[var(--text-primary)]" value={chat.mode} onChange={(e) => chat.setMode(e.target.value)}>
+                    <option value="hybrid">Híbrida</option><option value="semantic">Semántica</option><option value="budget">Presupuestos</option><option value="order">Pedidos</option>
+                  </select>
+                  <input value={chat.supplier} onChange={(e) => chat.setSupplier(e.target.value)} placeholder="Proveedor" className="h-8 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-[12px] focus:border-[var(--accent)] focus:outline-none" />
+                  <input value={chat.documentType} onChange={(e) => chat.setDocumentType(e.target.value)} placeholder="Tipo documental" className="h-8 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-[12px] focus:border-[var(--accent)] focus:outline-none" />
+                </div>
+              )}
+
+              {chat.isStreaming && chat.messages.some((m) => m.pending) && (
+                <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">La IA está escribiendo...</p>
               )}
             </div>
-
-            <div
-              ref={chat.scrollRef}
-              className="min-h-0 flex-1 overflow-y-auto"
-              style={{ scrollbarGutter: "stable" }}
-            >
-              <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-6">
-                {!hasMessages && chat.hydrated && <WelcomeCard onPick={chat.pickQuestion} />}
-
-                {chat.messages.map((m) => (
-                  <MessageBubble
-                    key={m.id}
-                    message={m}
-                    isIncorrect={chat.markedIncorrect.has(m.id)}
-                    onCopy={() => chat.copyAnswer(m)}
-                    onExport={() => chat.exportToExcel(m)}
-                    onTask={() => chat.createTask(m)}
-                    onRegenerate={() => chat.regenerate(m)}
-                    onMarkIncorrect={() => chat.markIncorrect(m.id)}
-                    onPickFollowup={chat.pickQuestion}
-                  />
-                ))}
-
-                {chat.isStreaming && !chat.messages.some((m) => m.pending) && <TypingIndicator />}
-              </div>
-            </div>
-
-            {/* Input area */}
-            <div className="border-t border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 sm:px-6">
-              <div className="mx-auto w-full max-w-3xl">
-                <form onSubmit={chat.onSubmit} className="flex items-end gap-2">
-                  <div className="flex-1 rounded-2xl border border-[var(--border-2)] bg-[var(--bg-canvas)] shadow-xs transition-colors focus-within:border-[var(--accent)] focus-within:bg-[var(--bg-surface)]">
-                    <textarea
-                      ref={chat.textareaRef}
-                      value={chat.draft}
-                      onChange={(e) => chat.setDraft(e.target.value)}
-                      onKeyDown={chat.onKeyDown}
-                      onCompositionStart={chat.onCompositionStart}
-                      onCompositionEnd={chat.onCompositionEnd}
-                      rows={1}
-                      placeholder="Escribe tu pregunta…  (Enter para enviar)"
-                      className="block w-full resize-none bg-transparent px-4 py-3 text-[14px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
-                      disabled={chat.isStreaming}
-                    />
-                    <div className="flex items-center justify-between border-t border-[var(--border)]/60 px-2 py-1.5 text-[11px] text-[var(--text-muted)]">
-                      <button
-                        type="button"
-                        onClick={() => chat.setFiltersOpen((v) => !v)}
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-1 transition-colors hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-secondary)]"
-                      >
-                        {chat.filtersOpen ? (
-                          <ChevronUp className="h-3 w-3" />
-                        ) : (
-                          <ChevronDown className="h-3 w-3" />
-                        )}
-                        <span>
-                          Filtros{" "}
-                          {activeFilterCount(chat.supplier, chat.documentType) > 0 && (
-                            <span className="ml-0.5 rounded bg-[var(--accent-light)] px-1 text-[10px] font-semibold text-[var(--accent)]">
-                              {activeFilterCount(chat.supplier, chat.documentType)}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                      <span className="hidden sm:inline">
-                        {chat.isStreaming ? (
-                          <span className="inline-flex items-center gap-1 text-[var(--accent)]">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            pensando...
-                          </span>
-                        ) : (
-                          `${chat.draft.length} caracteres`
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                  {chat.isStreaming ? (
-                    <Button
-                      type="button"
-                      onClick={chat.stop}
-                      className="h-11 w-11 flex-shrink-0 rounded-2xl p-0"
-                      aria-label="Detener respuesta"
-                      variant="outline"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      disabled={!chat.draft.trim() || chat.isStreaming}
-                      className="h-11 w-11 flex-shrink-0 rounded-2xl p-0"
-                      aria-label="Enviar pregunta"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  )}
-                </form>
-
-                {chat.filtersOpen && (
-                  <div className="mt-2 grid gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-2)]/60 p-2 sm:grid-cols-3">
-                    <select
-                      className="h-9 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-[13px]"
-                      value={chat.mode}
-                      onChange={(e) => chat.setMode(e.target.value)}
-                    >
-                      <option value="hybrid">Búsqueda híbrida</option>
-                      <option value="semantic">Búsqueda semántica</option>
-                      <option value="budget">Solo presupuestos</option>
-                      <option value="order">Solo pedidos</option>
-                    </select>
-                    <input
-                      value={chat.supplier}
-                      onChange={(e) => chat.setSupplier(e.target.value)}
-                      placeholder="Filtrar por proveedor"
-                      className="h-9 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-[13px] focus:border-[var(--accent)] focus:outline-none"
-                    />
-                    <input
-                      value={chat.documentType}
-                      onChange={(e) => chat.setDocumentType(e.target.value)}
-                      placeholder="Filtrar por tipo documental"
-                      className="h-9 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-[13px] focus:border-[var(--accent)] focus:outline-none"
-                    />
-                  </div>
-                )}
-
-                {chat.isStreaming && chat.messages.some((m) => m.pending) && (
-                  <p className="mt-2 text-[12px] text-[var(--text-muted)]">
-                    La IA está escribiendo…
-                  </p>
-                )}
-              </div>
-            </div>
-          </Card>
+          </div>
         </div>
       </div>
     </div>

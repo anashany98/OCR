@@ -66,17 +66,15 @@ export function MessageBubble({
   if (isUser) {
     const time = new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
     return (
-      <div className="flex items-end justify-end gap-3">
+      <div className="flex items-end justify-end gap-2">
         <div className="flex flex-col items-end gap-0.5">
-          <Card className="max-w-[88%] rounded-2xl rounded-tr-sm border-[var(--accent)]/40 bg-[var(--accent-faint)]/70 px-4 py-2.5 sm:max-w-[80%]">
-            <CardContent className="p-0 text-[14px] leading-relaxed text-[var(--text-primary)]">
-              {message.content}
-            </CardContent>
-          </Card>
-          <span className="text-[10px] text-[var(--text-muted)]">{time}</span>
+          <div className="max-w-[85%] rounded-xl rounded-br-sm bg-[var(--accent)] px-3.5 py-2.5 text-[13px] leading-relaxed text-white sm:max-w-[75%]">
+            {message.content}
+          </div>
+          <span className="text-[9px] text-[var(--text-muted)]">{time}</span>
         </div>
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white">
-          <UserIcon className="h-4 w-4" />
+        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/20 text-[var(--accent)]">
+          <UserIcon className="h-3.5 w-3.5" />
         </div>
       </div>
     )
@@ -85,11 +83,11 @@ export function MessageBubble({
   const time = new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
 
   return (
-    <div className="flex items-start gap-3">
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-light)] text-[var(--accent)]">
-        <Bot className="h-4 w-4" />
+    <div className="flex items-start gap-2">
+      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--bg-surface-2)] text-[var(--text-muted)]">
+        <Bot className="h-3.5 w-3.5" />
       </div>
-      <div className="flex max-w-[88%] flex-col gap-2 sm:max-w-[80%]">
+      <div className="flex max-w-[85%] flex-col gap-1.5 sm:max-w-[75%]">
         {resolved && <ResolvedDocumentCard resolved={resolved} />}
 
         {message.answer?.id && resolved?.document && (
@@ -101,7 +99,7 @@ export function MessageBubble({
 
         <div
           className={cn(
-            "rounded-2xl rounded-tl-sm border border-[var(--border)] bg-[var(--bg-surface-2)]/60 px-4 py-3",
+            "rounded-xl rounded-tl-sm border border-[var(--border)] bg-[var(--bg-surface-2)]/50 px-3.5 py-2.5",
             isIncorrect && "border-[var(--warning)]/60 bg-[var(--warning-faint)]/40",
           )}
         >
@@ -129,7 +127,7 @@ export function MessageBubble({
           )}
 
           {hasAnswer && (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center gap-1">
               {!sufficient && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-[var(--warning)]/40 bg-[var(--warning-faint)] px-2 py-0.5 text-[11px] text-[var(--warning)]">
                   <AlertTriangle className="h-3 w-3" />
@@ -148,7 +146,7 @@ export function MessageBubble({
           )}
 
           {sources.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mt-1.5 flex flex-wrap gap-1">
               {visibleSources.map((s, i) => (
                 <SourceChip key={i} source={s} />
               ))}
