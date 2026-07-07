@@ -215,7 +215,7 @@ export function ConversationSidebarMobile({
   return (
     <div className="fixed inset-0 z-50 flex lg:hidden">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex h-full w-72 flex-col border-r border-[var(--border)] bg-[var(--bg-base)]">
+      <div className="relative flex h-full w-72 flex-col border-r border-[var(--border)] bg-[var(--bg-canvas)]">
         <ConversationSidebar chat={chat} />
       </div>
     </div>

@@ -117,7 +117,7 @@ export function ChatPage() {
             <div className="border-t border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 sm:px-6">
               <div className="mx-auto w-full max-w-3xl">
                 <form onSubmit={chat.onSubmit} className="flex items-end gap-2">
-                  <div className="flex-1 rounded-2xl border border-[var(--border-2)] bg-[var(--bg-base)] shadow-xs transition-colors focus-within:border-[var(--accent)] focus-within:bg-[var(--bg-surface)]">
+                  <div className="flex-1 rounded-2xl border border-[var(--border-2)] bg-[var(--bg-canvas)] shadow-xs transition-colors focus-within:border-[var(--accent)] focus-within:bg-[var(--bg-surface)]">
                     <textarea
                       ref={chat.textareaRef}
                       value={chat.draft}

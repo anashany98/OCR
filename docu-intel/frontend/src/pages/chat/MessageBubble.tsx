@@ -75,7 +75,7 @@ export function MessageBubble({
           </Card>
           <span className="text-[10px] text-[var(--text-muted)]">{time}</span>
         </div>
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--ink)] text-[var(--bg-base)]">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white">
           <UserIcon className="h-4 w-4" />
         </div>
       </div>
