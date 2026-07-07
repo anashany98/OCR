@@ -47,12 +47,12 @@ export function Dot({ delay }: { delay: string }) {
 
 export function TypingIndicator() {
   return (
-    <div className="flex items-start gap-3">
-      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent-light)] text-[var(--accent)]">
-        <Bot className="h-4 w-4" />
+    <div className="flex items-start gap-2">
+      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--bg-surface-2)] text-[var(--text-muted)]">
+        <Bot className="h-3.5 w-3.5" />
       </div>
-      <div className="rounded-2xl rounded-tl-sm border border-[var(--border)] bg-[var(--bg-surface-2)]/60 px-4 py-3">
-        <div className="flex items-center gap-1.5">
+      <div className="rounded-xl rounded-tl-sm border border-[var(--border)] bg-[var(--bg-surface-2)]/50 px-3.5 py-2.5">
+        <div className="flex items-center gap-1">
           <Dot delay="0ms" />
           <Dot delay="120ms" />
           <Dot delay="240ms" />
@@ -68,7 +68,7 @@ export function TypingIndicatorInline() {
       <Dot delay="0ms" />
       <Dot delay="120ms" />
       <Dot delay="240ms" />
-      <span className="ml-1 text-[12px] text-[var(--text-muted)]">pensando…</span>
+      <span className="ml-1 text-[11px] text-[var(--text-muted)]">pensando...</span>
     </div>
   )
 }
@@ -78,30 +78,27 @@ export function TypingIndicatorInline() {
 // ---------------------------------------------------------------------------
 export function WelcomeCard({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <div className="flex flex-col items-center gap-5 rounded-2xl border border-dashed border-[var(--border-2)] bg-[var(--bg-surface-2)]/30 px-6 py-8 text-center">
-      <div className="flex h-32 w-40 items-center justify-center text-[var(--accent)]">
-        <EmptyChatIllustration />
+    <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-[var(--border-2)] bg-[var(--bg-surface-2)]/30 px-6 py-8 text-center">
+      <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--accent-light)] text-[var(--accent)]">
+        <Bot className="h-10 w-10" />
       </div>
-      <div className="space-y-1.5">
-        <h2 className="font-display text-[22px] font-medium tracking-tight text-[var(--text-primary)]">
+      <div className="space-y-1">
+        <h2 className="text-[18px] font-semibold text-[var(--text-primary)]">
           Hola, soy tu asistente documental
         </h2>
-        <p className="mx-auto max-w-lg text-[13px] text-[var(--text-muted)]">
-          Preguntame lo que quieras sobre los documentos del proyecto. Te respondo en lenguaje
-          natural, entiendo PDFs, emails, planos e imagenes, y cito siempre la fuente para que
-          puedas comprobarlo.
+        <p className="mx-auto max-w-md text-[12px] text-[var(--text-muted)]">
+          Pregúntame sobre tus documentos. Respondo en lenguaje natural, entiendo PDFs, emails, planos e imágenes, y cito siempre la fuente.
         </p>
       </div>
-      <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2">
+      <div className="grid w-full max-w-lg gap-1.5 sm:grid-cols-2">
         {SUGGESTED_PROMPTS.map((p) => (
           <button
             key={p}
             type="button"
             onClick={() => onPick(p)}
-            className="group flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+            className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] transition-all hover:border-[var(--accent)]/30 hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)]"
           >
-            <MessageCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--accent)]" />
-            <span className="leading-snug">{p}</span>
+            {p}
           </button>
         ))}
       </div>

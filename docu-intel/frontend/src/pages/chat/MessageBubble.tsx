@@ -1,38 +1,15 @@
 import { useState } from "react"
-import {
-  AlertTriangle,
-  Bot,
-  Copy,
-  FileSpreadsheet,
-  RefreshCw,
-  ThumbsDown,
-  User as UserIcon,
-} from "lucide-react"
+import { AlertTriangle, Bot, Copy, FileSpreadsheet, RefreshCw, ThumbsDown, User as UserIcon } from "lucide-react"
 
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
-import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import type { AIAnswer } from "@/types/api"
 
-import {
-  ActionButton,
-  DocumentPreview,
-  FollowupChips,
-  ResolvedDocumentCard,
-  SourceChip,
-  TypingIndicatorInline,
-} from "./components"
+import { ActionButton, FollowupChips, ResolvedDocumentCard, TypingIndicatorInline } from "./components"
 import { renderAssistantContent } from "./renderAssistantContent"
+import { SourceCard } from "./SourceCard"
 import type { ChatMessage } from "./useChat"
 
-// ---------------------------------------------------------------------------
-// MessageBubble
-// ---------------------------------------------------------------------------
-// Renders one message in the conversation. User messages are right-aligned
-// bubbles; assistant messages are left-aligned and (when a full answer is
-// available) show the resolved document card, the sources, the rendered
-// markdown body, the confidence badge and the action row.
-// ---------------------------------------------------------------------------
 export function MessageBubble({
   message,
   isIncorrect,
@@ -59,7 +36,7 @@ export function MessageBubble({
   const resolved = message.answer?.resolved_document
   const [showAllSources, setShowAllSources] = useState(false)
   const [showFullAnswer, setShowFullAnswer] = useState(false)
-  const VISIBLE_SOURCES = 6
+  const VISIBLE_SOURCES = 3
   const visibleSources = showAllSources ? sources : sources.slice(0, VISIBLE_SOURCES)
   const hasMoreSources = sources.length > VISIBLE_SOURCES
 
@@ -87,16 +64,10 @@ export function MessageBubble({
       <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--bg-surface-2)] text-[var(--text-muted)]">
         <Bot className="h-3.5 w-3.5" />
       </div>
-      <div className="flex max-w-[85%] flex-col gap-1.5 sm:max-w-[75%]">
+      <div className="flex max-w-[85%] flex-col gap-2 sm:max-w-[75%]">
         {resolved && <ResolvedDocumentCard resolved={resolved} />}
 
-        {message.answer?.id && resolved?.document && (
-          <DocumentPreview
-            documentId={resolved.document.id}
-            filename={resolved.document.filename}
-          />
-        )}
-
+        {/* Main answer bubble */}
         <div
           className={cn(
             "rounded-xl rounded-tl-sm border border-[var(--border)] bg-[var(--bg-surface-2)]/50 px-3.5 py-2.5",
@@ -106,19 +77,18 @@ export function MessageBubble({
           {message.pending && message.content === "" ? (
             <TypingIndicatorInline />
           ) : message.pending ? (
-            <div className="text-[14.5px] leading-relaxed text-[var(--text-primary)]">
-              {message.content || <span className="text-[var(--text-muted)]">…</span>}
+            <div className="text-[13px] leading-relaxed text-[var(--text-primary)]">
+              {message.content}
+              <span className="inline-block h-4 w-0.5 animate-pulse bg-[var(--accent)] ml-0.5 align-text-bottom" />
             </div>
           ) : (
             <>
-              {renderAssistantContent(
-                showFullAnswer ? message.content : truncateAnswer(message.content),
-              )}
+              {renderAssistantContent(showFullAnswer ? message.content : truncateAnswer(message.content))}
               {message.content.length > 600 && (
                 <button
                   type="button"
                   onClick={() => setShowFullAnswer((v) => !v)}
-                  className="mt-2 text-[11.5px] font-medium text-[var(--accent)] hover:underline"
+                  className="mt-2 text-[11px] font-medium text-[var(--accent)] hover:underline"
                 >
                   {showFullAnswer ? "Ver menos" : "Ver respuesta completa"}
                 </button>
@@ -126,80 +96,87 @@ export function MessageBubble({
             </>
           )}
 
+          {/* Meta badges */}
           {hasAnswer && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {!sufficient && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--warning)]/40 bg-[var(--warning-faint)] px-2 py-0.5 text-[11px] text-[var(--warning)]">
-                  <AlertTriangle className="h-3 w-3" />
-                  Sin fuentes
+                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--warning)]/40 bg-[var(--warning-faint)] px-2 py-0.5 text-[10px] text-[var(--warning)]">
+                  <AlertTriangle className="h-2.5 w-2.5" /> Sin fuentes
                 </span>
               )}
-              {message.answer?.confidence != null && (
-                <ConfidenceBadge value={message.answer.confidence} />
-              )}
+              {message.answer?.confidence != null && <ConfidenceBadge value={message.answer.confidence} />}
               {message.answer?.model_name && (
-                <span className="rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+                <span className="rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[9px] text-[var(--text-muted)]">
                   {message.answer.model_name}
                 </span>
               )}
             </div>
           )}
+        </div>
 
-          {sources.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {visibleSources.map((s, i) => (
-                <SourceChip key={i} source={s} />
-              ))}
+        {/* Source cards with preview */}
+        {sources.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium text-[var(--text-muted)]">
+                {sources.length} {sources.length === 1 ? "fuente" : "fuentes"}
+              </span>
               {hasMoreSources && (
                 <button
                   type="button"
                   onClick={() => setShowAllSources((v) => !v)}
-                  className="rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  className="text-[10px] text-[var(--accent)] hover:underline"
                 >
-                  {showAllSources ? "Ver menos" : `+${sources.length - VISIBLE_SOURCES} más`}
+                  {showAllSources ? "Ver menos" : `Ver todas (+${sources.length - VISIBLE_SOURCES})`}
                 </button>
               )}
             </div>
-          )}
-        </div>
-
-        {hasAnswer && !message.pending && (
-          <FollowupChips followups={message.answer!.followups ?? []} onPick={onPickFollowup} />
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {visibleSources.map((s, i) => (
+                <SourceCard
+                  key={i}
+                  documentId={s.document_id ?? 0}
+                  filename={s.excerpt?.slice(0, 60) ?? `Documento #${s.document_id}`}
+                  pageNumber={s.page_number ?? undefined}
+                  confidence={s.relevance_score ?? undefined}
+                  excerpt={s.excerpt ?? undefined}
+                />
+              ))}
+            </div>
+          </div>
         )}
 
+        {/* Follow-ups */}
+        {hasAnswer && !message.pending && message.answer?.followups && message.answer.followups.length > 0 && (
+          <FollowupChips followups={message.answer.followups} onPick={onPickFollowup} />
+        )}
+
+        {/* Action buttons */}
         {hasAnswer && !message.pending && (
-          <div className="flex items-center gap-1 text-[var(--text-muted)]">
-            <ActionButton onClick={onCopy} title="Copiar respuesta" ariaLabel="Copiar respuesta">
-              <Copy className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-0.5">
+            <ActionButton onClick={onCopy} title="Copiar" ariaLabel="Copiar respuesta">
+              <Copy className="h-3 w-3" />
             </ActionButton>
-            <ActionButton onClick={onExport} title="Exportar a CSV" ariaLabel="Exportar a CSV">
-              <FileSpreadsheet className="h-3.5 w-3.5" />
+            <ActionButton onClick={onExport} title="Exportar CSV" ariaLabel="Exportar a CSV">
+              <FileSpreadsheet className="h-3 w-3" />
             </ActionButton>
-            <ActionButton
-              onClick={onTask}
-              title="Crear tarea de revisión"
-              ariaLabel="Crear tarea de revisión"
-            >
-              <AlertTriangle className="h-3.5 w-3.5" />
+            <ActionButton onClick={onTask} title="Crear tarea" ariaLabel="Crear tarea de revisión">
+              <AlertTriangle className="h-3 w-3" />
             </ActionButton>
-            <ActionButton
-              onClick={onRegenerate}
-              title="Regenerar respuesta"
-              ariaLabel="Regenerar respuesta"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
+            <ActionButton onClick={onRegenerate} title="Regenerar" ariaLabel="Regenerar respuesta">
+              <RefreshCw className="h-3 w-3" />
             </ActionButton>
             <ActionButton
               onClick={onMarkIncorrect}
-              title="Marcar como incorrecta"
+              title="Incorrecta"
               ariaLabel="Marcar como incorrecta"
               hoverColor={isIncorrect ? "warning" : "primary"}
             >
-              <ThumbsDown className={cn("h-3.5 w-3.5", isIncorrect && "text-[var(--warning)]")} />
+              <ThumbsDown className={cn("h-3 w-3", isIncorrect && "text-[var(--warning)]")} />
             </ActionButton>
           </div>
         )}
-        <span className="text-[10px] text-[var(--text-muted)]">{time}</span>
+        <span className="text-[9px] text-[var(--text-muted)]">{time}</span>
       </div>
     </div>
   )
@@ -207,17 +184,10 @@ export function MessageBubble({
 
 function truncateAnswer(text: string): string {
   if (text.length <= 600) return text
-  // Cut at the last paragraph or sentence boundary under 600 chars to
-  // avoid slicing mid-word. The "Ver respuesta completa" button
-  // toggles ``showFullAnswer`` to render the whole thing.
   const slice = text.slice(0, 600)
   const lastBreak = Math.max(slice.lastIndexOf("\n\n"), slice.lastIndexOf(". "))
-  if (lastBreak > 200) {
-    return slice.slice(0, lastBreak + 1)
-  }
+  if (lastBreak > 200) return slice.slice(0, lastBreak + 1)
   return slice
 }
 
-// Export the unused AIAnswer type so it isn't tree-shaken if a
-// downstream tool inspects the module.
 export type { AIAnswer }
