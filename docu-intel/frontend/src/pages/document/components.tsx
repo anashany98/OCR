@@ -215,44 +215,48 @@ export function UnsupportedPreviewCard({
   }
 }) {
   const kind = previewKind(document.extension)
-  const Icon = kind === "excel" ? FileSpreadsheet : kind === "email" ? Mail : FileText
+  const Icon = kind === "excel" ? FileSpreadsheet : kind === "email" ? Mail : kind === "page" ? FileText : FileText
+  const ext = (document.extension ?? "").toLowerCase()
+
+  const tips: Record<string, string> = {
+    ".pdf": "El PDF fue procesado por OCR. Las páginas se extraen como imágenes durante el procesamiento. Si no hay imagen, el procesamiento puede no haber terminado.",
+    ".docx": "El documento Word fue procesado por OCR. El texto extraído está en la pestaña OCR.",
+    ".doc": "El documento Word (.doc) fue procesado. El texto extraído está en la pestaña OCR.",
+    ".msg": "El email Outlook fue procesado. El contenido (asunto, remitente, cuerpo) está en las entidades y el texto OCR.",
+    ".eml": "El email fue procesado. El contenido está en las entidades y el texto OCR.",
+    ".dwg": "El plano CAD fue procesado. Las medidas y entidades están en la pestaña Entidades.",
+    ".txt": "El texto plano fue procesado. Todo el contenido está en la pestaña OCR.",
+  }
+
   return (
-    <div className="flex flex-col items-center gap-4 px-6 py-10">
-      <div className="flex h-14 w-14 items-center justify-center rounded-md border bg-[var(--bg-surface-2)] text-slate-500">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[var(--bg-surface-2)] px-6 py-10">
+      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--bg-surface-3)] text-[var(--text-muted)]">
         <Icon className="h-7 w-7" />
       </div>
       <div className="text-center">
         <p className="text-[14px] font-semibold text-[var(--text-primary)]">
           {typeLabel(document.extension)}
         </p>
-        <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-          No hay vista previa disponible para este tipo de archivo. Descárgalo para abrirlo en su
-          aplicación nativa.
+        <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-[var(--text-muted)]">
+          {tips[ext] ?? "No hay vista previa visual. El contenido fue procesado por OCR — revisa la pestaña OCR para ver el texto extraído."}
         </p>
       </div>
-      <dl className="grid w-full max-w-sm grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border bg-[var(--bg-surface-2)] px-4 py-3 text-[12px]">
+      <dl className="grid w-full max-w-sm grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border bg-[var(--bg-surface)] px-4 py-3 text-[12px]">
         <dt className="text-[var(--text-muted)]">Tipo</dt>
         <dd className="text-right font-mono text-[11px]">{document.extension ?? "—"}</dd>
         <dt className="text-[var(--text-muted)]">Tamaño</dt>
         <dd className="text-right">{formatBytes(document.file_size)}</dd>
-        {document.mime_type ? (
+        {document.mime_type && (
           <>
             <dt className="text-[var(--text-muted)]">MIME</dt>
-            <dd className="truncate text-right font-mono text-[11px]" title={document.mime_type}>
-              {document.mime_type}
-            </dd>
+            <dd className="truncate text-right font-mono text-[11px]" title={document.mime_type}>{document.mime_type}</dd>
           </>
-        ) : null}
+        )}
         <dt className="text-[var(--text-muted)]">SHA256</dt>
-        <dd className="truncate text-right font-mono text-[11px]" title={document.file_hash}>
-          {document.file_hash.slice(0, 16)}…
-        </dd>
+        <dd className="truncate text-right font-mono text-[11px]" title={document.file_hash}>{document.file_hash.slice(0, 16)}…</dd>
       </dl>
-      <Button asChild size="sm" variant="default">
-        <a href={downloadUrl(document.id)}>
-          <Download className="mr-1 h-3.5 w-3.5" />
-          Descargar
-        </a>
+      <Button asChild size="sm" variant="default" className="rounded-lg">
+        <a href={downloadUrl(document.id)}><Download className="mr-1 h-3.5 w-3.5" /> Descargar</a>
       </Button>
     </div>
   )

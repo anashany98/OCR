@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 
 import { pageImageUrl, thumbnailUrl, downloadUrl } from "@/api/client"
-import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
+import { AutoBreadcrumbs } from "@/components/layout/AutoBreadcrumbs"
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { DocumentProgressBar, StatusBadge } from "@/components/layout/StatusBadge"
 import { EmptyState } from "@/components/layout/EmptyState"
@@ -27,7 +27,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, formatBytes, formatDate } from "@/lib/utils"
 import type { DocumentPage } from "@/types/api"
@@ -54,17 +53,14 @@ export function DocumentDetailPage() {
 
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col gap-3">
-      <Breadcrumbs items={[{ label: "Documentos", to: "/documents" }, { label: d.document?.original_filename ?? "…" }]} />
+      <AutoBreadcrumbs />
       <DocumentHeader d={d} />
 
-      {/* Split pane: viewer left | tabbed panel right */}
       <div className="flex min-h-0 flex-1 gap-3 lg:flex-row">
-        {/* Left: Viewer */}
         <div className="flex min-w-0 flex-1 flex-col lg:flex-[2]">
           <ViewerCard d={d} />
         </div>
 
-        {/* Right: Tabbed panel */}
         <div className="flex min-w-0 flex-1 flex-col lg:flex-[1]">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
             <TabsList className="w-full justify-start rounded-lg bg-[var(--bg-surface-2)] px-1">
@@ -75,24 +71,16 @@ export function DocumentDetailPage() {
             </TabsList>
 
             <TabsContent value="info" className="mt-2 min-h-0 flex-1 overflow-hidden">
-              <ScrollArea className="h-full">
-                <InfoPanel d={d} />
-              </ScrollArea>
+              <ScrollArea className="h-full"><InfoPanel d={d} /></ScrollArea>
             </TabsContent>
             <TabsContent value="ocr" className="mt-2 min-h-0 flex-1 overflow-hidden">
-              <ScrollArea className="h-full">
-                <OcrPanel d={d} />
-              </ScrollArea>
+              <ScrollArea className="h-full"><OcrPanel d={d} /></ScrollArea>
             </TabsContent>
             <TabsContent value="entities" className="mt-2 min-h-0 flex-1 overflow-hidden">
-              <ScrollArea className="h-full">
-                <EntitiesPanel d={d} />
-              </ScrollArea>
+              <ScrollArea className="h-full"><EntitiesPanel d={d} /></ScrollArea>
             </TabsContent>
             <TabsContent value="timeline" className="mt-2 min-h-0 flex-1 overflow-hidden">
-              <ScrollArea className="h-full">
-                <TimelinePanel d={d} />
-              </ScrollArea>
+              <ScrollArea className="h-full"><TimelinePanel d={d} /></ScrollArea>
             </TabsContent>
           </Tabs>
         </div>
@@ -101,9 +89,6 @@ export function DocumentDetailPage() {
   )
 }
 
-// ---------------------------------------------------------------------------
-// DocumentHeader — compact top bar
-// ---------------------------------------------------------------------------
 function DocumentHeader({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const doc = d.document
   return (
@@ -150,13 +135,21 @@ function ActionToolbar({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
 }
 
 // ---------------------------------------------------------------------------
-// ViewerCard — full-height image viewer
+// ViewerCard — with error handling for failed images
 // ---------------------------------------------------------------------------
 function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const doc = d.document
   const page = d.selectedPage
   const isExcel = [".xlsx", ".xls", ".xlsm"].includes(doc?.extension ?? "")
+  const isPdf = doc?.extension?.toLowerCase() === ".pdf"
+  const isMsg = doc?.extension?.toLowerCase() === ".msg"
   const excelText = isExcel && d.pages.length > 0 ? d.pages.map((p) => p.text || "").join("\n\n") : ""
+  const [imgError, setImgError] = useState(false)
+  const [thumbError, setThumbError] = useState(false)
+
+  // Reset errors when page changes
+  const pageKey = page?.page_number ?? "none"
+  useState(() => { setImgError(false); setThumbError(false) })
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -165,13 +158,25 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
         <div className="flex min-h-0 flex-1 flex-col">
           {isExcel && excelText ? (
             <div className="flex-1 overflow-auto"><ExcelViewer text={excelText} /></div>
-          ) : page?.page_number && doc?.id ? (
+          ) : isPdf && page?.page_number && doc?.id && !imgError ? (
             <div className="flex flex-1 items-center justify-center overflow-auto bg-[var(--bg-surface-2)]">
-              <img className="max-h-full max-w-full object-contain" src={pageImageUrl(doc.id, page.page_number)} alt={`Página ${page.page_number}`} />
+              <img
+                className="max-h-full max-w-full object-contain"
+                src={pageImageUrl(doc.id, page.page_number)}
+                alt={`Página ${page.page_number}`}
+                onError={() => setImgError(true)}
+              />
             </div>
-          ) : doc && d.hasThumbnailExt ? (
+          ) : isPdf && imgError ? (
+            <FallbackPreview doc={doc} message="No se pudo generar la imagen de esta página. El PDF puede estar dañado o el procesamiento no ha terminado." />
+          ) : doc && !thumbError && (doc.extension?.toLowerCase() === ".png" || doc.extension?.toLowerCase() === ".jpg" || doc.extension?.toLowerCase() === ".jpeg" || doc.extension?.toLowerCase() === ".webp") ? (
             <div className="flex flex-1 items-center justify-center bg-[var(--bg-surface-2)] p-4">
-              <img className="max-h-full max-w-full rounded object-contain shadow-sm" src={thumbnailUrl(doc.id)} alt="Vista previa" />
+              <img
+                className="max-h-full max-w-full rounded object-contain shadow-sm"
+                src={thumbnailUrl(doc.id)}
+                alt="Vista previa"
+                onError={() => setThumbError(true)}
+              />
             </div>
           ) : doc ? (
             <UnsupportedPreviewCard document={doc} />
@@ -182,7 +187,7 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
         {d.pages.length > 1 && !isExcel && (
           <div className="flex flex-wrap gap-1 border-t border-[var(--border)] bg-[var(--bg-surface-2)] px-3 py-1.5">
             {d.pages.map((p) => (
-              <Button key={p.id} type="button" size="sm" variant={p.page_number === page?.page_number ? "default" : "ghost"} className="h-6 px-2 text-[10px]" onClick={() => d.setSelectedPageNumber(p.page_number)}>
+              <Button key={p.id} type="button" size="sm" variant={p.page_number === page?.page_number ? "default" : "ghost"} className="h-6 px-2 text-[10px]" onClick={() => { d.setSelectedPageNumber(p.page_number); setImgError(false) }}>
                 P{p.page_number}
               </Button>
             ))}
@@ -193,8 +198,21 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   )
 }
 
+function FallbackPreview({ doc, message }: { doc: { original_filename: string; extension?: string | null; file_size: number }; message: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-[var(--bg-surface-2)] p-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--bg-surface-3)] text-[var(--text-muted)]">
+        <FileText className="h-6 w-6" />
+      </div>
+      <p className="text-[13px] font-medium text-[var(--text-primary)]">{doc.original_filename}</p>
+      <p className="max-w-xs text-[11px] text-[var(--text-muted)]">{message}</p>
+      <p className="text-[10px] text-[var(--text-muted)]">{doc.extension} · {formatBytes(doc.file_size)}</p>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
-// Info Panel — metadata + entities
+// Info Panel
 // ---------------------------------------------------------------------------
 function InfoPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const doc = d.document
@@ -217,9 +235,7 @@ function InfoPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
       {d.keyEnts.length > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-[13px]">Entidades clave</CardTitle></CardHeader>
-          <CardContent className="grid gap-1.5 p-3 pt-0 sm:grid-cols-2">
-            {d.keyEnts.map((e) => <EntityCard key={e.id} entity={e} />)}
-          </CardContent>
+          <CardContent className="grid gap-1.5 p-3 pt-0 sm:grid-cols-2">{d.keyEnts.map((e) => <EntityCard key={e.id} entity={e} />)}</CardContent>
         </Card>
       )}
       {d.otherEnts.length > 0 && (
@@ -256,7 +272,7 @@ function OcrPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
         {d.visiblePages.map((p) => (
           <section key={p.id} className="rounded-md border bg-[var(--bg-surface)] p-2.5">
             <div className="mb-1.5 flex justify-between text-[10px] text-[var(--text-muted)]">
-              <button className="font-medium text-[var(--accent)] hover:underline" type="button" onClick={() => d.setSelectedPageNumber(p.page_number)}>Página {p.page_number}</button>
+              <button className="font-medium text-[var(--accent)] hover:underline" type="button" onClick={() => { d.setSelectedPageNumber(p.page_number); }}>Página {p.page_number}</button>
               <span>OCR {p.ocr_confidence != null ? `${Math.round(p.ocr_confidence * 100)}%` : "—"}</span>
             </div>
             <pre className="whitespace-pre-wrap font-sans text-[12px] leading-5"><HighlightedText text={page?.text || "Sin texto extraído."} query={d.textQuery} /></pre>
