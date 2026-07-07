@@ -98,7 +98,7 @@ export function MetricTile({
 
       <div
         className={cn(
-          "mt-3 font-display text-[32px] font-medium leading-none tracking-tight tabular-nums",
+          "mt-3 text-[32px] font-semibold leading-none tracking-tight tabular-nums",
           cfg.value,
         )}
       >

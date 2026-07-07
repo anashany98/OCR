@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils"
 type PriorityLevel = "critical" | "high" | "normal" | "low"
 
 const priorityConfig: Record<PriorityLevel, { color: string; textColor: string; icon: string }> = {
-  critical: { color: "bg-[var(--rose-light)]", textColor: "text-[#9F1239]", icon: "●" },
-  high: { color: "bg-[var(--amber-light)]", textColor: "text-[#92400E]", icon: "▲" },
-  normal: { color: "bg-[var(--sky-light)]", textColor: "text-[#075985]", icon: "■" },
+  critical: { color: "bg-[var(--danger-light)]", textColor: "text-[var(--text-on-danger)]", icon: "●" },
+  high: { color: "bg-[var(--warning-light)]", textColor: "text-[var(--text-on-warning)]", icon: "▲" },
+  normal: { color: "bg-[var(--info-light)]", textColor: "text-[var(--text-on-info)]", icon: "■" },
   low: { color: "bg-[var(--bg-surface-2)]", textColor: "text-[var(--text-muted)]", icon: "▼" },
 }
 

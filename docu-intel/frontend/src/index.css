@@ -112,6 +112,9 @@
   --status-needs-review: var(--info);
   --status-duplicate: var(--text-muted);
   --status-processing: #8b5cf6;
+  --status-processing-light: #f5f3ff;
+  --status-processing-faint: #f5f3ff;
+  --text-on-processing: #6d28d9;
 
   /* Semantic text on light surfaces */
   --text-on-success: #166534;
@@ -211,6 +214,12 @@
   --text-on-danger: #fecaca;
   --text-on-info: #bfdbfe;
   --text-on-neutral: var(--text-secondary);
+
+  /* Processing status */
+  --status-processing: #a78bfa;
+  --status-processing-light: #2e1065;
+  --status-processing-faint: #2e1065;
+  --text-on-processing: #c4b5fd;
 
   /* Shadows */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
