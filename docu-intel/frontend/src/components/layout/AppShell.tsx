@@ -93,18 +93,18 @@ export function AppShell() {
         {/* Desktop sidebar */}
         <aside
           className={cn(
-            "hidden flex-shrink-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] transition-all duration-base ease-out lg:flex",
+            "hidden flex-shrink-0 flex-col border-r border-[var(--sidebar-border)] text-[var(--sidebar-text)] transition-all duration-base ease-out lg:flex",
           )}
-          style={{ width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH }}
+          style={{ width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH, background: "linear-gradient(180deg, var(--sidebar-bg) 0%, #0a0f1e 100%)" }}
         >
           {/* Sidebar header */}
-          <div className="flex h-12 items-center gap-2.5 border-b border-[var(--sidebar-border)] px-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-sm">
-              <FileText className="h-4 w-4" aria-hidden="true" />
+          <div className="flex h-14 items-center gap-3 border-b border-[var(--sidebar-border)] px-4">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/20">
+              <FileText className="h-4.5 w-4.5" aria-hidden="true" />
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-semibold leading-tight tracking-tight text-[var(--sidebar-text)]">
+                <p className="text-[15px] font-bold leading-tight tracking-tight text-white">
                   Docu-Intel
                 </p>
                 <p className="truncate text-[10px] uppercase tracking-[0.12em] text-[var(--sidebar-muted)]">
@@ -144,8 +144,8 @@ export function AppShell() {
         {/* Main area */}
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Topbar */}
-          <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-surface)]/95 backdrop-blur-sm">
-            <div className="flex h-12 items-center gap-3 px-4">
+          <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-surface)] shadow-xs">
+            <div className="flex h-14 items-center gap-3 px-5">
               {/* Mobile menu */}
               <button
                 onClick={() => setDrawerOpen(true)}
@@ -226,7 +226,7 @@ export function AppShell() {
                     className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] transition-colors hover:bg-[var(--bg-surface-2)]"
                     aria-label="Menú de usuario"
                   >
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent-light)] text-[11px] font-semibold text-[var(--accent)]">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-[12px] font-bold text-white shadow-sm">
                       {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
                     </div>
                     <span className="hidden text-[var(--text-secondary)] sm:inline">
