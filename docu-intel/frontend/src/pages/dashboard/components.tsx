@@ -55,25 +55,25 @@ export function DashboardHero({
     year: "numeric",
   })
   return (
-    <header className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-6 md:p-8">
+    <header className="rounded-xl border border-[var(--border)] p-6 md:p-8" style={{ background: "linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%)" }}>
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0 space-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--accent)]">{today}</p>
-          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-[var(--text-primary)] md:text-[32px]">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-white/60">{today}</p>
+          <h1 className="text-[28px] font-bold leading-tight text-white md:text-[34px]">
             {totalCount > 0 ? (
               <>{totalCount.toLocaleString("es-ES")} documentos</>
             ) : (
               "Tu centro de trabajo documental"
             )}
           </h1>
-          <p className="text-[13px] text-[var(--text-muted)]">
+          <p className="text-[13px] text-white/70">
             Vista general del procesamiento y las tareas que necesitan atención.
           </p>
         </div>
         <div className="flex items-end gap-8">
           <div className="text-right">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Procesados hoy</p>
-            <p className="text-[36px] font-semibold leading-none tabular-nums text-[var(--text-primary)]">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-white/50">Procesados hoy</p>
+            <p className="text-[42px] font-bold leading-none tabular-nums text-white">
               {isLoading ? "—" : processedCount.toLocaleString("es-ES")}
             </p>
           </div>

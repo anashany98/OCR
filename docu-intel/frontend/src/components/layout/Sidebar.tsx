@@ -47,13 +47,13 @@ export function SidebarNav({
     return location.pathname === path || location.pathname.startsWith(path + "/")
   }
 
-  const groupSpacing = "mb-5 last:mb-3"
+  const groupSpacing = "mb-4 last:mb-2"
 
   return (
-    <div className={cn("flex flex-col h-full", embedded ? "p-3" : "py-3")}>
+    <div className={cn("flex flex-col h-full", embedded ? "p-2" : "")}>
       {/* Recientes — only show when not collapsed */}
       {!collapsed && recentItems.length > 0 && (
-        <div className={cn("mb-4", !embedded && "border-b border-[var(--sidebar-border)]/50 pb-3")}>
+        <div className={cn("mb-3", !embedded && "border-b border-[var(--sidebar-border)]/50 pb-2")}>
           <SidebarSectionLabel>Recientes</SidebarSectionLabel>
           <ul className="space-y-0.5">
             {recentItems.map((item) => {
@@ -65,10 +65,10 @@ export function SidebarNav({
                     to={item.to}
                     onClick={() => onNavigate?.()}
                     className={cn(
-                      "group/item flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors duration-fast ease-out",
+                      "group/item flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] transition-colors",
                       active
                         ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
-                        : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/60 hover:text-[var(--sidebar-text)]",
+                        : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/40 hover:text-[var(--sidebar-text)]",
                     )}
                     title={item.label}
                   >
@@ -120,8 +120,7 @@ export function SidebarNav({
 // ---------------------------------------------------------------------------
 function SidebarSectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-1.5 flex items-center gap-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--sidebar-muted)]">
-      <span className="h-px w-2 bg-[var(--sidebar-muted)]/40" aria-hidden="true" />
+    <p className="mb-1 flex items-center gap-1.5 px-2.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--sidebar-muted)]">
       <span>{children}</span>
     </p>
   )
@@ -152,11 +151,11 @@ function SidebarItem({
         aria-current={active ? "page" : undefined}
         onClick={() => onNavigate?.()}
         className={cn(
-          "group/item relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium tracking-tight transition-all duration-fast ease-out",
+          "group/item relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors",
           collapsed && "justify-center px-1.5",
           active
             ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
-            : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/50 hover:text-[var(--sidebar-text)]",
+            : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/40 hover:text-[var(--sidebar-text)]",
         )}
         title={collapsed ? item.label : undefined}
       >
