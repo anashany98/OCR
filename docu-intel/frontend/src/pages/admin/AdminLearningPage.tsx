@@ -63,10 +63,10 @@ const statusLabels: Record<string, string> = {
 
 function riskLevel(confidence: number): { level: string; color: string; bg: string } {
   if (confidence >= 0.85)
-    return { level: "Bajo", color: "text-[#065F46]", bg: "bg-[var(--emerald-light)]" }
+    return { level: "Bajo", color: "text-[var(--text-on-success)]", bg: "bg-[var(--emerald-light)]" }
   if (confidence >= 0.7)
-    return { level: "Medio", color: "text-[#92400E]", bg: "bg-[var(--amber-light)]" }
-  return { level: "Alto", color: "text-[#9F1239]", bg: "bg-[var(--rose-light)]" }
+    return { level: "Medio", color: "text-[var(--text-on-warning)]", bg: "bg-[var(--amber-light)]" }
+  return { level: "Alto", color: "text-[var(--text-on-danger)]", bg: "bg-[var(--rose-light)]" }
 }
 
 function estimatedImpact(suggestion: ClassificationSuggestion): { docs: number; label: string } {
@@ -518,7 +518,7 @@ function LearningView({
         <CardContent className="flex items-start gap-3 py-4">
           <FlaskConical className="mt-0.5 h-4 w-4 text-[var(--amber)]" />
           <div>
-            <p className="text-[13px] font-semibold text-[#92400E]">Simulador de impacto</p>
+            <p className="text-[13px] font-semibold text-[var(--text-on-warning)]">Simulador de impacto</p>
             <p className="text-xs text-[var(--text-muted)] mt-1">
               Esta funcionalidad permitirá simular el impacto de aprobar una regla antes de
               aplicarla, mostrando cuántos documentos se verían afectados. Pendiente de implementar
@@ -634,7 +634,7 @@ function SuggestionDetailCard({
           <div className="flex items-start gap-2 rounded-md border border-[var(--sky-light)] bg-[var(--sky-light)]/10 p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 text-[var(--sky)]" />
             <div>
-              <p className="text-xs font-medium text-[#075985]">
+              <p className="text-xs font-medium text-[var(--text-on-info)]">
                 Documentos potencialmente afectados
               </p>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
@@ -715,10 +715,10 @@ function CountBadge({
   variant: "warning" | "success" | "danger" | "info" | "neutral"
 }) {
   const colors = {
-    warning: "border-[var(--amber-light)] bg-[var(--amber-light)]/30 text-[#92400E]",
-    success: "border-[var(--emerald-light)] bg-[var(--emerald-light)]/30 text-[#065F46]",
-    danger: "border-[var(--rose-light)] bg-[var(--rose-light)]/30 text-[#9F1239]",
-    info: "border-[var(--sky-light)] bg-[var(--sky-light)]/30 text-[#075985]",
+    warning: "border-[var(--amber-light)] bg-[var(--amber-light)]/30 text-[var(--text-on-warning)]",
+    success: "border-[var(--emerald-light)] bg-[var(--emerald-light)]/30 text-[var(--text-on-success)]",
+    danger: "border-[var(--rose-light)] bg-[var(--rose-light)]/30 text-[var(--text-on-danger)]",
+    info: "border-[var(--sky-light)] bg-[var(--sky-light)]/30 text-[var(--text-on-info)]",
     neutral: "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]",
   }
   return (

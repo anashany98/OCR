@@ -107,8 +107,8 @@ export function PlansPage() {
       <div className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--amber-light)] bg-[var(--amber-light)]/40 p-3">
         <FlaskConical className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--amber)]" />
         <div>
-          <p className="text-[13px] font-semibold text-[#92400E]">Funcionalidad en fase Beta</p>
-          <p className="mt-0.5 text-[12px] text-[#92400E]/80">
+          <p className="text-[13px] font-semibold text-[var(--text-on-warning)]">Funcionalidad en fase Beta</p>
+          <p className="mt-0.5 text-[12px] text-[var(--text-on-warning)]/80">
             La extracción de planos está en desarrollo. Los datos de escala, habitaciones y cotas
             pueden no ser precisos. Verifica siempre las mediciones manualmente antes de usarlas en
             producción.

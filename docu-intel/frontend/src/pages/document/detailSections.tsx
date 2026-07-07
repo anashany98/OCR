@@ -83,7 +83,7 @@ export function DocumentHeader({ d }: { d: DocumentDetail }) {
                 <ConfidenceBadge value={document?.confidence} />
                 {document?.error_message && (
                   <span
-                    className="inline-flex items-center gap-1 rounded bg-[var(--rose-light)] px-2 py-0.5 text-[11px] text-[#9F1239]"
+                    className="inline-flex items-center gap-1 rounded bg-[var(--rose-light)] px-2 py-0.5 text-[11px] text-[var(--text-on-danger)]"
                     title={document.error_message}
                   >
                     <ShieldAlert className="h-3 w-3" />
