@@ -1,4 +1,4 @@
-﻿import { Component, type ReactNode } from "react"
+import { Component, type ReactNode } from "react"
 import { AlertCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -54,7 +54,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <summary className="cursor-pointer text-xs text-[var(--text-muted)]">
                 Detalles del error
               </summary>
-              <pre className="mt-2 rounded bg-slate-950 p-3 text-xs text-slate-300 whitespace-pre-wrap">
+              <pre className="mt-2 rounded bg-[var(--bg-surface)] p-3 text-xs text-[var(--text-secondary)] whitespace-pre-wrap">
                 {this.state.error.message}
               </pre>
             </details>

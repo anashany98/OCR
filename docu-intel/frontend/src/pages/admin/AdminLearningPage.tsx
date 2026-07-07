@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
+import { toast } from "sonner"
 import {
   AlertTriangle,
   ArrowRight,
@@ -489,9 +490,7 @@ function LearningView({
                           variant="ghost"
                           className="h-7 text-xs text-[var(--text-muted)]"
                           onClick={() =>
-                            window.alert(
-                              "Funcionalidad de rollback pendiente de implementar en backend.",
-                            )
+                            toast.info("Funcionalidad próximamente")
                           }
                         >
                           <RotateCcw className="mr-1 h-3 w-3" /> Rollback
@@ -677,7 +676,7 @@ function SuggestionDetailCard({
             size="sm"
             variant="ghost"
             className="h-8 text-xs gap-1 text-[var(--amber)]"
-            onClick={() => window.alert("Editor de reglas pendiente de implementar.")}
+            onClick={() => toast.info("Funcionalidad próximamente")}
           >
             <Edit3 className="h-3.5 w-3.5" /> Editar regla
           </Button>
@@ -686,7 +685,7 @@ function SuggestionDetailCard({
             variant="ghost"
             className="h-8 text-xs gap-1 text-[var(--sky)]"
             onClick={() =>
-              window.alert("Simulador de impacto pendiente de implementar en backend.")
+              toast.info("Funcionalidad próximamente")
             }
           >
             <FlaskConical className="h-3.5 w-3.5" /> Simular impacto

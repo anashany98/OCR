@@ -155,7 +155,7 @@ export function LearningHealthCard() {
 
 function Metric({ label, value }: { label: string; value: number | undefined }) {
   return (
-    <div className="rounded border border-slate-200 bg-slate-50 p-2">
+    <div className="rounded border border-[var(--border)] bg-[var(--bg-surface-2)] p-2">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold tabular-nums">{value ?? 0}</div>
     </div>
