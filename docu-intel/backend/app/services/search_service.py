@@ -44,6 +44,7 @@ class SearchResult:
     score: float
     excerpt: str
     ocr_confidence: float | None
+    chunk_id: int | None = None
     source_type: str = "text"
     # Relative path the document was uploaded from (e.g.
     # "presupuestos/245745/foo.pdf"). Helps the IA agent disambiguate
@@ -245,10 +246,12 @@ def _use_multi_query_strategy() -> bool:
     return settings.search_query_transform_strategy in ("multi_query", "auto")
 
 
-def _result_key(result: SearchResult) -> tuple[int, int | None, int | None]:
-    """Stable identity for a search hit: same (doc, page, block) means
-    the same chunk, regardless of score or source label."""
-    return (result.document_id, result.page_number, result.block_id)
+def _result_key(result: SearchResult) -> tuple[int, int | None, int | None, int | None]:
+    """Stable identity for a search hit: same (doc, page, block, chunk) means
+    the same chunk, regardless of score or source label. `chunk_id` is the
+    discriminator for semantic/BM25 hits whose `block_id` is None (otherwise
+    two hits on the same page would collapse into one)."""
+    return (result.document_id, result.page_number, result.block_id, result.chunk_id)
 
 
 def _merge_reformulation_results(
@@ -318,7 +321,7 @@ def _run_semantic_search(
                 select(Document.id, Document.source_path).where(Document.id.in_(doc_ids))
             ).all()
             source_paths = {row[0]: row[1] for row in doc_rows}
-        return [
+        chunk_results = [
             SearchResult(
                 document_id=match.document_id,
                 original_filename=match.original_filename,
@@ -326,6 +329,7 @@ def _run_semantic_search(
                 status=match.status,
                 page_number=match.page_number,
                 block_id=None,
+                chunk_id=match.chunk_id,
                 score=match.score,
                 excerpt=_excerpt(match.excerpt, normalized_query),
                 ocr_confidence=None,
@@ -334,6 +338,16 @@ def _run_semantic_search(
             )
             for match in matches
         ]
+        if settings.search_use_document_embedding:
+            doc_results = _document_level_results(
+                db,
+                query_embedding=query_embedding,
+                normalized_query=normalized_query,
+                limit=limit,
+                filters=filters,
+            )
+            return _rrf_fuse([chunk_results, doc_results], limit=limit, k=settings.search_rrf_k)
+        return chunk_results
 
     # SQLite / other: Python cosine similarity
     stmt = (
@@ -372,7 +386,17 @@ def _run_semantic_search(
                 full_text=chunk.chunk_text,
             )
         )
-    return sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+    chunk_results = sorted(results, key=lambda item: item.score, reverse=True)[:limit]
+    if settings.search_use_document_embedding:
+        doc_results = _document_level_results(
+            db,
+            query_embedding=query_embedding,
+            normalized_query=normalized_query,
+            limit=limit,
+            filters=filters,
+        )
+        return _rrf_fuse([chunk_results, doc_results], limit=limit, k=settings.search_rrf_k)
+    return chunk_results
 
 
 def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -> list[SearchResult]:
@@ -392,7 +416,9 @@ def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -
 
             results = rerank_sync(query.strip(), results, top_k=limit)
         except Exception as exc:  # noqa: BLE001 - reranker is best-effort
-            logger.debug("semantic rerank failed (best-effort): %s", exc)
+            logger.warning("semantic rerank failed: %s", exc)
+            from app.services.metrics.search import track_rerank_failure
+            track_rerank_failure(str(exc)[:80])
 
     # MMR diversity pass, same policy as the hybrid path.
     if settings.search_use_mmr and len(results) > limit:
@@ -576,9 +602,14 @@ def search_hybrid(
 
         # Apply cross-encoder reranker for better precision
         if len(merged) > limit:
-            from app.services.reranker import rerank_sync
+            try:
+                from app.services.reranker import rerank_sync
 
-            merged = rerank_sync(query.strip(), merged, top_k=limit)
+                merged = rerank_sync(query.strip(), merged, top_k=limit)
+            except Exception as exc:  # noqa: BLE001 - reranker is best-effort
+                logger.warning("hybrid rerank failed: %s", exc)
+                from app.services.metrics.search import track_rerank_failure
+                track_rerank_failure(str(exc)[:80])
 
         # E5 — MMR diversity pass. We pull a slightly larger
         # pool (so MMR has actual candidates to swap), apply
@@ -624,22 +655,22 @@ def merge_hybrid_results(
     Backward compatibility: callers that omit ``bm25_results`` keep
     the legacy 2-source fusion.
     """
-    scores: dict[tuple[int, int | None, int | None], float] = {}
-    items: dict[tuple[int, int | None, int | None], SearchResult] = {}
+    scores: dict[tuple[int, int | None, int | None, int | None], float] = {}
+    items: dict[tuple[int, int | None, int | None, int | None], SearchResult] = {}
 
     for rank, item in enumerate(text_results or []):
-        key = (item.document_id, item.page_number, item.block_id)
+        key = (item.document_id, item.page_number, item.block_id, item.chunk_id)
         scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
         items[key] = item
 
     for rank, item in enumerate(semantic_results or []):
-        key = (item.document_id, item.page_number, item.block_id)
+        key = (item.document_id, item.page_number, item.block_id, item.chunk_id)
         scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
         items.setdefault(key, item)
 
     if bm25_results:
         for rank, item in enumerate(bm25_results):
-            key = (item.document_id, item.page_number, item.block_id)
+            key = (item.document_id, item.page_number, item.block_id, item.chunk_id)
             scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
             # Prefer the BM25 result when both branches hit the
             # same chunk because BM25 has the cleaner source_type
@@ -648,6 +679,61 @@ def merge_hybrid_results(
 
     ranked_keys = sorted(scores, key=scores.get, reverse=True)[:limit]
     return [replace(items[key], score=scores[key], source_type="hybrid_rrf") for key in ranked_keys]
+
+
+def _document_level_results(
+    db: Session,
+    *,
+    query_embedding: list[float],
+    normalized_query: str,
+    limit: int,
+    filters: dict | None,
+) -> list[SearchResult]:
+    """Whole-document semantic retrieval as a complementary signal to
+    chunk-level search (improves thematic recall)."""
+    pg = PgvectorStore()
+    matches = pg.search_documents(
+        db, query_embedding=query_embedding, limit=limit, filters=filters or {}
+    )
+    return [
+        SearchResult(
+            document_id=m.document_id,
+            original_filename=m.original_filename,
+            document_type=m.document_type,
+            status=m.status,
+            page_number=None,
+            block_id=None,
+            chunk_id=None,
+            score=m.score,
+            excerpt=_excerpt(m.excerpt, normalized_query) if m.excerpt else "",
+            ocr_confidence=None,
+            source_type="semantic_document",
+            source_path=None,
+            full_text=m.excerpt,
+        )
+        for m in matches
+    ]
+
+
+def _rrf_fuse(
+    result_lists: list[list[SearchResult]],
+    *,
+    limit: int,
+    k: int = 60,
+) -> list[SearchResult]:
+    """Reciprocal Rank Fusion across several ranked lists, preserving each
+    result's original ``source_type`` (unlike :func:`merge_hybrid_results`
+    which stamps ``hybrid_rrf``). Used to blend chunk-level and
+    document-level semantic hits inside one semantic pass."""
+    scores: dict[tuple[int, int | None, int | None, int | None], float] = {}
+    items: dict[tuple[int, int | None, int | None, int | None], SearchResult] = {}
+    for results in result_lists:
+        for rank, item in enumerate(results or []):
+            key = (item.document_id, item.page_number, item.block_id, item.chunk_id)
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+            items.setdefault(key, item)
+    ranked = sorted(scores, key=scores.get, reverse=True)[:limit]
+    return [replace(items[key], score=scores[key]) for key in ranked]
 
 
 def _excerpt(text: str, query: str, radius: int = 160) -> str:
