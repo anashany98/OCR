@@ -53,7 +53,7 @@ services:
     env_file: .env
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-local}
       - SENTRY_DSN=${SENTRY_DSN:-}
@@ -166,6 +166,7 @@ services:
     image: docu-intel-backend-gpu:latest
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-0@%h
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     restart: unless-stopped
     mem_limit: 8g
     depends_on:
@@ -211,6 +212,7 @@ services:
     image: docu-intel-backend-gpu:latest
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-1@%h
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     restart: unless-stopped
     mem_limit: 8g
     depends_on:
@@ -296,7 +298,7 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      - C:\Users\Usuario\Desktop\TEST2025:/app/data/input/TEST2025:ro
+      # Path de host absoluto eliminado. Usar ${EXTRA_INPUT_DIR} si hace falta.
       - ./backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
