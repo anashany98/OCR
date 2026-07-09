@@ -63,10 +63,6 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.sweep_stale_jobs_task",
         "schedule": schedule(run_every=300),  # every 5 minutes
     },
-    "refresh-active-documents-view": {
-        "task": "app.workers.tasks.refresh_active_documents_view",
-        "schedule": schedule(run_every=300),  # every 5 minutes
-    },
 }
 celery_app.conf.task_routes = {
     **celery_app.conf.task_routes,

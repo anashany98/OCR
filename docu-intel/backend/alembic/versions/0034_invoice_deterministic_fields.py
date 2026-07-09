@@ -26,17 +26,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("invoices") as batch:
-        batch.add_column(
-            sa.Column("supplier_tax_id", sa.String(length=32), nullable=True)
-        )
-        batch.add_column(sa.Column("taxable_base", sa.Float(), nullable=True))
-        batch.add_column(sa.Column("vat_amount", sa.Float(), nullable=True))
-        batch.create_index(
-            "ix_invoices_supplier_tax_id",
-            ["supplier_tax_id"],
-            unique=False,
-        )
+    # supplier_tax_id/taxable_base/vat_amount los añade 0040 a String(50). No-op.
+    pass
 
 
 def downgrade() -> None:

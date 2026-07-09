@@ -323,6 +323,8 @@ def delete_document(
     document = db.get(Document, document_id)
     if not document or document.deleted_at:
         raise HTTPException(status_code=404, detail="Document not found")
+    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+        raise HTTPException(status_code=404, detail="Document not found")
     return soft_delete_document(db, document=document, user=user)
 
 

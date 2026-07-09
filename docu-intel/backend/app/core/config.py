@@ -528,6 +528,7 @@ class Settings(BaseSettings):
     # calls via the API or the test script trigger an extraction.
     hyperextract_run_in_pipeline: bool = False
 
+    metrics_token: str = ""
     admin_email: str = "admin@local"
     admin_password: str = "dev_only_admin_password_change_me"
     admin_name: str = "Administrador"

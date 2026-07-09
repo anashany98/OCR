@@ -51,6 +51,8 @@ class Document(Base):
     quality_score: Mapped[float | None] = mapped_column(Float)
     quality_flags_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
+    embedding: Mapped[Any | None] = mapped_column(Vector(768), nullable=True)
+    embedding_model_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # A7 - aggregate flag set by the embedding pipeline whenever any
     # chunk for the document lands with ``needs_reembedding=True``;
     # cleared by the periodic re-embed sweep (or by the manual

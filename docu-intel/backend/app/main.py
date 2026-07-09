@@ -107,3 +107,29 @@ register_metrics_endpoint(app)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    """Readiness real: DB + Redis."""
+    from sqlalchemy import text as _sa_text
+
+    checks: dict[str, str] = {}
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(_sa_text("SELECT 1"))
+            checks["db"] = "ok"
+        finally:
+            db.close()
+    except Exception:
+        checks["db"] = "error"
+    try:
+        import redis as _redis  # type: ignore
+
+        _redis.from_url(settings.redis_url).ping()
+        checks["redis"] = "ok"
+    except Exception:
+        checks["redis"] = "error"
+    overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    return {"status": overall, "checks": checks}
