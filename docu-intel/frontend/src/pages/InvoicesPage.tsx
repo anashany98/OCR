@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { formatCompact, formatDate, formatMoney } from "@/lib/utils"
+import { queryKeys } from "@/lib/queryKeys"
 import type { Invoice } from "@/types/api"
 
 const CURRENCY_OPTIONS = ["", "EUR", "USD", "GBP"]
@@ -29,7 +30,7 @@ export function InvoicesPage() {
   const [query, setQuery] = useState("")
   const [currency, setCurrency] = useState("")
   const { data, isLoading } = useQuery({
-    queryKey: ["invoices", query],
+    queryKey: queryKeys.invoices.list(query),
     queryFn: () => api.invoices({ q: query || undefined, limit: 200 }),
   })
 
