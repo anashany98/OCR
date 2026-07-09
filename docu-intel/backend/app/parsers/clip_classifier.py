@@ -56,7 +56,6 @@ def classify_image(image_path: Path) -> dict:
         # Feature 1: Color variance
         # Photos have high color variance, documents have low
         color_var = float(gray.std())
-        color_score = min(color_var / 80.0, 1.0)  # Normalize to 0-1
 
         # Feature 2: Edge structure
         # Documents have strong horizontal/vertical edges (text lines, borders)

@@ -18,7 +18,7 @@ class VectorSearchMatch:
     document_type: str
     status: str
     page_number: int | None
-    chunk_id: int
+    chunk_id: int | None
     score: float
     excerpt: str
 
@@ -139,6 +139,129 @@ class PgvectorStore:
             )
         return sorted(matches, key=lambda item: item.score, reverse=True)[:limit]
 
+    def search_documents(
+        self,
+        db: Session,
+        *,
+        query_embedding: list[float],
+        limit: int,
+        filters: dict[str, Any] | None,
+    ) -> list[VectorSearchMatch]:
+        """Document-level retrieval: match the whole-document embedding.
+
+        Unlike :meth:`search` (which ranks individual chunks), this ranks
+        whole documents by their single ``Document.embedding``. It improves
+        thematic recall for queries whose answer spans the document but no
+        single chunk is a strong standalone match. The two strategies are
+        fused downstream via RRF (see ``search_service``).
+        """
+        effective_filters = filters or {}
+        if _is_postgres(db):
+            return self._search_documents_postgres(
+                db, query_embedding=query_embedding, limit=limit, filters=effective_filters
+            )
+        return self._search_documents_python(
+            db, query_embedding=query_embedding, limit=limit, filters=effective_filters
+        )
+
+    def _search_documents_postgres(
+        self,
+        db: Session,
+        *,
+        query_embedding: list[float],
+        limit: int,
+        filters: dict[str, Any],
+    ) -> list[VectorSearchMatch]:
+        clauses = ["d.deleted_at IS NULL", "d.embedding IS NOT NULL"]
+        params: dict[str, Any] = {
+            "query_embedding": _vector_literal(query_embedding),
+            "limit": int(limit),
+        }
+        if filters.get("budget_scope_id"):
+            clauses.append("d.budget_scope_id = :budget_scope_id")
+            params["budget_scope_id"] = int(filters["budget_scope_id"])
+        if filters.get("document_type"):
+            clauses.append("d.document_type = :document_type")
+            params["document_type"] = filters["document_type"]
+        if filters.get("status"):
+            clauses.append("d.status = :status")
+            params["status"] = filters["status"]
+        sql = text(
+            f"""
+            SELECT
+                d.id AS document_id,
+                d.original_filename,
+                d.document_type,
+                d.status,
+                (
+                    SELECT string_agg(p.text, chr(10) ORDER BY p.page_number)
+                    FROM document_pages p
+                    WHERE p.document_id = d.id
+                ) AS doc_text,
+                1 - (d.embedding <=> CAST(:query_embedding AS vector)) AS score
+            FROM documents d
+            WHERE {" AND ".join(clauses)}
+            ORDER BY d.embedding <=> CAST(:query_embedding AS vector)
+            LIMIT :limit
+            """
+        )
+        rows = db.execute(sql, params).mappings().all()
+        return [
+            VectorSearchMatch(
+                document_id=int(row["document_id"]),
+                original_filename=str(row["original_filename"]),
+                document_type=str(row["document_type"]),
+                status=str(row["status"]),
+                page_number=None,
+                chunk_id=None,
+                score=round(float(row["score"] or 0), 6),
+                excerpt=_doc_excerpt(row.get("doc_text")),
+            )
+            for row in rows
+        ]
+
+    def _search_documents_python(
+        self,
+        db: Session,
+        *,
+        query_embedding: list[float],
+        limit: int,
+        filters: dict[str, Any],
+    ) -> list[VectorSearchMatch]:
+        stmt = (
+            select(Document)
+            .where(Document.deleted_at.is_(None))
+            .where(Document.embedding.is_not(None))
+        )
+        if filters.get("budget_scope_id"):
+            stmt = stmt.where(Document.budget_scope_id == int(filters["budget_scope_id"]))
+        if filters.get("document_type"):
+            stmt = stmt.where(Document.document_type == filters["document_type"])
+        if filters.get("status"):
+            stmt = stmt.where(Document.status == filters["status"])
+        docs = db.execute(stmt.limit(max(limit * 30, 100))).scalars().all()
+        matches: list[VectorSearchMatch] = []
+        for document in docs:
+            embedding = _coerce_embedding(document.embedding)
+            if not embedding:
+                continue
+            score = cosine_similarity(query_embedding, embedding)
+            if score <= 0.02:
+                continue
+            matches.append(
+                VectorSearchMatch(
+                    document_id=document.id,
+                    original_filename=document.original_filename,
+                    document_type=document.document_type,
+                    status=document.status,
+                    page_number=None,
+                    chunk_id=None,
+                    score=round(float(score), 6),
+                    excerpt=_doc_excerpt(None),
+                )
+            )
+        return sorted(matches, key=lambda item: item.score, reverse=True)[:limit]
+
 
 class QdrantStore:
     def search(self, *args, **kwargs):
@@ -166,7 +289,7 @@ def _coerce_embedding(value) -> list[float]:
 
 
 def _vector_literal(values: list[float]) -> str:
-    expected_dimensions = int(settings.embedding_dimensions)
+    expected_dimensions = int(settings.embedding_dimensions or 768)
     if len(values) != expected_dimensions:
         raise ValueError(
             f"Query embedding dimension mismatch: got {len(values)}, expected "
@@ -174,3 +297,10 @@ def _vector_literal(values: list[float]) -> str:
             "before querying pgvector."
         )
     return "[" + ",".join(str(float(value)) for value in values) + "]"
+
+
+def _doc_excerpt(text: str | None, max_chars: int = 300) -> str:
+    """Truncate a whole-document text to a display excerpt."""
+    if not text:
+        return ""
+    return text[:max_chars]

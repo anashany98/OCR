@@ -58,7 +58,7 @@ export function BudgetsPage() {
           <CardTitle>
             Líneas del presupuesto seleccionado
             {selectedId !== null && lines.isLoading && (
-              <span className="ml-2 text-sm text-muted-foreground">(cargando...)</span>
+              <span className="ml-2 text-sm text-[var(--text-muted)]">(cargando...)</span>
             )}
             {lines.isError && (
               <span className="ml-2 text-sm text-destructive">(error al cargar líneas)</span>
@@ -67,11 +67,11 @@ export function BudgetsPage() {
         </CardHeader>
         <CardContent>
           {lines.isError ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-[var(--text-muted)]">
               No se pudieron cargar las líneas de este presupuesto.
             </p>
           ) : lines.data && lines.data.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-[var(--text-muted)]">
               Este presupuesto no tiene líneas detectadas.
             </p>
           ) : (

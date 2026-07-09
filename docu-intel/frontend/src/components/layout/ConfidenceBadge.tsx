@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils"
 type ConfidenceLevel = "high" | "medium" | "low" | "unknown"
 
 const levelConfig: Record<ConfidenceLevel, { color: string; textColor: string; label: string }> = {
-  high: { color: "bg-[var(--emerald-light)]", textColor: "text-[#065F46]", label: "Alta" },
-  medium: { color: "bg-[var(--amber-light)]", textColor: "text-[#92400E]", label: "Media" },
-  low: { color: "bg-[var(--rose-light)]", textColor: "text-[#9F1239]", label: "Baja" },
+  high: { color: "bg-[var(--success-light)]", textColor: "text-[var(--text-on-success)]", label: "Alta" },
+  medium: { color: "bg-[var(--warning-light)]", textColor: "text-[var(--text-on-warning)]", label: "Media" },
+  low: { color: "bg-[var(--danger-light)]", textColor: "text-[var(--text-on-danger)]", label: "Baja" },
   unknown: { color: "bg-[var(--bg-surface-2)]", textColor: "text-[var(--text-muted)]", label: "—" },
 }
 
@@ -39,9 +39,9 @@ export function ConfidenceBadge({
     >
       <span
         className={cn("h-1.5 w-1.5 rounded-full", {
-          "bg-[var(--emerald)]": level === "high",
-          "bg-[var(--amber)]": level === "medium",
-          "bg-[var(--rose)]": level === "low",
+          "bg-[var(--success)]": level === "high",
+          "bg-[var(--warning)]": level === "medium",
+          "bg-[var(--danger)]": level === "low",
           "bg-[var(--text-muted)]": level === "unknown",
         })}
       />

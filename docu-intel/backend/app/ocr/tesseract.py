@@ -92,9 +92,9 @@ class TesseractOCREngine:
             full_text, blocks = self._group_tokens_into_lines(tokens)
 
             avg_conf = sum(confidences) / len(confidences) if confidences else None
-            track_ocr_duration(time.perf_counter() - start)
             return OCRResult(text=full_text, confidence=avg_conf, blocks=blocks, engine=self.name)
         finally:
+            track_ocr_duration(time.perf_counter() - start)
             if ocr_path != image_path:
                 ocr_path.unlink(missing_ok=True)
 

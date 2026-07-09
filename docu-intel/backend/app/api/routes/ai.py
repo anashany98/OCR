@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.active_context import ActiveContext, load_active_context, persist_context_after_answer
 from app.ai.agent import (
     StreamOutcome,
     _build_memory_block,
@@ -20,7 +21,6 @@ from app.ai.agent import (
     redact_context_items_for_scope,
     select_tools_for_question,
 )
-from app.ai.active_context import ActiveContext, load_active_context, persist_context_after_answer
 from app.ai.confidence_gates import evaluate_gates_for_turn
 from app.ai.local_client import LocalOpenAICompatibleClient  # noqa: F401
 from app.ai.reference_resolver import resolve_references

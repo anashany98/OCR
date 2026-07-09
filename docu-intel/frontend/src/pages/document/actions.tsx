@@ -96,7 +96,7 @@ export function DocumentOcrRevisionEditor({ d }: { d: ReturnType<typeof useDocum
   const page = d.selectedPage
   if (!page) return null
   return (
-    <section className="mt-4 rounded-md border bg-slate-50 p-3">
+    <section className="mt-4 rounded-md border bg-[var(--bg-surface-2)] p-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <h4 className="text-[13px] font-semibold">Corrección OCR</h4>
@@ -117,7 +117,7 @@ export function DocumentOcrRevisionEditor({ d }: { d: ReturnType<typeof useDocum
         </Button>
       </div>
       <textarea
-        className="min-h-[100px] w-full rounded-md border bg-white p-2.5 font-mono text-[12px] leading-6 outline-none focus:ring-2 focus:ring-[var(--primary)]"
+        className="min-h-[100px] w-full rounded-md border bg-[var(--bg-surface)] p-2.5 font-mono text-[12px] leading-6 outline-none focus:ring-2 focus:ring-[var(--primary)]"
         onChange={(e) => d.setEditedText(e.target.value)}
         value={d.editedText}
       />

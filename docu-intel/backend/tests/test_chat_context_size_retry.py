@@ -82,7 +82,7 @@ async def test_stream_retries_with_smaller_budget_on_context_size_error(monkeypa
 @pytest.mark.asyncio
 async def test_one_shot_retries_with_smaller_budget_on_context_size_error(monkeypatch):
     from app.ai import agent
-    from app.ai.agent import _try_local_ai_answer
+    from app.ai.local_answer import try_local_ai_answer as _try_local_ai_answer
     from app.ai.local_client import ContextSizeExceededError
     from app.core.config import settings
 
@@ -99,7 +99,7 @@ async def test_one_shot_retries_with_smaller_budget_on_context_size_error(monkey
                 raise ContextSizeExceededError("too big")
             return "Resumen del documento."
 
-    monkeypatch.setattr(agent, "LocalOpenAICompatibleClient", _FakeClient)
+    monkeypatch.setattr("app.ai.local_client.LocalOpenAICompatibleClient", _FakeClient)
 
     answer = await _try_local_ai_answer(
         "Resume el documento", _many_items(), [], fallback="fallback grounded"

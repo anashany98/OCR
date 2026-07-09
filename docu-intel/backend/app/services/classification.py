@@ -23,6 +23,17 @@ class LearnedRule:
     source: str = "learned"
 
 
+# ---------------------------------------------------------------------------
+# RULES — keyword lists per document type
+#
+# Scoring:
+#   - Filename match: +0.35 (deduplicated per keyword)
+#   - Text match: +0.25 (deduplicated per keyword, word-boundary)
+#   - Folder hint: +0.55 (reduced from 0.65 to not dominate over text content)
+#   - Extension hint: +0.50
+#   - Learned rule: +0.40
+#   - Plan detection: +0.55 (with strong signal requirement)
+# ---------------------------------------------------------------------------
 RULES: dict[str, list[str]] = {
     "presupuesto": [
         "presupuesto",
@@ -30,10 +41,9 @@ RULES: dict[str, list[str]] = {
         "nº presupuesto",
         "no presupuesto",
         "total presupuesto",
-        "cliente",
         "validez",
     ],
-    "pedido": ["pedido", "orden de compra", "proveedor", "fecha pedido", "referencia pedido"],
+    "pedido": ["pedido", "orden de compra", "fecha pedido", "referencia pedido"],
     "factura": ["factura", "nº factura", "no factura", "base imponible", "iva", "total factura"],
     "albaran": ["albaran", "albarán", "entrega", "recibido", "mercancia", "mercancía"],
     "hoja_confeccion": [
@@ -43,6 +53,13 @@ RULES: dict[str, list[str]] = {
         "instrucciones de confección",
         "proceso de confeccion",
         "proceso de confección",
+        # Sinónimos (mismo documento, OCR a menudo ilegible -> usamos el nombre)
+        "hoja confeccion",
+        "hojas confeccion",
+        "hoja tapiceria",
+        "hojas tapiceria",
+        "orden confeccion",
+        "ordenes confeccion",
         "montaje",
         "costura",
         "patron",
@@ -52,26 +69,110 @@ RULES: dict[str, list[str]] = {
     ],
     "plano": [
         "escala",
-        "planta",
-        "seccion",
-        "sección",
         "alzado",
         "cotas",
-        "m²",
-        "m2",
         "simbolos de plano",
         "símbolos de plano",
+        # Por nombre de archivo (texto OCR a menudo ilegible)
+        "plano",
+        "layout",
+        "planta",
+        "aperturas",
     ],
     "contrato": ["contrato", "clausula", "cláusula", "firmado por", "partes"],
     "email_exportado": ["from:", "to:", "subject:", "asunto:", "enviado:"],
+    # --- NUEVOS: tipos de imagen (interiorismo/decoración) ---
+    "foto_producto": [
+        "cortina", "cortinas", "mueble", "muebles", "sillon",
+        "sofa", "mesa", "silla", "sillas", "armario", "cocina", "bano",
+        "dormitorio", "salon", "comedor", "terraza", "persiana", "persianas",
+        "toldo", "toldos", "banderola", "panel", "paneles", "tapizado",
+    ],
+    "muestra_tela": [
+        "tela", "telas", "visillo", "visillos", "forro", "forros",
+        "lino", "algodon", "poliester", "muestra", "muestras",
+        "colchoneta", "colchonetas", "felpudo", "moqueta", "alfombra",
+    ],
+    "croquis_medida": [
+        "croquis", "medida", "medidas", "medicion",
+        "ancho", "largo", "alto", "caida", "cadam", "rosca",
+        "bastidor", "barra", "guia", "medicion por incidencia",
+    ],
+    # --- NUEVOS: tipos de documento administrativo ---
+    "comprobante_pago": [
+        "comprobante", "comprobante de pago", "pago", "sepa",
+        "transferencia", "recibo", "justificante", "banca a distancia",
+        "servicio de banca", "cargo", "abono",
+    ],
+    "dua": [
+        "dua", "aduana", "aduanero", "despacho", "circuito verde",
+        "export", "d export", "documentoa unico aduanero",
+    ],
+    "albaran_transporte": [
+        "pop", "recogida", "mbe", "ups", "dhl", "envio",
+        "transporte", "etiqueta", "entrega ups",
+        "mail boxes", "mailbox",
+        # Sinónimos de documento de carga/transporte
+        "packing", "box palet", "pod", "palet", "albaran",
+    ],
+    # --- NUEVOS: fichas técnicas / certificados ---
+    "ficha_tecnica": [
+        "ficha tecnica", "ficha técnica", "datasheet", "data sheet",
+        "certificate", "certificado", "certificacion", "technical data",
+        "ficha", "sgibe",
+    ],
+    # --- NUEVOS: tarifas / listas de precios ---
+    "tarifa": [
+        "precios", "tarifa", "tarifas", "price list", "lista precios",
+        "lista de precios", "catalogo precios",
+    ],
+    # --- NUEVOS: proformas / confirmaciones de pedido (sinónimos) ---
+    "proforma": [
+        "proforma", "conferma d'ordine", "conferma ordine", "conferma",
+        "confirmacion de pedido", "confirmacion pedido",
+        "confirmacion de compra", "pro forma",
+    ],
+    # --- NUEVOS: manuales / instrucciones de uso ---
+    "instrucciones": [
+        "instruccion", "instrucciones", "mantenimiento",
+        "manual de", "manual", "modo de empleo", "ficha instrucciones",
+    ],
+    # --- NUEVOS: renders / imágenes 3D de interiores ---
+    "render": [
+        "render", "conceptrender", "concept render", "render 3d",
+        "visualizacion", "vista 3d",
+    ],
+}
+
+# Keywords that need word-boundary matching (avoid "cota" → "mascota")
+WORD_BOUNDARY_KEYWORDS = {
+    "presupuesto", "oferta", "pedido", "factura", "albaran", "albarán",
+    "escala", "alzado", "cota", "cotas", "contrato", "clausula", "cláusula",
+    "planta", "seccion", "sección", "montaje", "costura", "patron", "patrón",
+    "tela", "muestra", "total",
+    # --- NUEVOS ---
+    "pago", "pop", "dua", "ups", "mbe", "envio", "envío",
+    "recogida", "transporte", "comprobante", "aduana", "sepa",
+    "transferencia", "recibo", "croquis", "medida",
+    # --- NUEVOS (expansión de diccionario) ---
+    "precios", "tarifa", "pod", "proforma", "render", "manual",
+    "certificado", "ficha", "layout", "aperturas", "packing",
+    "palet", "instruccion", "mantenimiento",
 }
 
 FOLDER_HINTS = {
     "presupuestos": "presupuesto",
     "pedidos": "pedido",
     "facturas": "factura",
-    "imagenes": "imagen",
+    "imagenes": "foto_producto",     # --- CAMBIO: era "imagen" ---
+    "telas": "muestra_tela",          # --- NUEVO ---
+    "muestras": "muestra_tela",       # --- NUEVO ---
+    "croquis": "croquis_medida",      # --- NUEVO ---
 }
+
+# Image extensions that should NEVER be classified as "plano" unless
+# there's a very strong signal (filename + multiple text signals).
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 EXTENSION_HINTS = {
     ".xlsx": "excel",
@@ -86,7 +187,7 @@ EXTENSION_HINTS = {
     ".bmp": "imagen",
 }
 
-LEARNED_CONFIDENCE_BOOST = 0.5
+LEARNED_CONFIDENCE_BOOST = 0.40
 
 
 def classify_document(
@@ -94,58 +195,140 @@ def classify_document(
     source_path: str | None,
     text: str,
     learned_rules: Iterable[LearnedRule] | None = None,
+    content_route: str | None = None,  # --- NUEVO ---
 ) -> ClassificationResult:
     normalized_filename = _normalize(filename)
     normalized_path = _normalize(source_path or "")
     normalized_text = _normalize(text)
     extension = PurePosixPath(filename.lower()).suffix
+    is_image = extension in IMAGE_EXTENSIONS
 
     scores: dict[str, float] = {}
     matches: dict[str, list[str]] = {}
+    matched_keywords: dict[str, set[str]] = {}  # dedup per type
 
-    # Learned rules first (higher priority)
+    # --- Phase 0: Image subtypes from content_route (highest priority) ---
+    # El content_router ya detectó si es foto de interiorismo/tela usando CLIP
+    # + keywords + carpeta. Esa señal es muy fiable (conf 0.7+), la respetamos.
+    if content_route in ("interior_design", "fabric_description"):
+        if content_route == "fabric_description":
+            scores["muestra_tela"] = 0.85
+            matches["muestra_tela"] = [f"content_route:{content_route}"]
+        else:
+            # interior_design: distinguir croquis (con medidas) de foto simple
+            croquis_signals = sum(
+                1 for kw in ("croquis", "medida", "medidas", "medicion", "cota", "cotas")
+                if _match_keyword(_normalize(kw), normalized_text)
+                or _match_keyword(_normalize(kw), normalized_filename)
+            )
+            if croquis_signals >= 2:
+                scores["croquis_medida"] = 0.85
+                matches["croquis_medida"] = [f"content_route:{content_route}+medidas"]
+            else:
+                scores["foto_producto"] = 0.85
+                matches["foto_producto"] = [f"content_route:{content_route}"]
+
+    # --- Phase 1: Learned rules (highest priority) ---
     for rule in learned_rules or []:
         pattern_norm = _normalize(rule.pattern_value)
         if not pattern_norm:
             continue
-        if pattern_norm in normalized_filename or pattern_norm in normalized_text:
+        if _match_keyword(pattern_norm, normalized_filename) or _match_keyword(pattern_norm, normalized_text):
             scores[rule.target_class] = scores.get(rule.target_class, 0) + LEARNED_CONFIDENCE_BOOST
             matches.setdefault(rule.target_class, []).append(f"learned:{rule.pattern_value}")
 
+    # --- Phase 2: Extension hint ---
     if extension in EXTENSION_HINTS:
         doc_type = EXTENSION_HINTS[extension]
-        scores[doc_type] = scores.get(doc_type, 0) + 0.55
+        scores[doc_type] = scores.get(doc_type, 0) + 0.50
         matches.setdefault(doc_type, []).append(f"extension:{extension}")
 
+    # --- Phase 3: Folder hint (reduced weight to not dominate over text) ---
     for folder, doc_type in FOLDER_HINTS.items():
         if re.search(rf"(^|/|\\){re.escape(folder)}($|/|\\)", normalized_path):
-            scores[doc_type] = scores.get(doc_type, 0) + 0.65
+            scores[doc_type] = scores.get(doc_type, 0) + 0.55
             matches.setdefault(doc_type, []).append(f"folder:{folder}")
 
+    # --- Phase 4: Plan detection (with image guard) ---
     if re.search(r"(^|/|\\)planos($|/|\\)", normalized_path) and _has_strong_plan_signal(
-        normalized_filename,
-        normalized_text,
-        extension,
+        normalized_filename, normalized_text, extension,
     ):
-        scores["plano"] = scores.get("plano", 0) + 0.65
+        scores["plano"] = scores.get("plano", 0) + 0.55
         matches.setdefault("plano", []).append("folder:planos")
 
+    # --- Phase 5: Keyword matching (deduplicated, word-boundary) ---
     for doc_type, keywords in RULES.items():
         for keyword in keywords:
             keyword_norm = _normalize(keyword)
-            if keyword_norm in normalized_filename:
+            # Skip if this keyword already matched for this type
+            if keyword_norm in matched_keywords.get(doc_type, set()):
+                continue
+
+            if _match_keyword(keyword_norm, normalized_filename):
                 scores[doc_type] = scores.get(doc_type, 0) + 0.35
+                matched_keywords.setdefault(doc_type, set()).add(keyword_norm)
                 matches.setdefault(doc_type, []).append(f"filename:{keyword}")
-            if keyword_norm in normalized_text:
+            if _match_keyword(keyword_norm, normalized_text):
                 scores[doc_type] = scores.get(doc_type, 0) + 0.25
+                matched_keywords.setdefault(doc_type, set()).add(keyword_norm)
                 matches.setdefault(doc_type, []).append(f"text:{keyword}")
 
+    # --- Phase 6: Image guard — prevent JPEG scans from being "plano" ---
+    # If the file is an image and "plano" is winning, require VERY strong
+    # signals. Two acceptable cases:
+    #   (a) filename signal + >=2 text signals (the original strict rule:
+    #       a scanned plan whose OCR yielded plan-like vocabulary), OR
+    #   (b) >=2 filename signals + the file lives in a ``planos/`` folder
+    #       (a scanned plan whose OCR yielded nothing — text="" — but whose
+    #       name is unambiguous, e.g. "plano_planta_baja.jpg"). Without this
+    #       branch every scanned plan with a blank OCR was misclassified as
+    #       "imagen" and lost.
+    if is_image and scores.get("plano", 0) > 0:
+        plan_filename_kws = (
+            "plano", "planta", "alzado", "seccion", "sección", "cotas",
+        )
+        filename_signals = sum(
+            1 for kw in plan_filename_kws if _match_keyword(kw, normalized_filename)
+        )
+        has_filename_signal = filename_signals >= 1
+        text_signals = sum(
+            1 for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
+            if _match_keyword(kw, normalized_text)
+        )
+        in_planos_folder = bool(re.search(r"(^|/|\\)planos($|/|\\)", normalized_path))
+        strong_filename_case = filename_signals >= 2 and in_planos_folder
+        if not ((has_filename_signal and text_signals >= 2) or strong_filename_case):
+            # Suppress plano classification for images without strong signals
+            scores.pop("plano", None)
+            matches.pop("plano", None)
+
+    # --- Phase 7: Cross-validation — if folder says X but text strongly says Y ---
+    # If text has 3+ keyword matches for a different type, boost that type
+    # to potentially override the folder hint.
+    for doc_type, kws in matched_keywords.items():
+        if len(kws) >= 3 and scores.get(doc_type, 0) > 0:
+            scores[doc_type] = scores.get(doc_type, 0) + 0.15  # bonus for strong text signal
+
+    # --- Result ---
     if not scores:
         return ClassificationResult("desconocido", 0.2, [])
 
     doc_type, score = max(scores.items(), key=lambda item: item[1])
     confidence = min(0.98, max(0.4, score))
     return ClassificationResult(doc_type, confidence, matches.get(doc_type, []))
+
+
+def _match_keyword(keyword: str, text: str) -> bool:
+    """Match a keyword with word boundaries to avoid substring false positives.
+
+    "cota" won't match "mascota", "planta" won't match "implantacion".
+    Also handles Spanish plurals: "cota" matches "cotas", "factura" matches "facturas".
+    """
+    if keyword in WORD_BOUNDARY_KEYWORDS:
+        # Match the keyword as a word, optionally followed by Spanish plural suffixes
+        return bool(re.search(rf"\b{re.escape(keyword)}(es|s)?\b", text))
+    # For multi-word keywords or short codes, use substring (they're specific enough)
+    return keyword in text
 
 
 def _normalize(value: str) -> str:
@@ -159,15 +342,25 @@ def _normalize(value: str) -> str:
 
 
 def _has_strong_plan_signal(filename: str, text: str, extension: str) -> bool:
+    """Require strong evidence before classifying as plano.
+
+    For images, we need filename match + text signals.
+    For PDFs/text, standard signal detection applies.
+    """
     if re.search(r"\b(plano|planta|alzado|seccion|secci[oó]n|cotas?)\b", filename):
         return True
     if re.search(r"\bescala\s*[:\-]?\s*1\s*[:/]\s*\d{1,5}\b", text):
         return True
-    if extension in EXTENSION_HINTS:
-        return False
+    if extension in IMAGE_EXTENSIONS:
+        # Images need stronger evidence
+        signals = {
+            kw for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
+            if _match_keyword(kw, text)
+        }
+        return len(signals) >= 3
+    # For text-based files, standard detection
     signals = {
-        keyword
-        for keyword in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
-        if keyword in text
+        kw for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
+        if _match_keyword(kw, text)
     }
     return len(signals) >= 3

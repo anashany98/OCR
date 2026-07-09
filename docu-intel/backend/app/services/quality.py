@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -69,6 +69,31 @@ def evaluate_document_quality(
     if document.document_type in {"desconocido", "", None}:
         flags.add("document_type_unknown")
 
+    # --- Fotos de producto: no penalizar la ausencia de texto ---
+    # Las fotos detectadas por el content_router (interior_design /
+    # fabric_description) skipean el OCR a propósito (ocr_engine="photo_skip").
+    # Sin este exento, todas las fotos válidas van a needs_review por
+    # "page_without_text" + "low_ocr_confidence", cuando son correctas.
+    is_photo_doc = document.document_type in {
+        "foto_producto", "muestra_tela", "croquis_medida"
+    }
+    if is_photo_doc:
+        # Consultar si TODAS las páginas son photo_skip (foto pura, sin OCR)
+        total_pages = db.scalar(
+            select(func.count(DocumentPage.id))
+            .where(DocumentPage.document_id == document.id)
+        ) or 0
+        photo_skip_pages = db.scalar(
+            select(func.count(DocumentPage.id))
+            .where(DocumentPage.document_id == document.id)
+            .where(DocumentPage.ocr_engine == "photo_skip")
+        ) or 0
+        if total_pages > 0 and photo_skip_pages == total_pages:
+            flags.discard("page_without_text")
+            flags.discard("low_ocr_confidence")
+            flags.discard("partial_low_ocr_confidence")
+            flags.discard("text_too_short")
+
     if business_needs_review:
         flags.add("business_extraction_needs_review")
     if plan_needs_review:
@@ -124,8 +149,8 @@ def evaluate_document_quality(
     if (
         document.status != "failed"
         and "page_failed" not in flags
-        and has_text
-        and (is_email or well_classified)
+        and (has_text or is_photo_doc)   # --- CAMBIO: fotos sin texto también ---
+        and (is_email or well_classified or is_photo_doc)  # --- CAMBIO ---
     ):
         status = "processed_ok"
     if (

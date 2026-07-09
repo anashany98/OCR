@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/hooks/useConfirm"
 import { cn } from "@/lib/utils"
 import type { Chat } from "./useChat"
 
@@ -30,6 +31,7 @@ function formatDate(iso: string): string {
 
 export function ConversationSidebar({ chat }: { chat: Chat }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const confirm = useConfirm()
 
   return (
     <div className="flex h-full flex-col">
@@ -157,11 +159,15 @@ export function ConversationSidebar({ chat }: { chat: Chat }) {
                             </button>
                             <button
                               type="button"
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation()
-                                if (confirm("¿Eliminar esta conversación?")) {
-                                  chat.deleteConversation(conv.id)
-                                }
+                                const ok = await confirm({
+                                  title: "Eliminar conversación",
+                                  description: "¿Estás seguro de que quieres eliminar esta conversación?",
+                                  confirmLabel: "Eliminar",
+                                  tone: "danger",
+                                })
+                                if (ok) chat.deleteConversation(conv.id)
                               }}
                               className="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--danger)]"
                               title="Eliminar"
@@ -209,7 +215,7 @@ export function ConversationSidebarMobile({
   return (
     <div className="fixed inset-0 z-50 flex lg:hidden">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex h-full w-72 flex-col border-r border-[var(--border)] bg-[var(--bg-base)]">
+      <div className="relative flex h-full w-72 flex-col border-r border-[var(--border)] bg-[var(--bg-canvas)]">
         <ConversationSidebar chat={chat} />
       </div>
     </div>

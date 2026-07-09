@@ -97,6 +97,21 @@
       "name": "reject_classification_suggestion"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/admin/dashboard",
+      "name": "dashboard_stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/dashboard/activity",
+      "name": "dashboard_activity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/dashboard/workers",
+      "name": "dashboard_workers"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/admin/demo/seed",
       "name": "seed_demo_data"
@@ -598,6 +613,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/documents/reclassify",
+      "name": "reclassify_documents"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/documents/reprocess-bulk",
       "name": "reprocess_bulk"
     },
@@ -750,6 +770,21 @@
       "method": "POST",
       "path": "/api/v1/invoices",
       "name": "create_invoice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/invoices/aggregate/by-supplier",
+      "name": "aggregate_by_supplier"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/invoices/aggregate/monthly",
+      "name": "aggregate_monthly"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/invoices/aggregate/yearly",
+      "name": "aggregate_yearly"
     },
     {
       "method": "GET",

@@ -107,8 +107,8 @@ export function PlansPage() {
       <div className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--amber-light)] bg-[var(--amber-light)]/40 p-3">
         <FlaskConical className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--amber)]" />
         <div>
-          <p className="text-[13px] font-semibold text-[#92400E]">Funcionalidad en fase Beta</p>
-          <p className="mt-0.5 text-[12px] text-[#92400E]/80">
+          <p className="text-[13px] font-semibold text-[var(--text-on-warning)]">Funcionalidad en fase Beta</p>
+          <p className="mt-0.5 text-[12px] text-[var(--text-on-warning)]/80">
             La extracción de planos está en desarrollo. Los datos de escala, habitaciones y cotas
             pueden no ser precisos. Verifica siempre las mediciones manualmente antes de usarlas en
             producción.
@@ -182,7 +182,7 @@ export function PlansPage() {
             {selectedPlan ? (
               <>
                 <div className="grid gap-2 rounded-md border p-3">
-                  <label className="text-xs font-medium text-muted-foreground">Escala manual</label>
+                  <label className="text-xs font-medium text-[var(--text-muted)]">Escala manual</label>
                   <div className="flex gap-2">
                     <Input
                       value={scaleText}
@@ -197,7 +197,7 @@ export function PlansPage() {
                       Guardar
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-[var(--text-muted)]">
                     Sin escala válida no se convierten geometrías de píxeles a metros. Las
                     superficies OCR se conservan como texto fuente.
                   </p>
@@ -296,7 +296,7 @@ export function PlansPage() {
                     </TableBody>
                   </Table>
                   {!rooms.data?.length ? (
-                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
                       Sin habitaciones detectadas.
                     </p>
                   ) : null}
@@ -331,7 +331,7 @@ export function PlansPage() {
                     </TableBody>
                   </Table>
                   {!dimensions.data?.length ? (
-                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
                       Sin cotas textuales fiables.
                     </p>
                   ) : null}
@@ -340,7 +340,7 @@ export function PlansPage() {
                 <section className="space-y-2">
                   <h3 className="text-sm font-semibold">Mediciones manuales</h3>
                   <form
-                    className="grid gap-2 rounded-md border bg-slate-50 p-3 md:grid-cols-[1fr_120px_120px_auto]"
+                    className="grid gap-2 rounded-md border bg-[var(--bg-surface-2)] p-3 md:grid-cols-[1fr_120px_120px_auto]"
                     onSubmit={(event) => {
                       event.preventDefault()
                       if (measurementLabel.trim()) measurementMutation.mutate()
@@ -395,14 +395,14 @@ export function PlansPage() {
                     </TableBody>
                   </Table>
                   {!measurements.data?.length ? (
-                    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    <p className="rounded-md border p-3 text-sm text-[var(--text-muted)]">
                       Sin mediciones manuales guardadas.
                     </p>
                   ) : null}
                 </section>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">No hay planos registrados todavía.</p>
+              <p className="text-sm text-[var(--text-muted)]">No hay planos registrados todavía.</p>
             )}
           </CardContent>
         </Card>

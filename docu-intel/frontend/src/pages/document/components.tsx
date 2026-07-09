@@ -59,7 +59,7 @@ export function HighlightedText({ text, query }: { text: string; query: string }
 // ---------------------------------------------------------------------------
 export function EntityCard({ entity }: { entity: DocumentEntity }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-md border bg-white px-3 py-2.5">
+    <div className="flex items-center justify-between gap-2 rounded-md border bg-[var(--bg-surface)] px-3 py-2.5">
       <span className="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wide">
         {entityLabel(entity.entity_type)}
       </span>
@@ -88,7 +88,7 @@ export function TimelineEventRow({
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center">
-        <span className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full border-2 border-[var(--primary)] bg-white" />
+        <span className="mt-1.5 h-2.5 w-2.5 flex-shrink-0 rounded-full border-2 border-[var(--primary)] bg-[var(--bg-surface)]" />
         {!isLast && <span className="w-0.5 flex-1 bg-[var(--border)]" />}
       </div>
       <div className={cn("pb-3", isLast && "pb-0")}>
@@ -119,7 +119,7 @@ export function DocumentGraphView({ graph }: { graph: DocumentGraph }) {
         <div className="max-h-[200px] overflow-auto rounded-md border">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b bg-slate-50 text-left">
+              <tr className="border-b bg-[var(--bg-surface-2)] text-left">
                 <th className="px-2 py-1.5 font-medium">Relación</th>
                 <th className="px-2 py-1.5 font-medium">Desde</th>
                 <th className="px-2 py-1.5 font-medium">Hasta</th>
@@ -128,7 +128,7 @@ export function DocumentGraphView({ graph }: { graph: DocumentGraph }) {
             </thead>
             <tbody>
               {graph.edges.map((edge, i) => (
-                <tr key={i} className="border-b last:border-0 hover:bg-slate-50">
+                <tr key={i} className="border-b last:border-0 hover:bg-[var(--bg-surface-2)]">
                   <td className="px-2 py-1.5 font-medium capitalize">{edge.relation}</td>
                   <td className="px-2 py-1.5">
                     <Link
@@ -159,7 +159,7 @@ export function DocumentGraphView({ graph }: { graph: DocumentGraph }) {
             key={node.document_id}
             to={`/documents/${node.document_id}`}
             className={cn(
-              "rounded-md border px-2 py-1 text-xs transition-colors hover:bg-slate-50",
+              "rounded-md border px-2 py-1 text-xs transition-colors hover:bg-[var(--bg-surface-2)]",
               node.document_id === graph.nodes[0].document_id &&
                 "border-[var(--primary)] bg-[var(--primary-light)]",
             )}
@@ -215,44 +215,48 @@ export function UnsupportedPreviewCard({
   }
 }) {
   const kind = previewKind(document.extension)
-  const Icon = kind === "excel" ? FileSpreadsheet : kind === "email" ? Mail : FileText
+  const Icon = kind === "excel" ? FileSpreadsheet : kind === "email" ? Mail : kind === "page" ? FileText : FileText
+  const ext = (document.extension ?? "").toLowerCase()
+
+  const tips: Record<string, string> = {
+    ".pdf": "El PDF fue procesado por OCR. Las páginas se extraen como imágenes durante el procesamiento. Si no hay imagen, el procesamiento puede no haber terminado.",
+    ".docx": "El documento Word fue procesado por OCR. El texto extraído está en la pestaña OCR.",
+    ".doc": "El documento Word (.doc) fue procesado. El texto extraído está en la pestaña OCR.",
+    ".msg": "El email Outlook fue procesado. El contenido (asunto, remitente, cuerpo) está en las entidades y el texto OCR.",
+    ".eml": "El email fue procesado. El contenido está en las entidades y el texto OCR.",
+    ".dwg": "El plano CAD fue procesado. Las medidas y entidades están en la pestaña Entidades.",
+    ".txt": "El texto plano fue procesado. Todo el contenido está en la pestaña OCR.",
+  }
+
   return (
-    <div className="flex flex-col items-center gap-4 px-6 py-10">
-      <div className="flex h-14 w-14 items-center justify-center rounded-md border bg-slate-50 text-slate-500">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[var(--bg-surface-2)] px-6 py-10">
+      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--bg-surface-3)] text-[var(--text-muted)]">
         <Icon className="h-7 w-7" />
       </div>
       <div className="text-center">
         <p className="text-[14px] font-semibold text-[var(--text-primary)]">
           {typeLabel(document.extension)}
         </p>
-        <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-          No hay vista previa disponible para este tipo de archivo. Descárgalo para abrirlo en su
-          aplicación nativa.
+        <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-[var(--text-muted)]">
+          {tips[ext] ?? "No hay vista previa visual. El contenido fue procesado por OCR — revisa la pestaña OCR para ver el texto extraído."}
         </p>
       </div>
-      <dl className="grid w-full max-w-sm grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border bg-slate-50 px-4 py-3 text-[12px]">
+      <dl className="grid w-full max-w-sm grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border bg-[var(--bg-surface)] px-4 py-3 text-[12px]">
         <dt className="text-[var(--text-muted)]">Tipo</dt>
         <dd className="text-right font-mono text-[11px]">{document.extension ?? "—"}</dd>
         <dt className="text-[var(--text-muted)]">Tamaño</dt>
         <dd className="text-right">{formatBytes(document.file_size)}</dd>
-        {document.mime_type ? (
+        {document.mime_type && (
           <>
             <dt className="text-[var(--text-muted)]">MIME</dt>
-            <dd className="truncate text-right font-mono text-[11px]" title={document.mime_type}>
-              {document.mime_type}
-            </dd>
+            <dd className="truncate text-right font-mono text-[11px]" title={document.mime_type}>{document.mime_type}</dd>
           </>
-        ) : null}
+        )}
         <dt className="text-[var(--text-muted)]">SHA256</dt>
-        <dd className="truncate text-right font-mono text-[11px]" title={document.file_hash}>
-          {document.file_hash.slice(0, 16)}…
-        </dd>
+        <dd className="truncate text-right font-mono text-[11px]" title={document.file_hash}>{document.file_hash.slice(0, 16)}…</dd>
       </dl>
-      <Button asChild size="sm" variant="default">
-        <a href={downloadUrl(document.id)}>
-          <Download className="mr-1 h-3.5 w-3.5" />
-          Descargar
-        </a>
+      <Button asChild size="sm" variant="default" className="rounded-lg">
+        <a href={downloadUrl(document.id)}><Download className="mr-1 h-3.5 w-3.5" /> Descargar</a>
       </Button>
     </div>
   )
@@ -300,7 +304,7 @@ export function CollapsibleCard({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-slate-50/80"
+        className="flex w-full items-center justify-between px-5 py-3 text-left hover:bg-[var(--bg-surface-2)]/80"
       >
         <CardTitle className="flex items-center gap-2 text-[14px] font-semibold">
           {icon}
@@ -344,7 +348,7 @@ export function BlocksTable({
     <div className="max-h-[200px] overflow-auto p-0">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b bg-slate-50 text-left text-[11px] uppercase text-[var(--text-muted)]">
+          <tr className="border-b bg-[var(--bg-surface-2)] text-left text-[11px] uppercase text-[var(--text-muted)]">
             <th className="px-3 py-2 font-medium">Pág.</th>
             <th className="px-3 py-2 font-medium">Tipo</th>
             <th className="px-3 py-2 font-medium">Texto</th>
@@ -356,7 +360,7 @@ export function BlocksTable({
             <tr
               key={b.id}
               data-block-id={b.id}
-              className="border-b last:border-0 hover:bg-slate-50 transition-colors"
+              className="border-b last:border-0 hover:bg-[var(--bg-surface-2)] transition-colors"
             >
               <td className="px-3 py-1.5 text-xs">{b.page_number ?? "—"}</td>
               <td className="px-3 py-1.5 text-xs capitalize">{b.block_type}</td>
@@ -379,7 +383,7 @@ export function OtherEntitiesTable({ entities }: { entities: DocumentEntity[] })
     <div className="max-h-[200px] overflow-auto p-0">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b bg-slate-50 text-left text-[11px] uppercase text-[var(--text-muted)]">
+          <tr className="border-b bg-[var(--bg-surface-2)] text-left text-[11px] uppercase text-[var(--text-muted)]">
             <th className="px-3 py-2 font-medium">Tipo</th>
             <th className="px-3 py-2 font-medium">Valor</th>
             <th className="px-3 py-2 font-medium text-right">Conf.</th>
@@ -387,7 +391,7 @@ export function OtherEntitiesTable({ entities }: { entities: DocumentEntity[] })
         </thead>
         <tbody>
           {entities.slice(0, 30).map((e) => (
-            <tr key={e.id} className="border-b last:border-0 hover:bg-slate-50">
+            <tr key={e.id} className="border-b last:border-0 hover:bg-[var(--bg-surface-2)]">
               <td className="px-3 py-1.5 text-xs capitalize">{e.entity_type.replace(/_/g, " ")}</td>
               <td className="max-w-[300px] truncate px-3 py-1.5 text-xs">{e.entity_value}</td>
               <td className="px-3 py-1.5 text-right text-xs text-[var(--text-muted)]">
@@ -404,7 +408,7 @@ export function OtherEntitiesTable({ entities }: { entities: DocumentEntity[] })
 // Re-export the page-level CardHeader for the "Visor" / "Texto OCR" titles.
 export function VisorCardHeader({ children }: { children: React.ReactNode }) {
   return (
-    <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/80 py-3">
+    <CardHeader className="flex-row items-center justify-between border-b bg-[var(--bg-surface-2)]/80 py-3">
       <CardTitle className="text-[14px] font-semibold">{children}</CardTitle>
     </CardHeader>
   )

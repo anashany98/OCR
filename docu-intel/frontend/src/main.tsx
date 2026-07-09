@@ -1,10 +1,12 @@
-﻿import React from "react"
+import React from "react"
 import ReactDOM from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RouterProvider } from "react-router-dom"
 import { Toaster } from "sonner"
 
 import { ErrorBoundary } from "@/components/ErrorBoundary"
+import { ConfirmDialogHost } from "@/hooks/useConfirm"
+import { DensityProvider } from "@/hooks/useDensity"
 import { AuthProvider } from "@/hooks/useAuth"
 import { router } from "@/routes/router"
 import { SentryErrorBoundary, initSentry } from "@/lib/sentry"
@@ -42,22 +44,26 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <RootErrorBoundary>
-          <RouterProvider router={router} />
-          <Toaster
-            position="bottom-right"
-            richColors
-            closeButton
-            duration={5000}
-            toastOptions={{
-              classNames: {
-                toast: "font-sans",
-                title: "text-[13px] font-medium",
-                description: "text-[12px] text-muted-foreground",
-              },
-            }}
-          />
-        </RootErrorBoundary>
+        <DensityProvider>
+          <ConfirmDialogHost>
+          <RootErrorBoundary>
+            <RouterProvider router={router} />
+            <Toaster
+              position="bottom-right"
+              richColors
+              closeButton
+              duration={5000}
+              toastOptions={{
+                classNames: {
+                  toast: "font-sans",
+                  title: "text-[13px] font-medium",
+                  description: "text-[12px] text-[var(--text-muted)]",
+                },
+              }}
+            />
+          </RootErrorBoundary>
+          </ConfirmDialogHost>
+        </DensityProvider>
       </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>,

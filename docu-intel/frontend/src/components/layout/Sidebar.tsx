@@ -2,7 +2,6 @@ import { useMemo } from "react"
 import { NavLink, useLocation } from "react-router-dom"
 
 import { useAuth } from "@/hooks/useAuth"
-import { useWorkInboxCount } from "@/hooks/useWorkInboxCount"
 import {
   canSeeNavItem,
   NAV_GROUPS,
@@ -23,16 +22,17 @@ export { NAV_GROUPS } from "@/navigation/config"
 export function SidebarNav({
   embedded = false,
   onNavigate,
+  collapsed = false,
+  inboxCount = 0,
 }: {
   embedded?: boolean
   onNavigate?: () => void
+  collapsed?: boolean
+  inboxCount?: number
 }) {
   const { user } = useAuth()
   const location = useLocation()
   const recentPaths = useRecentNav()
-
-  const inbox = useWorkInboxCount()
-  const inboxCount = inbox.data?.count ?? 0
 
   const recentItems = useMemo(() => {
     return recentPaths
@@ -42,21 +42,18 @@ export function SidebarNav({
   }, [recentPaths, user?.role])
 
   function isActive(to: string): boolean {
-    const path = to.split("?")[0].split("#")[0] // drop the unused hash fragment
-    const targetHash = to.includes("#") ? to.split("#")[1] : undefined
-    if (path === "/") return location.pathname === "/" && !location.hash
-    if (location.pathname !== path) return false
-    if (targetHash && location.hash !== `#${targetHash}`) return false
-    return true
+    const path = to.split("?")[0]
+    if (path === "/") return location.pathname === "/"
+    return location.pathname === path || location.pathname.startsWith(path + "/")
   }
 
-  const groupSpacing = "mb-5 last:mb-3"
+  const groupSpacing = "mb-4 last:mb-2"
 
   return (
-    <div className={cn("flex flex-col h-full", embedded ? "p-3" : "py-3")}>
-      {/* Recientes */}
-      {recentItems.length > 0 && (
-        <div className={cn("mb-4", !embedded && "border-b border-[var(--sidebar-border)]/50 pb-3")}>
+    <div className={cn("flex flex-col h-full", embedded ? "p-2" : "")}>
+      {/* Recientes — only show when not collapsed */}
+      {!collapsed && recentItems.length > 0 && (
+        <div className={cn("mb-3", !embedded && "border-b border-[var(--sidebar-border)]/50 pb-2")}>
           <SidebarSectionLabel>Recientes</SidebarSectionLabel>
           <ul className="space-y-0.5">
             {recentItems.map((item) => {
@@ -68,10 +65,10 @@ export function SidebarNav({
                     to={item.to}
                     onClick={() => onNavigate?.()}
                     className={cn(
-                      "group/item flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors duration-fast ease-out",
+                      "group/item flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] transition-colors",
                       active
                         ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
-                        : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/60 hover:text-[var(--sidebar-text)]",
+                        : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/40 hover:text-[var(--sidebar-text)]",
                     )}
                     title={item.label}
                   >
@@ -98,8 +95,8 @@ export function SidebarNav({
                 "border-t border-[var(--sidebar-border)]/50 pt-3 first:border-t-0 first:pt-0",
             )}
           >
-            <SidebarSectionLabel>{group.label}</SidebarSectionLabel>
-            <ul className="space-y-0.5">
+            {!collapsed && <SidebarSectionLabel>{group.label}</SidebarSectionLabel>}
+            <ul className={cn("space-y-0.5", collapsed && "px-1")}>
               {visibleItems.map((item) => (
                 <SidebarItem
                   key={`${item.to}-${item.label}`}
@@ -107,6 +104,7 @@ export function SidebarNav({
                   active={isActive(item.to)}
                   inboxCount={item.badge ? inboxCount : 0}
                   onNavigate={onNavigate}
+                  collapsed={collapsed}
                 />
               ))}
             </ul>
@@ -122,26 +120,27 @@ export function SidebarNav({
 // ---------------------------------------------------------------------------
 function SidebarSectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-1.5 flex items-center gap-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--sidebar-muted)]">
-      <span className="h-px w-2 bg-[var(--sidebar-muted)]/40" aria-hidden="true" />
+    <p className="mb-1 flex items-center gap-1.5 px-2.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--sidebar-muted)]">
       <span>{children}</span>
     </p>
   )
 }
 
 // ---------------------------------------------------------------------------
-// SidebarItem — active state with terracotta accent bar
+// SidebarItem — active state with accent bar
 // ---------------------------------------------------------------------------
 function SidebarItem({
   item,
   active,
   inboxCount,
   onNavigate,
+  collapsed = false,
 }: {
   item: NavItem
   active: boolean
   inboxCount: number
   onNavigate?: () => void
+  collapsed?: boolean
 }) {
   const Icon = item.icon
   return (
@@ -152,11 +151,13 @@ function SidebarItem({
         aria-current={active ? "page" : undefined}
         onClick={() => onNavigate?.()}
         className={cn(
-          "group/item relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium tracking-tight transition-all duration-fast ease-out",
+          "group/item relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+          collapsed && "justify-center px-1.5",
           active
             ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
-            : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/50 hover:text-[var(--sidebar-text)]",
+            : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-active-bg)]/40 hover:text-[var(--sidebar-text)]",
         )}
+        title={collapsed ? item.label : undefined}
       >
         {active && (
           <span
@@ -171,24 +172,28 @@ function SidebarItem({
           )}
           aria-hidden="true"
         />
-        <span className="flex-1 truncate">{item.label}</span>
-        {item.badge && inboxCount > 0 && (
-          <span
-            aria-label={`${inboxCount} ${inboxCount === 1 ? "tarea pendiente" : "tareas pendientes"}`}
-            className={cn(
-              "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums leading-none",
-              active
-                ? "bg-[var(--accent)] text-white"
-                : "bg-[var(--sidebar-muted)]/25 text-[var(--sidebar-text)]",
+        {!collapsed && (
+          <>
+            <span className="flex-1 truncate">{item.label}</span>
+            {item.badge && inboxCount > 0 && (
+              <span
+                aria-label={`${inboxCount} ${inboxCount === 1 ? "tarea pendiente" : "tareas pendientes"}`}
+                className={cn(
+                  "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums leading-none",
+                  active
+                    ? "bg-[var(--accent)] text-white"
+                    : "bg-[var(--sidebar-muted)]/25 text-[var(--sidebar-text)]",
+                )}
+              >
+                {inboxCount > 99 ? "99+" : inboxCount}
+              </span>
             )}
-          >
-            {inboxCount > 99 ? "99+" : inboxCount}
-          </span>
-        )}
-        {item.beta && (
-          <span className="rounded border border-[var(--warning)]/30 bg-[var(--warning-faint)] px-1 py-px text-[8.5px] font-semibold uppercase tracking-[0.08em] text-[var(--text-on-warning)]">
-            β
-          </span>
+            {item.beta && (
+              <span className="rounded border border-[var(--warning)]/30 bg-[var(--warning-faint)] px-1 py-px text-[8.5px] font-semibold uppercase tracking-[0.08em] text-[var(--text-on-warning)]">
+                β
+              </span>
+            )}
+          </>
         )}
       </NavLink>
     </li>

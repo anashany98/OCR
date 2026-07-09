@@ -33,7 +33,12 @@ def fabricate(scale=1):
     
     n_docs = 100 * scale
     statuses = [("processed", 60), ("pending", 15), ("failed", 5), ("needs_review", 10), ("duplicate", 10)]
-    exts = [((".pdf","plano"), 30), ((".xlsx","excel"), 20), ((".png","imagen"), 15), ((".txt","desconocido"), 20), ((".jpg","imagen"), 10), ((".csv","excel"), 5)]
+    # dtype labels are written directly to the DB (they do NOT pass through
+    # the classifier), so they reflect the post-classification distribution.
+    # The image subtypes (foto_producto / muestra_tela / croquis_medida) now
+    # replace the generic "imagen" label that FOLDER_HINTS["imagenes"] no
+    # longer produces.
+    exts = [((".pdf","plano"), 30), ((".xlsx","excel"), 20), ((".png","foto_producto"), 15), ((".txt","desconocido"), 20), ((".jpg","muestra_tela"), 10), ((".csv","excel"), 5)]
     docs = []
     for i in range(n_docs):
         (ext, dtype), _ = random.choices(exts, weights=[w for _, w in exts])[0]

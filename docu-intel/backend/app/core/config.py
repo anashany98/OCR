@@ -193,8 +193,9 @@ class Settings(BaseSettings):
     # and escalates to PaddleOCR when the primary result is "weak" by
     # these metrics. Easy documents (digital PDFs, clean scans) never
     # pay the PaddleOCR init cost.
-    ocr_cascading_min_chars: int = 30
-    ocr_cascading_min_confidence: float = 0.5
+    # FASE 3.2: Raised from 30/0.50 to force more pages through PaddleOCR.
+    ocr_cascading_min_chars: int = 150
+    ocr_cascading_min_confidence: float = 0.70
     # O2 — Per-page language detection with adaptive thresholds. When
     # true, the cascade looks up the per-language min_chars /
     # min_confidence from ``THRESHOLDS_BY_LANG`` (German, CJK, etc.)
@@ -240,6 +241,16 @@ class Settings(BaseSettings):
     pp_structure_device: str = "gpu"
     pp_structure_lang: str = "es"
     paddle_lang: str = "es"
+    # FP16 / TensorRT-FP16 for PaddleOCR on GPU. ~1.5-2x faster on Tensor-Core
+    # GPUs (RTX 4070). Disabled by default; enable via PADDLE_USE_FP16=true.
+    paddle_use_fp16: bool = False
+    # PaddleOCR (Tier 2) is GPU-only in practice: on CPU it loads ~3-5 GB of
+    # models per worker and routinely peaks above 30 GB on large pages, which
+    # kills the worker via the cgroup/OOM (45 SIGKILLs in 6h observed).
+    # When enabled (default), the cascade skips PaddleOCR on workers without a
+    # visible GPU (CUDA_VISIBLE_DEVICES unset) and degrades to Tier 1 (Tesseract)
+    # + Tier 4 (vision LLM). GPU workers are unaffected.
+    paddleocr_gpu_only: bool = True
     # Number of scanned pages to OCR in parallel within a single document.
     # Each worker thread opens its own fitz handle and runs the cascade
     # independently; the OCR C extensions release the GIL so this achieves
@@ -264,6 +275,19 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: float = 30.0
     embedding_query_instruction: str | None = None
     embedding_passage_instruction: str | None = None
+    # Document-level embedding (FASE 8.1 — alternative to canonical late
+    # chunking). ``Document.embedding`` (Vector(768)) already exists with an
+    # HNSW index but was dormant. We populate it with a single embedding of
+    # the document's concatenated page text (truncated to
+    # ``document_embedding_max_tokens`` to fit bge-m3's 8K context window)
+    # and fuse its retrieval signal with the per-chunk signal via RRF.
+    # Canonical late chunking (token-level, Jina-style) requires a server
+    # that exposes token embeddings (e.g. HuggingFace TEI); LM Studio's
+    # OpenAI-compatible endpoint only returns pooled vectors, so we use this
+    # document-level approach instead. Disable to fall back to chunk-only
+    # retrieval.
+    search_use_document_embedding: bool = True
+    document_embedding_max_tokens: int = 6000
     # E2 — BM25 (PostgreSQL full-text) hybrid-search knobs. When
     # ``search_use_bm25`` is true (default) ``search_hybrid`` runs
     # the BM25 branch alongside the cosine and ILIKE branches and

@@ -95,7 +95,7 @@ export function ReconciliationPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/80">
+        <CardHeader className="flex-row items-center justify-between border-b bg-[var(--bg-surface-2)]/80">
           <CardTitle>Incidencias de negocio</CardTitle>
           <Badge variant="neutral">{items.length} registros</Badge>
         </CardHeader>
@@ -120,21 +120,21 @@ export function ReconciliationPage() {
                     </TableCell>
                     <TableCell>
                       <p className="font-medium">{issue.title}</p>
-                      <p className="max-w-[520px] text-xs text-muted-foreground">
+                      <p className="max-w-[520px] text-xs text-[var(--text-muted)]">
                         {issue.description}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">{issue.kind}</p>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">{issue.kind}</p>
                     </TableCell>
                     <TableCell className="text-sm">
                       <AmountLine label="Esperado" value={issue.expected_amount} />
                       <AmountLine label="Actual" value={issue.actual_amount} />
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-xs text-[var(--text-muted)]">
                       <p>Presupuesto: {issue.budget_id ?? "-"}</p>
                       <p>Pedido: {issue.order_id ?? "-"}</p>
                       <p>Factura: {issue.invoice_id ?? "-"}</p>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-sm text-[var(--text-muted)]">
                       {formatDate(issue.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
@@ -196,7 +196,7 @@ export function ReconciliationPage() {
 function AmountLine({ label, value }: { label: string; value: number | null }) {
   return (
     <p className="whitespace-nowrap">
-      <span className="text-muted-foreground">{label}: </span>
+      <span className="text-[var(--text-muted)]">{label}: </span>
       <span className="font-medium">
         {value == null
           ? "-"

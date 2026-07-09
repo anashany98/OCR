@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -88,6 +89,9 @@ def parse_image(
         from app.ocr.base import OCRResult
         result = OCRResult(text="", confidence=0.0, blocks=[], engine="photo_skip")
     else:
+        # FASE 5: set content_route on cascade for tier skipping.
+        with contextlib.suppress(Exception):
+            ocr_engine.current_content_route = content_route
         result = ocr_engine.extract(path)
     actual_engine = result.engine or ocr_engine.name
     blocks = [

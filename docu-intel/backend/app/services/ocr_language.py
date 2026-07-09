@@ -68,10 +68,11 @@ class LanguageThresholds:
 
 # Conservative defaults that match the existing settings so a
 # deployment that never opts into the adaptive logic keeps the same
-# behaviour. The original cascade used ``(30, 0.50)``.
+# behaviour. FASE 3.2: Raised from (30, 0.50) to force more pages
+# through PaddleOCR.
 DEFAULT_THRESHOLDS: Final[LanguageThresholds] = LanguageThresholds(
-    min_chars=30,
-    min_confidence=0.50,
+    min_chars=150,
+    min_confidence=0.70,
 )
 
 # Per-language overrides. Languages not listed here use
@@ -89,22 +90,22 @@ DEFAULT_THRESHOLDS: Final[LanguageThresholds] = LanguageThresholds(
 #   to reach "usefulness" is much shorter; the confidence
 #   distribution is also tighter but lower on average.
 THRESHOLDS_BY_LANG: Final[dict[str, LanguageThresholds]] = {
-    # Western Latin
-    "es": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    "en": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    "pt": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    "it": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    "fr": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    "de": LanguageThresholds(min_chars=30, min_confidence=0.55),
-    "nl": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    # CJK
-    "ja": LanguageThresholds(min_chars=20, min_confidence=0.40),
-    "zh": LanguageThresholds(min_chars=20, min_confidence=0.40),
-    "ko": LanguageThresholds(min_chars=20, min_confidence=0.40),
+    # Western Latin — FASE 3.2: raised from 30/0.50
+    "es": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    "en": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    "pt": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    "it": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    "fr": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    "de": LanguageThresholds(min_chars=150, min_confidence=0.75),
+    "nl": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    # CJK — keep lower (denser per character) but still raised
+    "ja": LanguageThresholds(min_chars=80, min_confidence=0.55),
+    "zh": LanguageThresholds(min_chars=80, min_confidence=0.55),
+    "ko": LanguageThresholds(min_chars=80, min_confidence=0.55),
     # Cyrillic + Arabic + Devanagari
-    "ru": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    "ar": LanguageThresholds(min_chars=30, min_confidence=0.50),
-    "hi": LanguageThresholds(min_chars=30, min_confidence=0.50),
+    "ru": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    "ar": LanguageThresholds(min_chars=150, min_confidence=0.70),
+    "hi": LanguageThresholds(min_chars=150, min_confidence=0.70),
 }
 
 
