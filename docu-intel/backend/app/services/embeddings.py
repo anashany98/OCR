@@ -39,7 +39,7 @@ logger = logging.getLogger("app.services.embeddings")
 # silent failure.
 EMBEDDING_DIMENSIONS = int(settings.embedding_dimensions or 768)
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
-EMBEDDING_CACHE_TTL = 3600
+EMBEDDING_CACHE_TTL = 86400  # 24 hours (was 1h, increased for reprocess batch)
 BATCH_SIZE = 32
 MAX_CONCURRENT_BATCHES = 8
 

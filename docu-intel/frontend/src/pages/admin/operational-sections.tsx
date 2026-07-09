@@ -21,6 +21,7 @@ import { StyledSelect } from "@/components/ui/styled-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useConfirm } from "@/hooks/useConfirm"
 import { formatDuration, formatGigabytes, inputFolders, MetricBlock, MetricTile } from "./shared"
+import { DOCUMENT_TYPES } from "@/lib/documentTypes"
 import type { MutationLike } from "./system-types"
 
 export function SectionHeader({
@@ -174,7 +175,10 @@ export function BulkReprocessSection({
               <option value="failed">Fallidos</option><option value="needs_review">Revisión</option><option value="processed">Procesados</option><option value="pending">Pendientes</option><option value="">Cualquier estado</option>
             </StyledSelect>
             <StyledSelect value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
-              <option value="">Cualquier tipo</option><option value="presupuesto">Presupuesto</option><option value="pedido">Pedido</option><option value="factura">Factura</option><option value="plano">Plano</option><option value="imagen">Imagen</option><option value="excel">Excel</option>
+              <option value="">Cualquier tipo</option>
+              {DOCUMENT_TYPES.filter((t) => t.value !== "").map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
             </StyledSelect>
             <Input value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} placeholder="Carpeta contiene..." />
             <StyledSelect value={mode} onChange={(e) => setMode(e.target.value)}>

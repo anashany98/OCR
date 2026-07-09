@@ -11,7 +11,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 

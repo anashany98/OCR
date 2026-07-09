@@ -20,10 +20,8 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any
-
-from app.core.config import settings
 
 
 @dataclass

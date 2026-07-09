@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from app.ocr.base import BaseOCREngine
-from app.parsers.content_router import ContentRoute, classify_content
+from app.parsers.content_router import classify_content
 
 logger = logging.getLogger("app.parsers.router")
 from app.parsers.doc import parse_doc

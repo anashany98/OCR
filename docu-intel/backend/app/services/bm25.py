@@ -96,7 +96,7 @@ def _row_to_search_result(
     The fields mirror what ``search_text`` / ``search_semantic``
     produce, so the hybrid fusion in :mod:`app.services.search_service`
     can deduplicate across the three branches on the same
-    ``(document_id, page_number, block_id)`` key.
+    ``(document_id, page_number, block_id, chunk_id)`` key.
     """
     return SearchResult(
         document_id=document_id,
@@ -105,6 +105,7 @@ def _row_to_search_result(
         status=status,
         page_number=page_number,
         block_id=None,  # BM25 ranks on the chunk, not a block
+        chunk_id=chunk_id,
         score=float(rank),
         excerpt=chunk_text or "",
         ocr_confidence=None,
@@ -165,6 +166,7 @@ def search_bm25(
             d.status,
             c.page_number,
             c.id AS chunk_id,
+            c.chunk_type,
             ts_rank_cd(c.tsv, plainto_tsquery('spanish', :query), :norm) AS rank,
             c.chunk_text
         FROM document_chunks c
@@ -219,13 +221,13 @@ def search_bm25(
             rank=float(row["rank"] or 0.0),
             chunk_text=str(row["chunk_text"] or ""),
         )
-        result._chunk_type = "text"  # the BM25 query does not return chunk_type yet
+        result._chunk_type = row["chunk_type"] or "text"
         results.append(result)
 
     # E3 — apply the chunk-level filter (block_type,
     # min_ocr_confidence) as a post-filter. See
     # :func:`_post_filter_chunk_clauses` for the rationale.
-    results = _post_filter_chunk_clauses(results, filters)
+    results = _post_filter_chunk_clauses(db, results, filters)
     return results
 
 
@@ -356,6 +358,7 @@ def _build_filter_clauses(filters: dict[str, Any] | None) -> tuple[str, dict[str
 # ``tsv @@`` operator already constrains the candidate set
 # heavily via the GIN index.
 def _post_filter_chunk_clauses(
+    db: Session,
     results: list,
     filters: dict[str, Any] | None,
 ) -> list:

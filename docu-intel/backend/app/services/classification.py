@@ -53,6 +53,13 @@ RULES: dict[str, list[str]] = {
         "instrucciones de confección",
         "proceso de confeccion",
         "proceso de confección",
+        # Sinónimos (mismo documento, OCR a menudo ilegible -> usamos el nombre)
+        "hoja confeccion",
+        "hojas confeccion",
+        "hoja tapiceria",
+        "hojas tapiceria",
+        "orden confeccion",
+        "ordenes confeccion",
         "montaje",
         "costura",
         "patron",
@@ -66,9 +73,75 @@ RULES: dict[str, list[str]] = {
         "cotas",
         "simbolos de plano",
         "símbolos de plano",
+        # Por nombre de archivo (texto OCR a menudo ilegible)
+        "plano",
+        "layout",
+        "planta",
+        "aperturas",
     ],
     "contrato": ["contrato", "clausula", "cláusula", "firmado por", "partes"],
     "email_exportado": ["from:", "to:", "subject:", "asunto:", "enviado:"],
+    # --- NUEVOS: tipos de imagen (interiorismo/decoración) ---
+    "foto_producto": [
+        "cortina", "cortinas", "mueble", "muebles", "sillon",
+        "sofa", "mesa", "silla", "sillas", "armario", "cocina", "bano",
+        "dormitorio", "salon", "comedor", "terraza", "persiana", "persianas",
+        "toldo", "toldos", "banderola", "panel", "paneles", "tapizado",
+    ],
+    "muestra_tela": [
+        "tela", "telas", "visillo", "visillos", "forro", "forros",
+        "lino", "algodon", "poliester", "muestra", "muestras",
+        "colchoneta", "colchonetas", "felpudo", "moqueta", "alfombra",
+    ],
+    "croquis_medida": [
+        "croquis", "medida", "medidas", "medicion",
+        "ancho", "largo", "alto", "caida", "cadam", "rosca",
+        "bastidor", "barra", "guia", "medicion por incidencia",
+    ],
+    # --- NUEVOS: tipos de documento administrativo ---
+    "comprobante_pago": [
+        "comprobante", "comprobante de pago", "pago", "sepa",
+        "transferencia", "recibo", "justificante", "banca a distancia",
+        "servicio de banca", "cargo", "abono",
+    ],
+    "dua": [
+        "dua", "aduana", "aduanero", "despacho", "circuito verde",
+        "export", "d export", "documentoa unico aduanero",
+    ],
+    "albaran_transporte": [
+        "pop", "recogida", "mbe", "ups", "dhl", "envio",
+        "transporte", "etiqueta", "entrega ups",
+        "mail boxes", "mailbox",
+        # Sinónimos de documento de carga/transporte
+        "packing", "box palet", "pod", "palet", "albaran",
+    ],
+    # --- NUEVOS: fichas técnicas / certificados ---
+    "ficha_tecnica": [
+        "ficha tecnica", "ficha técnica", "datasheet", "data sheet",
+        "certificate", "certificado", "certificacion", "technical data",
+        "ficha", "sgibe",
+    ],
+    # --- NUEVOS: tarifas / listas de precios ---
+    "tarifa": [
+        "precios", "tarifa", "tarifas", "price list", "lista precios",
+        "lista de precios", "catalogo precios",
+    ],
+    # --- NUEVOS: proformas / confirmaciones de pedido (sinónimos) ---
+    "proforma": [
+        "proforma", "conferma d'ordine", "conferma ordine", "conferma",
+        "confirmacion de pedido", "confirmacion pedido",
+        "confirmacion de compra", "pro forma",
+    ],
+    # --- NUEVOS: manuales / instrucciones de uso ---
+    "instrucciones": [
+        "instruccion", "instrucciones", "mantenimiento",
+        "manual de", "manual", "modo de empleo", "ficha instrucciones",
+    ],
+    # --- NUEVOS: renders / imágenes 3D de interiores ---
+    "render": [
+        "render", "conceptrender", "concept render", "render 3d",
+        "visualizacion", "vista 3d",
+    ],
 }
 
 # Keywords that need word-boundary matching (avoid "cota" → "mascota")
@@ -77,13 +150,24 @@ WORD_BOUNDARY_KEYWORDS = {
     "escala", "alzado", "cota", "cotas", "contrato", "clausula", "cláusula",
     "planta", "seccion", "sección", "montaje", "costura", "patron", "patrón",
     "tela", "muestra", "total",
+    # --- NUEVOS ---
+    "pago", "pop", "dua", "ups", "mbe", "envio", "envío",
+    "recogida", "transporte", "comprobante", "aduana", "sepa",
+    "transferencia", "recibo", "croquis", "medida",
+    # --- NUEVOS (expansión de diccionario) ---
+    "precios", "tarifa", "pod", "proforma", "render", "manual",
+    "certificado", "ficha", "layout", "aperturas", "packing",
+    "palet", "instruccion", "mantenimiento",
 }
 
 FOLDER_HINTS = {
     "presupuestos": "presupuesto",
     "pedidos": "pedido",
     "facturas": "factura",
-    "imagenes": "imagen",
+    "imagenes": "foto_producto",     # --- CAMBIO: era "imagen" ---
+    "telas": "muestra_tela",          # --- NUEVO ---
+    "muestras": "muestra_tela",       # --- NUEVO ---
+    "croquis": "croquis_medida",      # --- NUEVO ---
 }
 
 # Image extensions that should NEVER be classified as "plano" unless
@@ -111,6 +195,7 @@ def classify_document(
     source_path: str | None,
     text: str,
     learned_rules: Iterable[LearnedRule] | None = None,
+    content_route: str | None = None,  # --- NUEVO ---
 ) -> ClassificationResult:
     normalized_filename = _normalize(filename)
     normalized_path = _normalize(source_path or "")
@@ -121,6 +206,27 @@ def classify_document(
     scores: dict[str, float] = {}
     matches: dict[str, list[str]] = {}
     matched_keywords: dict[str, set[str]] = {}  # dedup per type
+
+    # --- Phase 0: Image subtypes from content_route (highest priority) ---
+    # El content_router ya detectó si es foto de interiorismo/tela usando CLIP
+    # + keywords + carpeta. Esa señal es muy fiable (conf 0.7+), la respetamos.
+    if content_route in ("interior_design", "fabric_description"):
+        if content_route == "fabric_description":
+            scores["muestra_tela"] = 0.85
+            matches["muestra_tela"] = [f"content_route:{content_route}"]
+        else:
+            # interior_design: distinguir croquis (con medidas) de foto simple
+            croquis_signals = sum(
+                1 for kw in ("croquis", "medida", "medidas", "medicion", "cota", "cotas")
+                if _match_keyword(_normalize(kw), normalized_text)
+                or _match_keyword(_normalize(kw), normalized_filename)
+            )
+            if croquis_signals >= 2:
+                scores["croquis_medida"] = 0.85
+                matches["croquis_medida"] = [f"content_route:{content_route}+medidas"]
+            else:
+                scores["foto_producto"] = 0.85
+                matches["foto_producto"] = [f"content_route:{content_route}"]
 
     # --- Phase 1: Learned rules (highest priority) ---
     for rule in learned_rules or []:
@@ -169,17 +275,29 @@ def classify_document(
 
     # --- Phase 6: Image guard — prevent JPEG scans from being "plano" ---
     # If the file is an image and "plano" is winning, require VERY strong
-    # signals (filename match + 3+ text signals). Otherwise suppress plano.
+    # signals. Two acceptable cases:
+    #   (a) filename signal + >=2 text signals (the original strict rule:
+    #       a scanned plan whose OCR yielded plan-like vocabulary), OR
+    #   (b) >=2 filename signals + the file lives in a ``planos/`` folder
+    #       (a scanned plan whose OCR yielded nothing — text="" — but whose
+    #       name is unambiguous, e.g. "plano_planta_baja.jpg"). Without this
+    #       branch every scanned plan with a blank OCR was misclassified as
+    #       "imagen" and lost.
     if is_image and scores.get("plano", 0) > 0:
-        has_filename_signal = any(
-            _match_keyword(kw, normalized_filename)
-            for kw in ("plano", "planta", "alzado", "seccion", "sección", "cotas")
+        plan_filename_kws = (
+            "plano", "planta", "alzado", "seccion", "sección", "cotas",
         )
+        filename_signals = sum(
+            1 for kw in plan_filename_kws if _match_keyword(kw, normalized_filename)
+        )
+        has_filename_signal = filename_signals >= 1
         text_signals = sum(
             1 for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
             if _match_keyword(kw, normalized_text)
         )
-        if not (has_filename_signal and text_signals >= 2):
+        in_planos_folder = bool(re.search(r"(^|/|\\)planos($|/|\\)", normalized_path))
+        strong_filename_case = filename_signals >= 2 and in_planos_folder
+        if not ((has_filename_signal and text_signals >= 2) or strong_filename_case):
             # Suppress plano classification for images without strong signals
             scores.pop("plano", None)
             matches.pop("plano", None)

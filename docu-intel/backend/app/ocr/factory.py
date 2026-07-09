@@ -141,7 +141,7 @@ def _get_or_create_engine(factory) -> BaseOCREngine:
 
 def _build_cascading_engine() -> BaseOCREngine:
     from app.ocr.cascading import CascadingOCREngine
-    from app.ocr.paddle import PaddleOCREngine
+    from app.ocr.paddle import PaddleOCREngine, _get_gpu_device
     from app.ocr.tesseract import TesseractOCREngine
 
     kwargs: dict[str, object] = dict(
@@ -150,10 +150,24 @@ def _build_cascading_engine() -> BaseOCREngine:
             oem=settings.tesseract_oem,
             psm=settings.tesseract_psm,
         ),
-        fallback=PaddleOCREngine(lang=settings.paddle_lang),
+        fallback=None,
         min_chars=settings.ocr_cascading_min_chars,
         min_confidence=settings.ocr_cascading_min_confidence,
     )
+
+    # Tier 2 (PaddleOCR). On CPU workers it routinely peaks >30 GB and kills
+    # the process via OOM (PaddlePaddle's MKL-DNN backend is not viable for
+    # the server recognition model). When paddleocr_gpu_only is set (default)
+    # we wire it in only when a GPU is visible to this process, and otherwise
+    # the cascade degrades to Tier 1 (Tesseract) + Tier 4 (vision LLM).
+    paddle_gpu_ok = (not settings.paddleocr_gpu_only) or (_get_gpu_device() is not None)
+    if paddle_gpu_ok:
+        kwargs["fallback"] = PaddleOCREngine(lang=settings.paddle_lang)
+    else:
+        logger.warning(
+            "PaddleOCR (Tier 2) disabled: no GPU visible and "
+            "paddleocr_gpu_only=true. Cascade runs Tier 1 + Tier 4 only."
+        )
     if settings.ocr_cascading_use_pp_structure:
         from app.ocr.pp_structure import PPStructureEngine
 
@@ -233,7 +247,8 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
     re-entering the hanging init. Sub-engines that don't expose
     ``_init_failed`` are best-effort: the warning is logged but the flag
     cannot be set, matching the prior behaviour."""
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FuturesTimeout
 
     warmup_timeout = getattr(settings, "ocr_engine_warmup_timeout", 180)
 
@@ -397,9 +412,9 @@ def _exercise(engine: BaseOCREngine) -> None:
         cv2.imwrite(str(image_path), img)
         # Exercise only the OCR tiers (1-3), skip Tier 4 (VLM)
         # to avoid blocking the worker boot.
-        if hasattr(engine, "primary"):
+        if getattr(engine, "primary", None) is not None:
             engine.primary.extract(image_path)
-        if hasattr(engine, "fallback"):
+        if getattr(engine, "fallback", None) is not None:
             engine.fallback.extract(image_path)
     except Exception as exc:
         logger.debug("OCR preload exercise failed (best-effort): %s", exc)

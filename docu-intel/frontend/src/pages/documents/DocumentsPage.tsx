@@ -15,6 +15,7 @@ import { applyDocumentView, documentViews, type DocumentViewId } from "@/lib/doc
 import { cn, formatBytes, formatDate } from "@/lib/utils"
 import { notify } from "@/lib/toast"
 import type { Document } from "@/types/api"
+import { DOCUMENT_TYPES as TYPE_OPTIONS } from "@/lib/documentTypes"
 
 const PAGE_SIZE = 25
 const STATUS_OPTIONS = [
@@ -25,16 +26,6 @@ const STATUS_OPTIONS = [
   { value: "needs_review", label: "Revisión" },
   { value: "failed", label: "Fallido" },
   { value: "duplicate", label: "Duplicado" },
-]
-const TYPE_OPTIONS = [
-  { value: "", label: "Todos" },
-  { value: "presupuesto", label: "Presupuesto" },
-  { value: "pedido", label: "Pedido" },
-  { value: "factura", label: "Factura" },
-  { value: "plano", label: "Plano" },
-  { value: "imagen", label: "Imagen" },
-  { value: "excel", label: "Excel" },
-  { value: "otro", label: "Otro" },
 ]
 
 export function DocumentsPage() {

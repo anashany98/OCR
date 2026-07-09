@@ -27,6 +27,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import Budget, Document, Order, OrderLine
 from app.services.business_redaction import redact_business_payload_for_scope
 from app.services.redaction import redact_sensitive_text
@@ -175,7 +176,7 @@ def collect_context(
             )
             if not payload.get("found"):
                 warnings.append(
-                    f"No he encontrado el presupuesto "
+                    "No he encontrado el presupuesto "
                     f"{payload.get('budget_number') or 'indicado'} en las tablas estructuradas."
                 )
         elif tool.name == "get_budget_lines":
@@ -300,7 +301,7 @@ def collect_context(
                     warnings.append(
                         f"He encontrado {len(documents)} documentos cuyo nombre coincide. "
                         f"Estoy explicando el mas reciente ({resolved.original_filename}). "
-                        f"Si querias otro, dime el nombre exacto."
+                        "Si querias otro, dime el nombre exacto."
                     )
             else:
                 warnings.append(
@@ -418,7 +419,7 @@ def collect_context(
                             title=f"Documento presupuesto: {resolved.original_filename}",
                             summary=(
                                 f"No hay fila estructurada en presupuestos para '{budget_number}', "
-                                f"pero si hay un documento cuyo nombre/ruta coincide. "
+                                "pero si hay un documento cuyo nombre/ruta coincide. "
                                 f"Tipo: {resolved.document_type} | Estado: {resolved.status} | "
                                 f"Confianza: {resolved.confidence} | Paginas: {resolved.page_count} | "
                                 f"Ruta: {resolved.source_path}"
@@ -438,7 +439,7 @@ def collect_context(
                     )
                 else:
                     warnings.append(
-                        f"No he encontrado ningun presupuesto ni documento con numero "
+                        "No he encontrado ningun presupuesto ni documento con numero "
                         f"'{budget_number}'. Prueba a buscar por nombre de archivo o por "
                         "importe/cliente."
                     )
@@ -502,7 +503,6 @@ def collect_context(
                     seen[key] = v.weight
 
             # Run search for each unique variation
-            from collections import defaultdict
 
             merged_scores: dict[tuple, float] = {}
             merged_results: dict[tuple, Any] = {}
@@ -514,9 +514,11 @@ def collect_context(
                     for rank, r in enumerate(variant_results):
                         if r.document_id is None:
                             continue
-                        key = (r.document_id, r.page_number, r.block_id)
-                        # RRF-style score: weight / (k + rank)
-                        rrf_score = weight / (60 + rank + 1)
+                        key = (r.document_id, r.page_number, r.block_id, r.chunk_id)
+                        # RRF-style score: weight / (k + rank). Use the
+                        # same RRF constant as the standalone hybrid search so
+                        # in-agent and out-of-agent ranking stay consistent.
+                        rrf_score = weight / (settings.search_rrf_k + rank + 1)
                         if key in merged_scores:
                             merged_scores[key] += rrf_score
                         else:
@@ -1006,17 +1008,17 @@ def _build_friendly_fallback(
         related = _related_filenames(context_items[1:6])
         if related:
             related_text = (
-                f"\n\nHe encontrado estos candidatos a ser el original: "
+                "\n\nHe encontrado estos candidatos a ser el original: "
                 + ", ".join(f"**{r}**" for r in related)
                 + "."
             )
         else:
             related_text = ""
         answer = (
-            f"Este documento esta marcado como **duplicado**, asi que no tiene una "
-            f"extraccion OCR propia. El contenido util esta en el documento original "
+            "Este documento esta marcado como **duplicado**, asi que no tiene una "
+            "extraccion OCR propia. El contenido util esta en el documento original "
             f"del que procede.{related_text} Te recomiendo abrir el original en lugar "
-            f"de este PDF."
+            "de este PDF."
         )
         return GroundedResponse(
             answer=answer,
@@ -1263,21 +1265,21 @@ def _structured_not_found_text(tool_name: str, payload: dict) -> str:
         scope = f" {num}" if num else ""
         return (
             f"No he encontrado el pedido de origen de la factura{scope} en la base "
-            f"estructurada. Puede que la factura no este vinculada a ningun pedido."
+            "estructurada. Puede que la factura no este vinculada a ningun pedido."
         )
     if tool_name == "get_budget_total":
         num = payload.get("budget_number") or payload.get("budget_id")
         scope = f" {num}" if num else ""
         return (
             f"No he encontrado el importe total del presupuesto{scope} en la base "
-            f"estructurada."
+            "estructurada."
         )
     if tool_name == "get_invoiced_amount_for_budget":
         num = payload.get("budget_number") or payload.get("budget_id")
         scope = f" {num}" if num else ""
         return (
             f"No he encontrado facturacion asociada al presupuesto{scope} en la base "
-            f"estructurada."
+            "estructurada."
         )
     if tool_name == "get_budget_lines":
         num = payload.get("budget_number") or payload.get("budget_id")
@@ -1509,7 +1511,6 @@ def _average_confidence(items: list[ContextItem]) -> float:
     ]
     if ocr_values:
         # geometric mean, floored at 0.15
-        import math
         product = 1.0
         for v in ocr_values:
             product *= max(v, 0.15)

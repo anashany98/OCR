@@ -31,18 +31,39 @@ import time
 from pathlib import Path
 
 from app.ocr.base import OCRBlock, OCRResult
+from app.services.metrics import track_ocr_duration
 
 logger = logging.getLogger("app.ocr.pp_structure")
 
 _PP_INIT_TIMEOUT_SECONDS: float = 120.0
 
 # Process-level flag: prevents repeated init attempts after timeout.
+# Like PaddleOCR's flag it auto-resets after a TTL so a transient spike
+# (e.g. VRAM exhaustion, a one-off GPU context corruption) does not
+# permanently disable Tier 3 for the lifetime of the worker process.
 _PROCESS_INIT_FAILED_PP: bool = False
+_PROCESS_INIT_FAILED_PP_AT: float = 0.0
+_PROCESS_INIT_TTL_PP_SECONDS: float = 1800.0  # 30 minutes
 
 # B7: skip the HuggingFace connectivity probe that adds ~2 s to first
 # init. Set at import time so it runs exactly once per process, not once
 # per PPStructureEngine instance.
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+
+
+def _is_pp_init_failed() -> bool:
+    """Check if PP-Structure init is failed. Auto-reset after TTL."""
+    global _PROCESS_INIT_FAILED_PP, _PROCESS_INIT_FAILED_PP_AT
+    if not _PROCESS_INIT_FAILED_PP:
+        return False
+    if time.monotonic() - _PROCESS_INIT_FAILED_PP_AT > _PROCESS_INIT_TTL_PP_SECONDS:
+        logger.info(
+            "PP-Structure init failure TTL expired (%.0fs), allowing retry",
+            _PROCESS_INIT_TTL_PP_SECONDS,
+        )
+        _PROCESS_INIT_FAILED_PP = False
+        return False
+    return True
 
 
 class PPStructureEngine:
@@ -78,8 +99,7 @@ class PPStructureEngine:
     @property
     def _pipeline(self):
         """Lazily build the PaddleX pipeline on first use with timeout protection."""
-        global _PROCESS_INIT_FAILED_PP
-        if _PROCESS_INIT_FAILED_PP or getattr(self, "_init_failed", False):
+        if _is_pp_init_failed() or getattr(self, "_init_failed", False):
             raise RuntimeError(
                 "PP-Structure engine is unavailable: previous init attempt failed"
             )
@@ -91,11 +111,11 @@ class PPStructureEngine:
         """Load the PaddleX pipeline with a timeout to prevent indefinite blocking."""
         try:
             from paddlex import create_pipeline
-        except ImportError:
+        except ImportError as err:
             self._init_failed = True
             raise RuntimeError(
                 "paddlex is not installed. Install with: pip install 'paddlex[ocr]==3.5.2'"
-            )
+            ) from err
 
         def _build():
             return create_pipeline(
@@ -111,9 +131,10 @@ class PPStructureEngine:
             try:
                 self._pipeline_instance = future.result(timeout=_PP_INIT_TIMEOUT_SECONDS)
             except concurrent.futures.TimeoutError:
-                global _PROCESS_INIT_FAILED_PP
+                global _PROCESS_INIT_FAILED_PP, _PROCESS_INIT_FAILED_PP_AT
                 future.cancel()
                 _PROCESS_INIT_FAILED_PP = True
+                _PROCESS_INIT_FAILED_PP_AT = time.monotonic()
                 self._init_failed = True
                 logger.error(
                     "PP-Structure init timed out after %.0fs (device=%s, lang=%s). "
@@ -137,7 +158,8 @@ class PPStructureEngine:
             # disposable ThreadPoolExecutor — on timeout the pool
             # cleans up the thread (it becomes a zombie until the
             # GIL is released, same as paddle.py).
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+            from concurrent.futures import ThreadPoolExecutor
+            from concurrent.futures import TimeoutError as FuturesTimeout
 
             result_holder: list = []
             exc_holder: list = []
@@ -152,11 +174,11 @@ class PPStructureEngine:
                 future = pool.submit(_run_predict)
                 try:
                     future.result(timeout=120)
-                except FuturesTimeout:
+                except FuturesTimeout as err:
                     future.cancel()
                     raise TimeoutError(
                         f"PP-Structure predict() timed out after 120s on {image_path.name}"
-                    )
+                    ) from err
             if exc_holder:
                 raise exc_holder[0]
             results = result_holder

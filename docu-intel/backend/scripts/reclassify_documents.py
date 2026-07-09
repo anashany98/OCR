@@ -54,16 +54,28 @@ def get_learned_rules(db) -> list[LearnedRule]:
         return []
 
 
-def reclassify_all(dry_run: bool = False, verbose: bool = False) -> dict:
-    """Reclassify all documents and report changes."""
+def reclassify_all(dry_run: bool = False, verbose: bool = False, only_unknown: bool = True, doc_type: str | None = None) -> dict:
+    """Reclassify documents and report changes.
+
+    By default only ``desconocido`` documents are reclassified, since those
+    are the ones the new rules can actually resolve. Reclassifying already
+    classified documents (invoices, budgets, excels, emails) with the broad
+    keyword rules produces false positives (e.g. an invoice mentioning
+    "mesa" → ``foto_producto``). Use ``--all`` to force a full re-pass or
+    ``--type <tipo>`` to target one specific type (e.g. scanned docs saved
+    as images that were never categorized).
+    """
     db = next(get_db())
     try:
         learned_rules = get_learned_rules(db)
         logger.info("Loaded %d learned rules", len(learned_rules))
 
-        documents = list(
-            db.scalars(select(Document).where(Document.deleted_at.is_(None))).all()
-        )
+        stmt = select(Document).where(Document.deleted_at.is_(None))
+        if doc_type:
+            stmt = stmt.where(Document.document_type == doc_type)
+        elif only_unknown:
+            stmt = stmt.where(Document.document_type == "desconocido")
+        documents = list(db.scalars(stmt).all())
         logger.info("Found %d documents to reclassify", len(documents))
 
         changes = []
@@ -99,7 +111,7 @@ def reclassify_all(dry_run: bool = False, verbose: bool = False) -> dict:
                     })
                     if not dry_run:
                         doc.document_type = new_type
-                        doc.classification_confidence = result.confidence
+                        doc.confidence = result.confidence
                 else:
                     unchanged += 1
 
@@ -142,9 +154,24 @@ def main():
     parser = argparse.ArgumentParser(description="Reclassify documents")
     parser.add_argument("--dry-run", action="store_true", help="Don't save changes")
     parser.add_argument("--verbose", action="store_true", help="Show each change")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Reclassify ALL documents (not only 'desconocido'). Risk of false positives.",
+    )
+    parser.add_argument(
+        "--type",
+        default=None,
+        help="Reclassify only documents of this document_type (e.g. 'imagen').",
+    )
     args = parser.parse_args()
 
-    result = reclassify_all(dry_run=args.dry_run, verbose=args.verbose)
+    result = reclassify_all(
+        dry_run=args.dry_run,
+        verbose=args.verbose,
+        only_unknown=not args.all and args.type is None,
+        doc_type=args.type,
+    )
 
     print(f"\n{'='*60}")
     print(f"RECLASSIFICATION RESULTS")

@@ -170,7 +170,7 @@ def bulk_reprocess_documents(
     if normalized.quality_flags:
         for flag in normalized.quality_flags:
             stmt = stmt.where(
-                text(f"quality_flags_json::jsonb ? :flag")
+                text("quality_flags_json::jsonb ? :flag")
             ).params(flag=flag)
 
     documents = list(db.scalars(stmt).all())

@@ -19,9 +19,21 @@ const TYPE_COLORS: Record<string, string> = {
   presupuesto: "bg-[var(--info-light)] text-[var(--text-on-info)]",
   pedido: "bg-[var(--success-light)] text-[var(--text-on-success)]",
   factura: "bg-[var(--warning-light)] text-[var(--text-on-warning)]",
+  albaran: "bg-[var(--warning-light)] text-[var(--text-on-warning)]",
+  albaran_transporte: "bg-[var(--warning-light)] text-[var(--text-on-warning)]",
   plano: "bg-[var(--accent-light)] text-[var(--accent)]",
   imagen: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
+  foto_producto: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
+  muestra_tela: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
+  croquis_medida: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
   excel: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
+  comprobante_pago: "bg-[var(--info-light)] text-[var(--text-on-info)]",
+  dua: "bg-[var(--info-light)] text-[var(--text-on-info)]",
+  ficha_tecnica: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
+  tarifa: "bg-[var(--info-light)] text-[var(--text-on-info)]",
+  proforma: "bg-[var(--warning-light)] text-[var(--text-on-warning)]",
+  instrucciones: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
+  render: "bg-[var(--bg-surface-2)] text-[var(--text-muted)]",
 }
 
 export function SourceCard({

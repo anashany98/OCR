@@ -19,7 +19,6 @@ import logging
 import os
 import sys
 import tempfile
-import threading
 import time
 from contextlib import contextmanager, nullcontext
 from functools import cached_property
@@ -28,6 +27,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.preprocess import preprocess_adaptive
+from app.services.metrics import track_ocr_duration
 
 logger = logging.getLogger("app.ocr.paddle")
 
@@ -40,7 +40,26 @@ _PADDLE_INIT_TIMEOUT_SECONDS: float = 120.0
 # Process-level flag: once init fails or times out, all subsequent
 # PaddleOCREngine instances in this process skip init immediately.
 # This prevents the VRAM leak from repeated timeout → orphan thread cycles.
+# FASE 3.1: TTL de 30 min para permitir reintento tras un spike temporal.
 _PROCESS_INIT_FAILED: bool = False
+_PROCESS_INIT_FAILED_AT: float = 0.0  # timestamp of failure
+_PROCESS_INIT_TTL_SECONDS: float = 1800.0  # 30 minutes
+
+
+def _is_init_failed() -> bool:
+    """Check if init is permanently failed. Auto-reset after TTL."""
+    global _PROCESS_INIT_FAILED, _PROCESS_INIT_FAILED_AT
+    if not _PROCESS_INIT_FAILED:
+        return False
+    if time.monotonic() - _PROCESS_INIT_FAILED_AT > _PROCESS_INIT_TTL_SECONDS:
+        logger.info(
+            "PaddleOCR init failure TTL expired (%.0fs), allowing retry",
+            _PROCESS_INIT_TTL_SECONDS,
+        )
+        _PROCESS_INIT_FAILED = False
+        _PROCESS_INIT_FAILED_AT = 0.0
+        return False
+    return True
 
 
 # =============================================================================
@@ -80,8 +99,8 @@ class PaddleOCREngine:
 
     @cached_property
     def _engine(self):
-        global _PROCESS_INIT_FAILED
-        if _PROCESS_INIT_FAILED or getattr(self, "_init_failed", False):
+        global _PROCESS_INIT_FAILED, _PROCESS_INIT_FAILED_AT
+        if _is_init_failed() or getattr(self, "_init_failed", False):
             raise RuntimeError("PaddleOCR engine is unavailable: previous init attempt failed")
         return self._init_engine_with_timeout()
 
@@ -128,6 +147,20 @@ class PaddleOCREngine:
         }
         if self.device:
             kwargs["device"] = self.device
+        # FP16 / TensorRT FP16: PaddleOCR 3.x accepts precision="fp16" via
+        # **kwargs (-> pptrt_precision -> run_mode="trt_fp16"). ~1.5-2x faster
+        # on Tensor-Core GPUs (RTX 4070). Gated by setting so CPU stays fp32.
+        #
+        # NOTE: self.device (e.g. "gpu:0") is already passed as kwargs["device"]
+        # above. PaddleOCR 3.5.0 selects the GPU from that string — do NOT pass
+        # "device_id" (removed): it is no longer a valid kwarg in 3.5.0 and
+        # raises "Unknown argument: device_id", which silently disabled Tier 2
+        # on all GPU workers and left the RTX 4070s idle. Likewise "enable_newir"
+        # is omitted: under Paddle 3.3.1 it triggers
+        # "ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute]"
+        # in PP-Structure's oneDNN path, forcing every Tier 3 init to time out.
+        if self.device and "gpu" in str(self.device).lower() and settings.paddle_use_fp16:
+            kwargs["precision"] = "fp16"
 
         # max_workers=1 keeps the disposable executor constrained to a
         # single in-flight init at a time per engine instance, and we want
@@ -140,15 +173,17 @@ class PaddleOCREngine:
             try:
                 return init_future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
             except concurrent.futures.TimeoutError:
-                global _PROCESS_INIT_FAILED
+                global _PROCESS_INIT_FAILED, _PROCESS_INIT_FAILED_AT
                 init_future.cancel()
                 _PROCESS_INIT_FAILED = True
+                _PROCESS_INIT_FAILED_AT = time.monotonic()
                 logger.error(
                     "PaddleOCR init timed out after %.0fs (lang=%s, device=%s). "
-                    "Process marked — all future PaddleOCR inits will skip.",
+                    "Process marked — all future PaddleOCR inits will skip for %.0fs.",
                     _PADDLE_INIT_TIMEOUT_SECONDS,
                     self.lang,
                     self.device,
+                    _PROCESS_INIT_TTL_SECONDS,
                 )
                 self._init_failed = True
                 raise RuntimeError(
@@ -224,6 +259,7 @@ class PaddleOCREngine:
             average = sum(confidences) / len(confidences) if confidences else None
             return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
         finally:
+            track_ocr_duration(time.perf_counter() - start)
             if ocr_path != image_path:
                 ocr_path.unlink(missing_ok=True)
 
@@ -267,6 +303,7 @@ class PaddleOCREngine:
 
             return results
         finally:
+            track_ocr_duration(time.perf_counter() - start)
             for tf in temp_files:
                 tf.unlink(missing_ok=True)
 

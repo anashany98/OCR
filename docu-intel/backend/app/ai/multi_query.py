@@ -26,7 +26,6 @@ from dataclasses import dataclass
 
 from app.core.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Synonym / rephrasing templates
 # ---------------------------------------------------------------------------

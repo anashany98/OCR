@@ -1,12 +1,12 @@
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from celery.exceptions import Reject
 from sqlalchemy import select
 
 from app.database.session import SessionLocal
 from app.ingestion.scanner import scan_input_folders
-from app.models import ExtractionJob
+from app.models import Document, ExtractionJob
 from app.services.document_service import process_document
 from app.workers.celery_app import celery_app
 from app.workers.errors import (
@@ -14,6 +14,7 @@ from app.workers.errors import (
     is_permanent,
     mark_job_as_failed,
     notify_failed,
+    truncate_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,17 @@ def process_document_task(self, document_id: int, job_id: int) -> None:
                 # the failure even if the worker dies between the
                 # raise and the ack.
                 mark_job_as_failed(db, job, exc)
+                # BUGFIX: mark the DOCUMENT as failed too. Previously only the
+                # job was updated, so the document stayed in "processing"
+                # forever (no sweeper touched it, since its job was already
+                # "failed"). This orphaned documents invisibly to the user.
+                document = db.get(Document, document_id)
+                if document and document.status in ("processing", "pending"):
+                    document.status = "failed"
+                    document.quality_status = "failed"
+                    document.quality_score = 0.0
+                    document.quality_flags_json = ["processing_failed"]
+                    document.error_message = truncate_error(exc)
                 db.commit()
                 notify_failed(
                     job_id=job_id,
@@ -121,7 +133,7 @@ def sweep_stale_jobs_task() -> dict:
 
     db = SessionLocal()
     try:
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+        cutoff = datetime.now(UTC) - timedelta(minutes=30)
         stale = db.scalars(
             select(ExtractionJob).where(
                 and_(
@@ -134,7 +146,7 @@ def sweep_stale_jobs_task() -> dict:
         for job in stale:
             job.status = "failed"
             job.error_message = "Worker died mid-processing (sweeper timeout)"
-            job.finished_at = datetime.now(timezone.utc)
+            job.finished_at = datetime.now(UTC)
             reset_count += 1
         if reset_count:
             db.commit()

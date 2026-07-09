@@ -1,4 +1,4 @@
-"""Search metrics: per-strategy latency, strategy/outcome, cache."""
+"""Search metrics: per-strategy latency, strategy/outcome, cache, rerank."""
 
 from __future__ import annotations
 
@@ -9,6 +9,18 @@ from ._registry import (
     SEARCH_DURATION,
     SEARCH_STRATEGY_USED,
 )
+
+# FASE 6.4: rerank failure counter
+try:
+    from prometheus_client import Counter
+
+    RERANK_FAILURES = Counter(
+        "docuintel_rerank_failure_total",
+        "Cross-encoder reranker failures",
+        ["reason"],
+    )
+except Exception:  # pragma: no cover
+    RERANK_FAILURES = None  # type: ignore[assignment]
 
 
 def track_search_latency(
@@ -63,3 +75,13 @@ def update_cache_hit_rate() -> None:
         CACHE_HIT_RATE.set(0.0)
         return
     CACHE_HIT_RATE.set(CACHE_HITS._value.get() / total)
+
+
+def track_rerank_failure(reason: str) -> None:
+    """FASE 6.4: record a cross-encoder reranker failure.
+
+    The reranker is best-effort — failures don't break search, but
+    operators need visibility into how often it degrades.
+    """
+    if RERANK_FAILURES is not None:
+        RERANK_FAILURES.labels(reason=reason[:80]).inc()

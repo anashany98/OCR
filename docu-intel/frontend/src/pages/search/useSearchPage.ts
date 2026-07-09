@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom"
 
 import { api } from "@/api/client"
 import { notify } from "@/lib/toast"
+import { DOCUMENT_TYPE_VALUES } from "@/lib/documentTypes"
 import type { SearchResult } from "@/types/api"
 
 // ---------------------------------------------------------------------------
@@ -41,16 +42,7 @@ export const SEARCH_MODES: ReadonlyArray<{
   { id: "guided:supplier", label: "Proveedor", desc: "Buscar por nombre de proveedor" },
 ] as const
 
-export const TYPE_OPTIONS = [
-  "",
-  "presupuesto",
-  "pedido",
-  "factura",
-  "plano",
-  "imagen",
-  "excel",
-  "otro",
-]
+export const TYPE_OPTIONS = DOCUMENT_TYPE_VALUES
 
 export const STATUS_OPTIONS = ["", "processed", "needs_review", "failed", "pending", "duplicate"]
 

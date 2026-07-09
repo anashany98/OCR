@@ -142,7 +142,7 @@ class CascadingOCREngine:
     def __init__(
         self,
         primary: BaseOCREngine,
-        fallback: BaseOCREngine,
+        fallback: BaseOCREngine | None,
         *,
         min_chars: int = 30,
         min_confidence: float = 0.5,
@@ -171,6 +171,7 @@ class CascadingOCREngine:
         # through the property setter.
         self._tls = threading.local()
         self._tls.language: str | None = None
+        self._tls.content_route: str | None = None
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
         # value. Stored in thread-local to avoid race conditions when
@@ -189,9 +190,26 @@ class CascadingOCREngine:
     def current_language(self, value: str | None) -> None:
         self._tls.language = value
 
+    @property
+    def current_content_route(self) -> str | None:
+        return getattr(self._tls, "content_route", None)
+
+    @current_content_route.setter
+    def current_content_route(self, value: str | None) -> None:
+        self._tls.content_route = value
+
     def extract(self, image_path: Path) -> OCRResult:
         # O1: clear the preprocessing cache so each page starts fresh.
         clear_preprocess_cache()
+
+        content_route = self.current_content_route
+
+        # FASE 5: content-route-aware tier skipping.
+        # For photos/plans, Tesseract is useless — skip straight to
+        # PaddleOCR or vision. For emails/excels, PP-Structure adds
+        # nothing — skip Tier 3.
+        skip_tier1 = content_route in ("interior_design", "plan")
+        skip_tier3 = content_route in ("email_exportado", "excel")
 
         # Photo detection: for product photos, try OCR first but fall back
         # to vision LLM if OCR fails. This ensures handwritten text and
@@ -210,9 +228,18 @@ class CascadingOCREngine:
         except Exception:
             logger.debug("photo classification skipped: %s", image_path.name)
 
-        start = time.perf_counter()
-        primary_result = self.primary.extract(image_path)
-        track_ocr_duration(time.perf_counter() - start)
+        # FASE 5: skip Tier 1 for photos/plans — Tesseract can't handle them
+        if skip_tier1 and not is_photo:
+            logger.info(
+                "FASE5 skip Tier 1 for content_route=%s: %s",
+                content_route,
+                image_path.name,
+            )
+            primary_result = OCRResult(text="", confidence=None, blocks=[], engine="skipped")
+        else:
+            start = time.perf_counter()
+            primary_result = self.primary.extract(image_path)
+            track_ocr_duration(time.perf_counter() - start)
 
         # For photos, if OCR produces little text, try vision LLM directly
         if is_photo and self.vlm_ocr is not None:
@@ -233,6 +260,12 @@ class CascadingOCREngine:
         # we keep the primary result so the user at least sees *some*
         # text instead of a blank page. The vision LLM fallback further
         # downstream catches the truly impossible cases.
+        #
+        # When fallback is None (CPU worker with paddleocr_gpu_only=true),
+        # skip Tier 2 entirely and let _finalize route to Tier 4 (vision LLM)
+        # if the primary result is still weak.
+        if self.fallback is None:
+            return self._finalize(image_path, self.primary.name, primary_result)
         start = time.perf_counter()
         try:
             fallback_result = self.fallback.extract(image_path)
@@ -246,7 +279,7 @@ class CascadingOCREngine:
         if should_replace:
             # Tier 2 won — try Tier 3 only if it's wired in AND Tier 2
             # is still weak (below thresholds). Otherwise return Tier 2.
-            if self.pp_structure is not None and not self._is_acceptable(fallback_result):
+            if self.pp_structure is not None and not skip_tier3 and not self._is_acceptable(fallback_result):
                 tier3 = self._try_tier3(image_path, primary_result, fallback_result)
                 if tier3 is not None:
                     return self._finalize(
@@ -273,7 +306,7 @@ class CascadingOCREngine:
         )
 
         # Tier 2 didn't beat Tier 1 — try Tier 3 if available.
-        if self.pp_structure is not None:
+        if self.pp_structure is not None and not skip_tier3:
             tier3 = self._try_tier3(image_path, primary_result, fallback_result)
             if tier3 is not None:
                 return self._finalize(image_path, self.pp_structure.name, tier3)

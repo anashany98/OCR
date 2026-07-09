@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import time
 from collections.abc import Awaitable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -261,17 +260,18 @@ _DPI_MIN_CONFIDENCE = 0.55  # DPI-escalación umbral (relajado vs low_ocr=0.70)
 def _get_dpi_ladder(page_width: float = 0, page_height: float = 0) -> list[int]:
     """Build the DPI ladder dynamically from the configured base DPI.
 
-    For small pages (width < 400pt), start at a higher DPI so the
-    rendered image is large enough for OCR. A 516pt-wide page at
-    144 DPI produces a ~516px image — too small for PaddleOCR.
-    Bumping to 244 DPI gives ~860px which is much better.
+    Two-step ladder: [base, base+100]. The previous 3rd step (+300) was
+    almost never needed and tripled OCR time on hard pages. With base=200
+    most pages pass on step 1; the +100 step covers borderline scans.
+    For small pages (width < 400pt), start 100 DPI higher so the
+    rendered image is large enough for OCR.
     """
     base = settings.pdf_ocr_dpi
     min_side = min(page_width, page_height) if page_width and page_height else 999
     # Small page: start 100 DPI higher
     if min_side < 400:
         base = min(base + 100, 400)
-    return [base, base + 100, base + 300]
+    return [base, base + 100]
 
 
 def _ocr_with_dpi_ladder(
@@ -454,6 +454,9 @@ def _process_scanned_page(
     # Set the per-page language on the cascade (thread-local attribute).
     with contextlib.suppress(Exception):
         ocr_engine.current_language = language
+    # FASE 5: set content_route so the cascade can skip unnecessary tiers.
+    with contextlib.suppress(Exception):
+        ocr_engine.current_content_route = content_route
 
     rect_w, rect_h = rect_wh
     page_number = page_index_0 + 1

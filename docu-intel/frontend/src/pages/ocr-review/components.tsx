@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn, formatDate } from "@/lib/utils"
+import { DOCUMENT_TYPES } from "@/lib/documentTypes"
 
 import { reviewKey, type OcrReviewData } from "./useOcrReviewPage"
 
@@ -100,15 +101,7 @@ export function OcrReviewFilters({ data }: { data: OcrReviewData }) {
         value={state.documentType}
         onChange={state.setDocumentType}
         aria-label="Tipo de documento"
-        options={[
-          { value: "", label: "Todos los tipos" },
-          { value: "presupuesto", label: "Presupuesto" },
-          { value: "pedido", label: "Pedido" },
-          { value: "factura", label: "Factura" },
-          { value: "plano", label: "Plano" },
-          { value: "imagen", label: "Imagen" },
-          { value: "excel", label: "Excel" },
-        ]}
+        options={DOCUMENT_TYPES}
       />
       <SelectPill
         value={state.statusFilter}

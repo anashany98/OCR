@@ -107,4 +107,10 @@ class TestRoutingConstants:
         assert FAST_EXTENSIONS == expected
 
     def test_heavy_types(self):
-        assert HEAVY_TYPES == {"plano", "imagen"}
+        assert HEAVY_TYPES == {
+            "plano",
+            "imagen",
+            "foto_producto",
+            "muestra_tela",
+            "croquis_medida",
+        }
