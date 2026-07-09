@@ -245,7 +245,7 @@ class DocumentChunk(Base):
     # the NOT NULL check on a SELECT.
     tsv: Mapped[Any | None] = mapped_column(
         Text(),
-        Computed("to_tsvector('simple', COALESCE(chunk_text, ''::text))", persisted=True),
+        Computed("to_tsvector('spanish', COALESCE(chunk_text, ''::text))", persisted=True),
         nullable=True,
     )
     # E4 — versioned embedding model. When the operator changes

@@ -103,6 +103,26 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 # Register Prometheus metrics endpoint
 register_metrics_endpoint(app)
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from app.core.errors import DomainError
+import structlog as _structlog
+
+_err_logger = _structlog.get_logger("app.errors")
+
+
+@app.exception_handler(DomainError)
+async def _domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
+    rid = getattr(request.state, "request_id", "-")
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message, "request_id": rid})
+
+
+@app.exception_handler(Exception)
+async def _unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    rid = getattr(request.state, "request_id", "-")
+    _err_logger.exception("unhandled_error", request_id=rid, error=str(exc))
+    return JSONResponse(status_code=500, content={"detail": "internal error", "request_id": rid})
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
