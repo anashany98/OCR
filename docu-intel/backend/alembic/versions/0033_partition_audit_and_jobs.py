@@ -215,9 +215,9 @@ def upgrade() -> None:
     # tables) and the ``created_at`` column is ``NOT NULL``.
     # F1-02: sequences ensure ORM inserts without explicit ID work.
     op.execute("CREATE SEQUENCE IF NOT EXISTS audit_logs_id_seq")
-    op.execute("SELECT setval('audit_logs_id_seq', COALESCE((SELECT MAX(id) FROM audit_logs_legacy), 0))")
+    op.execute("SELECT setval('audit_logs_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM audit_logs_legacy), 1), 1))")
     op.execute("CREATE SEQUENCE IF NOT EXISTS extraction_jobs_id_seq")
-    op.execute("SELECT setval('extraction_jobs_id_seq', COALESCE((SELECT MAX(id) FROM extraction_jobs_legacy), 0))")
+    op.execute("SELECT setval('extraction_jobs_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM extraction_jobs_legacy), 1), 1))")
 
     op.execute(
         """
