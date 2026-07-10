@@ -167,6 +167,70 @@ def _replace_document_chunks(
     db.flush()
 
 
+def persist_chunks_without_embeddings(
+    db: Session,
+    document_id: int,
+    page_texts: list[tuple[int, str | None]],
+    *,
+    document_type: str | None = None,
+    original_filename: str | None = None,
+) -> int:
+    """Persist chunks WITHOUT generating embeddings (P0.2).
+
+    Creates chunks with ``embedding=NULL`` and ``needs_reembedding=True``
+    so the OCR worker never calls the embedding provider. A dedicated
+    embedding task will pick these up later.
+
+    Returns the number of chunks created.
+    """
+    from app.services.document_processing_core import sanitize_text_for_database
+
+    db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
+
+    chunk_payloads: list[tuple[int, str, str, int, str]] = []
+    for page_number, page_text in page_texts:
+        clean_text = sanitize_text_for_database(page_text)
+        for chunk in build_chunks(
+            clean_text,
+            max_words=settings.embedding_chunk_max_words,
+            overlap_words=settings.embedding_chunk_overlap_words,
+            respect_tables=settings.embedding_chunk_respect_tables,
+            respect_headings=settings.embedding_chunk_respect_headings,
+        ):
+            chunk_text = chunk.text
+            token_count = chunk.token_count
+            chunk_type = chunk.chunk_type
+            embedding_text = embedding_text_with_metadata(
+                chunk_text,
+                document_type=document_type,
+                filename=original_filename,
+                page_number=page_number,
+            )
+            chunk_payloads.append(
+                (page_number, chunk_text, embedding_text, token_count, chunk_type)
+            )
+
+    count = 0
+    for page_number, chunk_text, embedding_text, token_count, chunk_type in chunk_payloads:
+        chunk = DocumentChunk(
+            document_id=document_id,
+            page_number=page_number,
+            chunk_text=chunk_text,
+            embedding=None,
+            embedding_provider_used=None,
+            embedding_fallback=False,
+            needs_reembedding=True,
+            token_count=token_count,
+        )
+        chunk.chunk_type = chunk_type
+        chunk.embedding_model_version = settings.embedding_model
+        db.add(chunk)
+        count += 1
+
+    db.flush()
+    return count
+
+
 def reembed_document(db: Session, document_id: int) -> dict:
     """Re-run the embedding step for an existing document.
 

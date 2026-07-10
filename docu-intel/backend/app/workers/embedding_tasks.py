@@ -212,6 +212,165 @@ def run_reembed_pending_documents(db: Session) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# P0.2 — Per-document embedding task (called after OCR completes)
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(
+    name="app.workers.embedding_tasks.embed_document_task",
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+    soft_time_limit=300,
+    time_limit=360,
+    acks_late=True,
+)
+def embed_document_task(self, document_id: int) -> dict:
+    """Generate embeddings for a single document's chunks.
+
+    Called by the OCR worker after chunks are persisted with
+    ``embedding=NULL`` and ``needs_reembedding=True`` (P0.2).
+    The OCR worker never calls the embedding provider directly.
+
+    If the embedding provider fails, chunks stay with
+    ``needs_reembedding=True`` and the periodic reembed sweep
+    will retry. The document remains searchable via lexical
+    search regardless.
+    """
+    db: Session = SessionLocal()
+    try:
+        return _embed_document_sync(db, document_id)
+    finally:
+        db.close()
+
+
+def _embed_document_sync(db: Session, document_id: int) -> dict:
+    """Synchronous embedding logic for a single document.
+
+    P3.1: Uses microbatching by token limit to avoid sending all
+    chunks at once. Batches are committed incrementally so a failure
+    mid-document doesn't lose already-embedded chunks.
+    """
+    from app.services.document_embedding_pipeline import embed_many_with_metadata
+    from app.services.metrics import track_stage_duration
+
+    import time as _time
+
+    t_start = _time.perf_counter()
+    document = db.get(Document, document_id)
+    if document is None:
+        return {"document_id": document_id, "error": "not_found"}
+
+    # Only embed if document is in a suitable state
+    if document.status in {"pending", "processing", "duplicate"}:
+        logger.info(
+            "Embed task: skipping document_id=%s (status=%s)",
+            document_id,
+            document.status,
+        )
+        return {"document_id": document_id, "skipped": document.status}
+
+    try:
+        # Load chunks that need embedding
+        chunks = list(
+            db.scalars(
+                select(DocumentChunk)
+                .where(DocumentChunk.document_id == document_id)
+                .where(DocumentChunk.needs_reembedding.is_(True))
+                .order_by(DocumentChunk.id.asc())
+            )
+        )
+
+        if not chunks:
+            logger.info(
+                "Embed task: document_id=%s has no chunks needing embedding",
+                document_id,
+            )
+            return {"document_id": document_id, "chunks_embedded": 0}
+
+        # P3.1: Microbatch by token count
+        max_tokens_per_batch = 12_000
+        max_chunks_per_batch = 64
+        batches: list[list[DocumentChunk]] = []
+        current_batch: list[DocumentChunk] = []
+        current_tokens = 0
+
+        for chunk in chunks:
+            chunk_tokens = chunk.token_count or 200
+            if (
+                current_batch
+                and (
+                    current_tokens + chunk_tokens > max_tokens_per_batch
+                    or len(current_batch) >= max_chunks_per_batch
+                )
+            ):
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+            current_batch.append(chunk)
+            current_tokens += chunk_tokens
+        if current_batch:
+            batches.append(current_batch)
+
+        total_embedded = 0
+        total_failed = 0
+
+        for batch in batches:
+            texts = [
+                chunk.chunk_text for chunk in batch
+            ]
+            try:
+                results = embed_many_with_metadata(texts)
+                for chunk, (embedding, provider, fallback) in zip(batch, results, strict=True):
+                    chunk.embedding = embedding
+                    chunk.embedding_provider_used = provider
+                    chunk.embedding_fallback = fallback
+                    chunk.needs_reembedding = fallback
+                    chunk.embedding_model_version = settings.embedding_model
+                    if fallback:
+                        total_failed += 1
+                    else:
+                        total_embedded += 1
+                db.flush()
+            except Exception as exc:
+                logger.warning(
+                    "Embed batch failed for document_id=%s (batch_size=%d): %s",
+                    document_id,
+                    len(batch),
+                    exc,
+                )
+                total_failed += len(batch)
+
+        track_stage_duration("embedding", _time.perf_counter() - t_start)
+
+        # Update document flags
+        if total_failed == 0:
+            document.needs_reembedding = False
+            document.semantic_search_ready = True
+            document.pipeline_stage = "searchable"
+        db.commit()
+
+        cache_service.invalidate_search_cache()
+        return {
+            "document_id": document_id,
+            "chunks_embedded": total_embedded,
+            "chunks_failed": total_failed,
+            "batches": len(batches),
+        }
+    except Exception as exc:
+        logger.warning(
+            "Embed task failed for document_id=%s: %s",
+            document_id,
+            exc,
+        )
+        # Let Celery retry handle re-queueing
+        raise
+
+
+# ---------------------------------------------------------------------------
 # Engine-version re-OCR sweep
 # ---------------------------------------------------------------------------
 # When an operator bumps ``settings.current_ocr_engine_version`` (e.g. after

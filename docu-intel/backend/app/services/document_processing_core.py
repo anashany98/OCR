@@ -26,7 +26,13 @@ from app.services.business_extraction import persist_business_extraction
 from app.services.cache import cache_service
 from app.services.classification import classify_document
 from app.services.ingestion_events import record_ingestion_event, upsert_watched_file
-from app.services.metrics import track_document_failed, track_document_processed
+from app.services.metrics import (
+    track_document_failed,
+    track_document_processed,
+    track_stage_duration,
+    track_stage_failure,
+    track_page_processed,
+)
 from app.services.plan_extraction import persist_plan_extraction
 from app.services.quality import evaluate_document_quality, update_document_quality
 from app.services.tenant_access import apply_folder_rules_to_document
@@ -42,6 +48,25 @@ _LEARNED_RULES_CACHE_TTL = 60.0
 logger = logging.getLogger(__name__)
 _learned_rules_cache: dict[str, object] = {"expires_at": 0.0, "rules": []}
 _ALLOWED_DOCUMENT_BLOCK_TYPES = {"text", "table", "figure", "header", "footer", "list"}
+
+
+def _celery_broker_available() -> bool:
+    """Quick check if the Celery broker (Redis) is reachable.
+
+    Returns False in test environments where Redis isn't running,
+    so apply_async doesn't hang waiting for a connection.
+    """
+    import os
+    if os.environ.get("CELERY_ALWAYS_EAGER") or os.environ.get("TESTING"):
+        return False
+    try:
+        from app.workers.celery_app import celery_app
+        conn = celery_app.connection_or_acquire()
+        with conn:
+            conn.ensure_connection(max_retries=0, timeout=2.0)
+            return True
+    except Exception:
+        return False
 
 
 class _LazyOCREngine:
@@ -331,12 +356,23 @@ def process_document(
         )
         db.commit()
 
+    # P0.3: set initial pipeline stage
+    document.pipeline_stage = "text_processing"
+    db.commit()
+
+    t_total = time.perf_counter()
     try:
         if mode == "embeddings":
+            t_emb = time.perf_counter()
             _process_embeddings_only(db, document)
+            track_stage_duration("embedding", time.perf_counter() - t_emb)
             document.status = (
                 previous_status if previous_status in {"processed", "needs_review"} else "processed"
             )
+            # P0.3: re-embed completed
+            document.semantic_search_ready = True
+            document.needs_reembedding = False
+            document.pipeline_stage = "fully_processed"
         elif mode == "ocr_page":
             needs_review = _process_ocr_page_only(
                 db, document, page_number=reprocess_page_number_from_job_type(job.job_type)
@@ -349,6 +385,16 @@ def process_document(
             needs_review = _process_full_parse(db, document)
             document.status = "needs_review" if needs_review else "processed"
 
+        track_stage_duration("total", time.perf_counter() - t_total)
+        # P0.3: text is now available for lexical search
+        document.text_search_ready = True
+        document.pages_completed = document.page_count
+        document.pages_total = document.page_count
+        if document.needs_reembedding:
+            document.pipeline_stage = "embedding_pending"
+        else:
+            document.semantic_search_ready = True
+            document.pipeline_stage = "fully_processed"
         document.processed_at = datetime.now(UTC)
         job.status = "processed"
         job.finished_at = datetime.now(UTC)
@@ -452,17 +498,20 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         input_dir_parts = Path(settings.input_dir).parts
         if len(parts) > len(input_dir_parts):
             folder_hint = parts[len(input_dir_parts)]
+    t_parse = time.perf_counter()
     extracted = _get_effective_parse_document()(
         stored_path,
         page_image_dir,
         ocr_engine,
         folder_hint=folder_hint,
     )
+    track_stage_duration("render", time.perf_counter() - t_parse)
     for extracted_page in extracted.pages:
         extracted_page.text = sanitize_text_for_database(extracted_page.text)
         for extracted_block in extracted_page.blocks:
             extracted_block.text = sanitize_text_for_database(extracted_block.text)
 
+    t_persist = time.perf_counter()
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
     db.execute(delete(DocumentBlock).where(DocumentBlock.document_id == document.id))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document.id))
@@ -513,8 +562,16 @@ def _process_full_parse(db: Session, document: Document) -> bool:
                 source_engine=extracted_block.source_engine,
             )
             db.add(block)
+            # P0.1: track per-page processing
+            track_page_processed(
+                route=getattr(extracted, "route", "unknown") or "unknown",
+                engine=extracted_block.source_engine or "none",
+            )
+    db.flush()
+    track_stage_duration("persist", time.perf_counter() - t_persist)
 
     page_texts_list = [(page.page_number, page.text) for page in extracted.pages]
+    t_classify = time.perf_counter()
     needs_review = _apply_classification_and_extraction(
         db,
         document,
@@ -523,13 +580,49 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         low_ocr_confidences=[page.ocr_confidence for page in extracted.pages if page.ocr_confidence is not None and page.ocr_confidence < settings.low_ocr_confidence_threshold],
         pages=extracted.pages,
     )
-    _replace_document_chunks(
+    track_stage_duration("classification", time.perf_counter() - t_classify)
+
+    t_chunk = time.perf_counter()
+    from app.services.document_embedding_pipeline import persist_chunks_without_embeddings
+
+    persist_chunks_without_embeddings(
         db,
         document.id,
         page_texts_list,
         document_type=document.document_type,
         original_filename=document.original_filename,
     )
+    document.needs_reembedding = True
+    db.flush()
+    track_stage_duration("chunking", time.perf_counter() - t_chunk)
+
+    # P0.2: enqueue embedding task on the dedicated embeddings queue
+    # instead of generating embeddings inline. The OCR worker never
+    # calls the embedding provider.
+    try:
+        from app.workers.embedding_tasks import embed_document_task
+
+        # In test environments or when the broker is unavailable,
+        # apply_async may hang. Check if the broker is reachable first.
+        if _celery_broker_available():
+            embed_document_task.apply_async(
+                args=(document.id,),
+                queue="embeddings",
+            )
+        else:
+            logger.info(
+                "Celery broker unavailable; embeddings will be picked up by reembed sweep (document_id=%s)",
+                document.id,
+            )
+    except Exception as exc:
+        # If Celery is unavailable (tests, single-process mode),
+        # log but don't fail the document — embeddings will be
+        # picked up by the periodic reembed sweep.
+        logger.warning(
+            "Could not enqueue embedding task for document_id=%s: %s",
+            document.id,
+            exc,
+        )
     return needs_review
 
 
@@ -635,13 +728,36 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
         page_count=len(page_texts),
         low_ocr_confidences=_load_low_ocr_confidences(db, document.id),
     )
-    _replace_document_chunks(
+    from app.services.document_embedding_pipeline import persist_chunks_without_embeddings
+
+    persist_chunks_without_embeddings(
         db,
         document.id,
         page_texts,
         document_type=document.document_type,
         original_filename=document.original_filename,
     )
+    document.needs_reembedding = True
+    db.flush()
+    try:
+        from app.workers.embedding_tasks import embed_document_task
+
+        if _celery_broker_available():
+            embed_document_task.apply_async(
+                args=(document.id,),
+                queue="embeddings",
+            )
+        else:
+            logger.info(
+                "Celery broker unavailable; embeddings will be picked up by reembed sweep (document_id=%s)",
+                document.id,
+            )
+    except Exception as exc:
+        logger.warning(
+            "Could not enqueue embedding task for document_id=%s: %s",
+            document.id,
+            exc,
+        )
     return needs_review
 
 
@@ -670,6 +786,7 @@ def _apply_classification_and_extraction(
     document.confidence = classification.confidence
     document.page_count = page_count
 
+    t_extract = time.perf_counter()
     business_result = _get_effective_persist_business_extraction()(
         db,
         document,
@@ -679,6 +796,7 @@ def _apply_classification_and_extraction(
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
     plan_result = _get_effective_persist_plan_extraction()(db, document, text)
+    track_stage_duration("extraction", time.perf_counter() - t_extract)
 
     quality = _get_effective_evaluate_document_quality()(
         db,
@@ -698,12 +816,14 @@ def _apply_classification_and_extraction(
     # network timeout, malformed JSON — is contained here and logged
     # for the operator; the document keeps the OCR result and the
     # business extraction as if Hyper-Extract did not exist.
+    t_hyper = time.perf_counter()
     _maybe_run_hyperextract(
         db,
         document,
         text=text,
         document_type=document.document_type,
     )
+    track_stage_duration("hyperextract", time.perf_counter() - t_hyper)
     return quality.needs_review
 
 

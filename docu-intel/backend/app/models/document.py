@@ -60,6 +60,15 @@ class Document(Base):
     # are successfully re-embedded. Lets the sweep find candidates
     # without a LEFT JOIN + GROUP BY on every tick.
     needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
+    # P0.3 — Pipeline stage tracking
+    pipeline_stage: Mapped[str | None] = mapped_column(
+        String(40), nullable=True, index=True,
+        comment="Current pipeline stage: probing|text_processing|text_ready|metadata_ready|embedding_pending|searchable|fully_processed|needs_review|failed",
+    )
+    pages_completed: Mapped[int | None] = mapped_column(Integer, comment="Pages processed so far")
+    pages_total: Mapped[int | None] = mapped_column(Integer, comment="Total pages in document")
+    text_search_ready: Mapped[bool] = mapped_column(default=False, nullable=False, comment="Text available for lexical search")
+    semantic_search_ready: Mapped[bool] = mapped_column(default=False, nullable=False, comment="Embeddings available for semantic search")
     page_count: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(Text)
     duplicate_of_document_id: Mapped[int | None] = mapped_column(

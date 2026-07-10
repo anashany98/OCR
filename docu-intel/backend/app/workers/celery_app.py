@@ -80,6 +80,7 @@ celery_app.conf.task_routes = {
     },
     "app.workers.webhooks_tasks.deliver_pending_webhooks_task": {"queue": "maintenance"},
     "app.workers.embedding_tasks.reembed_pending_documents_task": {"queue": "maintenance"},
+    "app.workers.embedding_tasks.embed_document_task": {"queue": "embeddings"},
 }
 
 

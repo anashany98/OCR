@@ -814,26 +814,16 @@ def parse_pdf(
                         source_engine="pymupdf",
                     )
                 ]
-                # Render a low-res preview so the document viewer has
-                # something to show, but skip the high-res render the
-                # OCR path would do. OPS-1: the filename follows
-                # the actual format on disk so the browser
-                # infers the right MIME from the extension.
-                image_file = output_dir / f"page_{index}.tmp"
-                rendered_ext = _render_page_to_image(page, image_file, dpi=144)
-                if rendered_ext is not None:
-                    image_file = image_file.with_suffix(rendered_ext)
-                else:
-                    image_file = output_dir / f"page_{index}.png"
-                image_path = str(image_file)
-                # Digital extraction has perfect confidence: the text
-                # is straight from the PDF's content stream, not guessed.
+                # P1.2: Skip the low-res preview render for digital pages.
+                # The viewer generates thumbnails on demand via the
+                # /thumbnails API endpoint. This saves CPU time on
+                # large digital PDFs that don't need OCR.
                 pages[index_0] = ExtractedPage(
                     page_number=index,
                     width=float(rect.width),
                     height=float(rect.height),
                     text=text,
-                    image_path=image_path,
+                    image_path=None,
                     ocr_confidence=1.0,
                     ocr_engine="pymupdf",
                     blocks=blocks,

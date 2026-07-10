@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 import re
 import tempfile
@@ -18,6 +19,8 @@ from app.services.file_security import inspect_file_for_ingestion
 from app.services.file_storage import calculate_sha256, copy_to_storage
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
 from app.services.tenant_access import apply_folder_rules_to_document
+
+logger = logging.getLogger(__name__)
 
 # This module used to look up ``inspect_file_for_ingestion`` through
 # a ``_facade()`` helper that reached into
@@ -264,29 +267,47 @@ def register_existing_file(
     db.refresh(document)
     if job:
         db.refresh(job)
-        if enqueue:
-            from app.workers.routing import queue_for_document
-            from app.workers.tasks import process_document_task
+    if enqueue:
+        from app.workers.routing import queue_for_document
+        from app.workers.tasks import process_document_task
 
-            cache_service.invalidate_search_cache()
-            queue = queue_for_document(document, job.job_type)
-            process_document_task.apply_async(args=(document.id, job.id), queue=queue)
-            if source_path:
-                watched = upsert_watched_file(
-                    db,
-                    path=source_path,
-                    status="queued",
-                    document_id=document.id,
-                    job_id=job.id,
+        cache_service.invalidate_search_cache()
+        # P1.1: probe PDFs to route to the right queue
+        queue = queue_for_document(document, job.job_type)
+        if extension == ".pdf" and source.exists():
+            try:
+                from app.services.document_probe import probe_pdf
+
+                probe = probe_pdf(source)
+                from app.workers.routing import queue_for_probe_result
+
+                queue = queue_for_probe_result(probe.route.value)
+                logger.info(
+                    "PDF probe: document_id=%s route=%s reason=%s pages=%s",
+                    document.id,
+                    probe.route.value,
+                    probe.reason,
+                    probe.page_count,
                 )
-                record_ingestion_event(
-                    db,
-                    event_type="queued",
-                    source_path=source_path,
-                    document_id=document.id,
-                    job_id=job.id,
-                    watched_file=watched,
-                    details={"queue": queue},
-                )
-                db.commit()
+            except Exception as exc:
+                logger.debug("PDF probe failed, using default routing: %s", exc)
+        process_document_task.apply_async(args=(document.id, job.id), queue=queue)
+        if source_path:
+            watched = upsert_watched_file(
+                db,
+                path=source_path,
+                status="queued",
+                document_id=document.id,
+                job_id=job.id,
+            )
+            record_ingestion_event(
+                db,
+                event_type="queued",
+                source_path=source_path,
+                document_id=document.id,
+                job_id=job.id,
+                watched_file=watched,
+                details={"queue": queue},
+            )
+            db.commit()
     return document, job

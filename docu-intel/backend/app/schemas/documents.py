@@ -24,6 +24,12 @@ class DocumentRead(BaseModel):
     duplicate_of_document_id: int | None
     created_at: datetime
     processed_at: datetime | None
+    # P0.3 — Pipeline progress
+    pipeline_stage: str | None = None
+    pages_completed: int | None = None
+    pages_total: int | None = None
+    text_search_ready: bool = False
+    semantic_search_ready: bool = False
 
     model_config = {"from_attributes": True}
 
