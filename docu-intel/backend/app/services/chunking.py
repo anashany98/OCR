@@ -243,23 +243,55 @@ def _emit_table(
     chunks: list[Chunk],
     *,
     heading_prefix: str | None,
+    max_words: int = 350,
 ) -> str | None:
-    """Emit a table as a single ``chunk_type="table"`` chunk.
+    """Emit a table as chunk(s) of type ``table``.
 
-    Tables can be huge (a budget can have 30+ rows). When the
-    combined word count exceeds ``max_words`` we still keep the
-    table together — splitting a table mid-row is the exact bug
-    this module exists to prevent. The caller is expected to set a
-    ``max_words`` large enough to fit a typical page table
-    (default 256 tokens ≈ 350 Spanish words).
+    F2-05: when the table exceeds ``max_words``, split by row groups
+    while repeating the header row for context. Each sub-chunk
+    preserves row integrity (no mid-row splits).
     """
     text = "\n".join(lines).strip()
     if not text:
         return heading_prefix
-    if heading_prefix:
-        text = f"{heading_prefix}\n{text}"
-        heading_prefix = None
-    chunks.append(Chunk(text=text, token_count=_word_count(text), chunk_type="table"))
+
+    word_count = _word_count(text)
+    if word_count <= max_words or len(lines) <= 2:
+        # Small table or no header/body distinction — keep as single chunk.
+        if heading_prefix:
+            text = f"{heading_prefix}\n{text}"
+            heading_prefix = None
+        chunks.append(Chunk(text=text, token_count=word_count, chunk_type="table"))
+        return heading_prefix
+
+    # Large table: split into row groups, repeating the header.
+    header = lines[0] if lines else ""
+    body_lines = lines[1:] if len(lines) > 1 else lines
+    current_group: list[str] = [header] if header else []
+    current_words = _word_count(header) if header else 0
+
+    for line in body_lines:
+        line_words = _word_count(line)
+        if current_group and current_words + line_words > max_words and len(current_group) > 1:
+            # Emit current group
+            group_text = "\n".join(current_group).strip()
+            if heading_prefix:
+                group_text = f"{heading_prefix}\n{group_text}"
+                heading_prefix = None
+            chunks.append(Chunk(text=group_text, token_count=_word_count(group_text), chunk_type="table"))
+            current_group = [header, line] if header else [line]
+            current_words = (_word_count(header) if header else 0) + line_words
+        else:
+            current_group.append(line)
+            current_words += line_words
+
+    if current_group:
+        group_text = "\n".join(current_group).strip()
+        if heading_prefix:
+            group_text = f"{heading_prefix}\n{group_text}"
+            heading_prefix = None
+        chunks.append(Chunk(text=group_text, token_count=_word_count(group_text), chunk_type="table"))
+
     return heading_prefix
 
 

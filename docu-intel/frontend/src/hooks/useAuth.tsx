@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 
-import { api, ApiError } from "@/api/client"
+import { api, ApiError, setUnauthorizedHandler } from "@/api/client"
 import type { User } from "@/types/api"
 
 type AuthContextValue = {
@@ -15,6 +15,14 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // F8-01: global 401 handler — redirect to login on any unauthorized response
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null)
+      window.location.href = "/login"
+    })
+  }, [])
 
   useEffect(() => {
     let active = true

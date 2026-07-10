@@ -31,8 +31,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("invoices") as batch:
-        batch.drop_index("ix_invoices_supplier_tax_id")
-        batch.drop_column("vat_amount")
-        batch.drop_column("taxable_base")
-        batch.drop_column("supplier_tax_id")
+    # No-op: this migration added nothing (columns are in 0040).
+    # Dropping them here would break 0040's downgrade which owns them.
+    pass

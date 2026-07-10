@@ -65,6 +65,9 @@ class PaddleOCREngine:
     """PaddleOCR 3.x engine. Implements the :class:`BaseOCREngine` protocol."""
 
     name: str = "paddleocr"
+    # F3-03: serialise GPU inference — PaddleOCR is not thread-safe for
+    # concurrent calls on the same GPU device.
+    _inference_lock: threading.Lock = threading.Lock()
 
     def __init__(self, lang: str | None = None, device: str | None = None) -> None:
         self.lang = lang or settings.paddle_lang
@@ -171,7 +174,9 @@ class PaddleOCREngine:
         start = time.perf_counter()
         ocr_path = preprocess_adaptive(image_path, engine=self.name)
         try:
-            raw = self._engine.ocr(str(ocr_path))
+            # F3-03: serialise inference on shared GPU
+            with self._inference_lock:
+                raw = self._engine.ocr(str(ocr_path))
             blocks: list[OCRBlock] = []
             confidences: list[float] = []
 

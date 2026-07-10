@@ -18,38 +18,47 @@ logger = logging.getLogger("app.workers.embedding_tasks")
 def _select_reembed_candidates(db: Session, limit: int) -> list[Document]:
     """Pick up to ``limit`` documents that need re-embedding.
 
-    Two independent reasons qualify a document:
+    Three independent reasons qualify a document:
 
-    * it has at least one chunk with ``needs_reembedding=True`` (the
-      embedding provider was down or fell back to a hash at processing
-      time, see ``document_embedding_pipeline``);
+    * it has at least one chunk with ``needs_reembedding=True``;
+    * its ``embedding_model_version`` differs from the current setting
+      (F2-06: version drift triggers re-embedding);
     * its overall ``Document.confidence`` is below
-      ``settings.reembed_low_confidence_threshold`` (OCR produced poor
-      text and there is a real chance the new OCR/pre-processing stack
-      will do better).
+      ``settings.reembed_low_confidence_threshold``.
 
     We only look at non-deleted, non-duplicate documents that are not
     already in a transient state (``pending`` / ``processing``).
     """
 
+    current_version = settings.embedding_model
     needs_case = case((DocumentChunk.needs_reembedding.is_(True), 1), else_=0)
+    version_mismatch_case = case(
+        (
+            (DocumentChunk.embedding_model_version.is_not(None))
+            & (DocumentChunk.embedding_model_version != current_version),
+            1,
+        ),
+        else_=0,
+    )
     stats_subq = (
         select(
             DocumentChunk.document_id.label("document_id"),
             func.coalesce(func.sum(needs_case), 0).label("chunks_needing"),
+            func.coalesce(func.sum(version_mismatch_case), 0).label("version_mismatch"),
         )
         .group_by(DocumentChunk.document_id)
         .subquery()
     )
 
     stmt = (
-        select(Document, stats_subq.c.chunks_needing)
+        select(Document, stats_subq.c.chunks_needing, stats_subq.c.version_mismatch)
         .outerjoin(stats_subq, Document.id == stats_subq.c.document_id)
         .where(Document.deleted_at.is_(None))
         .where(Document.status.notin_(["pending", "processing", "duplicate"]))
         .where(
             or_(
                 stats_subq.c.chunks_needing > 0,
+                stats_subq.c.version_mismatch > 0,
                 Document.confidence.is_not(None),
                 Document.needs_reembedding.is_(True),
             )
@@ -159,7 +168,7 @@ def run_reembed_pending_documents(db: Session) -> dict:
         candidates = _select_reembed_candidates(db, settings.reembed_batch_size)
         inspected = len(candidates)
 
-        for document, _chunks_needing in candidates:
+        for document, _chunks_needing, _version_mismatch in candidates:
             try:
                 if (
                     _is_low_ocr_confidence(document)

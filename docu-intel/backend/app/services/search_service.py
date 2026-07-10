@@ -16,6 +16,7 @@ from app.models import Document, DocumentBlock, DocumentChunk, DocumentPage
 from app.services.cache import cache_service
 from app.services.embeddings import cosine_similarity, embed_query_text
 from app.services.metrics import track_search_latency
+from app.services.tenant_access import access_scope_cache_key
 from app.services.vector_store import PgvectorStore, _is_postgres
 
 logger = logging.getLogger(__name__)
@@ -299,6 +300,7 @@ def _run_semantic_search(
     normalized_query: str,
     limit: int,
     filters: dict | None,
+    access_scope=None,
 ) -> list[SearchResult]:
     """Execute one semantic-search pass for a single query embedding.
 
@@ -311,6 +313,13 @@ def _run_semantic_search(
     if _is_postgres(db):
         pg_filters = dict(filters) if filters else {}
         matches = pg.search(db, query_embedding=query_embedding, limit=limit, filters=pg_filters)
+        # F0-03: filter by access scope before returning
+        if access_scope is not None and matches:
+            from app.services.tenant_access import filter_document_ids_for_scope
+            allowed_ids = filter_document_ids_for_scope(
+                db, [m.document_id for m in matches], access_scope
+            )
+            matches = [m for m in matches if m.document_id in allowed_ids]
         source_paths: dict[int, str | None] = {}
         if matches:
             doc_ids = [m.document_id for m in matches]
@@ -318,6 +327,23 @@ def _run_semantic_search(
                 select(Document.id, Document.source_path).where(Document.id.in_(doc_ids))
             ).all()
             source_paths = {row[0]: row[1] for row in doc_rows}
+        # F5-04: fetch OCR confidence for semantic results
+        confidence_map: dict[tuple[int, int], float | None] = {}
+        if matches:
+            from app.models import DocumentPage
+            page_conf_rows = db.execute(
+                select(
+                    DocumentPage.document_id,
+                    DocumentPage.page_number,
+                    DocumentPage.ocr_confidence,
+                ).where(
+                    DocumentPage.document_id.in_([m.document_id for m in matches]),
+                    DocumentPage.page_number.is_not(None),
+                )
+            ).all()
+            confidence_map = {
+                (row[0], row[1]): row[2] for row in page_conf_rows
+            }
         return [
             SearchResult(
                 document_id=match.document_id,
@@ -325,10 +351,12 @@ def _run_semantic_search(
                 document_type=match.document_type,
                 status=match.status,
                 page_number=match.page_number,
-                block_id=None,
+                block_id=match.chunk_id,
                 score=match.score,
                 excerpt=_excerpt(match.excerpt, normalized_query),
-                ocr_confidence=None,
+                ocr_confidence=confidence_map.get(
+                    (match.document_id, match.page_number)
+                ),
                 source_type="semantic_chunk",
                 source_path=source_paths.get(match.document_id),
             )
@@ -342,6 +370,9 @@ def _run_semantic_search(
         .where(Document.deleted_at.is_(None))
         .where(DocumentChunk.chunk_text.is_not(None))
     )
+    if access_scope is not None:
+        from app.services.tenant_access import apply_access_predicates
+        stmt = apply_access_predicates(stmt, access_scope)
     stmt = _apply_document_filters(stmt, filters).limit(max(limit * 30, 100))
     rows = db.execute(stmt).all()
 
@@ -414,7 +445,11 @@ def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -
 
 
 def search_semantic(
-    db: Session, query: str, limit: int = 10, filters: dict | None = None
+    db: Session,
+    query: str,
+    limit: int = 10,
+    filters: dict | None = None,
+    access_scope=None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     try:
@@ -422,7 +457,8 @@ def search_semantic(
         if not normalized:
             return []
 
-        cache_key = _make_search_cache_key(normalized, limit, filters, "semantic")
+        scope_key = access_scope_cache_key(access_scope) if access_scope else ""
+        cache_key = _make_search_cache_key(normalized, limit, filters, f"semantic:{scope_key}")
         cached = cache_service.get(cache_key)
         if cached is not None:
             return [_dict_to_search_result(r) for r in cached]
@@ -463,6 +499,7 @@ def search_semantic(
                         normalized_query=normalized,
                         limit=per_pass_limit,
                         filters=filters,
+                        access_scope=access_scope,
                     )
                 )
             if not per_pass:
@@ -474,6 +511,7 @@ def search_semantic(
                     normalized_query=normalized,
                     limit=rerank_pool_size,
                     filters=filters,
+                    access_scope=access_scope,
                 )
             else:
                 results_sorted = _merge_reformulation_results(per_pass, limit=rerank_pool_size)
@@ -484,6 +522,7 @@ def search_semantic(
                 normalized_query=normalized,
                 limit=rerank_pool_size,
                 filters=filters,
+                access_scope=access_scope,
             )
 
         # Apply cross-encoder rerank + MMR, same as the hybrid path, so
@@ -501,7 +540,11 @@ def search_semantic(
 
 
 def search_hybrid(
-    db: Session, query: str, limit: int = 10, filters: dict | None = None
+    db: Session,
+    query: str,
+    limit: int = 10,
+    filters: dict | None = None,
+    access_scope=None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     try:
@@ -536,13 +579,13 @@ def search_hybrid(
             finally:
                 sess.close()
 
-        futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters)] = "text"
+        futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters, access_scope)] = "text"
         futures[
-            _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters)
+            _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters, access_scope)
         ] = "semantic"
         if settings.search_use_bm25:
             futures[
-                _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters)
+                _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters, access_scope)
             ] = "bm25"
 
         for future in as_completed(futures):

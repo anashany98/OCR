@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # F7-03: pinned to specific version for reproducibility
+    image: pgvector/pgvector:0.8.0-pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: docuintel
@@ -17,13 +18,16 @@ services:
       - internal
 
   redis:
-    image: redis:7-alpine
+    # F7-03: pinned to specific version
+    image: redis:7.4.2-alpine
     restart: always
+    # F7-04: run as non-root
+    user: "999:999"
     command: >
       redis-server --appendonly yes
       --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD}
       --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy noeviction
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     volumes:
@@ -39,6 +43,7 @@ services:
     cpus: ${REDIS_CPUS:-1}
 
   pgbouncer:
+    # F7-03: pinned version (already specific)
     image: edoburu/pgbouncer:1.23.1
     restart: unless-stopped
     environment:
@@ -63,6 +68,13 @@ services:
     env_file: ${DOCUINTEL_ENV_FILE:-.env}
     restart: unless-stopped
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # F7-04: drop all capabilities, add only what's needed
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,11 +84,12 @@ services:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); exit(0 if r.status==200 else 1)\""]
+      # F7-02: readiness probe checks DB + Redis connectivity
+      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/healthz'); exit(0 if r.status==200 else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 40s
+      start_period: 60s
     mem_limit: ${BACKEND_MEM_LIMIT:-2g}
     cpus: ${BACKEND_CPUS:-2}
     networks:
@@ -86,12 +99,12 @@ services:
   # These workers need GPU access for PaddleOCR, PP-Structure, and
   # the sentence-transformers embedding model. One GPU per container.
   worker-ocr-gpu:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.gpu
-    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    image: docuintel-backend-gpu:latest
+    restart: unless-stopped
     environment:
+      - C_FORCE_ROOT=true
       - WORKER_NAME=ocr-gpu
+      # F4-05: dedicate GPU 0 to OCR
       - CUDA_VISIBLE_DEVICES=${OCR_GPU_DEVICE:-0}
       - NVIDIA_VISIBLE_DEVICES=all
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --hostname=ocr-gpu@%h
@@ -123,13 +136,13 @@ services:
               capabilities: [gpu]
 
   worker-embeddings-gpu:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.gpu
-    env_file: ${DOCUINTEL_ENV_FILE:-.env}
+    image: docuintel-backend-gpu:latest
+    restart: unless-stopped
     environment:
+      - C_FORCE_ROOT=true
       - WORKER_NAME=embeddings-gpu
-      - CUDA_VISIBLE_DEVICES=${EMBEDDING_GPU_DEVICE:-0}
+      # F4-05: dedicate GPU 1 to embeddings (separate from OCR)
+      - CUDA_VISIBLE_DEVICES=${EMBEDDING_GPU_DEVICE:-1}
       - NVIDIA_VISIBLE_DEVICES=all
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q embeddings --concurrency=${EMBEDDING_WORKER_CONCURRENCY:-2} --hostname=embeddings-gpu@%h
     restart: unless-stopped

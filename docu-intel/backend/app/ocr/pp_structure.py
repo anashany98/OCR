@@ -25,6 +25,7 @@ Install: ``pip install 'paddlex[ocr]==3.5.2'`` (only on the GPU image).
 from __future__ import annotations
 
 import os
+import threading
 import time
 from functools import cached_property
 from pathlib import Path
@@ -48,6 +49,8 @@ class PPStructureEngine:
     """
 
     name: str = "pp_structure"
+    # F3-03: serialise GPU inference
+    _inference_lock: threading.Lock = threading.Lock()
 
     def __init__(self, device: str = "gpu", lang: str = "es") -> None:
         if device != "gpu":
@@ -89,20 +92,22 @@ class PPStructureEngine:
         from app.ocr.preprocess import preprocess_adaptive
         ocr_path = preprocess_adaptive(image_path, engine=self.name)
         try:
-            # PP-Structure predict() has no built-in timeout. Use a
-            # disposable ThreadPoolExecutor — on timeout the pool
-            # cleans up the thread (it becomes a zombie until the
-            # GIL is released, same as paddle.py).
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+            # F3-03: serialise inference on shared GPU
+            with self._inference_lock:
+                # PP-Structure predict() has no built-in timeout. Use a
+                # disposable ThreadPoolExecutor — on timeout the pool
+                # cleans up the thread (it becomes a zombie until the
+                # GIL is released, same as paddle.py).
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
-            result_holder: list = []
-            exc_holder: list = []
+                result_holder: list = []
+                exc_holder: list = []
 
-            def _run_predict():
-                try:
-                    result_holder.extend(self._pipeline.predict(str(ocr_path)))
-                except Exception as exc:  # noqa: BLE001
-                    exc_holder.append(exc)
+                def _run_predict():
+                    try:
+                        result_holder.extend(self._pipeline.predict(str(ocr_path)))
+                    except Exception as exc:  # noqa: BLE001
+                        exc_holder.append(exc)
 
             with ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(_run_predict)

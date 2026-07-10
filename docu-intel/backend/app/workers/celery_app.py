@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from celery import Celery
 from celery.schedules import schedule
@@ -33,6 +34,12 @@ celery_app.conf.update(
     worker_pool_prefork_timeout=300,
     broker_connection_retry_on_startup=True,
     task_acks_late=True,
+    # F4-02: reject task when worker is lost (SIGTERM/SIGKILL) so
+    # another worker can pick it up instead of leaving it stuck.
+    task_reject_on_worker_lost=True,
+    # F4-02: visibility timeout — how long a task can be "in flight"
+    # before broker re-delivers. Must be longer than the longest task.
+    broker_transport_options={"visibility_timeout": 7200},  # 2 hours
     task_default_queue="text_fast",
     task_routes={
         "app.workers.tasks.scan_input_folders_task": {"queue": "maintenance"},

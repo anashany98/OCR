@@ -24,6 +24,7 @@ from app.schemas.documents import (
 from app.schemas.jobs import ExtractionJobRead
 from app.services.audit import write_audit
 from app.services.document_service import register_upload, reprocess_document, soft_delete_document
+from app.services.document_registration_service import normalize_untrusted_relative_path
 from app.services.operations import BulkReprocessFilters, bulk_reprocess_documents
 from app.services.tenant_access import (
     apply_access_predicates,
@@ -99,7 +100,28 @@ def upload_batch(
         # Preserve the relative path inside the selected folder so the IA
         # agent can use the directory tree as a classification hint (e.g.
         # /presupuestos/245745/foo.pdf ⇒ budget code 245745).
-        source_path = parsed_paths[index] if parsed_paths else None
+        raw_path = parsed_paths[index] if parsed_paths else None
+        source_path = None
+        if raw_path:
+            try:
+                source_path = normalize_untrusted_relative_path(
+                    raw_path, user_id=user.id
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "batch_upload_rejected_path user=%d path=%r reason=%s",
+                    user.id, raw_path, exc,
+                )
+                failed += 1
+                results.append(
+                    BatchUploadItem(
+                        document_id=0,
+                        original_filename=file.filename or "unknown",
+                        status="rejected",
+                        job_id=None,
+                    )
+                )
+                continue
         try:
             document, job = register_upload(
                 db,

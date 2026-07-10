@@ -84,4 +84,39 @@ def inspect_file_for_ingestion(path: Path) -> FileSecurityResult:
     if suffix == ".webp" and len(header) >= 12 and header[8:12] != b"WEBP":
         return FileSecurityResult(allowed=False, quarantined=True, reason="invalid_webp_signature")
 
+    # F6-02: inspect ZIP-based Office files for embedded VBA macros
+    if suffix in {".docx", ".xlsx", ".pptx"}:
+        macro_reason = _check_zip_for_macros(path)
+        if macro_reason:
+            return FileSecurityResult(allowed=False, quarantined=True, reason=macro_reason)
+
     return FileSecurityResult(allowed=True, quarantined=False)
+
+
+# F6-02: VBA macro indicators inside ZIP-based Office files
+_MACRO_INDICATORS = {
+    "vbaProject.bin",
+    "vbaData.xml",
+    "macroDebug.xml",
+}
+
+
+def _check_zip_for_macros(path: Path) -> str | None:
+    """Inspect a ZIP-based Office file for embedded VBA macros.
+
+    Returns a reason string if macros are found, None if clean.
+    """
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            for name in zf.namelist():
+                basename = name.rsplit("/", 1)[-1].lower()
+                if basename in _MACRO_INDICATORS:
+                    return "office_macro_detected"
+                # Also check for ActiveX controls
+                if basename.startswith("active") and basename.endswith(".xml"):
+                    return "officeactivex_detected"
+    except (zipfile.BadZipFile, OSError):
+        pass  # Not a valid ZIP — let other checks handle it
+    return None

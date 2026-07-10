@@ -192,7 +192,9 @@ def register_metrics_endpoint(app) -> None:
     def metrics(
         x_metrics_token: str | None = Header(default=None, alias="X-Metrics-Token"),
     ) -> Response:
-        if settings.metrics_token and x_metrics_token != settings.metrics_token:
+        is_local = settings.environment in {"local", "development", "test"}
+        token_required = not is_local or bool(settings.metrics_token)
+        if token_required and x_metrics_token != settings.metrics_token:
             raise HTTPException(status_code=401, detail="metrics token required")
         return Response(
             content=render_metrics(),

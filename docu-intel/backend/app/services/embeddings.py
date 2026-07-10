@@ -96,24 +96,45 @@ class OpenAICompatibleEmbeddingClient:
     timeout_seconds: float = 30.0
     transport: httpx.BaseTransport | None = None
     breaker: CircuitBreaker | None = None  # injectable for tests
+    max_retries: int = 3  # F2-04: retry count for transient failures
 
     def _do_request(self, client: httpx.Client, headers: dict, payload: dict) -> dict:
-        try:
-            response = client.post(
-                _embedding_endpoint(self.base_url),
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            # Convert transport/HTTP errors into EmbeddingProviderError so
-            # the circuit breaker can count them as failures. Without this
-            # wrap, ``httpx.HTTPStatusError`` (4xx/5xx) would propagate
-            # through the breaker and the breaker would not see it as a
-            # failure (it only counts ``RuntimeError``-like signals by
-            # accident — better to be explicit).
-            raise EmbeddingProviderError(f"Embedding endpoint request failed: {exc}") from exc
-        return response.json()
+        """Execute request with exponential backoff retries for transient errors."""
+        import random
+        last_exc = None
+        for attempt in range(self.max_retries):
+            try:
+                response = client.post(
+                    _embedding_endpoint(self.base_url),
+                    headers=headers,
+                    json=payload,
+                )
+                # Retry on 429 (rate limit) and 5xx (server error)
+                if response.status_code == 429 or response.status_code >= 500:
+                    retry_after = response.headers.get("retry-after")
+                    if retry_after:
+                        wait = float(retry_after)
+                    else:
+                        wait = min(2 ** attempt + random.uniform(0, 1), 10)
+                    if attempt < self.max_retries - 1:
+                        time.sleep(wait)
+                        continue
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError:
+                raise
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt < self.max_retries - 1:
+                    wait = min(2 ** attempt + random.uniform(0, 1), 10)
+                    time.sleep(wait)
+                    continue
+                raise EmbeddingProviderError(
+                    f"Embedding endpoint request failed after {self.max_retries} attempts: {exc}"
+                ) from exc
+        raise EmbeddingProviderError(
+            f"Embedding endpoint request failed after {self.max_retries} attempts: {last_exc}"
+        )
 
     def _parse_payload(self, payload: dict, texts: list[str]) -> list[list[float]]:
         data = payload.get("data")
@@ -679,10 +700,15 @@ def get_local_embedding_client() -> LocalSentenceTransformerEmbeddingClient:
 def cosine_similarity(left: list[float], right: list[float]) -> float:
     if not left or not right:
         return 0.0
-    size = min(len(left), len(right))
+    # F2-02: fail on dimension mismatch instead of silent truncation.
+    if len(left) != len(right):
+        raise EmbeddingProviderError(
+            f"cosine_similarity dimension mismatch: left={len(left)}, right={len(right)}"
+        )
+    size = len(left)
     numerator = sum(left[index] * right[index] for index in range(size))
-    left_norm = math.sqrt(sum(value * value for value in left[:size]))
-    right_norm = math.sqrt(sum(value * value for value in right[:size]))
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
     norm_product = left_norm * right_norm
     if norm_product < 1e-10:
         return 0.0

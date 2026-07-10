@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
 from sqlalchemy import select
@@ -23,6 +24,69 @@ from app.services.tenant_access import apply_folder_rules_to_document
 # ``sys.modules["app.services.document_service"]`` at call time.
 # The helper itself is imported directly (line 18); we removed
 # the facade so the type checker can see the dependency.
+
+
+# ---------------------------------------------------------------------------
+# F0-06: path validation for untrusted client-provided relative paths
+# ---------------------------------------------------------------------------
+
+# Characters that are never valid in a safe relative POSIX path.
+_WIN_DRIVE_RE = re.compile(r"^[a-zA-Z]:")
+_UNC_PREFIX_RE = re.compile(r"^\\\\")
+_SLASH_OR_BACKSLASH = re.compile(r"[/\\]")
+
+
+def normalize_untrusted_relative_path(raw: str, *, user_id: int | None = None) -> str:
+    """Validate and normalize an untrusted relative path from a client upload.
+
+    Returns a safe POSIX relative path suitable for storage metadata.
+    Raises ``ValueError`` if the path cannot be made safe.
+
+    Rules:
+    * Must be a relative path (no leading ``/`` or drive letter).
+    * No ``..`` components after normalization.
+    * No backslashes (Windows separators) after normalization.
+    * No null bytes.
+    * Optionally prefixed with ``upload/<user_id>/`` for namespace isolation.
+    """
+    if not raw or not raw.strip():
+        raise ValueError("relative_path must not be empty")
+
+    if "\x00" in raw:
+        raise ValueError("relative_path contains null bytes")
+
+    # Reject absolute paths and Windows drive letters
+    if _WIN_DRIVE_RE.match(raw):
+        raise ValueError("relative_path must not be an absolute Windows path")
+    if _UNC_PREFIX_RE.match(raw):
+        raise ValueError("relative_path must not be a UNC path")
+
+    # Normalize separators to POSIX
+    normalized = raw.replace("\\", "/")
+
+    # Reject absolute paths after normalization
+    if normalized.startswith("/"):
+        raise ValueError("relative_path must not be absolute")
+
+    # Build PurePosixPath to resolve . and .. components
+    parts = PurePosixPath(normalized).parts
+
+    # Check for directory traversal
+    if ".." in parts:
+        raise ValueError("relative_path must not contain '..' components")
+
+    # Reconstruct clean path
+    clean = str(PurePosixPath(*parts)) if parts else ""
+
+    # Reject empty result
+    if not clean or clean == ".":
+        raise ValueError("relative_path resolves to empty path")
+
+    # Namespace isolation: prefix with user directory
+    if user_id is not None:
+        clean = f"upload/{user_id}/{clean}"
+
+    return clean
 
 
 def _type_from_extension(extension: str) -> str:
