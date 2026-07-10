@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="w-full overflow-auto rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]">
-      <table ref={ref} className={cn("w-full caption-bottom text-[13px]", className)} {...props} />
+    <div className="w-full overflow-auto rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+      <table ref={ref} className={cn("w-full caption-bottom text-[12px]", className)} {...props} />
     </div>
   ),
 )
@@ -39,7 +39,7 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
     <tr
       ref={ref}
       className={cn(
-        "border-b border-[var(--border)] last:border-0 transition-colors duration-fast ease-out hover:bg-[var(--bg-surface-2)]/60 data-[state=selected]:bg-[var(--accent-faint)]",
+        "border-b border-[var(--border)] last:border-0 transition-colors hover:bg-[var(--bg-surface-2)]/50 data-[state=selected]:bg-[var(--accent-faint)]",
         className,
       )}
       {...props}
@@ -55,7 +55,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "px-5 py-3 text-left align-middle text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]",
+      "px-3 py-2 text-left align-middle text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]",
       className,
     )}
     {...props}
@@ -69,7 +69,7 @@ const TableCell = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <td
     ref={ref}
-    className={cn("px-5 py-3.5 align-middle text-[13px] text-[var(--text-secondary)]", className)}
+    className={cn("px-3 py-2 align-middle text-[12px] text-[var(--text-secondary)]", className)}
     {...props}
   />
 ))

@@ -210,6 +210,86 @@ def reprocess_bulk(
     )
 
 
+@router.post("/reclassify")
+def reclassify_documents(
+    limit: int = Query(default=500, ge=1, le=5000),
+    dry_run: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+) -> dict:
+    """Reclassify all documents using improved classification rules.
+
+    This re-evaluates document_type without re-running OCR. Useful after
+    classification rule changes. Set dry_run=true to preview changes.
+    """
+    from app.services.classification import LearnedRule, classify_document
+
+    # Load learned rules
+    learned_rules: list[LearnedRule] = []
+    try:
+        from app.models.learning import LearnedPattern
+        patterns = db.scalars(
+            select(LearnedPattern).where(LearnedPattern.status == "active")
+        ).all()
+        learned_rules = [
+            LearnedRule(
+                pattern_value=p.pattern_value,
+                target_class=p.target_class,
+                confidence=p.confidence,
+            )
+            for p in patterns
+        ]
+    except Exception:
+        pass
+
+    documents = list(
+        db.scalars(
+            select(Document).where(Document.deleted_at.is_(None)).limit(limit)
+        ).all()
+    )
+
+    changes = []
+    unchanged = 0
+
+    for doc in documents:
+        text = ""
+        if hasattr(doc, "pages") and doc.pages:
+            text = "\n".join(filter(None, (p.text for p in doc.pages if p.text)))
+
+        old_type = doc.document_type or "desconocido"
+        result = classify_document(
+            filename=doc.original_filename,
+            source_path=doc.source_path,
+            text=text,
+            learned_rules=learned_rules,
+        )
+
+        if result.document_type != old_type:
+            changes.append({
+                "id": doc.id,
+                "filename": doc.original_filename,
+                "old_type": old_type,
+                "new_type": result.document_type,
+                "confidence": result.confidence,
+            })
+            if not dry_run:
+                doc.document_type = result.document_type
+                doc.classification_confidence = result.confidence
+        else:
+            unchanged += 1
+
+    if not dry_run and changes:
+        db.commit()
+
+    return {
+        "total": len(documents),
+        "changed": len(changes),
+        "unchanged": unchanged,
+        "changes": changes[:100],
+        "dry_run": dry_run,
+    }
+
+
 @router.get("/{document_id}", response_model=DocumentRead)
 def get_document(
     document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
@@ -259,8 +339,8 @@ def get_document_page_image(
     )
     if not page or not page.image_path:
         raise HTTPException(status_code=404, detail="Page preview not found")
-    path = _resolve_files_dir_path(page.image_path)
-    if not path.is_file():
+    path = _resolve_stored_image_path(page.image_path)
+    if path is None:
         raise HTTPException(status_code=404, detail="Page preview not found")
     # OPS-1: pass ``media_type`` explicitly so the Content-Type
     # header always matches the bytes on disk, regardless of
@@ -385,3 +465,27 @@ def _resolve_files_dir_path(stored_path: str) -> Path:
     if path.is_symlink():
         raise HTTPException(status_code=404, detail="Stored file not found")
     return path
+
+
+# When the stored path is missing on disk (e.g. a reprocess rewrote the
+# page preview as ``.jpg`` but the ``DocumentPage.image_path`` column still
+# points at the old ``.png``), fall back to the sibling file with the other
+# common raster extension so the viewer still renders the page. Symlinks and
+# paths escaping ``files_dir`` are rejected either way.
+_IMAGE_EXT_FALLBACKS = {".png": [".jpg", ".jpeg"], ".jpg": [".png"], ".jpeg": [".png"]}
+
+
+def _resolve_stored_image_path(stored_path: str) -> Path | None:
+    primary = _resolve_files_dir_path(stored_path)
+    if primary.is_file():
+        return primary
+    stem = primary.with_suffix("")
+    for ext in _IMAGE_EXT_FALLBACKS.get(primary.suffix.lower(), []):
+        candidate = stem.with_suffix(ext)
+        try:
+            candidate.relative_to(settings.files_dir.resolve())
+        except ValueError:
+            continue
+        if candidate.is_file() and not candidate.is_symlink():
+            return candidate
+    return None

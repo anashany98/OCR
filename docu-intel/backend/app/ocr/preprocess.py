@@ -128,7 +128,6 @@ def _looks_like_scan(gray) -> bool:
     and continuous-tone.
     """
     import cv2
-    import numpy as np
 
     hist = cv2.calcHist([gray], [0], None, [16], [0, 256]).ravel()
     total = hist.sum() or 1

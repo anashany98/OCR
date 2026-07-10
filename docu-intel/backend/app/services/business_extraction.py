@@ -4,6 +4,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -883,11 +884,35 @@ def _parse_date(value: str) -> date | None:
 
 
 def _total_amount(text: str, qualifier: str) -> tuple[float | None, str | None]:
+    # Amount shapes:
+    #  - _AMT_LOOSE: any number with optional thousands/decimal (for strong labels)
+    #  - _AMT_STRICT: requires a thousands separator OR decimal comma (for weak
+    #    labels like IMPORTE/SUMA, so we don't latch onto a bare sequence number
+    #    like 253068 which has no separators).
+    _AMT_LOOSE = r"[0-9][0-9.,]*"
+    _AMT_STRICT = r"\d{1,3}(?:[.,]\d{3})+(?:[,.]\d{1,2})?|\d+,[05-9]\d|\d+,\d{2}"
+    _CUR = r"(€|eur|euros)?"
+
     patterns = [
-        rf"\btotal\s+{re.escape(qualifier)}\s*[:#-.]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
+        # --- Markdown pipe table total: "| TOTAL | 1.234,56 | EUR |" ---
+        rf"\|\s*total\s*\|\s*({_AMT_LOOSE})\s*(?:\|\s*(€|eur|euros)\s*)?\|",
+        # --- IMPORTE TOTAL (strong, wins over bare IMPORTE) ---
+        rf"\bimporte\s+total\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
+        # --- A PAGAR / TOTAL A PAGAR ---
+        rf"\ba\s+pagar\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
+        rf"\btotal\s+a\s+pagar\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
+        # --- TOTAL FACTURA / TOTAL PRESUPUESTO with currency cell ---
+        rf"\btotal\s+(?:factura|presupuesto|pedido|albar[aá]n)\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
+        # --- SUBTOTAL (\btotal\b won't match inside "subtotal") ---
+        rf"\bsubtotal\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
+        # --- Weak labels: IMPORTE / SUMA (strict amount to avoid sequence numbers) ---
+        rf"\bimporte\s*[:#-.]?\s*({_AMT_STRICT})\s*{_CUR}",
+        rf"\bsuma(?:\s+total)?\s*[:#-.]?\s*({_AMT_STRICT})\s*{_CUR}",
+        # --- Legacy patterns (original behaviour) ---
+        rf"\btotal\s+{re.escape(qualifier)}\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
         # "TOTAL PRESUP. 1.645,60 EUR" - word must be >= 5 chars to avoid "IVA 21%"
-        r"\btotal\s+(\w{5,})\.?\s*[:#-.]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
-        r"\btotal\s*[:#-.]?\s*([0-9][0-9.,]*)\s*(€|eur|euros)?",
+        rf"\btotal\s+(\w{{5,}})\.?\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
+        rf"\btotal\s*[:#-.]?\s*({_AMT_LOOSE})\s*{_CUR}",
         r"\btotal\s+EUR\s+IVA\s+excl\.?\s*([0-9][0-9.,]*)",
     ]
     for pattern in patterns:
@@ -1202,6 +1227,43 @@ def _map_row_to_line(row: list[str], header: list[str]) -> ExtractedLine | None:
     )
 
 
+def _try_vlm_table_extraction(
+    pages: list[ExtractedPage] | None,
+) -> list[ExtractedLine] | None:
+    """FASE 4: attempt VLM table extraction on pages with table blocks.
+
+    Sends the page image to the vision LLM with a structured prompt
+    asking for JSON with line items. Returns lines on success, None
+    on failure (circuit breaker open, no image, VLM error).
+    """
+    if not pages:
+        return None
+    for page in pages:
+        if not page.image_path:
+            continue
+        # Only try VLM on pages that have table blocks (indicating a table exists)
+        has_table = any(b.block_type == "table" for b in page.blocks)
+        if not has_table:
+            continue
+        try:
+            from app.services.vlm_table_extraction import vlm_tabla_a_json
+
+            image_path = Path(page.image_path)
+            if not image_path.exists():
+                continue
+            lines = vlm_tabla_a_json(image_path)
+            if lines:
+                logger.info(
+                    "VLM table extraction produced %d lines from %s",
+                    len(lines),
+                    image_path.name,
+                )
+                return lines
+        except Exception as exc:
+            logger.debug("VLM table extraction failed for %s: %s", page.image_path, exc)
+    return None
+
+
 def _extract_lines_for_document(
     text: str,
     pages: list[ExtractedPage] | None = None,
@@ -1233,8 +1295,27 @@ def _extract_lines_for_document(
             for block in page.blocks:
                 if block.block_type == "table" and block.text:
                     table_lines.extend(_parse_markdown_table(block.text))
-        if table_lines:
+        # Quality gate: a table block that produced rows but NO numeric
+        # price field on any row is almost certainly a generic-header
+        # table (e.g. PP-Structure's "| col1 | col2 | ... |") where every
+        # cell collapsed into ``description``. Returning that junk would
+        # block the layout-aware and regex fallbacks below. Treat it as
+        # unparseable and fall through.
+        if table_lines and any(
+            ln.total_price is not None or ln.unit_price is not None
+            for ln in table_lines
+        ):
             return table_lines
+        if table_lines:
+            logger.debug(
+                "Table block parsed into %d rows but none had a numeric "
+                "price; trying VLM table extraction before fallback.",
+                len(table_lines),
+            )
+            # FASE 4: try VLM extraction on the page image
+            vlm_lines = _try_vlm_table_extraction(pages)
+            if vlm_lines:
+                return vlm_lines
         logger.debug(
             "Found table blocks but parsing produced no lines; falling back to layout-aware path."
         )
@@ -1245,50 +1326,68 @@ def _extract_lines_for_document(
             lines = extract_lines_from_pages(pages)
             if lines:
                 return lines
-            logger.debug("Layout-aware extraction returned no lines; falling back to regex.")
+            logger.debug("Layout-aware extraction returned no lines; trying VLM.")
         except Exception as exc:
             logger.warning(
-                "Layout-aware line extraction failed (%s); falling back to regex.",
+                "Layout-aware line extraction failed (%s); trying VLM.",
                 exc,
             )
+        # FASE 4: VLM fallback when layout-aware also fails
+        vlm_lines = _try_vlm_table_extraction(pages)
+        if vlm_lines:
+            return vlm_lines
     return _extract_lines(text)
 
 
 def _extract_lines(text: str) -> list[ExtractedLine]:
     """Legacy single-line regex extractor. Kept for backward compatibility
-    and as a fallback when layout-aware extraction finds no table."""
+    and as a fallback when layout-aware extraction finds no table.
+
+    Accepts several row shapes, ordered most-specific to least:
+
+    1. ``REF DESC CANT UNIDAD P.UNIDAD TOTAL`` (full, original)
+    2. ``REF DESC CANT P.UNIDAD TOTAL`` (no unit word)
+    3. ``REF DESC CANT TOTAL`` (no unit price; e.g. service lines)
+    4. ``DESC CANT TOTAL`` (no reference; common in free-form budgets)
+
+    A row only needs DESC + at least one numeric field (qty/price/total)
+    to be emitted; missing optional groups default to None.
+    """
     lines: list[ExtractedLine] = []
-    pattern = re.compile(
-        r"^\s*(?P<reference>[A-Z0-9][A-Z0-9_./-]{2,})\s+"
-        r"(?P<description>.+?)\s+"
-        r"(?P<quantity>\d+(?:[,.]\d+)?)\s+"
-        r"(?P<unit>[A-Za-zñÑ²2]+)\s+"
-        r"(?P<unit_price>\d[\d.,]*)\s+"
-        r"(?P<total_price>\d[\d.,]*)\s*$",
-        flags=re.IGNORECASE,
-    )
+    _REF = r"(?P<reference>[A-Z0-9][A-Z0-9_./-]{2,})\s+"
+    _DESC = r"(?P<description>.+?)"
+    _QTY = r"(?P<quantity>\d+(?:[,.]\d+)?)"
+    _UNIT = r"(?P<unit>[A-Za-zñÑ²2]+)"
+    _UPRICE = r"(?P<unit_price>\d[\d.,]*)"
+    _TPRICE = r"(?P<total_price>\d[\d.,]*)"
+
+    patterns = [
+        # 1. Full: REF DESC CANT UNIDAD P.UNIDAD TOTAL
+        re.compile(rf"^\s*{_REF}{_DESC}\s+{_QTY}\s+{_UNIT}\s+{_UPRICE}\s+{_TPRICE}\s*$", re.IGNORECASE),
+        # 2. REF DESC CANT P.UNIDAD TOTAL (no unit word)
+        re.compile(rf"^\s*{_REF}{_DESC}\s+{_QTY}\s+{_UPRICE}\s+{_TPRICE}\s*$", re.IGNORECASE),
+        # 3. REF DESC CANT TOTAL (no unit price)
+        re.compile(rf"^\s*{_REF}{_DESC}\s+{_QTY}\s+{_TPRICE}\s*$", re.IGNORECASE),
+        # 4. DESC CANT TOTAL (no reference)
+        re.compile(rf"^\s*{_DESC}\s+{_QTY}\s+{_TPRICE}\s*$", re.IGNORECASE),
+    ]
     for raw_line in text.splitlines():
-        match = pattern.match(raw_line)
+        match = None
+        for pattern in patterns:
+            match = pattern.match(raw_line)
+            if match:
+                break
         if not match:
             continue
+        gd = match.groupdict()
         lines.append(
             ExtractedLine(
-                reference=match.group("reference").strip(),
-                description=match.group("description").strip(),
-                quantity=_parse_amount(match.group("quantity")),
-                unit=match.group("unit").strip(),
-                unit_price=_parse_amount(match.group("unit_price")),
-                total_price=_parse_amount(match.group("total_price")),
-                # Layout-aware path (see
-                # ``app.services.extraction.table_extraction``)
-                # computes a per-line confidence from the OCR
-                # confidence of the source blocks. This regex
-                # fallback runs only when no bounding boxes are
-                # available, so we have no OCR signal to lean on;
-                # the value below is therefore a conservative
-                # "we matched the pattern, no idea on OCR quality"
-                # placeholder. Calibrate against a labelled sample
-                # before changing it.
+                reference=(gd.get("reference") or "").strip() or None,
+                description=gd["description"].strip(),
+                quantity=_parse_amount(gd.get("quantity")),
+                unit=(gd.get("unit") or "").strip() or None,
+                unit_price=_parse_amount(gd.get("unit_price")),
+                total_price=_parse_amount(gd.get("total_price")),
                 confidence=0.82,
             )
         )

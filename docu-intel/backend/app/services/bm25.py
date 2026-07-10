@@ -96,7 +96,7 @@ def _row_to_search_result(
     The fields mirror what ``search_text`` / ``search_semantic``
     produce, so the hybrid fusion in :mod:`app.services.search_service`
     can deduplicate across the three branches on the same
-    ``(document_id, page_number, block_id)`` key.
+    ``(document_id, page_number, block_id, chunk_id)`` key.
     """
     return SearchResult(
         document_id=document_id,
@@ -105,6 +105,7 @@ def _row_to_search_result(
         status=status,
         page_number=page_number,
         block_id=None,  # BM25 ranks on the chunk, not a block
+        chunk_id=chunk_id,
         score=float(rank),
         excerpt=chunk_text or "",
         ocr_confidence=None,
@@ -120,7 +121,6 @@ def search_bm25(
     query: str,
     limit: int = 10,
     filters: dict[str, Any] | None = None,
-    access_scope=None,
 ) -> list[SearchResult]:
     """Run a BM25 full-text search against ``document_chunks``.
 
@@ -137,8 +137,6 @@ def search_bm25(
             ``document_type``, ``status``, ``quality_status``,
             ``extension``). Same keys as
             :func:`app.services.search_service._apply_document_filters`.
-        access_scope: optional AccessScope for multi-tenant filtering.
-            When provided, only documents the scope can see are returned.
 
     Returns:
         A list of :class:`SearchResult` ordered by BM25 rank
@@ -155,23 +153,6 @@ def search_bm25(
 
     effective_limit = max(1, int(limit))
 
-    # F0-03: build scope subquery for document-level filtering
-    scope_clause = ""
-    if access_scope is not None:
-        from app.services.tenant_access import document_access_predicate
-        from sqlalchemy import select as sa_select
-        from app.models import DocumentAccessMetadata
-
-        pred = document_access_predicate(access_scope)
-        if pred is not None:
-            subq = sa_select(DocumentAccessMetadata.document_id).where(pred).scalar_subquery()
-            scope_clause = f"AND d.id IN ({subq.compile(compile_kwargs={'literal_binds': True})})"
-        elif access_scope.is_admin:
-            pass  # admin sees everything, no filter needed
-        else:
-            # empty scope — return nothing
-            return []
-
     # The GIN-indexed ``@@`` operator is what makes the search fast;
     # ``ts_rank_cd`` is the cover density ranking function (BM25-ish).
     # We pull a small extra pool (limit * 3) so the hybrid fusion
@@ -185,6 +166,7 @@ def search_bm25(
             d.status,
             c.page_number,
             c.id AS chunk_id,
+            c.chunk_type,
             ts_rank_cd(c.tsv, plainto_tsquery('spanish', :query), :norm) AS rank,
             c.chunk_text
         FROM document_chunks c
@@ -192,14 +174,13 @@ def search_bm25(
         WHERE d.deleted_at IS NULL
           AND c.tsv @@ plainto_tsquery('spanish', :query)
           {filter_clauses}
-          {scope_clause}
         ORDER BY rank DESC
         LIMIT :limit
         """
     )
 
     filter_clauses, params = _build_filter_clauses(filters)
-    sql = text(sql.text.replace("{filter_clauses}", filter_clauses).replace("{scope_clause}", scope_clause))
+    sql = text(sql.text.replace("{filter_clauses}", filter_clauses))
 
     params = {
         **params,
@@ -240,12 +221,13 @@ def search_bm25(
             rank=float(row["rank"] or 0.0),
             chunk_text=str(row["chunk_text"] or ""),
         )
-        result._chunk_type = "text"  # the BM25 query does not return chunk_type yet
+        result._chunk_type = row["chunk_type"] or "text"
         results.append(result)
 
-    # E3 — apply the chunk-level filter (min_ocr_confidence)
-    # as a post-filter. block_type is now in SQL (F5-01).
-    results = _post_filter_chunk_clauses(results, filters, db=db)
+    # E3 — apply the chunk-level filter (block_type,
+    # min_ocr_confidence) as a post-filter. See
+    # :func:`_post_filter_chunk_clauses` for the rationale.
+    results = _post_filter_chunk_clauses(db, results, filters)
     return results
 
 
@@ -327,10 +309,6 @@ def _build_filter_clauses(filters: dict[str, Any] | None) -> tuple[str, dict[str
         # expanding parameter so the SQL stays safe.
         clauses.append("d.status NOT IN :exclude_statuses")
         params["exclude_statuses"] = tuple(f["exclude_statuses"])
-    # F5-01: block_type filter now in SQL, not post-filter
-    if f.get("block_type"):
-        clauses.append("c.block_type = :block_type")
-        params["block_type"] = f["block_type"]
     if f.get("quality_flags_any"):
         # OR of the per-flag jsonb_exists tests. The ``?``
         # operator on a JSONB column returns true when the
@@ -380,22 +358,39 @@ def _build_filter_clauses(filters: dict[str, Any] | None) -> tuple[str, dict[str
 # ``tsv @@`` operator already constrains the candidate set
 # heavily via the GIN index.
 def _post_filter_chunk_clauses(
+    db: Session,
     results: list,
     filters: dict[str, Any] | None,
-    db=None,
 ) -> list:
     """Drop rows that fail the chunk-level filter.
 
-    F5-01: moved block_type filter to SQL; this now only handles
-    min_ocr_confidence which requires a separate DocumentPage query.
+    The BM25 raw SQL cannot easily apply :func:`build_chunk_filter_clause`
+    because that helper returns a SQLAlchemy expression while the
+    BM25 query is built with ``text()``. We therefore fetch a
+    small over-fetch from PG and drop the failing rows in
+    Python. The over-fetch size (``limit * 3`` set in
+    :func:`search_bm25`) keeps the post-filter from accidentally
+    starving the top-k result.
     """
     from app.services.search_filters import (
         normalise_filters,
     )
 
     f = normalise_filters(filters)
-    if f.get("min_ocr_confidence") is not None and db is not None:
+    # We cannot eval the SQLAlchemy clause in Python; the simplest
+    # correct approach is to re-derive the filter conditions in
+    # Python for the chunk table and apply them as a list
+    # comprehension. The two predicates we support here are
+    # ``block_type`` (string equality on the chunk) and
+    # ``min_ocr_confidence`` (a separate ``DocumentPage`` query).
+    if f.get("block_type"):
+        results = [r for r in results if getattr(r, "_chunk_type", "text") == f["block_type"]]
+    if f.get("min_ocr_confidence") is not None:
         threshold = f["min_ocr_confidence"]
+        # Collect unique (document_id, page_number) pairs from results
+        # and fetch their OCR confidence from document_pages.
+        from app.models import DocumentPage
+
         page_keys = set()
         for r in results:
             doc_id = getattr(r, "document_id", None)
@@ -403,6 +398,7 @@ def _post_filter_chunk_clauses(
             if doc_id is not None and page_num is not None:
                 page_keys.add((doc_id, page_num))
         if page_keys:
+            # Query OCR confidence for the relevant pages
             doc_ids = {k[0] for k in page_keys}
             page_nums = {k[1] for k in page_keys}
             page_rows = db.execute(

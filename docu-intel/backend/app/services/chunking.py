@@ -131,10 +131,10 @@ def _looks_like_aligned_table_line(line: str) -> bool:
     return bool(_ALIGNED_TABLE_COL_RE.search(stripped))
 
 
-def _split_table_block(lines: list[str]) -> list[list[str]]:
+def _split_table_block(lines: list[str]) -> list[tuple[list[str], bool]]:
     """Partition a list of lines into runs of consecutive table lines
-    separated by runs of plain lines. Used so we can attach the right
-    ``chunk_type`` to each run.
+    vs plain lines. Used so we can attach the right ``chunk_type`` to
+    each run.
 
     Two table flavours are detected:
 
@@ -143,6 +143,8 @@ def _split_table_block(lines: list[str]) -> list[list[str]]:
       the typical output of OCR on scanned invoices. A single aligned
       line is not enough to be a table; we require at least 2
       consecutive aligned lines so prose is not misclassified.
+
+    Returns a list of ``(lines, is_table)`` tuples, one per run.
     """
     if not lines:
         return []
@@ -150,7 +152,6 @@ def _split_table_block(lines: list[str]) -> list[list[str]]:
     # Markdown lines are tables on their own; aligned lines are only
     # tables when they appear in a contiguous block of >=2.
     flags: list[bool] = []
-    aligned_runs: list[tuple[int, int]] = []  # (start, end) index ranges
     i = 0
     n = len(lines)
     while i < n:
@@ -163,8 +164,7 @@ def _split_table_block(lines: list[str]) -> list[list[str]]:
             while j < n and _looks_like_aligned_table_line(lines[j]):
                 j += 1
             # Only treat as table if the run is at least 2 lines.
-            aligned_runs.append((i, j, j - i >= 2))
-            for k in range(i, j):
+            for _ in range(i, j):
                 flags.append(j - i >= 2)
             i = j
         else:
@@ -172,18 +172,18 @@ def _split_table_block(lines: list[str]) -> list[list[str]]:
             i += 1
 
     # Second pass: group consecutive lines that share the same flag.
-    runs: list[list[str]] = []
+    runs: list[tuple[list[str], bool]] = []
     current: list[str] = []
     current_is_table = False
     for idx, line in enumerate(lines):
         is_table = flags[idx]
         if idx > 0 and is_table != current_is_table and current:
-            runs.append(current)
+            runs.append((current, current_is_table))
             current = []
         current.append(line)
         current_is_table = is_table
     if current:
-        runs.append(current)
+        runs.append((current, current_is_table))
     return runs
 
 
@@ -365,6 +365,48 @@ def _split_into_paragraph_sentences(text: str) -> list[list[str]]:
     return paragraphs
 
 
+def _emit_prose_lines(
+    prose_lines: list[str],
+    chunks: list[Chunk],
+    pending_heading: str | None,
+    *,
+    max_words: int,
+    overlap_words: int,
+    respect_headings: bool,
+) -> str | None:
+    """Emit a non-table run as heading-aware prose chunks.
+
+    Mirrors the previous inline block logic: when ``respect_headings``
+    is on, heading lines are stripped out and folded into
+    ``pending_heading`` (so they travel with the next chunk), and the
+    remaining prose is packed into chunks by :func:`_emit_text`.
+    Returns the (possibly updated) ``pending_heading``.
+    """
+    if respect_headings:
+        filtered: list[str] = []
+        for line in prose_lines:
+            heading = _is_heading(line)
+            if heading:
+                pending_heading = heading
+                continue
+            filtered.append(line)
+        prose_lines = filtered
+    prose_text = "\n".join(prose_lines).strip()
+    if not prose_text:
+        return pending_heading
+    sentences = _SENTENCE_RE.split(prose_text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if not sentences:
+        return pending_heading
+    return _emit_text(
+        sentences,
+        chunks,
+        max_words=max_words,
+        overlap_words=overlap_words,
+        heading_prefix=pending_heading,
+    )
+
+
 def build_chunks(
     text: str,
     max_words: int = 220,
@@ -415,57 +457,41 @@ def build_chunks(
         if not clean_block:
             continue
         block_lines = clean_block.splitlines()
-        # Heading-only block?
-        if len(block_lines) == 1 and respect_headings:
-            heading = _is_heading(block_lines[0])
-            if heading:
-                # Replace the pending heading (if any) with the new
-                # one. Multiple consecutive heading lines collapse
-                # into the last one to keep the prefix short.
-                pending_heading = heading
-                continue
-        # Table-only block?
+
+        # Whole block is a markdown table → single table chunk.
         if respect_tables and all(_TABLE_LINE_RE.match(line) for line in block_lines):
             pending_heading = _emit_table(block_lines, chunks, heading_prefix=pending_heading)
             continue
-        # Mixed block or pure prose: walk line by line so a heading
-        # line at the top of a prose block still gets attached. We
-        # *consume* the heading line so it does not appear twice
-        # in the chunk (once as a prefix, once again as part of
-        # the prose).
-        prose_lines: list[str] = []
-        if respect_headings:
-            for line in block_lines:
-                heading = _is_heading(line)
-                if heading:
-                    pending_heading = heading
-                    continue
-                prose_lines.append(line)
-            if not prose_lines:
-                # The whole block was headings; the pending heading
-                # will attach to the next non-heading block or be
-                # emitted as a standalone chunk at the end.
-                continue
+
+        # Otherwise split into table / non-table runs so space-aligned
+        # OCR tables (columns separated by 2+ spaces / tabs) are kept
+        # whole as ``chunk_type="table"`` instead of being cut by
+        # sentence boundaries. Non-table runs keep the existing
+        # heading-aware prose handling.
+        if respect_tables:
+            for run_lines, run_is_table in _split_table_block(block_lines):
+                if run_is_table:
+                    pending_heading = _emit_table(
+                        run_lines, chunks, heading_prefix=pending_heading
+                    )
+                else:
+                    pending_heading = _emit_prose_lines(
+                        run_lines,
+                        chunks,
+                        pending_heading,
+                        max_words=max_words,
+                        overlap_words=overlap_words,
+                        respect_headings=respect_headings,
+                    )
         else:
-            prose_lines = block_lines
-        # Plain prose paragraph: pack into chunks. We re-join the
-        # prose lines with newlines so the chunk preserves the
-        # original document's visual structure when that matters
-        # (e.g. a list of lines that were one per visual row).
-        prose_text = "\n".join(prose_lines).strip()
-        if not prose_text:
-            continue
-        sentences = _SENTENCE_RE.split(prose_text)
-        sentences = [s.strip() for s in sentences if s.strip()]
-        if not sentences:
-            continue
-        pending_heading = _emit_text(
-            sentences,
-            chunks,
-            max_words=max_words,
-            overlap_words=overlap_words,
-            heading_prefix=pending_heading,
-        )
+            pending_heading = _emit_prose_lines(
+                block_lines,
+                chunks,
+                pending_heading,
+                max_words=max_words,
+                overlap_words=overlap_words,
+                respect_headings=respect_headings,
+            )
 
     # If a heading was attached to a chunk that never came (e.g.
     # empty document), emit it as its own heading chunk so the

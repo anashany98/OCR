@@ -1,46 +1,45 @@
 import { FormEvent, useState } from "react"
-import { Outlet, useLocation, useNavigate } from "react-router-dom"
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronDown, Command as CommandIcon, FileText, LogOut, Menu, Search } from "lucide-react"
+import {
+  ChevronDown,
+  Command as CommandIcon,
+  FileText,
+  LogOut,
+  Search,
+  Settings,
+} from "lucide-react"
 
 import { api } from "@/api/client"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { CommandPalette } from "@/components/layout/CommandPalette"
-import { SidebarNav } from "@/components/layout/Sidebar"
-import { SidebarDrawer, useSidebarDrawerHotkey } from "@/components/layout/SidebarDrawer"
 import { ThemeToggle } from "@/components/layout/ThemeToggle"
 import { useAuth } from "@/hooks/useAuth"
 import { useWorkInboxCount } from "@/hooks/useWorkInboxCount"
-import { titleForPath } from "@/navigation/config"
 import { cn } from "@/lib/utils"
+
+const NAV_ITEMS = [
+  { to: "/", label: "Inicio" },
+  { to: "/documents", label: "Documentos" },
+  { to: "/search", label: "Buscar" },
+  { to: "/chat", label: "Chat IA" },
+  { to: "/work-inbox", label: "Tareas", badge: true },
+  { to: "/plans", label: "Planos", roles: ["admin", "gestor"] },
+  { to: "/admin/sistema", label: "Admin", roles: ["admin"] },
+]
 
 export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [query, setQuery] = useState("")
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const health = useQuery({
-    queryKey: ["system-health"],
-    queryFn: api.systemHealth,
-    refetchInterval: 30000,
-    refetchIntervalInBackground: false,
-  })
+
+  const health = useQuery({ queryKey: ["system-health"], queryFn: api.systemHealth, refetchInterval: 30000, refetchIntervalInBackground: false })
   const inbox = useWorkInboxCount()
-
   const inboxCount = inbox.data?.count ?? 0
-
-  const pageTitle = titleForPath(location.pathname)
-
-  function setMobileDrawer(open: boolean) {
-    if (open && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches)
-      return
-    setDrawerOpen(open)
-  }
-
-  useSidebarDrawerHotkey(setMobileDrawer)
+  const systemOk = health.data?.status === "ok" || health.data?.status === "ready"
 
   function onSearch(event: FormEvent) {
     event.preventDefault()
@@ -49,143 +48,101 @@ export function AppShell() {
     setQuery("")
   }
 
-  const systemStatus = health.data?.status === "ok" || health.data?.status === "ready"
+  const visibleNav = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role ?? ""))
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
-      <aside className="hidden w-[260px] flex-shrink-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] lg:flex">
-        <div className="flex h-12 items-center gap-2.5 border-b border-[var(--sidebar-border)] px-3">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-md">
-            <FileText className="h-4 w-4" aria-hidden="true" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-display text-[15px] font-medium leading-tight tracking-tight text-[var(--sidebar-text)]">
-              Docu-Intel
-            </p>
-            <p className="truncate text-[10px] uppercase tracking-[0.12em] text-[var(--sidebar-muted)]">
-              Operación documental
-            </p>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          <SidebarNav />
-        </div>
-      </aside>
+    <div className="flex min-h-screen flex-col bg-[var(--bg-canvas)]">
+      {/* ── Top Navigation Bar ── */}
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--bg-surface)] shadow-xs">
+        <div className="flex h-12 items-center px-4 lg:px-6">
+          {/* Brand */}
+          <Link to="/" className="flex items-center gap-2.5 mr-6">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-sm">
+              <FileText className="h-3.5 w-3.5" />
+            </div>
+            <span className="text-[14px] font-bold text-[var(--text-primary)] hidden sm:block">Docu-Intel</span>
+          </Link>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-surface)]/95 backdrop-blur-sm">
-          <div className="flex h-12 items-center gap-3 px-4">
-            <button
-              onClick={() => setDrawerOpen(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)] lg:hidden"
-              aria-label="Abrir menú de navegación"
-              title="Menú (⌘B)"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
+          {/* Nav links */}
+          <nav className="hidden items-center gap-0.5 lg:flex">
+            {visibleNav.map((item) => {
+              const active = item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
+                    active
+                      ? "bg-[var(--accent-light)] text-[var(--accent)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)]",
+                  )}
+                >
+                  {item.label}
+                  {item.badge && inboxCount > 0 && (
+                    <span className="ml-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--warning)] px-1 text-[9px] font-bold text-white">
+                      {inboxCount > 99 ? "99+" : inboxCount}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
 
-            {/* Page title */}
-            <h1 className="truncate text-[14px] font-semibold tracking-tight text-[var(--text-primary)]">
-              {pageTitle}
-            </h1>
+          <div className="flex-1" />
 
-            {/* Spacer */}
-            <div className="flex-1" />
-
-            {/* Tareas badge */}
-            {inboxCount > 0 && (
-              <Badge
-                variant="warning"
-                className="hidden cursor-pointer items-center gap-1 sm:inline-flex"
-                onClick={() => navigate("/work-inbox")}
-                aria-label={`${inboxCount} ${inboxCount === 1 ? "tarea pendiente" : "tareas pendientes"}`}
-              >
-                <span>
-                  {inboxCount} {inboxCount === 1 ? "tarea" : "tareas"}
-                </span>
-              </Badge>
-            )}
-
-            {/* Command palette trigger (Cmd+K) */}
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event("docu-intel:open-command-palette"))}
-              className="hidden h-8 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface-2)] px-2.5 text-[12px] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface-hover)] md:inline-flex"
-              aria-label="Abrir paleta de comandos"
-              title="Buscar páginas y acciones (Ctrl+K)"
-            >
-              <CommandIcon className="h-3.5 w-3.5" />
-              <span>Buscar…</span>
-              <kbd className="ml-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1 font-mono text-[10px] text-[var(--text-muted)]">
-                ⌘K
-              </kbd>
-            </button>
-
-            {/* Search fallback (mobile) */}
-            <form className="relative md:hidden" onSubmit={onSearch}>
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-muted)]" />
+          {/* Right side: search, status, theme, user */}
+          <div className="flex items-center gap-2">
+            <form className="relative hidden md:block" onSubmit={onSearch}>
+              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-muted)]" />
               <Input
-                aria-label="Buscar documentos"
-                className="h-8 w-32 rounded-md border-[var(--border)] bg-[var(--bg-surface-2)] pl-8 pr-3 text-[13px] placeholder:text-[var(--text-muted)] focus:border-[var(--primary)] focus:bg-[var(--bg-surface)] sm:w-48"
+                className="h-8 w-48 rounded-md border-[var(--border)] bg-[var(--bg-surface-2)] pl-7 pr-8 text-[12px]"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar…"
+                placeholder="Buscar..."
               />
+              <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1 font-mono text-[9px] text-[var(--text-muted)]">
+                ⌘K
+              </kbd>
             </form>
 
-            {/* Status indicator */}
-            <div className="hidden items-center gap-1.5 sm:flex">
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  systemStatus ? "bg-[var(--positive)]" : "bg-[var(--warning)]",
-                )}
-              />
-              <span className="text-[11px] text-[var(--text-muted)]">Sistema</span>
+            <div className="hidden items-center gap-1 sm:flex">
+              <span className={cn("h-1.5 w-1.5 rounded-full", systemOk ? "bg-[var(--success)]" : "bg-[var(--warning)]")} />
+              <span className="text-[10px] text-[var(--text-muted)]">OK</span>
             </div>
 
-            {/* Theme toggle */}
             <ThemeToggle />
 
-            {/* User menu */}
-            <div className="relative">
-              <button
-                className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] transition-colors hover:bg-[var(--bg-surface-2)]"
-                aria-label="Menú de usuario"
-                title={user?.name}
-              >
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent-faint)] text-[11px] font-semibold text-[var(--accent)]">
-                  {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-[var(--bg-surface-2)]" aria-label="Usuario">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-bold text-white">
+                    {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
+                  </div>
+                  <span className="hidden text-[12px] text-[var(--text-secondary)] sm:inline">{user?.name?.split(" ")[0]}</span>
+                  <ChevronDown className="hidden h-3 w-3 text-[var(--text-muted)] sm:block" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <div className="px-2 py-1.5">
+                  <p className="text-[12px] font-medium">{user?.name}</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">{user?.email}</p>
                 </div>
-                <span className="hidden text-[var(--text-secondary)] sm:inline">
-                  {user?.name?.split(" ")[0]}
-                </span>
-                <ChevronDown className="hidden h-3 w-3 text-[var(--text-muted)] sm:block" />
-              </button>
-            </div>
-
-            {/* Logout */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={logout}
-              className="h-8 w-8 text-[var(--text-muted)] hover:text-[var(--danger)]"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate("/admin")} className="text-[12px]"><Settings className="mr-2 h-3.5 w-3.5" /> Admin</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={logout} className="text-[12px] text-[var(--danger)]"><LogOut className="mr-2 h-3.5 w-3.5" /> Salir</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* Main content */}
-        <main className="flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-          <Outlet />
-        </main>
-      </div>
+      {/* ── Content ── */}
+      <main className="flex-1 p-4 lg:p-5">
+        <Outlet />
+      </main>
 
-      <SidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <CommandPalette />
     </div>
   )

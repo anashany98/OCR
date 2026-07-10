@@ -108,7 +108,7 @@ export function SummaryCard({
     danger: "border-[var(--rose-light)] bg-[var(--rose-light)]/30",
     warning: "border-[var(--amber-light)] bg-[var(--amber-light)]/30",
     info: "border-[var(--sky-light)] bg-[var(--sky-light)]/30",
-    neutral: "border-[var(--border)] bg-white",
+    neutral: "border-[var(--border)] bg-[var(--bg-surface)]",
   }
   const iconMap: Record<string, string> = {
     danger: "text-[var(--rose)]",
@@ -206,10 +206,10 @@ export function WorkInboxFiltersToolbar({
   onClear: () => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-white p-2">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-2">
       <Filter className="ml-1 h-3.5 w-3.5 text-[var(--text-muted)]" />
       <select
-        className="h-8 rounded-md border bg-background px-2 text-xs"
+        className="h-8 rounded-md border bg-[var(--bg-canvas)] px-2 text-xs"
         value={kindFilter}
         onChange={(e) => setKindFilter(e.target.value)}
       >
@@ -221,7 +221,7 @@ export function WorkInboxFiltersToolbar({
         ))}
       </select>
       <select
-        className="h-8 rounded-md border bg-background px-2 text-xs"
+        className="h-8 rounded-md border bg-[var(--bg-canvas)] px-2 text-xs"
         value={priorityFilter}
         onChange={(e) => setPriorityFilter(e.target.value)}
       >
@@ -291,7 +291,7 @@ export function PriorityGroup({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-5 py-3 hover:bg-slate-50/80"
+        className="flex w-full items-center justify-between px-5 py-3 hover:bg-[var(--bg-surface-2)]/80"
       >
         <div className="flex items-center gap-3">
           <PriorityBadge priority={priority} />
@@ -351,7 +351,7 @@ export function TaskRow({
   const isPersisted = task.itemType === "persisted"
   const persistedId = isPersisted ? (task.raw as WorkItem).id : 0
   return (
-    <div className="group px-5 py-3 transition-colors hover:bg-slate-50/60">
+    <div className="group px-5 py-3 transition-colors hover:bg-[var(--bg-surface-2)]/60">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex items-center gap-2">
@@ -527,7 +527,7 @@ export function NewManualTaskCard({
           />
           <div className="flex gap-2">
             <select
-              className="h-9 flex-1 rounded-md border bg-background px-3 text-sm"
+              className="h-9 flex-1 rounded-md border bg-[var(--bg-canvas)] px-3 text-sm"
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
             >
@@ -608,7 +608,7 @@ export function BatchActionsCard({
           Reprocesar baja calidad
         </Button>
         {result && (
-          <p className="rounded-md border bg-slate-50 p-2 text-xs text-muted-foreground">
+          <p className="rounded-md border bg-[var(--bg-surface-2)] p-2 text-xs text-[var(--text-muted)]">
             Encontrados: {result.matched}. Actualizados: {result.updated}. Encolados:{" "}
             {result.enqueued}.
           </p>
@@ -653,7 +653,7 @@ export function KindSummaryCard({
               key={kind}
               type="button"
               className={cn(
-                "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50",
+                "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-surface-2)]",
                 activeKind === kind && "border-[var(--primary)] bg-[var(--primary-light)]",
               )}
               onClick={() => onPick(kind)}
@@ -667,7 +667,7 @@ export function KindSummaryCard({
           )
         })}
         {!entries.length && (
-          <p className="text-sm text-muted-foreground">Sin incidencias abiertas.</p>
+          <p className="text-sm text-[var(--text-muted)]">Sin incidencias abiertas.</p>
         )}
       </CardContent>
     </Card>

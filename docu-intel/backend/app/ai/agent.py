@@ -341,6 +341,15 @@ async def answer_question(
 
     # ... existing code continues with the resolved_doc_id and the LLM call.
     context_items = redact_context_items_for_scope(context_items, access_scope)
+
+    # FASE 6.1: did-you-mean — when no context found, suggest similar docs.
+    if not has_answer_context(context_items):
+        from app.ai.did_you_mean import suggest_similar_documents
+
+        suggestions = suggest_similar_documents(db, question)
+        if suggestions:
+            warnings.append(suggestions)
+
     grounded = build_grounded_response(
         question=question, context_items=context_items, warnings=warnings
     )
@@ -348,7 +357,9 @@ async def answer_question(
     answer_text = grounded.answer
     model_name = grounded.model_name
     if has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
-        ai_answer = await _try_local_ai_answer(
+        from app.ai.local_answer import try_local_ai_answer
+
+        ai_answer = await try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
         # Only adopt the LLM output if it actually produced something new.
@@ -496,109 +507,8 @@ async def answer_question(
 # Streaming and one-shot LLM call
 # ---------------------------------------------------------------------------
 
-
-async def _try_local_ai_answer(
-    question: str,
-    context_items: list[ContextItem],
-    warnings: list[str],
-    *,
-    fallback: str,
-) -> str | None:
-    """One-shot LLM call with the same context as the streaming
-    path. Returns the model's answer, or ``fallback`` (and logs
-    why) when the LLM is misconfigured, fails validation, or
-    fabricates documents.
-    """
-    if not settings.ai_base_url or not settings.ai_model:
-        return None
-
-    context_text = build_context_text(context_items)
-    warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
-    messages = build_ai_messages(question, context_text, warning_text)
-    client = LocalOpenAICompatibleClient()
-    try:
-        answer = await client.chat(messages, temperature=0.0)
-    except ContextSizeExceededError:
-        # Prompt too big for the loaded context_length (caller fault — the
-        # client avoided the circuit breaker). Shrink the budget and retry ONCE.
-        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
-        logger.warning("Prompt exceeded context_length — retry budget=%d: %s", halved, question[:100])
-        messages = build_ai_messages(
-            question, build_context_text(context_items, max_tokens_override=halved), warning_text
-        )
-        try:
-            answer = await client.chat(messages, temperature=0.0)
-        except Exception as exc:
-            logger.warning("Context-shrunk retry failed: %s", exc)
-            answer = ""
-    except TimeoutError:
-        logger.warning("AI answer timed out for question: %s", question[:100])
-        return None
-    except (httpx.HTTPError, httpx.TimeoutException) as exc:
-        logger.warning("AI client request failed: %s - question: %s", exc, question[:100])
-        return None
-    except Exception as exc:
-        logger.error(
-            "Unexpected error in AI answer generation: %s - question: %s", exc, question[:100]
-        )
-        return None
-
-    # Qwen3 + LM Studio known failure: with ``/no_think`` the model can
-    # return an EMPTY answer (0 tokens, finish_reason='stop'). Retry once
-    # with thinking enabled before falling back to the grounded answer.
-    # Mirrors the streaming path's retry in ``_stream_local_ai_answer``.
-    if not answer and "qwen" in (settings.ai_model or "").lower():
-        logger.warning(
-            "Qwen3 returned an empty answer (0 tokens) with /no_think — "
-            "retrying once with thinking enabled for question: %s",
-            question[:100],
-        )
-        retry_messages = build_ai_messages(
-            question, context_text, warning_text, enable_thinking=True
-        )
-        try:
-            answer = await client.chat(retry_messages, temperature=0.0)
-        except Exception as exc:
-            logger.warning("Qwen3 thinking-enabled retry failed: %s", exc)
-            answer = ""
-
-    if not answer:
-        return fallback
-    if question_is_spanish(question) and not response_looks_spanish(answer):
-        logger.warning("AI response not in Spanish for Spanish question: %s", answer[:200])
-        return fallback
-    if response_fabricates_documents(answer, context_items):
-        logger.warning("AI response mentions documents not in context: %s", answer[:200])
-        return fallback
-    return _polish_answer_text(answer)
-
-
-def _polish_answer_text(answer: str) -> str:
-    """Minimal cleanup of model output.
-
-    The previous version replaced natural phrases like "segun la fuente 1"
-    with "segun la fuente principal", which made the assistant sound
-    bureaucratic and stripped the LLM of its own voice. The new system
-    prompt tells the model to cite the actual filename inline, so we
-    leave phrasing alone and only do a couple of safe mechanical
-    cleanups:
-
-    - strip leading/trailing whitespace
-    - drop a stray ``[DONE]`` token that some servers append on the
-      non-streaming path
-    - collapse runs of more than two blank lines
-    """
-    text = (answer or "").strip()
-    if not text:
-        return text
-    # Defensive cleanup: stray SSE control tokens that should never
-    # have leaked into the answer text.
-    text = text.replace("[DONE]", "").strip()
-    # Collapse 3+ consecutive newlines to 2 (one paragraph break).
-    import re
-
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text
+# _try_local_ai_answer extracted to app.ai.local_answer (FASE 6.1)
+from app.ai.local_answer import _polish_answer_text  # noqa: F401 — used in streaming path
 
 
 @dataclass

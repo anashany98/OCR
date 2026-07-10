@@ -43,7 +43,7 @@ export function PlanoAnnotationPage() {
 
   if (!a.plan && a.plansList.isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cargando plano...
       </div>
     )
@@ -51,7 +51,7 @@ export function PlanoAnnotationPage() {
   if (!a.plan) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-[var(--text-muted)]">
           Este documento no está clasificado como plano o no tiene un Plan asociado.
         </p>
         <Link

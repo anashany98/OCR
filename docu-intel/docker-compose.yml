@@ -53,7 +53,7 @@ services:
     env_file: .env
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-local}
       - SENTRY_DSN=${SENTRY_DSN:-}
@@ -124,8 +124,17 @@ services:
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy@%h
     restart: unless-stopped
+    # Recycle the worker process after every task (--max-tasks-per-child=1)
+    # to release VRAM/RAM leaked by PaddleOCR/PP-Structure on CPU. Combined
+    # with the explicit mem_limit this turns the kernel OOM-killer (which
+    # lost jobs mid-flight, 45 SIGKILLs in 6h) into a clean Docker restart.
+    # NOTE: 16g was too low — PaddleOCR+PP-Structure on CPU peak ~30g and
+    # Docker killed the worker on every heavy doc. 40g gives headroom on a
+    # 45g host while still protecting the OS. The --max-tasks-per-child=1
+    # ensures the 30g working set is released back between jobs.
+    mem_limit: ${WORKER_HEAVY_MEM_LIMIT:-40g}
     # H-2: enabled. See worker-fast for the bind-mount chown design.
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
@@ -155,6 +164,41 @@ services:
       retries: 3
       start_period: 180s
 
+  worker-heavy-cpu-2:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      - WORKER_NAME=worker-heavy-cpu-2
+      - LMS_SHIM_URL=http://host.docker.internal:1235
+      - LMS_CLI_PATH=/usr/local/bin/lms
+      - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-cpu-2@%h
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    mem_limit: 4g
+    cpus: 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+      - ./backend/app:/app/app
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy-cpu-2@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
   # GPU-accelerated OCR workers. One per physical GPU. PaddleOCR's
   # PaddleOCREngine auto-detects CUDA via CUDA_VISIBLE_DEVICES, so each
   # worker only sees its assigned card. The CPU worker above stays as
@@ -165,7 +209,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-0@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-0@%h
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     restart: unless-stopped
     mem_limit: 8g
@@ -211,7 +255,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} -n worker-heavy-gpu-1@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-1@%h
     user: "${APP_UID:-10001}:${APP_GID:-10001}"
     restart: unless-stopped
     mem_limit: 8g
@@ -222,9 +266,7 @@ services:
         condition: service_healthy
     environment:
       - WORKER_NAME=worker-heavy-gpu-1
-      # O2: Each GPU worker uses its own card. If your second RTX 4070
-      # shows as P8/Off in nvidia-smi, connect a dummy HDMI plug or
-      # set GPU persistence mode: nvidia-smi -pm 1
+      # GPU 1 (second RTX 4070). PaddleOCR auto-detects CUDA via CUDA_VISIBLE_DEVICES.
       - CUDA_VISIBLE_DEVICES=1
       - NVIDIA_VISIBLE_DEVICES=1
       - LMS_SHIM_URL=http://host.docker.internal:1235
@@ -298,7 +340,7 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      # Path de host absoluto eliminado. Usar ${EXTRA_INPUT_DIR} si hace falta.
+      - C:\Users\Usuario\Desktop\TEST2025:/app/data/input/TEST2025:ro
       - ./backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"

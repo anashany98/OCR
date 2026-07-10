@@ -25,7 +25,6 @@ from app.models import (
     User,
 )
 
-
 # ---------------------------------------------------------------------------
 # Access scope cache — avoids repeated DB queries for the same user
 # within a short window. The scope is user-specific and changes only

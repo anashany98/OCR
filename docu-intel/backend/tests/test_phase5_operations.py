@@ -123,7 +123,48 @@ def test_prepare_document_chunks_can_rebuild_from_existing_page_text(monkeypatch
 
 
 def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
-    pytest.skip("drifted: FakeDb insufficient for current process_document_task internals")
+    from app.workers import tasks as worker_tasks
+
+    notifications: list[tuple[int, int, str]] = []
+    calls: list[bool] = []
+
+    class FakeDb:
+        def get(self, model, item_id):
+            return object()
+
+        def close(self):
+            pass
+
+    def fail_processing(db, *, document_id, job_id, final_failure=True):
+        calls.append(final_failure)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(worker_tasks, "SessionLocal", lambda: FakeDb())
+    monkeypatch.setattr(worker_tasks, "process_document", fail_processing)
+    monkeypatch.setattr(
+        worker_tasks.notification_service,
+        "notify_job_failed",
+        lambda job_id, document_id, message: notifications.append((job_id, document_id, message)),
+    )
+
+    worker_tasks.process_document_task.request.retries = 1
+    try:
+        worker_tasks.process_document_task.run(12, 34)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("task should re-raise processing failures")
+
+    worker_tasks.process_document_task.request.retries = worker_tasks.process_document_task.max_retries
+    try:
+        worker_tasks.process_document_task.run(12, 34)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("task should re-raise processing failures")
+
+    assert calls == [False, True]
+    assert notifications == [(34, 12, "boom")]
 
 
 def test_process_document_intermediate_retry_does_not_mark_final_failure_or_emit_webhook(monkeypatch):
@@ -270,12 +311,101 @@ def test_queue_status_counts_use_routed_queue_for_document_type():
 
 
 def test_webhook_timeout_failure_is_bounded_and_non_fatal(monkeypatch):
-    pytest.skip("webhook system refactored to outbox pattern; httpx no longer directly called")
+    """A slow webhook (httpx timeout) must be caught by the delivery worker,
+    retried, and never crash the sweep — bounded and non-fatal.
+
+    ``emit_integration_webhook`` only *enqueues* the row (it never calls httpx
+    synchronously); the actual send with the timeout lives in the delivery
+    worker (``deliver_pending_webhooks_task``), which is what this test drives.
+    """
+    import httpx
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from app.database.base import Base
+    from app.models import WebhookOutbox
+    from app.services import webhooks as webhooks_service
+    from app.workers import webhooks_tasks
+
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    monkeypatch.setattr(webhooks_service.settings, "integration_webhook_url", "https://example.test/webhook")
+    monkeypatch.setattr(webhooks_service.settings, "integration_webhook_events", ["document.processed"])
+    monkeypatch.setattr(webhooks_service.settings, "integration_webhook_timeout_seconds", 1.25)
+    monkeypatch.setattr(webhooks_service.settings, "integration_webhook_secret", "")
+
+    calls: list[float] = []
+
+    def fail_post(*args, **kwargs):
+        calls.append(kwargs["timeout"])
+        raise httpx.TimeoutException("slow webhook")
+
+    monkeypatch.setattr(webhooks_tasks.httpx, "post", fail_post)
+    monkeypatch.setattr(webhooks_tasks, "_get_session", lambda: Session())
+
+    db = Session()
+    try:
+        webhooks_service.enqueue_webhook(db, event="document.processed", payload={"document_id": 1})
+        db.commit()
+
+        result = webhooks_tasks.deliver_pending_webhooks_task()
+    finally:
+        db.close()
+
+    assert result["attempted"] == 1
+    assert result["failed"] == 1
+    assert result["delivered"] == 0
+    assert calls == [1.25]
+
+    # Non-fatal: the row is rescheduled (back to ``pending``), not lost or
+    # dead-lettered on the first failure.
+    session = Session()
+    try:
+        row = session.get(WebhookOutbox, 1)
+        assert row is not None
+        assert row.status == "pending"
+        assert row.attempts == 1
+    finally:
+        session.close()
 
 
 def test_webhook_disabled_event_does_not_call_http(monkeypatch):
-    pytest.skip("webhook system refactored to outbox pattern; httpx no longer directly called")
+    from app.services import webhooks
+
+    monkeypatch.setattr(webhooks.settings, "integration_webhook_url", "https://example.test/webhook")
+    monkeypatch.setattr(webhooks.settings, "integration_webhook_events", ["document.processed"])
+
+    # A disabled event short-circuits before any DB session is opened and
+    # before any HTTP call is made, so emit_integration_webhook must never
+    # reach httpx.
+    result = webhooks.emit_integration_webhook("document.failed", {"document_id": 1})
+
+    assert result == {"sent": False, "reason": "event_disabled"}
 
 
 def test_production_compose_splits_workers_and_healthchecks():
-    pytest.skip("docker-compose.prod.yml refactored; service names changed")
+    compose = Path(__file__).resolve().parents[2] / "docker-compose.prod.yml"
+    content = compose.read_text(encoding="utf-8")
+
+    # Four dedicated workers, each pinned to its own queue.
+    assert "worker-ocr-gpu:" in content
+    assert "worker-embeddings-gpu:" in content
+    assert "worker-text-cpu:" in content
+    assert "worker-maintenance:" in content
+
+    # Queue routing: heavy OCR + embeddings on GPU workers, text/classification
+    # + celery default on the CPU worker, maintenance on its own worker.
+    assert "-Q ocr_heavy" in content
+    assert "-Q embeddings" in content
+    assert "-Q text_fast,celery" in content
+    assert "-Q maintenance" in content
+
+    # Every worker exposes a healthcheck so the orchestrator can detect hangs.
+    assert content.count("healthcheck:") >= 6

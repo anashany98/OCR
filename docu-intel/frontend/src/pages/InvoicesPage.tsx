@@ -143,7 +143,7 @@ export function InvoicesPage() {
             </div>
             <select
               aria-label="Filtrar por moneda"
-              className="h-8 rounded-md border border-[var(--border)] bg-white px-2 text-[12px]"
+              className="h-8 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-[12px]"
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
             >

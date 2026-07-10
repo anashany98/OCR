@@ -4,7 +4,11 @@ from app.models import Document
 
 HEAVY_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 FAST_EXTENSIONS = {".txt", ".csv", ".tsv", ".log", ".eml", ".xls", ".xlsx", ".xlsm"}
-HEAVY_TYPES = {"plano", "imagen"}
+# Document types that need the OCR-heavy / GPU queue. Alongside ``plano`` and
+# the generic ``imagen``, the new image subtypes (fotos de producto, muestras
+# de tela, croquis) are scanned photos that benefit from the GPU cascade, so
+# they are routed to ``ocr_heavy`` by type too — not only by extension.
+HEAVY_TYPES = {"plano", "imagen", "foto_producto", "muestra_tela", "croquis_medida"}
 
 
 def queue_for_document(document: Document, job_type: str) -> str:

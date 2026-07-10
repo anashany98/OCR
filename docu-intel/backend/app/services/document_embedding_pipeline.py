@@ -71,6 +71,95 @@ def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, b
     return [(embedding, provider, fallback) for embedding in embeddings]
 
 
+def _truncate_to_token_budget(text: str, max_tokens: int) -> str:
+    """Truncate ``text`` to roughly ``max_tokens`` model tokens.
+
+    The embedding stack is word-based (see ``chunking._word_count``), and a
+    Spanish word averages ~1.3 BPE tokens, so we cap the word count at
+    ``max_tokens`` to stay safely under the model's context window (bge-m3
+    supports 8K tokens; the default budget of 6000 leaves headroom for the
+    metadata and model overhead). Truncating by words also guarantees we
+    never split a word in half.
+    """
+    if max_tokens <= 0 or not text:
+        return text or ""
+    words = text.split()
+    if len(words) <= max_tokens:
+        return text
+    return " ".join(words[:max_tokens])
+
+
+def compute_document_embedding(
+    page_texts: list[tuple[int, str | None]],
+) -> tuple[list[float] | None, str, bool]:
+    """Compute a single embedding for the whole document.
+
+    Concatenates the (sanitised) text of every page, truncates it to the
+    configured token budget, and embeds it as one passage. The result is
+    stored on ``Document.embedding`` and used by the document-level retrieval
+    branch to improve thematic recall (documents whose overall topic matches
+    even when no isolated chunk does).
+
+    Reuses :func:`embed_many_with_metadata` so the failure contract is
+    identical to per-chunk embedding: on any provider failure we return
+    ``(None, "failed", True)`` — never a silent hash fallback.
+    """
+    from app.services.document_processing_core import sanitize_text_for_database
+
+    parts: list[str] = []
+    for _page_number, page_text in page_texts:
+        clean = sanitize_text_for_database(page_text)
+        if clean:
+            parts.append(clean)
+    if not parts:
+        return (None, "empty", False)
+    if not _should_create_embeddings():
+        return (None, None, False)
+
+    doc_text = _truncate_to_token_budget(
+        "\n".join(parts), settings.document_embedding_max_tokens
+    )
+    if not doc_text.strip():
+        return (None, "empty", False)
+
+    embeddings = embed_many_with_metadata([doc_text])
+    if not embeddings:
+        return (None, "failed", True)
+    embedding, provider, fallback = embeddings[0]
+    return (embedding, provider, fallback)
+
+
+def apply_document_embedding(
+    db: Session,
+    document_id: int,
+    page_texts: list[tuple[int, str | None]],
+) -> bool:
+    """Populate ``Document.embedding`` for ``document_id``.
+
+    Returns ``True`` when an embedding was produced, ``False`` when it was
+    skipped (no text, embeddings disabled, or provider failure — in which
+    case ``needs_reembedding`` is set on the document so the re-embed sweep
+    retries it later). Safe to call from the ingestion worker: it never
+    raises on embedding failure, matching the chunk pipeline's policy.
+    """
+    from app.models import Document
+
+    document = db.get(Document, document_id)
+    if document is None:
+        return False
+
+    embedding, provider, fallback = compute_document_embedding(page_texts)
+    document.embedding = embedding
+    document.embedding_provider_used = provider
+    document.embedding_fallback = fallback
+    document.needs_reembedding = fallback or (embedding is None and provider == "failed")
+    document.embedding_model_version = settings.embedding_model if embedding is not None else None
+    if fallback:
+        track_embedding_fallback()
+    db.flush()
+    return embedding is not None
+
+
 def prepare_document_chunks(
     document_id: int,
     page_texts: list[tuple[int, str | None]],
@@ -165,6 +254,12 @@ def _replace_document_chunks(
     ):
         db.add(chunk)
     db.flush()
+    # Populate the whole-document embedding used by the document-level
+    # retrieval branch. Done here so every caller that rebuilds chunks
+    # (full parse, embeddings-only reprocess, OCR re-run) refreshes
+    # ``Document.embedding`` consistently instead of relying on each
+    # caller to remember.
+    apply_document_embedding(db, document_id, page_texts)
 
 
 def persist_chunks_without_embeddings(
@@ -297,6 +392,7 @@ def reembed_document(db: Session, document_id: int) -> dict:
     for stale in existing_by_key.values():
         db.delete(stale)
 
+    document_embedding = apply_document_embedding(db, document_id, page_texts)
     db.commit()
 
     provider = settings.embedding_provider
@@ -305,5 +401,6 @@ def reembed_document(db: Session, document_id: int) -> dict:
         "chunks_updated": updated,
         "chunks_with_embedding": sum(1 for c in new_chunks if c.embedding is not None),
         "chunks_needing_reembedding": sum(1 for c in new_chunks if c.needs_reembedding),
+        "document_embedding": document_embedding,
         "provider": provider,
     }

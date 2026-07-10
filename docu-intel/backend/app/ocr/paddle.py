@@ -19,7 +19,6 @@ import logging
 import os
 import sys
 import tempfile
-import threading
 import time
 from contextlib import contextmanager, nullcontext
 from functools import cached_property
@@ -37,6 +36,30 @@ logger = logging.getLogger("app.ocr.paddle")
 # engine is marked unavailable and subsequent calls raise instead of
 # blocking the worker thread forever.
 _PADDLE_INIT_TIMEOUT_SECONDS: float = 120.0
+
+# Process-level flag: once init fails or times out, all subsequent
+# PaddleOCREngine instances in this process skip init immediately.
+# This prevents the VRAM leak from repeated timeout → orphan thread cycles.
+# FASE 3.1: TTL de 30 min para permitir reintento tras un spike temporal.
+_PROCESS_INIT_FAILED: bool = False
+_PROCESS_INIT_FAILED_AT: float = 0.0  # timestamp of failure
+_PROCESS_INIT_TTL_SECONDS: float = 1800.0  # 30 minutes
+
+
+def _is_init_failed() -> bool:
+    """Check if init is permanently failed. Auto-reset after TTL."""
+    global _PROCESS_INIT_FAILED, _PROCESS_INIT_FAILED_AT
+    if not _PROCESS_INIT_FAILED:
+        return False
+    if time.monotonic() - _PROCESS_INIT_FAILED_AT > _PROCESS_INIT_TTL_SECONDS:
+        logger.info(
+            "PaddleOCR init failure TTL expired (%.0fs), allowing retry",
+            _PROCESS_INIT_TTL_SECONDS,
+        )
+        _PROCESS_INIT_FAILED = False
+        _PROCESS_INIT_FAILED_AT = 0.0
+        return False
+    return True
 
 
 # =============================================================================
@@ -79,7 +102,8 @@ class PaddleOCREngine:
 
     @cached_property
     def _engine(self):
-        if getattr(self, "_init_failed", False):
+        global _PROCESS_INIT_FAILED, _PROCESS_INIT_FAILED_AT
+        if _is_init_failed() or getattr(self, "_init_failed", False):
             raise RuntimeError("PaddleOCR engine is unavailable: previous init attempt failed")
         return self._init_engine_with_timeout()
 
@@ -126,6 +150,20 @@ class PaddleOCREngine:
         }
         if self.device:
             kwargs["device"] = self.device
+        # FP16 / TensorRT FP16: PaddleOCR 3.x accepts precision="fp16" via
+        # **kwargs (-> pptrt_precision -> run_mode="trt_fp16"). ~1.5-2x faster
+        # on Tensor-Core GPUs (RTX 4070). Gated by setting so CPU stays fp32.
+        #
+        # NOTE: self.device (e.g. "gpu:0") is already passed as kwargs["device"]
+        # above. PaddleOCR 3.5.0 selects the GPU from that string — do NOT pass
+        # "device_id" (removed): it is no longer a valid kwarg in 3.5.0 and
+        # raises "Unknown argument: device_id", which silently disabled Tier 2
+        # on all GPU workers and left the RTX 4070s idle. Likewise "enable_newir"
+        # is omitted: under Paddle 3.3.1 it triggers
+        # "ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute]"
+        # in PP-Structure's oneDNN path, forcing every Tier 3 init to time out.
+        if self.device and "gpu" in str(self.device).lower() and settings.paddle_use_fp16:
+            kwargs["precision"] = "fp16"
 
         # max_workers=1 keeps the disposable executor constrained to a
         # single in-flight init at a time per engine instance, and we want
@@ -138,20 +176,17 @@ class PaddleOCREngine:
             try:
                 return init_future.result(timeout=_PADDLE_INIT_TIMEOUT_SECONDS)
             except concurrent.futures.TimeoutError:
-                # Best-effort cancellation: only works if the future
-                # has not started running yet. A PaddleOCR constructor
-                # that is mid-load will keep going in the executor's
-                # private thread, but that thread is bound to this
-                # disposable executor and will not leak into the
-                # worker's shared pool.
+                global _PROCESS_INIT_FAILED, _PROCESS_INIT_FAILED_AT
                 init_future.cancel()
+                _PROCESS_INIT_FAILED = True
+                _PROCESS_INIT_FAILED_AT = time.monotonic()
                 logger.error(
                     "PaddleOCR init timed out after %.0fs (lang=%s, device=%s). "
-                    "The abandoned worker thread is isolated to a disposable "
-                    "executor and the engine is marked unavailable.",
+                    "Process marked — all future PaddleOCR inits will skip for %.0fs.",
                     _PADDLE_INIT_TIMEOUT_SECONDS,
                     self.lang,
                     self.device,
+                    _PROCESS_INIT_TTL_SECONDS,
                 )
                 self._init_failed = True
                 raise RuntimeError(
@@ -227,11 +262,95 @@ class PaddleOCREngine:
 
             text = "\n".join(block.text for block in blocks if block.text)
             average = sum(confidences) / len(confidences) if confidences else None
-            track_ocr_duration(time.perf_counter() - start)
             return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
         finally:
+            track_ocr_duration(time.perf_counter() - start)
             if ocr_path != image_path:
                 ocr_path.unlink(missing_ok=True)
+
+    def extract_batch(
+        self, image_paths: list[Path], max_workers: int = 2
+    ) -> list[OCRResult]:
+        """Process multiple pages using PaddleOCR's batch mode.
+
+        PaddleOCR 3.x can process multiple images in one call, which
+        is more GPU-efficient than serial processing. We preprocess
+        all images first, then pass them to the OCR engine in batch.
+        """
+        if len(image_paths) <= 1:
+            return [self.extract(image_paths[0])] if image_paths else []
+
+        start = time.perf_counter()
+        logger.info("PaddleOCR batch: preprocessing %d pages", len(image_paths))
+
+        # Preprocess all images
+        from app.ocr.preprocess import preprocess_adaptive
+        ocr_paths = []
+        temp_files = []
+        for path in image_paths:
+            ocr_path = preprocess_adaptive(path, engine=self.name)
+            ocr_paths.append(str(ocr_path))
+            if ocr_path != path:
+                temp_files.append(ocr_path)
+
+        try:
+            # PaddleOCR batch mode: pass list of image paths
+            raw = self._engine.ocr(ocr_paths)
+
+            results = []
+            if raw is None:
+                results = [OCRResult(text="", confidence=None, blocks=[], engine=self.name) for _ in image_paths]
+            else:
+                if not isinstance(raw, list):
+                    raw = [raw]
+                for page_raw in raw:
+                    results.append(self._parse_batch_page(page_raw))
+
+            return results
+        finally:
+            track_ocr_duration(time.perf_counter() - start)
+            for tf in temp_files:
+                tf.unlink(missing_ok=True)
+
+    def _parse_batch_page(self, page_raw) -> OCRResult:
+        """Parse a single page result from batch processing."""
+        blocks: list[OCRBlock] = []
+        confidences: list[float] = []
+
+        if page_raw is None:
+            return OCRResult(text="", confidence=None, blocks=[], engine=self.name)
+
+        # PaddleOCR 3.x format: dict with rec_texts, rec_scores, dt_polys
+        if isinstance(page_raw, dict):
+            rec_texts = page_raw.get("rec_texts", [])
+            rec_scores = page_raw.get("rec_scores", [])
+            dt_polys = page_raw.get("dt_polys", [])
+
+            for i, text in enumerate(rec_texts):
+                score = rec_scores[i] if i < len(rec_scores) else None
+                bbox = None
+                if i < len(dt_polys):
+                    poly = dt_polys[i]
+                    bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
+
+                blocks.append(OCRBlock(
+                    text=text or "",
+                    confidence=float(score) if score is not None else None,
+                    bbox=bbox,
+                ))
+                if score is not None:
+                    confidences.append(float(score))
+        elif isinstance(page_raw, (list, tuple)):
+            for line in page_raw:
+                result = self._parse_ocr_line(line)
+                if result is not None:
+                    text, confidence, bbox = result
+                    blocks.append(OCRBlock(text=text, confidence=confidence, bbox=bbox))
+                    confidences.append(confidence)
+
+        text = "\n".join(block.text for block in blocks if block.text)
+        average = sum(confidences) / len(confidences) if confidences else None
+        return OCRResult(text=text, confidence=average, blocks=blocks, engine=self.name)
 
     def _parse_ocr_line(
         self, line: object

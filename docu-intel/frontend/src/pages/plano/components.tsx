@@ -517,7 +517,7 @@ export function AnnotationEditor({
           value={plan?.project_name ?? ""}
           placeholder="Nombre del proyecto"
           onChange={(e) => setProjectName(e.target.value)}
-          className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--bg-base)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
+          className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--bg-canvas)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
         />
       </section>
 
@@ -568,7 +568,7 @@ function ScaleEditor({
               value={scaleLengthM}
               onChange={(e) => setScaleLengthM(e.target.value)}
               placeholder="metros"
-              className="h-8 w-20 rounded-md border border-[var(--border)] bg-[var(--bg-base)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
+              className="h-8 w-20 rounded-md border border-[var(--border)] bg-[var(--bg-canvas)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
             />
             <span className="self-center text-[12px] text-[var(--text-muted)]">m</span>
           </div>
@@ -611,7 +611,7 @@ function RoomEditor({
             value={selected.name}
             onChange={(e) => updateSelected({ name: e.target.value })}
             placeholder="Nombre"
-            className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--bg-base)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
+            className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--bg-canvas)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
           />
           <div className="grid grid-cols-3 gap-2">
             <NumberField
@@ -670,7 +670,7 @@ function NumberField({
         step="0.01"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-        className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--bg-base)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
+        className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--bg-canvas)] px-2 text-[12.5px] focus:border-[var(--accent)] focus:outline-none"
       />
     </div>
   )
@@ -682,7 +682,7 @@ function ShortcutsHint() {
       <p className="font-semibold uppercase tracking-wide">Atajos</p>
       <ul className="mt-1 space-y-0.5">
         <li>
-          · <kbd className="rounded bg-[var(--bg-base)] px-1 font-mono text-[10px]">Esc</kbd>{" "}
+          · <kbd className="rounded bg-[var(--bg-canvas)] px-1 font-mono text-[10px]">Esc</kbd>{" "}
           cancela el dibujo actual
         </li>
         <li>· Doble-click cierra un polígono</li>

@@ -613,6 +613,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/documents/reclassify",
+      "name": "reclassify_documents"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/documents/reprocess-bulk",
       "name": "reprocess_bulk"
     },

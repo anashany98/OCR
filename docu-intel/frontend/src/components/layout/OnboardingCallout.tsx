@@ -93,7 +93,7 @@ function Step({
   cta: string
 }) {
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-white p-4">
+    <li className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4">
       <div className="flex items-center gap-2">
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--primary)] text-[11px] font-bold text-white">
           {number}

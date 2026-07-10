@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -40,8 +40,7 @@ class WebhookOutboxRow(BaseModel):
     delivered_at: datetime | None
     dead_lettered_at: datetime | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/admin/webhooks/outbox", response_model=list[WebhookOutboxRow])

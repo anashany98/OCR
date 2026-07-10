@@ -122,7 +122,6 @@ def preload_worker_ocr_engine(**_kwargs) -> None:
         )
         return
     try:
-        from app.ocr.factory import preload_ocr_engine
         import concurrent.futures
 
         # Warmup with a timeout — if the VLM Tier 4 hangs, the

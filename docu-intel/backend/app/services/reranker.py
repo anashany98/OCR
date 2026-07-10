@@ -296,8 +296,11 @@ def rerank_sync(
             logger.warning("Local reranker failed, falling back: %s", exc)
             return candidates[:top_k]
     try:
-        asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(rerank(query, candidates, top_k))
-    # Already in async context — caller should use rerank() directamente
-    return candidates[:top_k]
+    # Already in an async context (e.g. a FastAPI async endpoint that called
+    # search_hybrid synchronously). ``asyncio.run`` refuses to start a new loop
+    # here, so bridge the coroutine onto the running loop and block for it.
+    future = asyncio.run_coroutine_threadsafe(rerank(query, candidates, top_k), loop)
+    return future.result()

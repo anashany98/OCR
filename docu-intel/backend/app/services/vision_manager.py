@@ -226,7 +226,7 @@ class VisionManager:
             if cls.is_loaded(model):
                 return True
             logger.info("VisionManager: loading %s", model)
-            ok, payload = cls._lms_call("load", model, timeout=180)
+            ok, payload = cls._lms_call("load", model, timeout=300)
             cls._loaded_cache = None
             if not ok:
                 logger.warning(

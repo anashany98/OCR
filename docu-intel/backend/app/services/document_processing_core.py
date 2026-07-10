@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 import contextlib
+import logging
 import sys
 import time
 from datetime import UTC, datetime
@@ -776,11 +776,31 @@ def _apply_classification_and_extraction(
     # cached for ``_LEARNED_RULES_CACHE_TTL`` seconds so the cost is
     # amortised across all documents processed in the same batch.
     learned_rules = _get_cached_learned_rules(db)
+
+    # --- Determinar content_route para subtipos de imagen ---
+    # Reutiliza la misma lógica de folder_hint que _process_full_parse.
+    content_route = None
+    if document.source_path and document.stored_filename:
+        try:
+            stored_path = settings.files_dir / document.stored_filename
+            folder_hint = None
+            src_parts = Path(document.source_path).parts
+            input_parts = Path(settings.input_dir).parts
+            if len(src_parts) > len(input_parts):
+                folder_hint = src_parts[len(input_parts)]
+            from app.parsers.content_router import classify_content
+
+            cc = classify_content(stored_path, extracted_text=text[:500], folder_hint=folder_hint)
+            content_route = cc.route.value if cc.route else None
+        except Exception:
+            pass  # best-effort: si no se puede calcular, el clasificador usa solo RULES
+
     classification = classify_document(
         document.original_filename,
         document.source_path,
         text,
         learned_rules=learned_rules,
+        content_route=content_route,
     )
     document.document_type = classification.document_type
     document.confidence = classification.confidence

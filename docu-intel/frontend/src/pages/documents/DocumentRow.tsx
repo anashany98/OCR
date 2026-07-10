@@ -58,7 +58,7 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
       </TableCell>
       <TableCell className="min-w-[280px] py-3">
         <div className="flex items-center gap-2.5">
-          <FileSpreadsheet className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <FileSpreadsheet className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
           <div className="min-w-0">
             <Link
               to={`/documents/${document.id}`}
@@ -69,7 +69,7 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
               {document.original_filename}
             </Link>
             <p
-              className="truncate text-[11px] text-muted-foreground"
+              className="truncate text-[11px] text-[var(--text-muted)]"
               title={document.source_path ?? undefined}
             >
               {document.source_path ?? document.file_hash?.slice(0, 16)}
@@ -83,14 +83,14 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
           <StatusBadge status={document.quality_status ?? "-"} />
         </div>
       </TableCell>
-      <TableCell className="py-3 text-xs text-muted-foreground">{document.document_type}</TableCell>
+      <TableCell className="py-3 text-xs text-[var(--text-muted)]">{document.document_type}</TableCell>
       <TableCell className="py-3 text-right tabular-nums">
         <span className="inline-flex items-center gap-1.5">
           <span className={cn("h-1.5 w-1.5 rounded-full", confidenceTone)} aria-hidden="true" />
           <span className="text-sm">{confidencePct == null ? "—" : `${confidencePct}%`}</span>
         </span>
       </TableCell>
-      <TableCell className="py-3 text-xs tabular-nums text-muted-foreground">
+      <TableCell className="py-3 text-xs tabular-nums text-[var(--text-muted)]">
         <div className="flex flex-col gap-0.5">
           <span className="font-medium text-foreground">{formatBytes(document.file_size)}</span>
           <span>{formatDate(document.created_at)}</span>
