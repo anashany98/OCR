@@ -287,6 +287,9 @@ def test_reprocess_regenerates_chunks(tmp_path, monkeypatch):
 
 
 def test_embedding_provider_failure_stores_unembedded_without_hash_fallback(tmp_path, monkeypatch):
+    """P0.2: chunks are created WITHOUT embeddings during OCR. The embedding
+    task is enqueued separately on the embeddings queue. No embedding attempt
+    is made during OCR, so provider_used is None and fallback is False."""
     input_dir, _ = _configure_pipeline(monkeypatch, tmp_path, create_embeddings=True)
     monkeypatch.setattr(settings, "embedding_provider", "openai_compatible")
     monkeypatch.setattr(settings, "embedding_base_url", "http://127.0.0.1:9")
@@ -303,8 +306,9 @@ def test_embedding_provider_failure_stores_unembedded_without_hash_fallback(tmp_
     assert document.status in {"processed", "needs_review"}
     assert job.status == "processed"
     assert chunk.embedding is None
-    assert chunk.embedding_provider_used == "failed"
-    assert chunk.embedding_fallback is True
+    # P0.2: no embedding attempt during OCR — provider_used stays None
+    assert chunk.embedding_provider_used is None
+    assert chunk.embedding_fallback is False
     assert chunk.needs_reembedding is True
 
 

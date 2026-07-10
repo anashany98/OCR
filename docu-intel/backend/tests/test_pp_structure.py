@@ -13,7 +13,7 @@ import pytest
 
 from app.ocr.base import OCRBlock, OCRResult
 from app.ocr.cascading import CascadingOCREngine
-from app.ocr.factory import get_ocr_engine_class
+from app.ocr.factory import clear_ocr_engine_cache, get_ocr_engine_class
 from app.ocr.pp_structure import PPStructureEngine
 
 
@@ -254,12 +254,12 @@ def test_factory_standalone_pp_structure(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "ocr_engine", "pp_structure")
-    get_ocr_engine_class.cache_clear()
+    clear_ocr_engine_cache()
     try:
         cls = get_ocr_engine_class()
         assert cls is PPStructureEngine
     finally:
-        get_ocr_engine_class.cache_clear()
+        clear_ocr_engine_cache()
 
 
 def test_factory_cascading_without_pp_structure(monkeypatch):
@@ -267,13 +267,13 @@ def test_factory_cascading_without_pp_structure(monkeypatch):
 
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", False)
-    get_ocr_engine_class.cache_clear()
+    clear_ocr_engine_cache()
     try:
         cls = get_ocr_engine_class()
         instance = cls()
         assert instance.pp_structure is None
     finally:
-        get_ocr_engine_class.cache_clear()
+        clear_ocr_engine_cache()
 
 
 def test_factory_cascading_with_pp_structure(monkeypatch):
@@ -288,7 +288,7 @@ def test_factory_cascading_with_pp_structure(monkeypatch):
 
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", True)
-    get_ocr_engine_class.cache_clear()
+    clear_ocr_engine_cache()
     try:
         cls = get_ocr_engine_class()
         # A2: factory must NOT raise at boot time, even on CPU.
@@ -305,4 +305,4 @@ def test_factory_cascading_with_pp_structure(monkeypatch):
             assert isinstance(instance.pp_structure, PPStructureEngine)
             assert instance.pp_structure.device == "gpu"
     finally:
-        get_ocr_engine_class.cache_clear()
+        clear_ocr_engine_cache()

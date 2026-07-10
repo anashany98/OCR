@@ -1,14 +1,5 @@
-# GPU variant of the backend image. PaddlePaddle 3.3.1 ships GPU support
-# under the `paddlepaddle-gpu` package on PaddlePaddle's own CUDA index;
-# we install it on top of a CUDA 12.6 runtime base and add
-# `paddlex[ocr]` for the optional Tier-3 PP-Structure pipeline
-# (layout_parsing: layout detection + table recognition + OCR).
-#
-# The CPU image (../Dockerfile) stays on python:3.11-slim with the
-# CPU-only `paddlepaddle` wheel. The two images are interchangeable at
-# the code level — the only difference is the OCR worker performance
-# and the availability of Tier 3.
-FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
+# GPU variant of the backend image (multi-stage + non-root).
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -19,71 +10,55 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Python 3.11 from the deadsnakes PPA (Ubuntu 22.04 ships 3.10) plus the
-# same apt deps the CPU image has, plus the NVIDIA repo keys that some
-# nvidia/cuda images need refreshed.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common \
-    gnupg \
+    software-properties-common gnupg \
     && add-apt-repository -y ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
-    python3.11-distutils \
-    python3-pip \
-    build-essential \
-    libglib2.0-0 \
-    libgl1 \
-    libgomp1 \
-    poppler-utils \
-    # See note in backend/Dockerfile: libreoffice-core alone is not
-    # enough — the .doc parser (app/parsers/doc.py) needs the writer
-    # module and a /usr/bin/soffice symlink in PATH.
-    libreoffice-core \
-    libreoffice-writer \
-    libreoffice-common \
-    curl \
-    ca-certificates \
-    tesseract-ocr \
-    tesseract-ocr-spa \
-    tesseract-ocr-eng \
+        python3.11 python3.11-venv python3.11-dev python3.11-distutils \
+        python3-pip build-essential curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Force python3.11 to be the default `python` and bootstrap pip (the
-# python3.11-distutils above provides the stdlib `distutils` that
-# bootstrap-pip still relies on).
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
-    && python -m ensurepip --upgrade \
-    && python -m pip install --upgrade pip
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN python -m pip install --upgrade pip
 
-# Same appuser as the CPU image so file ownership matches the bind-mount
-# expectations on the host.
-RUN groupadd --system --gid 10001 appuser \
+COPY requirements.txt /app/requirements.txt
+RUN python -m pip install --default-timeout=120 --retries=5 \
+        -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
+        --extra-index-url https://pypi.org/simple \
+        paddlepaddle-gpu==3.3.1 \
+    && python -m pip install --default-timeout=120 --retries=5 -r /app/requirements.txt \
+    && python -m pip install --default-timeout=120 --retries=5 'paddlex[ocr]==3.5.2'
+
+
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 libglib2.0-0 libgl1 libgomp1 poppler-utils \
+        libreoffice-core libreoffice-writer libreoffice-common \
+        curl ca-certificates tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng \
+        gosu tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 appuser \
     && useradd --system --uid 10001 --gid appuser --home /app appuser \
     && mkdir -p /app/data/files /app/data/input \
     && chown -R appuser:appuser /app
 
-COPY requirements.txt /app/requirements.txt
-# PaddlePaddle 3.x ships GPU support under the `paddlepaddle-gpu` package
-# name on PaddlePaddle's own CUDA index. The plain `paddlepaddle` wheel
-# on the same index is a CPU-only build, which is why the CPU image and
-# the GPU image diverge here. We pin to cu126 to match the CUDA 12.6
-# runtime in the nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 base.
-RUN python -m pip install --default-timeout=120 --retries=5 \
-    -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
-    --extra-index-url https://pypi.org/simple \
-    paddlepaddle-gpu==3.3.1 \
-    && python -m pip install --default-timeout=120 --retries=5 -r /app/requirements.txt \
-    && python -m pip install --default-timeout=120 --retries=5 'paddlex[ocr]==3.5.2'
-
+COPY --from=builder /opt/venv /opt/venv
 COPY app /app/app
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY scripts /app/scripts
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Default CMD is the celery worker. The compose file overrides this per
-# service (e.g. the GPU workers pass `-Q ocr_heavy -n worker-heavy-gpu-N@%h`).
+WORKDIR /app
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "--loglevel=INFO"]

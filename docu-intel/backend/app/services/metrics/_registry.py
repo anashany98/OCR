@@ -259,3 +259,26 @@ EMBEDDING_COVERAGE = Gauge(
     "docuintel_embedding_coverage_ratio",
     "Fraction of document chunks with embeddings.",
 )
+
+# ---------------------------------------------------------------------------
+# P0.1 — Per-stage pipeline timing histograms
+# ---------------------------------------------------------------------------
+
+STAGE_DURATION = Histogram(
+    "docuintel_stage_duration_seconds",
+    "Per-stage processing wall-clock duration in seconds.",
+    labelnames=("stage",),
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0),
+)
+
+STAGE_FAILURES = Counter(
+    "docuintel_stage_failures_total",
+    "Stage-level processing failures.",
+    labelnames=("stage", "reason"),
+)
+
+PAGES_PROCESSED = Counter(
+    "docuintel_pages_processed_total",
+    "Pages processed, broken down by routing and engine.",
+    labelnames=("route", "engine"),
+)

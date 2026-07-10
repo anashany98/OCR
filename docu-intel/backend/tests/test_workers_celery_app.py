@@ -56,8 +56,8 @@ class TestCeleryAppConfig:
     def test_worker_pool_is_prefork(self):
         assert celery_app.conf.worker_pool == "prefork"
 
-    def test_worker_max_tasks_per_child_is_50(self):
-        assert celery_app.conf.worker_max_tasks_per_child == 50
+    def test_worker_max_tasks_per_child_is_10000(self):
+        assert celery_app.conf.worker_max_tasks_per_child == 10000
 
     def test_task_default_queue_is_text_fast(self):
         assert celery_app.conf.task_default_queue == "text_fast"

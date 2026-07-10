@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -139,9 +140,9 @@ class Invoice(Base):
     supplier_tax_id: Mapped[str | None] = mapped_column(String(50), index=True)
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
     date: Mapped[date_type | None] = mapped_column(Date)
-    taxable_base: Mapped[float | None] = mapped_column(Float)
-    vat_amount: Mapped[float | None] = mapped_column(Float)
-    total_amount: Mapped[float | None] = mapped_column(Float)
+    taxable_base: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    vat_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    total_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(12))
     related_order_number: Mapped[str | None] = mapped_column(String(120))
     related_order_id: Mapped[int | None] = mapped_column(
@@ -174,8 +175,8 @@ class ReconciliationIssue(Base):
     document_id: Mapped[int | None] = mapped_column(
         ForeignKey("documents.id", ondelete="SET NULL"), index=True
     )
-    expected_amount: Mapped[float | None] = mapped_column(Float)
-    actual_amount: Mapped[float | None] = mapped_column(Float)
+    expected_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    actual_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     resolution_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

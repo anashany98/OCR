@@ -160,32 +160,3 @@ def sweep_stale_jobs_task() -> dict:
         return {"stale_reset": 0, "error": str(exc)}
     finally:
         db.close()
-
-
-@celery_app.task(
-    name="app.workers.tasks.refresh_active_documents_view",
-    queue="maintenance",
-)
-def refresh_active_documents_view() -> dict:
-    """Refresh the mv_active_documents materialized view.
-
-    Runs periodically (every 5 min via Celery beat) so the document
-    list endpoint can query the small materialized view instead of
-    filtering the full documents table each time.
-    """
-    db = SessionLocal()
-    try:
-        db.execute(
-            __import__("sqlalchemy").text(
-                "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_active_documents"
-            )
-        )
-        db.commit()
-        logger.info("Refreshed mv_active_documents materialized view")
-        return {"status": "ok"}
-    except Exception as exc:
-        db.rollback()
-        logger.warning("Failed to refresh mv_active_documents: %s", exc)
-        return {"status": "error", "error": str(exc)}
-    finally:
-        db.close()

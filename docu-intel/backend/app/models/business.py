@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -25,7 +25,7 @@ class Budget(Base):
     )
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
     date: Mapped[date | None] = mapped_column(Date)
-    total_amount: Mapped[float | None] = mapped_column(Float)
+    total_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(12))
     status: Mapped[str | None] = mapped_column(String(50), index=True)
     accepted_detected: Mapped[bool] = mapped_column(
@@ -50,8 +50,8 @@ class BudgetLine(Base):
     description: Mapped[str | None] = mapped_column(Text)
     quantity: Mapped[float | None] = mapped_column(Float)
     unit: Mapped[str | None] = mapped_column(String(50))
-    unit_price: Mapped[float | None] = mapped_column(Float)
-    total_price: Mapped[float | None] = mapped_column(Float)
+    unit_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    total_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
     confidence: Mapped[float | None] = mapped_column(Float)
 
     budget = relationship("Budget", back_populates="lines")
@@ -73,7 +73,7 @@ class Order(Base):
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
     date: Mapped[date | None] = mapped_column(Date)
-    total_amount: Mapped[float | None] = mapped_column(Float)
+    total_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(12))
     related_budget_id: Mapped[int | None] = mapped_column(
         ForeignKey("budgets.id", ondelete="SET NULL"), index=True
@@ -97,8 +97,8 @@ class OrderLine(Base):
     description: Mapped[str | None] = mapped_column(Text)
     quantity: Mapped[float | None] = mapped_column(Float)
     unit: Mapped[str | None] = mapped_column(String(50))
-    unit_price: Mapped[float | None] = mapped_column(Float)
-    total_price: Mapped[float | None] = mapped_column(Float)
+    unit_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    total_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
     confidence: Mapped[float | None] = mapped_column(Float)
 
     order = relationship("Order", back_populates="lines")
@@ -115,7 +115,7 @@ class DeliveryNote(Base):
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
     date: Mapped[date | None] = mapped_column(Date)
-    total_amount: Mapped[float | None] = mapped_column(Float)
+    total_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(12))
     confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
@@ -141,8 +141,8 @@ class DeliveryNoteLine(Base):
     description: Mapped[str | None] = mapped_column(Text)
     quantity: Mapped[float | None] = mapped_column(Float)
     unit: Mapped[str | None] = mapped_column(String(50))
-    unit_price: Mapped[float | None] = mapped_column(Float)
-    total_price: Mapped[float | None] = mapped_column(Float)
+    unit_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    total_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
     confidence: Mapped[float | None] = mapped_column(Float)
 
     delivery_note = relationship("DeliveryNote", back_populates="lines")

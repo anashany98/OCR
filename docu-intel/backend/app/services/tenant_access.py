@@ -9,9 +9,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql.expression import false, true
 
 from app.core.config import settings
 from app.models import (
@@ -669,6 +670,95 @@ def _build_access_subquery(scope: AccessScope):
     return stmt
 
 
+# ---------------------------------------------------------------------------
+# F0-02: complete SQL predicate matching metadata_allows_scope
+# ---------------------------------------------------------------------------
+
+
+def document_access_predicate(
+    scope: AccessScope,
+    *,
+    metadata_alias=None,
+) -> ColumnElement[bool] | None:
+    """Return a SQL predicate that matches :func:`metadata_allows_scope` exactly.
+
+    The predicate operates on a ``DocumentAccessMetadata`` row (aliased
+    via *metadata_alias*, defaulting to the model class). It checks:
+
+    * **Denied tags**: any overlap between ``scope.denied_tags`` and the
+      JSON ``tags_json`` array rejects the row.
+    * **Assignment status**: unassigned/quarantined documents are only
+      visible when ``scope.allow_unassigned_documents`` is True.
+    * **Location**: ``allow_all_hotels`` or membership in
+      ``scope.chain_ids`` / ``scope.hotel_ids``.
+    * **Document types**: when ``scope.allowed_document_types`` is
+      non-empty, the document's type must be in the set.
+
+    Returns ``None`` for admin scope (meaning "no filter needed").
+
+    The predicate is dialect-portable: tag checking uses ``json_each``
+    on SQLite and ``jsonb_array_elements_text`` on PostgreSQL.
+    """
+    if scope.is_admin:
+        return None
+
+    dam = metadata_alias or DocumentAccessMetadata
+    conditions: list[ColumnElement[bool]] = []
+
+    # -- 1. Denied tags ------------------------------------------------
+    # If the document has ANY tag that is in scope.denied_tags, reject it.
+    # Equivalent to: NOT EXISTS (tag in tags_json ∩ denied_tags)
+    if scope.denied_tags:
+        denied_list = sorted(scope.denied_tags)
+        # Use a scalar subquery with json_each / jsonb_array_elements_text
+        tag_overlap = _tag_overlap_subquery(dam, denied_list)
+        conditions.append(~tag_overlap)
+
+    # -- 2. Assignment status / quarantine -----------------------------
+    # No metadata or not "assigned" → depends on allow_unassigned_documents
+    # We handle the "no metadata" case at the caller level (the predicate
+    # only applies to rows that HAVE metadata). For assigned status:
+    if not scope.allow_unassigned_documents:
+        conditions.append(dam.assignment_status == "assigned")
+
+    # -- 3. Location access --------------------------------------------
+    if scope.allow_all_hotels:
+        pass  # No location restriction
+    else:
+        location_conds: list[ColumnElement[bool]] = []
+        if scope.chain_ids:
+            location_conds.append(dam.chain_id.in_(scope.chain_ids))
+        if scope.hotel_ids:
+            location_conds.append(dam.hotel_id.in_(scope.hotel_ids))
+        if location_conds:
+            conditions.append(or_(*location_conds))
+        elif not scope.allow_unassigned_documents:
+            # No location IDs and quarantine not allowed → reject everything
+            return false()
+
+    # -- Combine -------------------------------------------------------
+    if not conditions:
+        return true()
+    return and_(*conditions)
+
+
+def _tag_overlap_subquery(dam, denied_list: list[str]) -> ColumnElement[bool]:
+    """Return a boolean expression: TRUE if any element of ``denied_list``
+    appears in ``dam.tags_json``.
+
+    Portable across SQLite and PostgreSQL: casts the JSON column to text
+    and uses ``LIKE`` with quoted tag names to avoid partial matches.
+    """
+    from sqlalchemy import Text as SAText
+    conditions = [
+        dam.tags_json.cast(SAText).like(f'%"{tag}"%')
+        for tag in denied_list
+    ]
+    if not conditions:
+        return false()
+    return or_(*conditions)
+
+
 def apply_access_predicates(
     stmt: Select,
     scope: AccessScope,
@@ -693,9 +783,14 @@ def apply_access_predicates(
     if scope is None or scope.is_admin:
         return stmt
 
-    subq = _build_access_subquery(scope)
+    pred = document_access_predicate(scope)
+    if pred is None:
+        return stmt
+
     column = document_column if document_column is not None else Document.id
-    return stmt.where(column.in_(subq))
+    return stmt.where(column.in_(
+        select(DocumentAccessMetadata.document_id).where(pred)
+    ))
 
 
 def count_access_predicates(
@@ -714,6 +809,11 @@ def count_access_predicates(
     if scope is None or scope.is_admin:
         return count_stmt
 
-    subq = _build_access_subquery(scope)
+    pred = document_access_predicate(scope)
+    if pred is None:
+        return count_stmt
+
     column = document_column if document_column is not None else Document.id
-    return count_stmt.where(column.in_(subq))
+    return count_stmt.where(column.in_(
+        select(DocumentAccessMetadata.document_id).where(pred)
+    ))

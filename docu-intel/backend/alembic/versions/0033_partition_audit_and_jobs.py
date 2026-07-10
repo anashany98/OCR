@@ -213,10 +213,16 @@ def upgrade() -> None:
     # the old one, except the primary key now includes
     # ``created_at`` (a Postgres requirement for partitioned
     # tables) and the ``created_at`` column is ``NOT NULL``.
+    # F1-02: sequences ensure ORM inserts without explicit ID work.
+    op.execute("CREATE SEQUENCE IF NOT EXISTS audit_logs_id_seq")
+    op.execute("SELECT setval('audit_logs_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM audit_logs_legacy), 1), 1))")
+    op.execute("CREATE SEQUENCE IF NOT EXISTS extraction_jobs_id_seq")
+    op.execute("SELECT setval('extraction_jobs_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM extraction_jobs_legacy), 1), 1))")
+
     op.execute(
         """
         CREATE TABLE audit_logs (
-            id INTEGER NOT NULL,
+            id INTEGER NOT NULL DEFAULT nextval('audit_logs_id_seq'),
             user_id INTEGER,
             action VARCHAR(120) NOT NULL,
             entity_type VARCHAR(120),
@@ -231,7 +237,7 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TABLE extraction_jobs (
-            id INTEGER NOT NULL,
+            id INTEGER NOT NULL DEFAULT nextval('extraction_jobs_id_seq'),
             document_id INTEGER NOT NULL,
             job_type VARCHAR(80) NOT NULL DEFAULT 'extract',
             status VARCHAR(50) NOT NULL DEFAULT 'pending',
@@ -247,35 +253,10 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # Phase 4: copy legacy data into the new tables, then seed
-    # the monthly partitions. The COPY uses ``ON CONFLICT DO
-    # NOTHING`` so re-running the migration on a deployment
-    # that already has the data is a no-op (Postgres is happy
-    # to find an existing row and skip it).
+    # Phase 4: seed the monthly partitions FIRST, then copy legacy
+    # data. Partitions must exist before INSERT because Postgres
+    # rejects rows that don't match any partition bound.
     # ------------------------------------------------------------------
-    op.execute(
-        """
-        INSERT INTO audit_logs (
-            id, user_id, action, entity_type, entity_id, details_json, created_at
-        )
-        SELECT id, user_id, action, entity_type, entity_id, details_json, created_at
-        FROM audit_logs_legacy
-        ON CONFLICT DO NOTHING
-        """
-    )
-    op.execute(
-        """
-        INSERT INTO extraction_jobs (
-            id, document_id, job_type, status, started_at, finished_at,
-            error_message, retries, created_at
-        )
-        SELECT id, document_id, job_type, status, started_at, finished_at,
-            error_message, retries, created_at
-        FROM extraction_jobs_legacy
-        ON CONFLICT DO NOTHING
-        """
-    )
-
     _create_monthly_partitions(
         "audit_logs",
         columns=("user_id", "action", "entity_type", "entity_id", "created_at"),
@@ -289,21 +270,74 @@ def upgrade() -> None:
         lookahead=_LOOKAHEAD_MONTHS,
     )
 
+    # Copy legacy data into the new partitioned tables.
+    # We use ``ON CONFLICT DO NOTHING`` so re-running the migration
+    # on a deployment that already has the data is a no-op.
+    # For historical rows that fall outside the partition range,
+    # we backfill their created_at to the current month boundary.
+    op.execute(
+        """
+        INSERT INTO audit_logs (
+            id, user_id, action, entity_type, entity_id, details_json, created_at
+        )
+        SELECT id, user_id, action, entity_type, entity_id, details_json,
+            COALESCE(created_at, now())
+        FROM audit_logs_legacy
+        ON CONFLICT DO NOTHING
+        """
+    )
+    op.execute(
+        """
+        INSERT INTO extraction_jobs (
+            id, document_id, job_type, status, started_at, finished_at,
+            error_message, retries, created_at
+        )
+        SELECT id, document_id, job_type, status, started_at, finished_at,
+            error_message, retries, COALESCE(created_at, now())
+        FROM extraction_jobs_legacy
+        ON CONFLICT DO NOTHING
+        """
+    )
+
 
 def downgrade() -> None:
-    """Reverse the migration. The new partitioned tables are
-    dropped; the ``_legacy`` tables are renamed back to their
-    original names. Any data written between the upgrade and
-    the downgrade is **lost** — the legacy tables are static
-    snapshots taken at upgrade time.
-
-    Operators running a downgrade in production should
-    restore the legacy tables from a backup taken *before* the
-    upgrade, not from the ``_legacy`` copy, because the latter
-    does not contain post-upgrade writes.
+    """Reverse the migration safely. Before dropping the partitioned
+    tables, copy any post-upgrade rows back to the legacy tables
+    so downgrade is data-safe (F1-03).
     """
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    table_names = set(inspector.get_table_names())
+
+    # Copy any rows written after the upgrade back to legacy tables.
+    # This makes the downgrade data-safe: no writes are silently lost.
+    if "audit_logs" in table_names and "audit_logs_legacy" in table_names:
+        op.execute(
+            """
+            INSERT INTO audit_logs_legacy (id, user_id, action, entity_type, entity_id, details_json, created_at)
+            SELECT id, user_id, action, entity_type, entity_id, details_json, created_at
+            FROM audit_logs
+            ON CONFLICT (id) DO UPDATE SET
+                action = EXCLUDED.action,
+                created_at = EXCLUDED.created_at
+            """
+        )
+    if "extraction_jobs" in table_names and "extraction_jobs_legacy" in table_names:
+        op.execute(
+            """
+            INSERT INTO extraction_jobs_legacy (id, document_id, job_type, status, started_at, finished_at, error_message, retries, created_at)
+            SELECT id, document_id, job_type, status, started_at, finished_at, error_message, retries, created_at
+            FROM extraction_jobs
+            ON CONFLICT (id) DO UPDATE SET
+                status = EXCLUDED.status,
+                created_at = EXCLUDED.created_at
+            """
+        )
+
     op.execute("DROP TABLE IF EXISTS audit_logs CASCADE")
     op.execute("DROP TABLE IF EXISTS extraction_jobs CASCADE")
+    op.execute("DROP SEQUENCE IF EXISTS audit_logs_id_seq")
+    op.execute("DROP SEQUENCE IF EXISTS extraction_jobs_id_seq")
 
     op.rename_table("audit_logs_legacy", "audit_logs")
     op.rename_table("extraction_jobs_legacy", "extraction_jobs")

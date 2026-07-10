@@ -25,7 +25,10 @@ from typing import Any
 
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY
 from prometheus_client.exposition import generate_latest as _gen
+from fastapi import Header, HTTPException
 from starlette.responses import Response
+
+from app.core.config import settings
 
 from .labels import escape_label, metric_key
 from .pipeline import (
@@ -186,7 +189,13 @@ def register_metrics_endpoint(app) -> None:
     """
 
     @app.get("/metrics")
-    def metrics() -> Response:
+    def metrics(
+        x_metrics_token: str | None = Header(default=None, alias="X-Metrics-Token"),
+    ) -> Response:
+        is_local = settings.environment in {"local", "development", "test"}
+        token_required = not is_local or bool(settings.metrics_token)
+        if token_required and x_metrics_token != settings.metrics_token:
+            raise HTTPException(status_code=401, detail="metrics token required")
         return Response(
             content=render_metrics(),
             media_type=CONTENT_TYPE_LATEST,

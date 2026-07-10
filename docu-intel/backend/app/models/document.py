@@ -50,6 +50,8 @@ class Document(Base):
     quality_score: Mapped[float | None] = mapped_column(Float)
     quality_flags_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
+    embedding: Mapped[Any | None] = mapped_column(Vector(768), nullable=True)
+    embedding_model_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # A7 - aggregate flag set by the embedding pipeline whenever any
     # chunk for the document lands with ``needs_reembedding=True``;
     # cleared by the periodic re-embed sweep (or by the manual
@@ -57,6 +59,15 @@ class Document(Base):
     # are successfully re-embedded. Lets the sweep find candidates
     # without a LEFT JOIN + GROUP BY on every tick.
     needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
+    # P0.3 — Pipeline stage tracking
+    pipeline_stage: Mapped[str | None] = mapped_column(
+        String(40), nullable=True, index=True,
+        comment="Current pipeline stage: probing|text_processing|text_ready|metadata_ready|embedding_pending|searchable|fully_processed|needs_review|failed",
+    )
+    pages_completed: Mapped[int | None] = mapped_column(Integer, comment="Pages processed so far")
+    pages_total: Mapped[int | None] = mapped_column(Integer, comment="Total pages in document")
+    text_search_ready: Mapped[bool] = mapped_column(default=False, nullable=False, comment="Text available for lexical search")
+    semantic_search_ready: Mapped[bool] = mapped_column(default=False, nullable=False, comment="Embeddings available for semantic search")
     page_count: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(Text)
     duplicate_of_document_id: Mapped[int | None] = mapped_column(
@@ -242,7 +253,7 @@ class DocumentChunk(Base):
     # the NOT NULL check on a SELECT.
     tsv: Mapped[Any | None] = mapped_column(
         Text(),
-        Computed("to_tsvector('simple', COALESCE(chunk_text, ''::text))", persisted=True),
+        Computed("to_tsvector('spanish', COALESCE(chunk_text, ''::text))", persisted=True),
         nullable=True,
     )
     # E4 — versioned embedding model. When the operator changes

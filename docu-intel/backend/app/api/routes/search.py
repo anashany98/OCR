@@ -219,6 +219,7 @@ def semantic_search(
         payload.query,
         limit=payload.limit,
         filters=_filters_with_scope_cache(payload.filters, scope),
+        access_scope=scope,
     )
     return filter_search_results_for_scope(db, results, scope)
 
@@ -237,6 +238,7 @@ def hybrid_search_endpoint(
         payload.query,
         limit=payload.limit,
         filters=_filters_with_scope_cache(payload.filters, scope),
+        access_scope=scope,
     )
     return filter_search_results_for_scope(db, results, scope)
 
@@ -250,7 +252,7 @@ def export_search_csv(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    results = search_text(db, q, limit=limit)
+    results = search_text(db, q, limit=limit, access_scope=resolve_user_access_scope(db, user))
     results = filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))
 
     output = io.StringIO()
@@ -331,7 +333,7 @@ def export_search_json(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    results = search_text(db, q, limit=limit)
+    results = search_text(db, q, limit=limit, access_scope=resolve_user_access_scope(db, user))
     results = filter_search_results_for_scope(db, results, resolve_user_access_scope(db, user))
 
     data = [

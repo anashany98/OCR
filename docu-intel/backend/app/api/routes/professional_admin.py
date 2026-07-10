@@ -34,6 +34,11 @@ from app.schemas.professional import (
     WorkItemUpdate,
 )
 from app.services.audit import write_audit
+from app.services.tenant_access import (
+    can_access_document,
+    filter_document_ids_for_scope,
+    resolve_user_access_scope,
+)
 
 router = APIRouter()
 
@@ -42,8 +47,9 @@ router = APIRouter()
 def list_work_items(
     status: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles("admin", "gestor", "auditor")),
+    user: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> list[WorkItem]:
+    scope = resolve_user_access_scope(db, user)
     stmt = (
         select(WorkItem)
         .options(selectinload(WorkItem.comments))
@@ -51,6 +57,14 @@ def list_work_items(
     )
     if status:
         stmt = stmt.where(WorkItem.status == status)
+    # F0-05: scope filter — join through document access metadata
+    if not scope.is_admin:
+        items = list(db.scalars(stmt.limit(200)).all())
+        doc_ids = [item.document_id for item in items if item.document_id is not None]
+        if doc_ids:
+            allowed = filter_document_ids_for_scope(db, doc_ids, scope)
+            items = [item for item in items if item.document_id in allowed or item.document_id is None]
+        return items
     return list(db.scalars(stmt.limit(200)).all())
 
 
@@ -82,6 +96,12 @@ def update_work_item(
     item = db.get(WorkItem, work_item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
+    # F0-05: check document scope
+    if item.document_id is not None:
+        scope = resolve_user_access_scope(db, user)
+        doc = db.get(Document, item.document_id)
+        if not can_access_document(db, doc, scope):
+            raise HTTPException(status_code=404, detail="Work item not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
     if item.status in {"resolved", "ignored"} and not item.resolved_at:
@@ -102,8 +122,15 @@ def add_work_item_comment(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor", "auditor")),
 ) -> WorkItemComment:
-    if not db.get(WorkItem, work_item_id):
+    item = db.get(WorkItem, work_item_id)
+    if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
+    # F0-05: check document scope
+    if item.document_id is not None:
+        scope = resolve_user_access_scope(db, user)
+        doc = db.get(Document, item.document_id)
+        if not can_access_document(db, doc, scope):
+            raise HTTPException(status_code=404, detail="Work item not found")
     comment = WorkItemComment(work_item_id=work_item_id, user_id=user.id, body=payload.body)
     db.add(comment)
     write_audit(

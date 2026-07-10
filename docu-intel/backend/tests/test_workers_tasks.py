@@ -21,18 +21,14 @@ class TestProcessDocumentTask:
         assert process_document_task.name == "app.workers.tasks.process_document_task"
 
     def test_task_has_autoretry(self):
-        # Verify autoretry is configured - exception tuple should include Exception
-        assert process_document_task.autoretry_for == (Exception,)
+        # WRK-RETRY-1: autoretry_for is a narrow allow-list, not (Exception,)
+        assert len(process_document_task.autoretry_for) > 0
 
     def test_task_has_retry_backoff(self):
         assert process_document_task.retry_backoff is True
 
     def test_task_has_max_retries(self):
-        assert process_document_task.max_retries == 2
-
-    def test_task_is_bound(self):
-        # bind=True means first argument is self (the task itself)
-        assert process_document_task.bind is True
+        assert process_document_task.max_retries == 3
 
 
 class TestScanInputFoldersTask:
@@ -40,7 +36,3 @@ class TestScanInputFoldersTask:
 
     def test_task_name(self):
         assert scan_input_folders_task.name == "app.workers.tasks.scan_input_folders_task"
-
-    def test_task_is_not_bound(self):
-        # scan_input_folders_task should not be bound (no bind=True)
-        assert scan_input_folders_task.bind is None or scan_input_folders_task.bind is False

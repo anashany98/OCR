@@ -210,6 +210,7 @@ services:
     image: docu-intel-backend-gpu:latest
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-0@%h
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     restart: unless-stopped
     mem_limit: 8g
     depends_on:
@@ -255,6 +256,7 @@ services:
     image: docu-intel-backend-gpu:latest
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-1@%h
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     restart: unless-stopped
     mem_limit: 8g
     depends_on:

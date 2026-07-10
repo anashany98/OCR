@@ -202,3 +202,58 @@ def track_notification_failure(channel: str = "unknown") -> None:
     from . import _registry
 
     _registry.NOTIFICATION_FAILURES.labels(channel=channel).inc()
+
+
+# ---------------------------------------------------------------------------
+# P0.1 — Per-stage pipeline timing
+# ---------------------------------------------------------------------------
+
+_ALLOWED_STAGES = frozenset(
+    {
+        "probe",
+        "render",
+        "ocr",
+        "persist",
+        "classification",
+        "extraction",
+        "chunking",
+        "embedding",
+        "hyperextract",
+        "total",
+    }
+)
+
+
+def track_stage_duration(stage: str, duration: float) -> None:
+    """Record the wall-clock duration of a processing stage.
+
+    ``stage`` is bucketed: values outside :data:`_ALLOWED_STAGES` are
+    mapped to ``"total"`` so caller typos never explode cardinality.
+    """
+    if duration < 0:
+        return
+    from . import _registry
+
+    safe = stage if stage in _ALLOWED_STAGES else "total"
+    _registry.STAGE_DURATION.labels(stage=safe).observe(duration)
+
+
+def track_stage_failure(stage: str, reason: str = "exception") -> None:
+    """Record a failure at a specific processing stage."""
+    from . import _registry
+
+    safe = stage if stage in _ALLOWED_STAGES else "total"
+    _registry.STAGE_FAILURES.labels(
+        stage=safe,
+        reason=(reason or "unknown").strip()[:40] or "unknown",
+    ).inc()
+
+
+def track_page_processed(route: str = "unknown", engine: str = "unknown") -> None:
+    """Record that one page was processed, with routing and engine labels."""
+    from . import _registry
+
+    _registry.PAGES_PROCESSED.labels(
+        route=(route or "unknown").strip()[:30] or "unknown",
+        engine=(engine or "unknown").strip()[:30] or "unknown",
+    ).inc()

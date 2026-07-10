@@ -18,38 +18,47 @@ logger = logging.getLogger("app.workers.embedding_tasks")
 def _select_reembed_candidates(db: Session, limit: int) -> list[Document]:
     """Pick up to ``limit`` documents that need re-embedding.
 
-    Two independent reasons qualify a document:
+    Three independent reasons qualify a document:
 
-    * it has at least one chunk with ``needs_reembedding=True`` (the
-      embedding provider was down or fell back to a hash at processing
-      time, see ``document_embedding_pipeline``);
+    * it has at least one chunk with ``needs_reembedding=True``;
+    * its ``embedding_model_version`` differs from the current setting
+      (F2-06: version drift triggers re-embedding);
     * its overall ``Document.confidence`` is below
-      ``settings.reembed_low_confidence_threshold`` (OCR produced poor
-      text and there is a real chance the new OCR/pre-processing stack
-      will do better).
+      ``settings.reembed_low_confidence_threshold``.
 
     We only look at non-deleted, non-duplicate documents that are not
     already in a transient state (``pending`` / ``processing``).
     """
 
+    current_version = settings.embedding_model
     needs_case = case((DocumentChunk.needs_reembedding.is_(True), 1), else_=0)
+    version_mismatch_case = case(
+        (
+            (DocumentChunk.embedding_model_version.is_not(None))
+            & (DocumentChunk.embedding_model_version != current_version),
+            1,
+        ),
+        else_=0,
+    )
     stats_subq = (
         select(
             DocumentChunk.document_id.label("document_id"),
             func.coalesce(func.sum(needs_case), 0).label("chunks_needing"),
+            func.coalesce(func.sum(version_mismatch_case), 0).label("version_mismatch"),
         )
         .group_by(DocumentChunk.document_id)
         .subquery()
     )
 
     stmt = (
-        select(Document, stats_subq.c.chunks_needing)
+        select(Document, stats_subq.c.chunks_needing, stats_subq.c.version_mismatch)
         .outerjoin(stats_subq, Document.id == stats_subq.c.document_id)
         .where(Document.deleted_at.is_(None))
         .where(Document.status.notin_(["pending", "processing", "duplicate"]))
         .where(
             or_(
                 stats_subq.c.chunks_needing > 0,
+                stats_subq.c.version_mismatch > 0,
                 Document.confidence.is_not(None),
                 Document.needs_reembedding.is_(True),
             )
@@ -159,7 +168,7 @@ def run_reembed_pending_documents(db: Session) -> dict:
         candidates = _select_reembed_candidates(db, settings.reembed_batch_size)
         inspected = len(candidates)
 
-        for document, _chunks_needing in candidates:
+        for document, _chunks_needing, _version_mismatch in candidates:
             try:
                 if (
                     _is_low_ocr_confidence(document)
@@ -200,6 +209,165 @@ def run_reembed_pending_documents(db: Session) -> dict:
             "reocr_queued": reocr_queued,
             "errors": errors + 1,
         }
+
+
+# ---------------------------------------------------------------------------
+# P0.2 — Per-document embedding task (called after OCR completes)
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(
+    name="app.workers.embedding_tasks.embed_document_task",
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+    soft_time_limit=300,
+    time_limit=360,
+    acks_late=True,
+)
+def embed_document_task(self, document_id: int) -> dict:
+    """Generate embeddings for a single document's chunks.
+
+    Called by the OCR worker after chunks are persisted with
+    ``embedding=NULL`` and ``needs_reembedding=True`` (P0.2).
+    The OCR worker never calls the embedding provider directly.
+
+    If the embedding provider fails, chunks stay with
+    ``needs_reembedding=True`` and the periodic reembed sweep
+    will retry. The document remains searchable via lexical
+    search regardless.
+    """
+    db: Session = SessionLocal()
+    try:
+        return _embed_document_sync(db, document_id)
+    finally:
+        db.close()
+
+
+def _embed_document_sync(db: Session, document_id: int) -> dict:
+    """Synchronous embedding logic for a single document.
+
+    P3.1: Uses microbatching by token limit to avoid sending all
+    chunks at once. Batches are committed incrementally so a failure
+    mid-document doesn't lose already-embedded chunks.
+    """
+    from app.services.document_embedding_pipeline import embed_many_with_metadata
+    from app.services.metrics import track_stage_duration
+
+    import time as _time
+
+    t_start = _time.perf_counter()
+    document = db.get(Document, document_id)
+    if document is None:
+        return {"document_id": document_id, "error": "not_found"}
+
+    # Only embed if document is in a suitable state
+    if document.status in {"pending", "processing", "duplicate"}:
+        logger.info(
+            "Embed task: skipping document_id=%s (status=%s)",
+            document_id,
+            document.status,
+        )
+        return {"document_id": document_id, "skipped": document.status}
+
+    try:
+        # Load chunks that need embedding
+        chunks = list(
+            db.scalars(
+                select(DocumentChunk)
+                .where(DocumentChunk.document_id == document_id)
+                .where(DocumentChunk.needs_reembedding.is_(True))
+                .order_by(DocumentChunk.id.asc())
+            )
+        )
+
+        if not chunks:
+            logger.info(
+                "Embed task: document_id=%s has no chunks needing embedding",
+                document_id,
+            )
+            return {"document_id": document_id, "chunks_embedded": 0}
+
+        # P3.1: Microbatch by token count
+        max_tokens_per_batch = 12_000
+        max_chunks_per_batch = 64
+        batches: list[list[DocumentChunk]] = []
+        current_batch: list[DocumentChunk] = []
+        current_tokens = 0
+
+        for chunk in chunks:
+            chunk_tokens = chunk.token_count or 200
+            if (
+                current_batch
+                and (
+                    current_tokens + chunk_tokens > max_tokens_per_batch
+                    or len(current_batch) >= max_chunks_per_batch
+                )
+            ):
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+            current_batch.append(chunk)
+            current_tokens += chunk_tokens
+        if current_batch:
+            batches.append(current_batch)
+
+        total_embedded = 0
+        total_failed = 0
+
+        for batch in batches:
+            texts = [
+                chunk.chunk_text for chunk in batch
+            ]
+            try:
+                results = embed_many_with_metadata(texts)
+                for chunk, (embedding, provider, fallback) in zip(batch, results, strict=True):
+                    chunk.embedding = embedding
+                    chunk.embedding_provider_used = provider
+                    chunk.embedding_fallback = fallback
+                    chunk.needs_reembedding = fallback
+                    chunk.embedding_model_version = settings.embedding_model
+                    if fallback:
+                        total_failed += 1
+                    else:
+                        total_embedded += 1
+                db.flush()
+            except Exception as exc:
+                logger.warning(
+                    "Embed batch failed for document_id=%s (batch_size=%d): %s",
+                    document_id,
+                    len(batch),
+                    exc,
+                )
+                total_failed += len(batch)
+
+        track_stage_duration("embedding", _time.perf_counter() - t_start)
+
+        # Update document flags
+        if total_failed == 0:
+            document.needs_reembedding = False
+            document.semantic_search_ready = True
+            document.pipeline_stage = "searchable"
+        db.commit()
+
+        cache_service.invalidate_search_cache()
+        return {
+            "document_id": document_id,
+            "chunks_embedded": total_embedded,
+            "chunks_failed": total_failed,
+            "batches": len(batches),
+        }
+    except Exception as exc:
+        logger.warning(
+            "Embed task failed for document_id=%s: %s",
+            document_id,
+            exc,
+        )
+        # Let Celery retry handle re-queueing
+        raise
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import re
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Budget, Invoice, Order
@@ -94,11 +94,11 @@ def _budget_aggregate(
     access_scope: AccessScope | None = None,
 ) -> list[dict[str, Any]]:
     """Build aggregate results for `kind` in {total, count, top, period}
-    restricted to `Budget` records with the given filters."""
+    restricted to `Budget` records with the given filters.
+    F5-05: uses SQL aggregation for count/total instead of Python sum."""
+    from app.models import Document
+
     stmt = select(Budget)
-    if filters.get("supplier"):
-        # Budgets don't link to suppliers directly; skip supplier filter.
-        pass
     if filters.get("client"):
         stmt = stmt.where(
             Budget.client_name.ilike(f"%{_escape_ilike_wildcards(filters['client'])}%")
@@ -115,6 +115,34 @@ def _budget_aggregate(
         ordered_ids = select(Order.related_budget_id).where(Order.related_budget_id.is_not(None))
         stmt = stmt.where(Budget.id.not_in(ordered_ids))
 
+    # F5-05: for count/total, use SQL aggregation with scope filter
+    if kind == "count" and access_scope is None:
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_val = db.scalar(count_stmt) or 0
+        return [
+            {
+                "metric": "count",
+                "value": count_val,
+                "label": "presupuestos que cumplen los filtros",
+            }
+        ]
+    if kind == "total" and access_scope is None:
+        total_stmt = select(func.coalesce(func.sum(Budget.total_amount), 0.0)).select_from(
+            stmt.subquery()
+        )
+        total_val = float(db.scalar(total_stmt) or 0.0)
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_val = db.scalar(count_stmt) or 0
+        return [
+            {
+                "metric": "total_amount",
+                "value": round(total_val, 2),
+                "label": "suma de importes de presupuestos",
+                "count": count_val,
+            }
+        ]
+
+    # Fallback: fetch and aggregate in Python (needed for scoped queries)
     budgets = list(db.scalars(stmt).all())
     if access_scope is not None:
         budgets = filter_records_by_document_scope(db, budgets, access_scope)

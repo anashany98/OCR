@@ -38,6 +38,9 @@ export type Conversation = {
   pinned?: boolean
 }
 
+// F8-05: metadata-only type for localStorage persistence
+type ConversationMetadata = Omit<Conversation, "messages"> & { messageCount: number }
+
 function generateId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -66,7 +69,12 @@ function loadConversations(): Conversation[] {
 
 function saveConversations(convs: Conversation[]) {
   try {
-    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(convs))
+    // F8-05: only persist metadata, not message content
+    const metadata: ConversationMetadata[] = convs.map(({ messages, ...rest }) => ({
+      ...rest,
+      messageCount: messages.length,
+    }))
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(metadata))
   } catch { /* quota / private mode */ }
 }
 

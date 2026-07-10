@@ -34,6 +34,12 @@ celery_app.conf.update(
     worker_pool_prefork_timeout=300,
     broker_connection_retry_on_startup=True,
     task_acks_late=True,
+    # F4-02: reject task when worker is lost (SIGTERM/SIGKILL) so
+    # another worker can pick it up instead of leaving it stuck.
+    task_reject_on_worker_lost=True,
+    # F4-02: visibility timeout — how long a task can be "in flight"
+    # before broker re-delivers. Must be longer than the longest task.
+    broker_transport_options={"visibility_timeout": 7200},  # 2 hours
     task_default_queue="text_fast",
     task_routes={
         "app.workers.tasks.scan_input_folders_task": {"queue": "maintenance"},
@@ -64,10 +70,6 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.sweep_stale_jobs_task",
         "schedule": schedule(run_every=300),  # every 5 minutes
     },
-    "refresh-active-documents-view": {
-        "task": "app.workers.tasks.refresh_active_documents_view",
-        "schedule": schedule(run_every=300),  # every 5 minutes
-    },
 }
 celery_app.conf.task_routes = {
     **celery_app.conf.task_routes,
@@ -78,6 +80,7 @@ celery_app.conf.task_routes = {
     },
     "app.workers.webhooks_tasks.deliver_pending_webhooks_task": {"queue": "maintenance"},
     "app.workers.embedding_tasks.reembed_pending_documents_task": {"queue": "maintenance"},
+    "app.workers.embedding_tasks.embed_document_task": {"queue": "embeddings"},
 }
 
 

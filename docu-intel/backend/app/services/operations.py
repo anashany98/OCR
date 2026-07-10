@@ -184,16 +184,19 @@ def bulk_reprocess_documents(
         )
         or 0
     )
+    active_doc_ids = {
+        row[0]
+        for row in db.execute(
+            select(ExtractionJob.document_id)
+            .where(ExtractionJob.status.in_(["pending", "processing"]))
+            .distinct()
+        )
+    }
     for document in documents:
         if active_jobs >= settings.ingestion_max_pending_jobs:
             skipped += len(documents) - len(job_ids) - skipped
             break
-        if db.scalar(
-            select(func.count())
-            .select_from(ExtractionJob)
-            .where(ExtractionJob.document_id == document.id)
-            .where(ExtractionJob.status.in_(["pending", "processing"]))
-        ):
+        if document.id in active_doc_ids:
             skipped += 1
             continue
         job = reprocess_document(

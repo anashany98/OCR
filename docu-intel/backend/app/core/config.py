@@ -266,7 +266,9 @@ class Settings(BaseSettings):
     # policy is to fail fast if the embedding provider is unreachable.
     embedding_provider: str = "local_openai_compatible"
     embedding_base_url: str = ""
-    embedding_model: str = "bge-m3"
+    # F2-01: pinned to Granite multilingual R2 (768d, cosine).
+    # Do NOT change without a full re-embed migration.
+    embedding_model: str = "ibm-granite/granite-embedding-311m-multilingual-r2"
     embedding_api_key: str = ""
     # Cambiar este valor requiere migración manual:
     # ALTER COLUMN embedding TYPE VECTOR(<nueva_dim>) + rebuild del índice.
@@ -552,6 +554,7 @@ class Settings(BaseSettings):
     # calls via the API or the test script trigger an extraction.
     hyperextract_run_in_pipeline: bool = False
 
+    metrics_token: str = ""
     admin_email: str = "admin@local"
     admin_password: str = "dev_only_admin_password_change_me"
     admin_name: str = "Administrador"
@@ -691,6 +694,36 @@ class Settings(BaseSettings):
                 "EMBEDDING_ALLOW_DIMENSION_COERCION activo: vectores pueden "
                 "corromperse. Solo para migración.",
                 stacklevel=2,
+            )
+        return value
+
+    @field_validator("metrics_token", mode="after")
+    @classmethod
+    def _require_metrics_token_nonlocal(cls, value: str, info: ValidationInfo) -> str:
+        environment = info.data.get("environment", "local")
+        if environment in {"local", "development", "test"}:
+            return value
+        if not value:
+            raise ValueError(
+                f"METRICS_TOKEN must be set explicitly in '{environment}' environment"
+            )
+        return value
+
+    @field_validator("embedding_model", mode="after")
+    @classmethod
+    def _validate_embedding_profile(cls, value: str, info: ValidationInfo) -> str:
+        """F2-01: validate model/dimension combination at startup."""
+        dims = info.data.get("embedding_dimensions", 768)
+        # Known valid profiles — extend when adding new models.
+        VALID_PROFILES = {
+            "ibm-granite/granite-embedding-311m-multilingual-r2": 768,
+            "BAAI/bge-m3": 1024,
+        }
+        expected = VALID_PROFILES.get(value)
+        if expected is not None and dims != expected:
+            raise ValueError(
+                f"EMBEDDING_MODEL '{value}' expects {expected} dimensions, "
+                f"but EMBEDDING_DIMENSIONS is {dims}. Fix the mismatch."
             )
         return value
 

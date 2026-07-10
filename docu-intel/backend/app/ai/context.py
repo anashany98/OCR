@@ -160,6 +160,19 @@ def collect_context(
     # follow-up tools (full_details, related_documents) know which id to use.
     resolved_doc_id: int | None = None
 
+    def _check_scope(payload: dict) -> dict:
+        """F0-04: reject payload if its document_id is not in scope."""
+        if access_scope is None or access_scope.is_admin:
+            return payload
+        doc_id = payload.get("document_id")
+        if doc_id is None:
+            return payload
+        allowed = filter_document_ids_for_scope(db, [doc_id], access_scope)
+        if doc_id not in allowed:
+            return {"found": False, "budget_number": payload.get("budget_number"),
+                    "reason": "no autorizado"}
+        return payload
+
     for tool in tools:
         if tool.name == "get_budget_total":
             payload = internal.get_budget_total(
@@ -167,6 +180,7 @@ def collect_context(
                 budget_number=tool.arguments.get("budget_number") or None,
                 budget_id=tool.arguments.get("budget_id"),
             )
+            payload = _check_scope(payload)
             context.append(
                 _structured_context_item(
                     tool_name=tool.name,
@@ -185,6 +199,7 @@ def collect_context(
                 budget_number=tool.arguments.get("budget_number") or None,
                 budget_id=tool.arguments.get("budget_id"),
             )
+            payload = _check_scope(payload)
             context.append(
                 _structured_context_item(
                     tool_name=tool.name,
@@ -201,6 +216,7 @@ def collect_context(
                 budget_number=tool.arguments.get("budget_number") or None,
                 budget_id=tool.arguments.get("budget_id"),
             )
+            payload = _check_scope(payload)
             context.append(
                 _structured_context_item(
                     tool_name=tool.name,
@@ -225,6 +241,7 @@ def collect_context(
                 invoice_number=tool.arguments.get("invoice_number") or None,
                 invoice_id=tool.arguments.get("invoice_id"),
             )
+            payload = _check_scope(payload)
             context.append(
                 _structured_context_item(
                     tool_name=tool.name,
