@@ -435,7 +435,10 @@ def collect_context(
                     search_exact_by_number,
                     select_best_exact_match,
                 )
-                from app.services.metrics import EXACT_SEARCH
+                try:
+                    from app.services.metrics import EXACT_SEARCH
+                except ImportError:  # metrics must never break retrieval
+                    EXACT_SEARCH = None
 
                 exact_matches = search_exact_by_number(
                     db,
@@ -450,7 +453,8 @@ def collect_context(
                         resolved_doc_id = best.document_id
                         doc_row = db.get(Document, best.document_id)
                         if doc_row:
-                            EXACT_SEARCH.labels(kind="budget", outcome="found").inc()
+                            if EXACT_SEARCH is not None:
+                                EXACT_SEARCH.labels(kind="budget", outcome="found").inc()
                             context.append(
                                 ContextItem(
                                     title=f"Documento encontrado por numero exacto: {best.original_filename}",
@@ -475,9 +479,11 @@ def collect_context(
                                 f"pero el numero aparece en el documento {best.original_filename}."
                             )
                         else:
-                            EXACT_SEARCH.labels(kind="budget", outcome="doc_deleted").inc()
+                            if EXACT_SEARCH is not None:
+                                EXACT_SEARCH.labels(kind="budget", outcome="doc_deleted").inc()
                 else:
-                    EXACT_SEARCH.labels(kind="budget", outcome="not_found").inc()
+                    if EXACT_SEARCH is not None:
+                        EXACT_SEARCH.labels(kind="budget", outcome="not_found").inc()
                 # Also try filename search as secondary fallback
                 documents = internal.find_document_by_filename(db, budget_number)
                 if access_scope:

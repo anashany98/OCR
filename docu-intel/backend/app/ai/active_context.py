@@ -112,12 +112,18 @@ class ActiveContext:
         documents that were ingested before the ``budget_scope`` row
         was created.
         """
-        if not self.has_budget_scope:
-            return {}
         out: dict[str, Any] = {}
-        if self.current_budget_id is not None:
-            out["budget_scope_id"] = int(self.current_budget_id)
-        if self.current_budget_number:
+        # A resolved project is the strongest scope and prevents a previous
+        # document/budget from leaking into the next project turn.
+        if self.current_project_id is not None:
+            out["project_id"] = int(self.current_project_id)
+        if self.current_budget_scope_id is not None:
+            out["budget_scope_id"] = int(self.current_budget_scope_id)
+        elif self.current_budget_id is not None:
+            # ``current_budget_id`` is a structured Budget row, not a scope;
+            # retain it only for legacy sessions that do not yet store scope.
+            out["budget_id"] = int(self.current_budget_id)
+        if self.current_budget_number and "budget_scope_id" not in out:
             # Match by folder: most projects put the budget number in
             # the folder name (e.g. "Presupuesto 260009/"). Use a
             # LIKE on the relative source path; the column is indexed
@@ -215,6 +221,7 @@ def update_after_answer(
     resolved_budget: dict | None = None,
     resolved_order: dict | None = None,
     resolved_invoice: dict | None = None,
+    resolved_project: dict | None = None,
     retrieved_document_ids: Iterable[int] | None = None,
 ) -> ActiveContext:
     """Mutate the context in place from the result of a turn.
@@ -257,6 +264,20 @@ def update_after_answer(
         number = resolved_invoice.get("number")
         if number:
             ctx.current_invoice_number = str(number)
+    if resolved_project:
+        new_project_id = resolved_project.get("id")
+        if new_project_id is not None and int(new_project_id) != ctx.current_project_id:
+            # Project changes invalidate document-specific follow-up state.
+            ctx.current_document_id = None
+            ctx.current_document_path = None
+            ctx.current_invoice_number = None
+            ctx.current_order_number = None
+        if new_project_id is not None:
+            ctx.current_project_id = int(new_project_id)
+        for key, attr in (("name", "current_project_name"), ("brand_id", "current_brand_id"), ("hotel_id", "current_hotel_id"), ("budget_scope_id", "current_budget_scope_id")):
+            value = resolved_project.get(key)
+            if value is not None:
+                setattr(ctx, attr, value)
     if retrieved_document_ids:
         # Dedupe + keep the most recent 20 ids so the JSON column does
         # not grow unbounded across long sessions.
