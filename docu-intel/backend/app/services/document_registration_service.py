@@ -12,9 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Document, ExtractionJob, User
-from app.models.project import DocumentOccurrence
+from app.models.project import DocumentBudgetLink, DocumentOccurrence
 from app.services.audit import write_audit
-from app.services.budget_scope import assign_document_budget_scope
+from app.services.budget_scope import (
+    assign_document_budget_scope,
+    get_or_create_budget_scope,
+    get_or_create_project_for_budget,
+)
 from app.services.cache import cache_service
 from app.services.file_security import inspect_file_for_ingestion
 from app.services.file_storage import calculate_sha256, copy_to_storage
@@ -227,12 +231,17 @@ def register_existing_file(
     )
     db.add(document)
     db.flush()
-    assign_document_budget_scope(db, document)
     apply_folder_rules_to_document(db, document)
     # Phase 4: create DocumentOccurrence for every registered document
     if source_path:
-        _create_occurrence(db, document, source, source_path)
-        db.flush()
+        occurrence = _create_occurrence(db, document, source, source_path)
+        # Generic inbox paths have no hierarchy; retain the old standalone
+        # scope only for those paths until they receive a manual assignment.
+        if occurrence is None:
+            assign_document_budget_scope(db, document)
+    else:
+        assign_document_budget_scope(db, document)
+    db.flush()
 
     job: ExtractionJob | None = None
     if status not in {"duplicate", "needs_review"}:
@@ -363,17 +372,34 @@ def _create_occurrence(
             db.add(hotel)
             db.flush()
 
-    # Find or create budget scope
-    from app.models.budget_scope import BudgetScope
+    # A path without a recognised brand is an inbox item, not a synthetic
+    # project.  It remains available to the normal ingestion workflow until
+    # a human assigns its hierarchy.
+    if brand is None:
+        return None
+
+    # Contextual scope/project: the same code may legitimately exist in
+    # multiple years, brands or hotels.
     budget_scope = None
+    project = None
     if resolution.budget_code:
-        budget_scope = db.scalar(
-            select(BudgetScope).where(BudgetScope.budget_code == resolution.budget_code)
+        budget_scope = get_or_create_budget_scope(
+            db,
+            resolution.year or 2025,
+            brand.id,
+            hotel.id if hotel else None,
+            resolution.budget_code,
         )
-        if not budget_scope:
-            budget_scope = BudgetScope(budget_code=resolution.budget_code)
-            db.add(budget_scope)
-            db.flush()
+        project = get_or_create_project_for_budget(
+            db,
+            resolution.year or 2025,
+            brand.id,
+            hotel.id if hotel else None,
+            budget_scope.id,
+        )
+        # ``Document.budget_scope_id`` is retained solely as the legacy
+        # primary link.  Membership is represented by the occurrence/link.
+        document.budget_scope_id = budget_scope.id
 
     # Check if occurrence already exists for this exact path
     existing_occ = db.scalar(
@@ -383,6 +409,7 @@ def _create_occurrence(
         )
     )
     if existing_occ:
+        existing_occ.last_seen_at = existing_occ.last_seen_at
         return existing_occ
 
     occurrence = DocumentOccurrence(
@@ -390,13 +417,34 @@ def _create_occurrence(
         source_path=source_path,
         source_root=source_root,
         year=resolution.year or 2025,
-        brand_id=brand.id if brand else 0,
+        brand_id=brand.id,
         hotel_id=hotel.id if hotel else None,
         budget_scope_id=budget_scope.id if budget_scope else None,
-        project_id=None,
+        project_id=project.id if project else None,
         category=category,
         original_filename=source.name,
         is_primary=True,
     )
     db.add(occurrence)
+    db.flush()
+    if budget_scope:
+        link = db.scalar(
+            select(DocumentBudgetLink).where(
+                DocumentBudgetLink.document_id == document.id,
+                DocumentBudgetLink.budget_scope_id == budget_scope.id,
+            )
+        )
+        if link is None:
+            db.add(
+                DocumentBudgetLink(
+                    document_id=document.id,
+                    occurrence_id=occurrence.id,
+                    budget_scope_id=budget_scope.id,
+                    source="folder",
+                    extracted_code=resolution.budget_code,
+                    confidence=1.0,
+                    status="verified",
+                    evidence_json={"source_path": source_path, "resolver": "folder"},
+                )
+            )
     return occurrence
