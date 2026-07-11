@@ -22,6 +22,7 @@ from app.models.document import Document
 from app.models.project import DocumentOccurrence, Project
 from app.models.tenant import HotelChain
 from app.services.sensitive_data import redact_for_scope
+from app.services.tenant_access import AccessScope, apply_access_predicates
 
 logger = logging.getLogger("app.services.dossier")
 
@@ -64,6 +65,7 @@ def resolve_project(
     budget_code: str | None = None,
     brand_name: str | None = None,
     hotel_name: str | None = None,
+    access_scope: AccessScope | None = None,
 ) -> list[Project]:
     """Resolve projects by various identifiers.
 
@@ -87,7 +89,24 @@ def resolve_project(
             )
     else:
         return []
-    return list(db.scalars(stmt.limit(20)).all())
+    projects = list(db.scalars(stmt.limit(20)).all())
+    if access_scope is None:
+        return projects
+    return [project for project in projects if _scope_allows_project(project, access_scope)]
+
+
+def require_project_access(db: Session, project: Project, access_scope: AccessScope | None) -> None:
+    """Reject a project before any dossier data is queried or rendered."""
+    if access_scope is None or not _scope_allows_project(project, access_scope):
+        raise PermissionError("Access denied to this project")
+
+
+def _scope_allows_project(project: Project, scope: AccessScope) -> bool:
+    if scope.is_admin or scope.allow_all_hotels:
+        return True
+    return bool(
+        project.hotel_id is not None and project.hotel_id in scope.hotel_ids
+    ) or project.brand_id in scope.chain_ids
 
 
 def get_project_dossier(
@@ -100,20 +119,11 @@ def get_project_dossier(
 
     Phase 10: accepts AccessScope for permission filtering.
     """
-    from app.services.tenant_access import AccessScope
-
     project = db.get(Project, project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
-    # Phase 10: check if user has access to this project's brand
-    if access_scope and not access_scope.is_admin:
-        if access_scope.hotel_ids and project.hotel_id:
-            if project.hotel_id not in access_scope.hotel_ids:
-                raise PermissionError("Access denied to this project")
-        if access_scope.chain_ids and project.brand_id:
-            if project.brand_id not in access_scope.chain_ids:
-                raise PermissionError("Access denied to this project")
+    require_project_access(db, project, access_scope)
 
     brand = db.get(HotelChain, project.brand_id) if project.brand_id else None
     hotel = None
@@ -122,13 +132,17 @@ def get_project_dossier(
         hotel = db.get(Hotel, project.hotel_id)
 
     # Count documents by category
-    occurrence_counts = db.scalars(
+    occurrence_counts_stmt = (
         select(
             DocumentOccurrence.category,
             func.count(DocumentOccurrence.id),
         )
+        .join(Document, DocumentOccurrence.document_id == Document.id)
         .where(DocumentOccurrence.project_id == project_id)
         .group_by(DocumentOccurrence.category)
+    )
+    occurrence_counts = db.execute(
+        apply_access_predicates(occurrence_counts_stmt, access_scope, document_column=Document.id)
     ).all()
     docs_by_category = {cat: count for cat, count in occurrence_counts}
     total_docs = sum(docs_by_category.values())
@@ -137,24 +151,33 @@ def get_project_dossier(
     budget_total = None
     order_total = None
     invoice_total = None
-    if project.primary_budget_scope_id:
+    visible_document_ids = list(db.scalars(
+        apply_access_predicates(
+            select(DocumentOccurrence.document_id)
+            .join(Document, DocumentOccurrence.document_id == Document.id)
+            .where(DocumentOccurrence.project_id == project_id),
+            access_scope,
+            document_column=Document.id,
+        )
+    ).all())
+    if project.primary_budget_scope_id and visible_document_ids:
         from app.models.business import Budget, Invoice, Order
         budget_row = db.scalar(
             select(func.sum(Budget.total_amount)).where(
-                Budget.budget_scope_id == project.primary_budget_scope_id
+                Budget.budget_scope_id == project.primary_budget_scope_id,
+                Budget.document_id.in_(visible_document_ids),
             )
         )
         order_row = db.scalar(
             select(func.sum(Order.total_amount)).where(
-                Order.budget_scope_id == project.primary_budget_scope_id
+                Order.budget_scope_id == project.primary_budget_scope_id,
+                Order.document_id.in_(visible_document_ids),
             )
         )
         invoice_row = db.scalar(
             select(func.sum(Invoice.total_amount)).where(
                 Invoice.document_id.in_(
-                    select(DocumentOccurrence.document_id).where(
-                        DocumentOccurrence.budget_scope_id == project.primary_budget_scope_id
-                    )
+                    visible_document_ids
                 )
             )
         )
@@ -164,15 +187,21 @@ def get_project_dossier(
 
     # Communications
     from app.models.communication import CommunicationThread, CommunicationMessage
-    thread_count = db.scalar(
-        select(func.count(CommunicationThread.id)).where(
-            CommunicationThread.project_id == project_id
-        )
-    ) or 0
     message_count = db.scalar(
         select(func.count(CommunicationMessage.id)).join(
             CommunicationThread
-        ).where(CommunicationThread.project_id == project_id)
+        ).where(
+            CommunicationThread.project_id == project_id,
+            CommunicationMessage.document_id.in_(visible_document_ids),
+        )
+    ) or 0
+    thread_count = db.scalar(
+        select(func.count(func.distinct(CommunicationMessage.thread_id)))
+        .join(CommunicationThread)
+        .where(
+            CommunicationThread.project_id == project_id,
+            CommunicationMessage.document_id.in_(visible_document_ids),
+        )
     ) or 0
 
     # Issues
@@ -180,6 +209,7 @@ def get_project_dossier(
     open_issues = db.scalar(
         select(func.count(ProjectIssue.id)).where(
             ProjectIssue.project_id == project_id,
+            ProjectIssue.source_document_id.in_(visible_document_ids),
             ProjectIssue.status.in_(["open", "in_progress"]),
         )
     ) or 0
@@ -191,12 +221,12 @@ def get_project_dossier(
     first_date = db.scalar(
         select(func.min(DocumentOccurrence.first_seen_at)).where(
             DocumentOccurrence.project_id == project_id
-        )
+        ).where(DocumentOccurrence.document_id.in_(visible_document_ids))
     )
     last_date = db.scalar(
         select(func.max(DocumentOccurrence.last_seen_at)).where(
             DocumentOccurrence.project_id == project_id
-        )
+        ).where(DocumentOccurrence.document_id.in_(visible_document_ids))
     )
 
     return ProjectDossier(
@@ -206,12 +236,14 @@ def get_project_dossier(
         hotel_name=hotel.name if hotel else None,
         year=project.year,
         status=project.status,
-        description=project.description,
+        description=redact_for_scope(
+            {"description": project.description}, access_scope.can_view_prices, access_scope.is_admin
+        )["description"],
         total_documents=total_docs,
         documents_by_category=docs_by_category,
-        budget_total=budget_total,
-        order_total=order_total,
-        invoice_total=invoice_total,
+        budget_total=budget_total if access_scope.can_view_prices else None,
+        order_total=order_total if access_scope.can_view_prices else None,
+        invoice_total=invoice_total if access_scope.can_view_prices else None,
         participant_count=0,
         thread_count=thread_count,
         message_count=message_count,
@@ -228,8 +260,13 @@ def list_project_documents(
     *,
     category: str | None = None,
     limit: int = 100,
+    access_scope: AccessScope | None = None,
 ) -> list[dict[str, Any]]:
     """List documents in a project, optionally filtered by category."""
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
     stmt = (
         select(DocumentOccurrence, Document)
         .join(Document, DocumentOccurrence.document_id == Document.id)
@@ -238,16 +275,16 @@ def list_project_documents(
     )
     if category:
         stmt = stmt.where(DocumentOccurrence.category == category)
-    stmt = stmt.limit(limit)
+    stmt = apply_access_predicates(stmt, access_scope, document_column=Document.id).limit(limit)
 
     results = []
-    for occ, doc in db.scalars(stmt).unique():
+    for occ, doc in db.execute(stmt).unique().all():
         results.append({
             "occurrence_id": occ.id,
             "document_id": doc.id,
             "filename": doc.original_filename,
             "category": occ.category,
-            "source_path": occ.source_path,
+            "source_path": occ.source_path if access_scope.is_admin else None,
             "first_seen": str(occ.first_seen_at),
             "last_seen": str(occ.last_seen_at),
         })
@@ -260,8 +297,13 @@ def search_project_images(
     *,
     query: str | None = None,
     limit: int = 50,
+    access_scope: AccessScope | None = None,
 ) -> list[dict[str, Any]]:
     """Search images in a project."""
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
     stmt = (
         select(DocumentOccurrence, Document)
         .join(Document, DocumentOccurrence.document_id == Document.id)
@@ -272,14 +314,16 @@ def search_project_images(
     )
     if query:
         stmt = stmt.where(Document.original_filename.ilike(f"%{query}%"))
-    stmt = stmt.order_by(DocumentOccurrence.last_seen_at.desc()).limit(limit)
+    stmt = apply_access_predicates(
+        stmt, access_scope, document_column=Document.id
+    ).order_by(DocumentOccurrence.last_seen_at.desc()).limit(limit)
 
     results = []
-    for occ, doc in db.scalars(stmt).unique():
+    for occ, doc in db.execute(stmt).unique().all():
         results.append({
             "occurrence_id": occ.id,
             "document_id": doc.id,
             "filename": doc.original_filename,
-            "source_path": occ.source_path,
+            "source_path": occ.source_path if access_scope.is_admin else None,
         })
     return results
