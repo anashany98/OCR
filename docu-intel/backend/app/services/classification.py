@@ -432,6 +432,12 @@ def classify_document(
         return ClassificationResult("desconocido", 0.2, [])
 
     doc_type, score = max(scores.items(), key=lambda item: item[1])
+    # Public consumers (routing, SQL filters and integrations) contract on
+    # the generic value ``plano``.  Keep specialised evidence internal until
+    # a dedicated persisted subtype column is available.
+    if doc_type in _PLAN_SUBTYPES:
+        matches["plano"] = matches.get(doc_type, [])
+        doc_type = "plano"
     confidence = min(0.98, max(0.4, score))
     return ClassificationResult(doc_type, confidence, matches.get(doc_type, []))
 
