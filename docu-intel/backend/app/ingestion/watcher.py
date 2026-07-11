@@ -364,6 +364,17 @@ def run_watch_loop() -> None:
         str(settings.input_dir),
         recursive=settings.watcher_recursive,
     )
+
+    # Also watch the read-only source corpus if it exists
+    if settings.source_corpus_dir.is_dir():
+        corpus_count = enqueue_existing_files(pending, settings.source_corpus_dir)
+        logger.info("watcher_source_corpus count=%s source=%s", corpus_count, settings.source_corpus_dir)
+        observer.schedule(
+            _WatchdogEventHandler(pending).handler,
+            str(settings.source_corpus_dir),
+            recursive=settings.watcher_recursive,
+        )
+
     observer.start()
 
     stop_requested = False

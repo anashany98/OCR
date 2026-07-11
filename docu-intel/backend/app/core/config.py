@@ -56,6 +56,19 @@ class Settings(BaseSettings):
 
     files_dir: Path = Path("/app/data/files")
     input_dir: Path = Path("/app/data/input")
+    source_corpus_dir: Path = Path("/app/source/2025")
+
+    @field_validator("source_corpus_dir", mode="after")
+    @classmethod
+    def _resolve_source_corpus(cls, value: Path) -> Path:
+        """Fall back to /app/source/2025 if the configured path doesn't exist."""
+        if value.is_dir():
+            return value
+        fallback = Path("/app/source/2025")
+        if fallback.is_dir():
+            return fallback
+        return value
+
     scan_interval_seconds: int = 300
     ingestion_stable_seconds: int = 30
     ingestion_max_pending_jobs: int = 200

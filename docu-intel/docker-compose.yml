@@ -74,7 +74,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); exit(0 if r.status==200 else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/healthz'); exit(0 if r.status==200 else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -220,6 +220,8 @@ services:
         condition: service_healthy
     environment:
       - WORKER_NAME=worker-heavy-gpu-0
+      # Physical GPU 0 is reserved by deploy.resources; inside the
+      # container it is always CUDA device 0.
       - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_VISIBLE_DEVICES=0
       - LMS_SHIM_URL=http://host.docker.internal:1235
@@ -266,8 +268,9 @@ services:
         condition: service_healthy
     environment:
       - WORKER_NAME=worker-heavy-gpu-1
-      # GPU 1 (second RTX 4070). PaddleOCR auto-detects CUDA via CUDA_VISIBLE_DEVICES.
-      - CUDA_VISIBLE_DEVICES=1
+      # Physical GPU 1 is reserved by deploy.resources; inside the
+      # container it is always CUDA device 0.
+      - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_VISIBLE_DEVICES=1
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
@@ -340,7 +343,7 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      - C:\Users\Usuario\Desktop\TEST2025:/app/data/input/TEST2025:ro
+      - ${SOURCE_CORPUS_DIR:?Set SOURCE_CORPUS_DIR in .env}:/app/source/2025:ro
       - ./backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"

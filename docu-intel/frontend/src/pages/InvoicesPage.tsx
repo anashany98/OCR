@@ -30,7 +30,7 @@ export function InvoicesPage() {
   const [query, setQuery] = useState("")
   const [currency, setCurrency] = useState("")
   const { data, isLoading } = useQuery({
-    queryKey: queryKeys.invoices.list(query),
+    queryKey: queryKeys.business.invoices.list({ q: query || undefined }),
     queryFn: () => api.invoices({ q: query || undefined, limit: 200 }),
   })
 

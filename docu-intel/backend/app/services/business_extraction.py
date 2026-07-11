@@ -482,6 +482,22 @@ def persist_business_extraction(
         )
         db.add(invoice)
         db.flush()
+        # Phase 6: persist invoice lines
+        from app.models.business import InvoiceLine
+        for line in extraction.lines:
+            inv_line = InvoiceLine(
+                invoice_id=invoice.id,
+                reference=line.reference,
+                description=line.description,
+                quantity=line.quantity,
+                unit=line.unit,
+                unit_price=line.unit_price,
+                total_price=line.total_price,
+                currency=extraction.currency,
+                confidence=line.confidence,
+            )
+            db.add(inv_line)
+        db.flush()
         _add_entities_for_invoice(db, document.id, extraction)
         issues = _validate_extraction(extraction)
         needs_review = _invoice_needs_review(extraction) or bool(issues)

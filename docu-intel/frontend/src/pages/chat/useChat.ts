@@ -288,7 +288,7 @@ export function useChat() {
         for await (const ev of api.askAIStream(
           composeQuestion(trimmed, { supplier, documentType }),
           mode,
-          getActiveSessionId(),
+          convId,
           controller.signal,
         )) {
           if (ev.type === "thinking") {

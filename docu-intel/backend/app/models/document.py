@@ -4,6 +4,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     Computed,
     DateTime,
     Float,
@@ -111,6 +112,12 @@ class Document(Base):
     # document also wipes its extraction history.
     extractions = relationship(
         "DocumentExtraction",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    # Phase 3: one document can appear in multiple paths/budgets
+    occurrences = relationship(
+        "DocumentOccurrence",
         back_populates="document",
         cascade="all, delete-orphan",
     )
@@ -291,3 +298,61 @@ class ExtractionJob(Base):
     )
 
     document = relationship("Document", back_populates="jobs")
+
+
+class ImageAnalysis(Base):
+    """Phase 5 — Structured visual analysis of an image.
+
+    Stores multi-label classification, visible text, objects, materials,
+    measurements, and per-fact confidence. One row per document.
+    """
+    __tablename__ = "image_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), unique=True, index=True, nullable=False,
+    )
+    occurrence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_occurrences.id", ondelete="SET NULL"), index=True,
+    )
+    # Multi-label taxonomy
+    labels_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # Structured visual facts
+    visible_text: Mapped[str | None] = mapped_column(Text)
+    objects_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    materials_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    colors_json: Mapped[list[str] | None] = mapped_column(JSON)
+    measurements_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    product_refs_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    room_or_zone: Mapped[str | None] = mapped_column(String(300))
+    installation_state: Mapped[str | None] = mapped_column(String(100))
+    issue_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # Sensitive data detection
+    sensitive_data_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    # Visual embedding (for similarity search)
+    visual_embedding: Mapped[Any | None] = mapped_column(Vector(768), nullable=True)
+    perceptual_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Model metadata
+    model_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC), nullable=False,
+    )
+
+    document = relationship("Document", back_populates="image_analysis")
+
+
+# Add back_populates for ImageAnalysis on Document
+Document.image_analysis = relationship(
+    "ImageAnalysis",
+    back_populates="document",
+    uselist=False,
+    cascade="all, delete-orphan",
+)

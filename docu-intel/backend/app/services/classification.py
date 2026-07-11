@@ -142,6 +142,79 @@ RULES: dict[str, list[str]] = {
         "render", "conceptrender", "concept render", "render 3d",
         "visualizacion", "vista 3d",
     ],
+    # --- PM1.1: Tipos documentales técnicos de obra ---
+    "plano_arquitectura": [
+        "plano arquitectura", "planta", "alzado", "seccion",
+        "corte", "detalle constructivo", "emplazamiento",
+        "escala", "cotas",  # Shared with generic "plano"
+    ],
+    "plano_estructura": [
+        "plano estructura", "estructura", "hormigon", "hormigón",
+        "acero", "armadura", "cimentacion", "cimentación",
+        "forjado", "viga", "columna", "sobrecimiento",
+        "escala", "cotas",  # Shared with generic "plano"
+        "seccion constructiva", "corte constructivo",  # Structural sections
+        "muro exterior", "tabique", "aislamiento",  # Construction details
+    ],
+    "plano_electrico": [
+        "plano electrico", "eléctrico", "electricidad",
+        "toma de corriente", "interruptor", "cuadro electrico",
+        "linea electrica", "cableado", "instalacion electrica",
+    ],
+    "plano_fontaneria": [
+        "plano fontaneria", "fontanería", "sanitario",
+        "tuberia", "tubería", "agua fria", "agua caliente",
+        "alcantarillado", "desague", "desagüe",
+    ],
+    "plano_climatizacion": [
+        "plano climatizacion", "climatización", "aire acondicionado",
+        "calefaccion", "calefacción", "ventilacion", "ventilación",
+        "hvac", "tuberia refrigerante",
+    ],
+    "plano_contra_incendios": [
+        "plano contra incendios", "contra incendios", "proteccion pasiva",
+        "reaccion al fuego", "resistencia al fuego",
+        "extintor", "bomba de incendios", "senalizacion",
+    ],
+    "croquis_medicion": [
+        "croquis medicion", "croquis de medicion", "mediciones",
+        "medidas", "superficies", "cuadro de superficies",
+    ],
+    "memoria_descriptiva": [
+        "memoria descriptiva", "descripcion de obra",
+        "objeto de la obra", "descripcion del proyecto",
+    ],
+    "memoria_constructiva": [
+        "memoria constructiva", "solucion constructiva",
+        "descripcion constructiva", "proceso de ejecucion",
+        "metodo de obra", "condiciones de ejecucion",
+    ],
+    "pliego_condiciones": [
+        "pliego de condiciones", "pliego tecnico",
+        "pliego administrativo", "clausulas administrativas",
+        "clausulas tecnicas", "prescripciones tecnicas",
+        "condiciones generales", "condiciones particulares",
+    ],
+    "mediciones_obra": [
+        "mediciones de obra", "cuadro de mediciones",
+        "medicion por partidas", "computation de metricos",
+        "c metros", "metricas", "certificacion de obra",
+    ],
+    "estudio_seguridad": [
+        "estudio de seguridad", "plan de seguridad",
+        "evaluacion de riesgos", "epi", "proteccion colectiva",
+        "seguridad en obra", "coordinador de seguridad",
+    ],
+    "gestion_residuos": [
+        "gestion de residuos", "plan de residuos",
+        "residuos de construccion", "rasa", "reciclaje",
+        "eliminacion de residuos",
+    ],
+    "manual_instalacion": [
+        "manual de instalacion", "manual de instalación",
+        "instrucciones de montaje", "guia de instalacion",
+        "procedimiento de instalacion",
+    ],
 }
 
 # Keywords that need word-boundary matching (avoid "cota" → "mascota")
@@ -158,6 +231,10 @@ WORD_BOUNDARY_KEYWORDS = {
     "precios", "tarifa", "pod", "proforma", "render", "manual",
     "certificado", "ficha", "layout", "aperturas", "packing",
     "palet", "instruccion", "mantenimiento",
+    # --- PM1.1: Tipos técnicos ---
+    "estructura", "hormigon", "electricidad", "fontaneria",
+    "climatizacion", "incendios", "memoria", "pliego",
+    "mediciones", "seguridad", "residuos", "instalacion",
 }
 
 FOLDER_HINTS = {
@@ -168,6 +245,23 @@ FOLDER_HINTS = {
     "telas": "muestra_tela",          # --- NUEVO ---
     "muestras": "muestra_tela",       # --- NUEVO ---
     "croquis": "croquis_medida",      # --- NUEVO ---
+    # --- PM1.1: Carpetas técnicas de obra ---
+    "planos": "plano",
+    "planos_arquitectura": "plano_arquitectura",
+    "planos_estructura": "plano_estructura",
+    "planos_electricos": "plano_electrico",
+    "planos_fontaneria": "plano_fontaneria",
+    "planos_climatizacion": "plano_climatizacion",
+    "planos_contra_incendios": "plano_contra_incendios",
+    "memorias": "memoria_descriptiva",
+    "memoria_constructiva": "memoria_constructiva",
+    "pliegos": "pliego_condiciones",
+    "mediciones": "mediciones_obra",
+    "presupuestos_obra": "mediciones_obra",
+    "seguridad": "estudio_seguridad",
+    "residuos": "gestion_residuos",
+    "fichas_tecnicas": "ficha_tecnica",
+    "manuales": "manual_instalacion",
 }
 
 # Image extensions that should NEVER be classified as "plano" unless
@@ -308,6 +402,30 @@ def classify_document(
     for doc_type, kws in matched_keywords.items():
         if len(kws) >= 3 and scores.get(doc_type, 0) > 0:
             scores[doc_type] = scores.get(doc_type, 0) + 0.15  # bonus for strong text signal
+
+    # --- Phase 8: Prefer specific subtypes over generic "plano" ---
+    # PM1.1: When a specific plan subtype (plano_estructura, plano_electrico, etc.)
+    # has a reasonable score, prefer it over the generic "plano" classification.
+    # This ensures technical documents get properly categorized while still
+    # falling back to "plano" when no specific subtype matches strongly.
+    _PLAN_SUBTYPES = {
+        "plano_arquitectura", "plano_estructura", "plano_electrico",
+        "plano_fontaneria", "plano_climatizacion", "plano_contra_incendios",
+    }
+    if "plano" in scores:
+        plano_score = scores["plano"]
+        # Find the best specific subtype
+        best_subtype = None
+        best_subtype_score = 0
+        for subtype in _PLAN_SUBTYPES:
+            if subtype in scores and scores[subtype] > best_subtype_score:
+                best_subtype = subtype
+                best_subtype_score = scores[subtype]
+        # If a specific subtype has >= 2 keyword matches and a reasonable score,
+        # boost it to win over generic "plano" (which may have folder bonus)
+        if best_subtype and best_subtype_score >= 0.50:
+            # Boost enough to beat the generic "plano" (which may have folder bonus)
+            scores[best_subtype] = best_subtype_score + 1.20
 
     # --- Result ---
     if not scores:

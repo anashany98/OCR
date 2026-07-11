@@ -247,3 +247,26 @@ class PlanSymbol(Base):
     )
 
     plan = relationship("Plan", back_populates="symbols")
+
+
+class InvoiceLine(Base):
+    """A single line item from an invoice extraction (Phase 6)."""
+    __tablename__ = "invoice_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True, nullable=False,
+    )
+    reference: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(20))
+    unit_price: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    total_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str | None] = mapped_column(String(12))
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+    )
+
+    invoice = relationship("Invoice", back_populates="lines")

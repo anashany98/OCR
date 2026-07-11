@@ -12,12 +12,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Document, ExtractionJob, User
+from app.models.project import DocumentOccurrence
 from app.services.audit import write_audit
 from app.services.budget_scope import assign_document_budget_scope
 from app.services.cache import cache_service
 from app.services.file_security import inspect_file_for_ingestion
 from app.services.file_storage import calculate_sha256, copy_to_storage
 from app.services.ingestion_events import path_metadata, record_ingestion_event, upsert_watched_file
+from app.services.project_path_resolver import classify_category, resolve_corpus_path
 from app.services.tenant_access import apply_folder_rules_to_document
 
 logger = logging.getLogger(__name__)
@@ -181,6 +183,8 @@ def register_existing_file(
                         "existing_document_id": existing.id,
                     },
                 )
+                # Phase 4: create DocumentOccurrence for the new path
+                _create_occurrence(db, existing, source, source_path)
                 db.commit()
             return existing, None
         status = "duplicate"
@@ -225,6 +229,10 @@ def register_existing_file(
     db.flush()
     assign_document_budget_scope(db, document)
     apply_folder_rules_to_document(db, document)
+    # Phase 4: create DocumentOccurrence for every registered document
+    if source_path:
+        _create_occurrence(db, document, source, source_path)
+        db.flush()
 
     job: ExtractionJob | None = None
     if status not in {"duplicate", "needs_review"}:
@@ -311,3 +319,84 @@ def register_existing_file(
             )
             db.commit()
     return document, job
+
+
+def _create_occurrence(
+    db: Session,
+    document: Document,
+    source: Path,
+    source_path: str,
+) -> DocumentOccurrence | None:
+    """Create a DocumentOccurrence for a file path if one doesn't already exist.
+
+    Phase 4: every file registration creates an occurrence linking the
+    document to its source path, brand, hotel, budget, and category.
+    """
+    source_root = str(settings.source_corpus_dir)
+    resolution = resolve_corpus_path(source_path, source_root)
+    category = classify_category(source.name, resolution.category)
+
+    # Find or create brand
+    from app.models.tenant import HotelChain
+    brand = None
+    if resolution.brand:
+        brand = db.scalar(
+            select(HotelChain).where(HotelChain.name == resolution.brand)
+        )
+        if not brand:
+            brand = HotelChain(name=resolution.brand)
+            db.add(brand)
+            db.flush()
+
+    # Find or create hotel
+    from app.models.tenant import Hotel
+    hotel = None
+    if resolution.hotel and brand:
+        hotel = db.scalar(
+            select(Hotel).where(
+                Hotel.name == resolution.hotel,
+                Hotel.chain_id == brand.id,
+            )
+        )
+        if not hotel:
+            hotel = Hotel(name=resolution.hotel, chain_id=brand.id)
+            db.add(hotel)
+            db.flush()
+
+    # Find or create budget scope
+    from app.models.budget_scope import BudgetScope
+    budget_scope = None
+    if resolution.budget_code:
+        budget_scope = db.scalar(
+            select(BudgetScope).where(BudgetScope.budget_code == resolution.budget_code)
+        )
+        if not budget_scope:
+            budget_scope = BudgetScope(budget_code=resolution.budget_code)
+            db.add(budget_scope)
+            db.flush()
+
+    # Check if occurrence already exists for this exact path
+    existing_occ = db.scalar(
+        select(DocumentOccurrence).where(
+            DocumentOccurrence.source_root == source_root,
+            DocumentOccurrence.source_path == source_path,
+        )
+    )
+    if existing_occ:
+        return existing_occ
+
+    occurrence = DocumentOccurrence(
+        document_id=document.id,
+        source_path=source_path,
+        source_root=source_root,
+        year=resolution.year or 2025,
+        brand_id=brand.id if brand else 0,
+        hotel_id=hotel.id if hotel else None,
+        budget_scope_id=budget_scope.id if budget_scope else None,
+        project_id=None,
+        category=category,
+        original_filename=source.name,
+        is_primary=True,
+    )
+    db.add(occurrence)
+    return occurrence

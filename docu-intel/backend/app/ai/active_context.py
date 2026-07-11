@@ -63,6 +63,7 @@ class ActiveContext:
 
     current_budget_number: str | None = None
     current_budget_id: int | None = None
+    current_budget_scope_id: int | None = None
     current_client_name: str | None = None
     current_folder_path: str | None = None
     current_document_id: int | None = None
@@ -71,6 +72,13 @@ class ActiveContext:
     current_invoice_number: str | None = None
     current_order_number: str | None = None
     current_delivery_note_number: str | None = None
+    # Phase 3 / Phase 9: project-level context
+    current_project_id: int | None = None
+    current_project_name: str | None = None
+    current_brand_id: int | None = None
+    current_brand_name: str | None = None
+    current_hotel_id: int | None = None
+    current_hotel_name: str | None = None
     last_user_intent: str | None = None
     last_retrieved_document_ids: list[int] = field(default_factory=list)
 

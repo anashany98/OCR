@@ -19,6 +19,7 @@ import logging
 import os
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager, nullcontext
 from functools import cached_property
