@@ -16,6 +16,7 @@ from app.core.security import (
     decode_integration_token,
 )
 from app.models import ApiClientBudgetScope, BudgetScope, Document
+from app.models.project import Project
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,71 @@ def ensure_budget_scope(
     db.add(scope)
     db.flush()
     return scope
+
+
+def get_or_create_budget_scope(
+    db: Session,
+    year: int,
+    brand_id: int,
+    hotel_id: int | None,
+    budget_code: str,
+) -> BudgetScope:
+    """Return the deterministic budget identity for one physical context."""
+    clean = _clean_budget_code(budget_code)
+    if not clean:
+        raise ValueError("Invalid budget code")
+    stmt = select(BudgetScope).where(
+        BudgetScope.year == year,
+        BudgetScope.brand_id == brand_id,
+        BudgetScope.hotel_id.is_(None) if hotel_id is None else BudgetScope.hotel_id == hotel_id,
+        BudgetScope.budget_code == clean,
+    )
+    scope = db.scalar(stmt)
+    if scope:
+        return scope
+    context_key = f"{year}:{brand_id}:{hotel_id if hotel_id is not None else '-'}:{clean}"
+    scope = BudgetScope(
+        year=year,
+        brand_id=brand_id,
+        hotel_id=hotel_id,
+        budget_code=clean,
+        context_key=context_key,
+        display_name=f"Presupuesto {clean}",
+        status="pending",
+        legacy_unscoped=False,
+    )
+    db.add(scope)
+    db.flush()
+    return scope
+
+
+def get_or_create_project_for_budget(
+    db: Session,
+    year: int,
+    brand_id: int,
+    hotel_id: int | None,
+    budget_scope_id: int,
+) -> Project:
+    """Create exactly one project for an explicitly contextual budget."""
+    stmt = select(Project).where(
+        Project.year == year,
+        Project.brand_id == brand_id,
+        Project.primary_budget_scope_id == budget_scope_id,
+        Project.hotel_id.is_(None) if hotel_id is None else Project.hotel_id == hotel_id,
+    )
+    project = db.scalar(stmt)
+    if project:
+        return project
+    project = Project(
+        year=year,
+        brand_id=brand_id,
+        hotel_id=hotel_id,
+        primary_budget_scope_id=budget_scope_id,
+        name=f"Proyecto {year}/{brand_id}/{budget_scope_id}",
+    )
+    db.add(project)
+    db.flush()
+    return project
 
 
 def assign_document_budget_scope(

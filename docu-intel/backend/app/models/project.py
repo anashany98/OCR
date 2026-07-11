@@ -20,6 +20,12 @@ from app.database.base import Base
 class Project(Base):
     """A project groups budgets, documents and people under a brand/hotel."""
     __tablename__ = "projects"
+    __table_args__ = (
+        UniqueConstraint(
+            "year", "brand_id", "hotel_id", "primary_budget_scope_id",
+            name="uq_project_context_budget",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

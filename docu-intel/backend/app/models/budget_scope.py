@@ -12,7 +12,19 @@ class BudgetScope(Base):
     __tablename__ = "budget_scopes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    budget_code: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
+    # A budget code is only meaningful inside its source hierarchy.  Legacy
+    # rows intentionally remain unscoped until an audited backfill resolves
+    # their context.
+    budget_code: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+    year: Mapped[int | None] = mapped_column(Integer, index=True)
+    brand_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hotel_chains.id", ondelete="SET NULL"), index=True
+    )
+    hotel_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hotels.id", ondelete="SET NULL"), index=True
+    )
+    context_key: Mapped[str | None] = mapped_column(String(320), index=True)
+    legacy_unscoped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_path: Mapped[str | None] = mapped_column(Text)
     local_path: Mapped[str | None] = mapped_column(Text)
     display_name: Mapped[str | None] = mapped_column(String(255))
