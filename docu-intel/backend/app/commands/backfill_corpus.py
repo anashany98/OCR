@@ -25,11 +25,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.database.session import SessionLocal
-from app.models.budget_scope import BudgetScope
 from app.models.document import Document
-from app.models.project import DocumentOccurrence, Project
+from app.models.project import DocumentBudgetLink, DocumentOccurrence
 from app.models.tenant import Hotel, HotelChain
 from app.services.project_path_resolver import classify_category, resolve_corpus_path
+from app.services.budget_scope import get_or_create_budget_scope, get_or_create_project_for_budget
 
 logger = logging.getLogger("app.commands.backfill_corpus")
 
@@ -66,40 +66,6 @@ def _find_or_create_hotel(db: Session, name: str, brand_id: int) -> Hotel:
         db.add(hotel)
         db.flush()
     return hotel
-
-
-def _find_or_create_budget(db: Session, code: str) -> BudgetScope:
-    bs = db.scalar(select(BudgetScope).where(BudgetScope.budget_code == code))
-    if not bs:
-        bs = BudgetScope(budget_code=code)
-        db.add(bs)
-        db.flush()
-    return bs
-
-
-def _find_or_create_project(
-    db: Session, brand_id: int, hotel_id: int | None, budget_scope_id: int | None, year: int
-) -> Project:
-    stmt = select(Project).where(
-        Project.brand_id == brand_id,
-        Project.year == year,
-    )
-    if hotel_id:
-        stmt = stmt.where(Project.hotel_id == hotel_id)
-    else:
-        stmt = stmt.where(Project.hotel_id.is_(None))
-    project = db.scalar(stmt)
-    if not project:
-        project = Project(
-            brand_id=brand_id,
-            hotel_id=hotel_id,
-            year=year,
-            name=f"Project {year}/{brand_id}",
-            primary_budget_scope_id=budget_scope_id,
-        )
-        db.add(project)
-        db.flush()
-    return project
 
 
 def run_backfill(
@@ -142,7 +108,7 @@ def run_backfill(
 
     db = SessionLocal() if not dry_run else None
     try:
-        for path in Path(source_root).rglob("*"):
+        for path in sorted(Path(source_root).rglob("*"), key=lambda candidate: str(candidate)):
             if not path.is_file():
                 continue
 
@@ -174,18 +140,16 @@ def run_backfill(
                             stats["hotels_created"] += 1
 
                     budget_scope = None
+                    project = None
                     if resolution.budget_code:
-                        budget_scope = _find_or_create_budget(db, resolution.budget_code)
-                        if budget_scope.id:
-                            stats["budgets_created"] += 1
-
-                    project = _find_or_create_project(
-                        db, brand.id, hotel.id if hotel else None,
-                        budget_scope.id if budget_scope else None,
-                        resolution.year or 2025,
-                    )
-                    if project.id:
-                        stats["projects_created"] += 1
+                        budget_scope = get_or_create_budget_scope(
+                            db, resolution.year or 2025, brand.id,
+                            hotel.id if hotel else None, resolution.budget_code,
+                        )
+                        project = get_or_create_project_for_budget(
+                            db, resolution.year or 2025, brand.id,
+                            hotel.id if hotel else None, budget_scope.id,
+                        )
 
                     # Find existing document by source_path
                     existing_doc = db.scalar(
@@ -212,11 +176,23 @@ def run_backfill(
                             brand_id=brand.id,
                             hotel_id=hotel.id if hotel else None,
                             budget_scope_id=budget_scope.id if budget_scope else None,
-                            project_id=project.id,
+                            project_id=project.id if project else None,
                             category=category,
                             original_filename=path.name,
                         )
                         db.add(occ)
+                        db.flush()
+                        if budget_scope:
+                            db.add(DocumentBudgetLink(
+                                document_id=existing_doc.id,
+                                occurrence_id=occ.id,
+                                budget_scope_id=budget_scope.id,
+                                source="folder",
+                                extracted_code=resolution.budget_code,
+                                confidence=1.0,
+                                status="verified",
+                                evidence_json={"source_path": source_path, "resolver": "backfill"},
+                            ))
                         stats["occurrences_created"] += 1
                     else:
                         # Will be created when document is ingested
