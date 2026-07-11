@@ -33,13 +33,10 @@ def scan_input_folders(
     paused = 0
     backpressure = 0
 
-    # Scan both the regular input directory and the read-only source corpus
-    scan_dirs = [settings.input_dir]
-    if settings.source_corpus_dir.is_dir():
-        scan_dirs.append(settings.source_corpus_dir)
-
-    for scan_dir in scan_dirs:
-        for path in _iter_files(scan_dir):
+    # The inbox poller must be bounded.  The fixed corpus is handled only by
+    # the explicit backfill command; recursively walking it here made every
+    # periodic poll traverse tens of thousands of immutable files.
+    for path in _iter_files(settings.input_dir):
             if limit is not None and registered >= limit:
                 break
             scanned += 1
@@ -202,6 +199,8 @@ def _record_path_status(
 
 
 def _iter_files(root: Path):
-    for path in root.rglob("*"):
+    # ``rglob`` order is filesystem-dependent; deterministic ordering is
+    # required for repeatable limits and resumable callers.
+    for path in sorted(root.rglob("*"), key=lambda candidate: str(candidate)):
         if path.is_file() and not is_ignored_path(path):
             yield path
