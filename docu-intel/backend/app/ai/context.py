@@ -425,6 +425,60 @@ def collect_context(
                 if budget.document_id:
                     resolved_doc_id = budget.document_id
             else:
+                # CR4: Fallback to exact content search when structured
+                # table has no match. This finds documents where the
+                # number appears in text, entities, or filename even
+                # when no Budget row exists.
+                from app.services.exact_document_search import (
+                    ExactMatch,
+                    detect_identifiers,
+                    search_exact_by_number,
+                    select_best_exact_match,
+                )
+                from app.services.metrics import EXACT_SEARCH
+
+                exact_matches = search_exact_by_number(
+                    db,
+                    number=budget_number,
+                    kind="budget",
+                    limit=5,
+                    access_scope=access_scope,
+                )
+                if exact_matches:
+                    best = select_best_exact_match(exact_matches, question_kind="budget")
+                    if best:
+                        resolved_doc_id = best.document_id
+                        doc_row = db.get(Document, best.document_id)
+                        if doc_row:
+                            EXACT_SEARCH.labels(kind="budget", outcome="found").inc()
+                            context.append(
+                                ContextItem(
+                                    title=f"Documento encontrado por numero exacto: {best.original_filename}",
+                                    summary=(
+                                        f"El numero '{budget_number}' aparece en el documento "
+                                        f"(coincidencia en: {best.matched_in}). "
+                                        f"Tipo: {best.document_type or doc_row.document_type} | "
+                                        f"Estado: {doc_row.status}"
+                                        + (f" | Ruta: {best.source_path}" if best.source_path else "")
+                                    ),
+                                    document_id=best.document_id,
+                                    document_filename=best.original_filename,
+                                    page_number=best.page_number,
+                                    relevance_score=0.99,
+                                    excerpt=None,
+                                    confidence=doc_row.confidence,
+                                    source_path=best.source_path,
+                                )
+                            )
+                            warnings.append(
+                                f"No hay fila estructurada como presupuesto para '{budget_number}', "
+                                f"pero el numero aparece en el documento {best.original_filename}."
+                            )
+                        else:
+                            EXACT_SEARCH.labels(kind="budget", outcome="doc_deleted").inc()
+                else:
+                    EXACT_SEARCH.labels(kind="budget", outcome="not_found").inc()
+                # Also try filename search as secondary fallback
                 documents = internal.find_document_by_filename(db, budget_number)
                 if access_scope:
                     documents = filter_documents_for_scope(db, documents, access_scope)
@@ -718,7 +772,78 @@ def collect_context(
         warnings.append(
             "El documento no tiene vinculos conocidos con otros documentos del proyecto."
         )
+    # CR7: When an exact match resolved a document, ensure its page text
+    # is loaded into the context so the LLM can cite specific content.
+    # For short documents (< 5 pages), load all pages. For long ones,
+    # load only the matching page + adjacent pages.
+    if resolved_doc_id is not None:
+        _maybe_load_resolved_document_text(
+            db, resolved_doc_id, context, warnings, access_scope=access_scope
+        )
     return context[:MAX_CONTEXT_ITEMS], warnings, resolved_doc_id
+
+
+def _maybe_load_resolved_document_text(
+    db: Session,
+    doc_id: int,
+    context: list,
+    warnings: list,
+    *,
+    access_scope: AccessScope | None,
+) -> None:
+    """Load page text for the resolved document if not already present.
+
+    If the context already contains items from this document (from
+    get_document_full_details or search results), skip to avoid
+    duplication. Otherwise, load the page text and add it as a
+    context item so the LLM has the raw content to cite.
+    """
+    from app.models import DocumentPage
+
+    # Check if context already has items from this document
+    already_loaded = any(
+        getattr(item, "document_id", None) == doc_id for item in context
+    )
+    if already_loaded:
+        return
+
+    doc = db.get(Document, doc_id)
+    if not doc:
+        return
+
+    pages = list(
+        db.scalars(
+            select(DocumentPage)
+            .where(DocumentPage.document_id == doc_id)
+            .order_by(DocumentPage.page_number.asc())
+        ).all()
+    )
+    if not pages:
+        return
+
+    # For short documents, load all pages; for long ones, load first 3
+    max_pages = 3 if len(pages) > 5 else len(pages)
+    text_parts = []
+    for page in pages[:max_pages]:
+        page_text = (page.text or "").strip()
+        if page_text:
+            text_parts.append(f"[Pagina {page.page_number}]\n{page_text}")
+
+    if text_parts:
+        full_text = "\n\n".join(text_parts)
+        context.append(
+            ContextItem(
+                title=f"Texto del documento: {doc.original_filename}",
+                summary=full_text[:2000],
+                document_id=doc.id,
+                document_filename=doc.original_filename,
+                page_number=1,
+                relevance_score=0.98,
+                excerpt=full_text[:500],
+                confidence=doc.confidence,
+                source_path=doc.source_path if access_scope and access_scope.is_admin else None,
+            )
+        )
 
 
 def render_document_details(details: dict) -> str:
