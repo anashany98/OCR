@@ -103,8 +103,24 @@ function Invoke-External {
         $ErrorActionPreference = $PreviousErrorActionPreference
     }
     if ($ExitCode -ne 0) {
-        throw "$File $($Arguments -join ' ') exited with $ExitCode"
+        # Do not echo arguments here: DATABASE_URL can contain a password.
+        throw "$File exited with $ExitCode"
     }
+}
+
+function Get-ComposePostgresPassword {
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $Value = & docker compose exec -T postgres sh -lc 'printf %s "$POSTGRES_PASSWORD"'
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($Value)) {
+        throw "Could not read the configured PostgreSQL password from the compose service."
+    }
+    return ([string]$Value).Trim()
 }
 
 Invoke-CertificationStage "baseline" {
@@ -146,8 +162,20 @@ if (-not $SkipDocker) {
     if ($TemporaryDatabase -notmatch '^terra_cert_[a-z0-9_]+$') {
         throw "Refusing to use unsafe temporary database name: $TemporaryDatabase"
     }
-    $Password = if ($env:POSTGRES_PASSWORD) { $env:POSTGRES_PASSWORD } else { "app" }
+    # Compose may load a non-default password from .env; use the value from
+    # the already-running service rather than assuming the development default.
+    $Password = Get-ComposePostgresPassword
     $TemporaryDatabaseUrl = "postgresql+psycopg://app:$Password@postgres:5432/$TemporaryDatabase"
+
+    # A failed run always drops its temporary database in ``finally``.  These
+    # stages therefore cannot be resumed as "passed" even when a prior
+    # attempt reached database creation before failing migrations.
+    foreach ($StageName in @("postgres-create", "postgres-migrations", "postgres-e2e", "docker-health")) {
+        if ($State.stages.ContainsKey($StageName)) {
+            $State.stages.Remove($StageName)
+        }
+    }
+    Save-State
 
     try {
         Invoke-CertificationStage "postgres-create" {
