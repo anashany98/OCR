@@ -104,6 +104,7 @@ def aggregate_monthly(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
+    scope = resolve_user_access_scope(db, user)
     stmt = (
         select(
             func.extract("year", Invoice.date).label("year"),
@@ -119,6 +120,8 @@ def aggregate_monthly(
         )
         .order_by(func.extract("month", Invoice.date))
     )
+    if not scope.is_admin:
+        stmt = apply_access_predicates(stmt, scope, document_column=Invoice.document_id)
     rows = db.execute(stmt).all()
     return [
         {"year": int(r.year), "month": int(r.month), "total": float(r.total), "count": r.count}
@@ -133,6 +136,7 @@ def aggregate_by_supplier(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
+    scope = resolve_user_access_scope(db, user)
     stmt = (
         select(
             Invoice.supplier_name,
@@ -146,6 +150,8 @@ def aggregate_by_supplier(
     )
     if year is not None:
         stmt = stmt.where(func.extract("year", Invoice.date) == year)
+    if not scope.is_admin:
+        stmt = apply_access_predicates(stmt, scope, document_column=Invoice.document_id)
     rows = db.execute(stmt).all()
     return [
         {"supplier_name": r.supplier_name, "total": float(r.total), "count": r.count}
@@ -158,6 +164,7 @@ def aggregate_yearly(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
+    scope = resolve_user_access_scope(db, user)
     stmt = (
         select(
             func.extract("year", Invoice.date).label("year"),
@@ -168,6 +175,8 @@ def aggregate_yearly(
         .group_by(func.extract("year", Invoice.date))
         .order_by(func.extract("year", Invoice.date).desc())
     )
+    if not scope.is_admin:
+        stmt = apply_access_predicates(stmt, scope, document_column=Invoice.document_id)
     rows = db.execute(stmt).all()
     return [
         {"year": int(r.year), "total": float(r.total), "count": r.count}
