@@ -17,6 +17,7 @@ import json
 import logging
 import sys
 import time
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,8 @@ def run_backfill(
     dry_run: bool = True,
     limit: int | None = None,
     full: bool = False,
+    sample: int | None = None,
+    validate_only: bool = False,
 ) -> dict[str, Any]:
     """Run the corpus backfill.
 
@@ -89,10 +92,13 @@ def run_backfill(
         logger.error("Source corpus not found: %s", source_root)
         return {"error": "source_not_found"}
 
+    if validate_only:
+        dry_run = True
     checkpoint = _load_checkpoint() if not full else {"last_path": None, "processed": 0, "skipped": 0, "errors": 0}
     start_from = checkpoint.get("last_path")
 
     stats = {
+        "run_id": str(uuid4()),
         "total_files": 0,
         "processed": checkpoint.get("processed", 0),
         "skipped": checkpoint.get("skipped", 0),
@@ -102,15 +108,22 @@ def run_backfill(
         "budgets_created": 0,
         "projects_created": 0,
         "occurrences_created": 0,
+        "found": 0,
+        "linked_by_path": 0,
+        "linked_by_sha": 0,
+        "conflicts": 0,
+        "validate_only": validate_only,
     }
 
     logger.info("Starting backfill from %s (dry_run=%s, limit=%s)", source_root, dry_run, limit)
 
     db = SessionLocal() if not dry_run else None
     try:
-        for path in sorted(Path(source_root).rglob("*"), key=lambda candidate: str(candidate)):
-            if not path.is_file():
-                continue
+        files = (path for path in sorted(Path(source_root).rglob("*"), key=lambda candidate: str(candidate)) if path.is_file())
+        if sample is not None:
+            from itertools import islice
+            files = islice(files, max(0, sample))
+        for path in files:
 
             stats["total_files"] += 1
             source_path = str(path)
@@ -129,6 +142,7 @@ def run_backfill(
                 if not resolution.brand:
                     stats["skipped"] += 1
                     continue
+                stats["found"] += 1
 
                 if db:
                     # Create/find entities
@@ -168,6 +182,7 @@ def run_backfill(
                         continue
 
                     if existing_doc:
+                        stats["linked_by_path"] += 1
                         occ = DocumentOccurrence(
                             document_id=existing_doc.id,
                             source_path=source_path,
@@ -237,12 +252,17 @@ def main() -> None:
     parser.add_argument("--execute", action="store_true", help="Actually write to DB")
     parser.add_argument("--limit", type=int, help="Max files to process")
     parser.add_argument("--full", action="store_true", help="Ignore checkpoint, start fresh")
+    parser.add_argument("--sample", type=int, help="Deterministic number of corpus files to inspect")
+    parser.add_argument("--validate-only", action="store_true", help="Validate paths and counts without DB/checkpoint writes")
     args = parser.parse_args()
 
     dry_run = not args.execute
     logging.basicConfig(level=logging.INFO)
 
-    stats = run_backfill(dry_run=dry_run, limit=args.limit, full=args.full)
+    stats = run_backfill(
+        dry_run=dry_run, limit=args.limit, full=args.full,
+        sample=args.sample, validate_only=args.validate_only,
+    )
     print(json.dumps(stats, indent=2))
 
 
