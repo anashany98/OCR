@@ -101,7 +101,7 @@ export function GraphView({ graph, currentDocId }: { graph: DocumentGraph; curre
                         </div>
                         <p className="max-w-[100px] truncate text-[10px] font-medium text-[var(--text-primary)]">{connectedNode.filename}</p>
                         <p className="text-[9px] text-[var(--text-muted)]">{connectedNode.document_type}</p>
-                        {edge.label && <p className="max-w-[100px] truncate text-[9px] text-[var(--text-muted)] italic">"{edge.label}"</p>}
+                        {edge.label && <p className="max-w-[100px] truncate text-[9px] text-[var(--text-muted)] italic">&quot;{edge.label}&quot;</p>}
                       </Link>
                     </div>
                   )

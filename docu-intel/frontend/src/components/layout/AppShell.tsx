@@ -3,7 +3,6 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   ChevronDown,
-  Command as CommandIcon,
   FileText,
   LogOut,
   Search,
@@ -11,7 +10,6 @@ import {
 } from "lucide-react"
 
 import { api } from "@/api/client"
-import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { CommandPalette } from "@/components/layout/CommandPalette"

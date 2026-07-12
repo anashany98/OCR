@@ -77,8 +77,8 @@ export function LoginPage() {
           </p>
 
           <blockquote className="border-l-2 border-[var(--accent)] pl-5 text-[13px] italic text-white/70">
-            "Lo importante no es la cantidad de papel que entra, sino cuántos documentos se quedan
-            sin revisar."
+            &quot;Lo importante no es la cantidad de papel que entra, sino cuántos documentos se quedan
+            sin revisar.&quot;
             <footer className="mt-2 not-italic text-[11px] text-white/40">
               — principio de operación
             </footer>

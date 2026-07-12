@@ -20,7 +20,9 @@ function getInitialDensity(): Density {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved === "compact" || saved === "comfortable") return saved
-  } catch {}
+  } catch {
+    // Storage can be unavailable in private browsing contexts.
+  }
   return "comfortable"
 }
 
@@ -29,7 +31,9 @@ export function DensityProvider({ children }: { children: ReactNode }) {
 
   const setDensity = (d: Density) => {
     setDensityState(d)
-    try { localStorage.setItem(STORAGE_KEY, d) } catch {}
+    try { localStorage.setItem(STORAGE_KEY, d) } catch {
+      // Persistence is best-effort.
+    }
   }
 
   const toggleDensity = useCallback(() => {

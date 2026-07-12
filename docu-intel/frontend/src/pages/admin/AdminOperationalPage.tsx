@@ -1,4 +1,3 @@
-import { useConfirm } from "@/hooks/useConfirm"
 import {
   AlertsSection,
   AuditRelationsSection,

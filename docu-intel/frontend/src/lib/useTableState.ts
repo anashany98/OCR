@@ -18,7 +18,9 @@ export function useTableState(tableId: string, initialState?: TableState) {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) return { ...initialState, ...JSON.parse(saved) }
-    } catch {}
+    } catch {
+      // Ignore unavailable or malformed persisted state.
+    }
     return initialState ?? {}
   })
 
@@ -26,7 +28,9 @@ export function useTableState(tableId: string, initialState?: TableState) {
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(state))
-    } catch {}
+    } catch {
+      // Persistence is best-effort.
+    }
   }, [storageKey, state])
 
   const setSort = useCallback((sort: TableState["sort"]) => {
@@ -73,7 +77,9 @@ export function useTableState(tableId: string, initialState?: TableState) {
 
   const reset = useCallback(() => {
     setState(initialState ?? {})
-    try { localStorage.removeItem(storageKey) } catch {}
+    try { localStorage.removeItem(storageKey) } catch {
+      // Persistence is best-effort.
+    }
   }, [storageKey, initialState])
 
   return {

@@ -231,8 +231,6 @@ function IntegrationsView({
 /** F4b - Integrations admin sub-page. Lazy-loaded via the router. */
 export function AdminIntegrationsPage() {
   const { state, queries, mutations } = useAdminIntegrationsData()
-  const confirmAction = useConfirm()
-
   return (
     <IntegrationsView
       integrationClients={queries.integrationClients.data ?? []}

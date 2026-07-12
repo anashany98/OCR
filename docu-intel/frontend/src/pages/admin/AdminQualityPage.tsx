@@ -352,8 +352,6 @@ function QualityView({
 /** F4b - Quality admin sub-page. Lazy-loaded via the router. */
 export function AdminQualityPage() {
   const { state, queries, mutations, tenantAdminEnabled } = useAdminQualityData()
-  const confirmAction = useConfirm()
-
   return (
     <QualityView
       qualityRules={queries.qualityRules.data}
