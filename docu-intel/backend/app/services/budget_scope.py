@@ -276,6 +276,11 @@ def _clean_budget_code(value: str | None) -> str | None:
     candidate = value.strip().strip("/\\")
     if not candidate or "." in candidate:
         return None
+    # Budget identifiers in the source corpus commonly use ``YYYY/NNN``.
+    # This is an identifier, not a filesystem path, so accept that narrow
+    # numeric form while keeping arbitrary slash-containing values rejected.
+    if re.fullmatch(r"\d{4}/\d{1,115}", candidate):
+        return candidate
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{1,119}", candidate):
         return None
     return candidate
