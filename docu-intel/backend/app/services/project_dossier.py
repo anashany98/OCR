@@ -39,6 +39,7 @@ class ProjectDossier:
     description: str = ""
     # Documents
     total_documents: int = 0
+    occurrence_count: int = 0
     documents_by_category: dict[str, int] = field(default_factory=dict)
     # Financials
     budget_total: float | None = None
@@ -63,7 +64,7 @@ class ProjectDossier:
             "project": {"id": self.project_id, "name": self.project_name, "status": self.status},
             "identity": {"year": self.year, "brand": self.brand_name, "hotel": self.hotel_name},
             "description": {"text": self.description, "deterministic": True},
-            "documents": {"unique_documents": self.total_documents, "occurrences": self.total_documents, "by_category": self.documents_by_category},
+            "documents": {"unique_documents": self.total_documents, "occurrences": self.occurrence_count, "by_category": self.documents_by_category},
             "financials": {"totals": {"budget": self.budget_total, "orders": self.order_total, "invoices": self.invoice_total}},
             "people": {"count": self.participant_count},
             "communications": {"threads": self.thread_count, "messages": self.message_count},
@@ -148,7 +149,22 @@ def get_project_dossier(
         from app.models.tenant import Hotel
         hotel = db.get(Hotel, project.hotel_id)
 
-    # Count documents by category
+    # Resolve visible documents before calculating any aggregate.  An
+    # occurrence is a membership, while a document is the unique SHA-backed
+    # object; the dossier must report both without leaking another tenant's
+    # occurrence into its sums.
+    visible_document_ids = list(dict.fromkeys(db.scalars(
+        apply_access_predicates(
+            select(DocumentOccurrence.document_id)
+            .join(Document, DocumentOccurrence.document_id == Document.id)
+            .where(DocumentOccurrence.project_id == project_id),
+            access_scope,
+            document_column=Document.id,
+        )
+    ).all()))
+
+    # Count occurrences by category.  A source file can legitimately appear
+    # twice in a project, so this deliberately does not use DISTINCT here.
     occurrence_counts_stmt = (
         select(
             DocumentOccurrence.category,
@@ -162,32 +178,23 @@ def get_project_dossier(
         apply_access_predicates(occurrence_counts_stmt, access_scope, document_column=Document.id)
     ).all()
     docs_by_category = {cat: count for cat, count in occurrence_counts}
-    total_docs = sum(docs_by_category.values())
+    occurrence_count = sum(docs_by_category.values())
+    total_docs = len(visible_document_ids)
 
     # Financials from budget scope
     budget_total = None
     order_total = None
     invoice_total = None
-    visible_document_ids = list(db.scalars(
-        apply_access_predicates(
-            select(DocumentOccurrence.document_id)
-            .join(Document, DocumentOccurrence.document_id == Document.id)
-            .where(DocumentOccurrence.project_id == project_id),
-            access_scope,
-            document_column=Document.id,
-        )
-    ).all())
-    if project.primary_budget_scope_id and visible_document_ids:
-        from app.models.business import Budget, Invoice, Order
+    if visible_document_ids:
+        from app.models.business import Budget, Order
+        from app.models.professional import Invoice
         budget_row = db.scalar(
             select(func.sum(Budget.total_amount)).where(
-                Budget.budget_scope_id == project.primary_budget_scope_id,
                 Budget.document_id.in_(visible_document_ids),
             )
         )
         order_row = db.scalar(
             select(func.sum(Order.total_amount)).where(
-                Order.budget_scope_id == project.primary_budget_scope_id,
                 Order.document_id.in_(visible_document_ids),
             )
         )
@@ -257,6 +264,7 @@ def get_project_dossier(
             {"description": project.description}, access_scope.can_view_prices, access_scope.is_admin
         )["description"],
         total_documents=total_docs,
+        occurrence_count=occurrence_count,
         documents_by_category=docs_by_category,
         budget_total=budget_total if access_scope.can_view_prices else None,
         order_total=order_total if access_scope.can_view_prices else None,
@@ -364,7 +372,8 @@ def get_project_financials(db: Session, project_id: int, *, access_scope: Access
         raise ValueError(f"Project {project_id} not found")
     require_project_access(db, project, access_scope)
     ids = _visible_document_ids(db, project_id, access_scope)
-    from app.models.business import Budget, Invoice, Order
+    from app.models.business import Budget, Order
+    from app.models.professional import Invoice
     def rows(model, number_field: str) -> list[dict[str, Any]]:
         result = []
         for row in db.scalars(select(model).where(model.document_id.in_(ids))).all():
