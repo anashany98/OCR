@@ -538,7 +538,7 @@ class Settings(BaseSettings):
     # Master switch for the periodic engine-version sweep. Disabled by
     # default so deployments that have not migrated pick up no extra
     # work; set ``OCR_REPROCESS_ON_VERSION_DRIFT=true`` to enable.
-    ocr_reprocess_on_version_drift: bool = True
+    ocr_reprocess_on_version_drift: bool = False
 
     # =========================================================================
     # Hyper-Extract — optional structured-extraction layer on top of OCR
