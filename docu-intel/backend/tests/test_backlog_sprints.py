@@ -326,6 +326,7 @@ def test_ai_cache_key_includes_access_scope_signature():
 
 def test_backup_verification_script_accepts_manifest(tmp_path):
     import json
+    import shutil
     import subprocess
 
     script = Path(__file__).resolve().parents[2] / "scripts" / "verify-backup.ps1"
@@ -346,8 +347,12 @@ def test_backup_verification_script_accepts_manifest(tmp_path):
         encoding="utf-8",
     )
 
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("PowerShell is not installed")
+
     completed = subprocess.run(
-        ["pwsh", "-NoProfile", "-File", str(script), "-BackupDir", str(backup_dir), "-MinDumpBytes", "1024"],
+        [powershell, "-NoProfile", "-File", str(script), "-BackupDir", str(backup_dir), "-MinDumpBytes", "1024"],
         check=False,
         text=True,
         capture_output=True,
