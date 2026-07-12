@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.budget_scope import BudgetScope
@@ -322,26 +322,37 @@ def search_project_images(
         raise ValueError(f"Project {project_id} not found")
     require_project_access(db, project, access_scope)
     stmt = (
-        select(DocumentOccurrence, Document)
+        select(DocumentOccurrence, Document, ImageAnalysis)
         .join(Document, DocumentOccurrence.document_id == Document.id)
+        .outerjoin(ImageAnalysis, ImageAnalysis.document_id == Document.id)
         .where(
             DocumentOccurrence.project_id == project_id,
             DocumentOccurrence.category.in_(["imagenes", "fotos"]),
         )
     )
     if query:
-        stmt = stmt.where(Document.original_filename.ilike(f"%{query}%"))
+        pattern = f"%{query}%"
+        stmt = stmt.where(or_(
+            Document.original_filename.ilike(pattern),
+            ImageAnalysis.description.ilike(pattern),
+            ImageAnalysis.labels_json.cast(Text).ilike(pattern),
+            ImageAnalysis.room_or_zone.ilike(pattern),
+        ))
     stmt = apply_access_predicates(
         stmt, access_scope, document_column=Document.id
     ).order_by(DocumentOccurrence.last_seen_at.desc()).limit(limit)
 
     results = []
-    for occ, doc in db.execute(stmt).unique().all():
+    for occ, doc, analysis in db.execute(stmt).unique().all():
         results.append({
             "occurrence_id": occ.id,
             "document_id": doc.id,
             "filename": doc.original_filename,
             "source_path": occ.source_path if access_scope.is_admin else None,
+            "labels": analysis.labels_json if analysis else [],
+            "description": analysis.description if analysis else None,
+            "zone": analysis.room_or_zone if analysis else None,
+            "confidence": analysis.confidence if analysis else None,
         })
     return results
 
