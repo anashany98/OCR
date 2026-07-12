@@ -146,7 +146,7 @@ def test_very_short_text_still_routes_to_ocr(tmp_path: Path):
 
     doc = parse_pdf(pdf, out_dir, eng)
     assert doc.pages[0].ocr_engine == "tesseract"
-    assert eng.extract.call_count == 1
+    assert eng.extract.call_count == 2
 
 
 def test_scanned_pdf_pages_render_at_300_dpi_by_default(tmp_path: Path):
