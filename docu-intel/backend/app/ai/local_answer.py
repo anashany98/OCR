@@ -103,4 +103,8 @@ def _polish_answer_text(answer: str) -> str:
     import re
     # Remove markdown headers that LLMs sometimes add
     answer = re.sub(r"^#{1,3}\s+", "", answer, flags=re.MULTILINE)
+    # Some OpenAI-compatible local servers leak the streaming terminator
+    # into a non-streaming response. It is protocol metadata, never answer
+    # content, and may be attached directly to the final word.
+    answer = re.sub(r"\s*\[DONE\]\s*$", "", answer, flags=re.IGNORECASE)
     return answer.strip()

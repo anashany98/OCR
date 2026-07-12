@@ -99,11 +99,10 @@ MAX_CONTEXT_ITEMS = 14
 # dubious. Used both in the prompt marker and in the warning
 # builder.
 #
-# Restored to 0.70 (was 0.60): a 0.60 threshold missed genuinely
-# dubious OCR (mid-confidence scans with garbled tokens that the LLM
-# then presented as fact). 0.70 surfaces those readings so the answer
-# can carry an "[OCR DUDOSO]" caveat.
-LOW_OCR_CONFIDENCE_THRESHOLD = 0.70
+# Keep the user-visible caveat aligned with the central quality and
+# reprocessing policy.  A page at 0.60 is still usable context; only lower
+# confidence is marked as dubious for the answer model.
+LOW_OCR_CONFIDENCE_THRESHOLD = settings.low_ocr_confidence_threshold
 
 # Tag inserted into the context line when an item is below the OCR
 # confidence threshold. The LLM prompt is told to warn the user
