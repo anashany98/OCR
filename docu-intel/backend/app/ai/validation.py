@@ -225,7 +225,7 @@ _DOC_NUMBER_PATTERN = re.compile(
 # numbers, ZIP codes or generic IDs.
 _DOC_NUMBER_WITH_CONTEXT = re.compile(
     r"""
-    (?:nº|n[°o]|num(?:ero)?|factura|presupuesto|pedido|albarán|albaran|
+    (?<!\w)(?:nº|n[°o]|num(?:ero)?|factura|presupuesto|pedido|albarán|albaran|
      expediente|reference|ref\.?)
     \s*[:#:;\-]?\s*
     (\d{4,10})
@@ -258,7 +258,7 @@ _AMOUNT_PATTERN = re.compile(
         # avoid IDs and codes)
         \d{4,}(?:[.,]\d{1,2})?
     )
-    (?!\w)                                     # allow sentence punctuation after amount
+    (?![\w-])                                  # not the leading part of a hyphenated identifier
     """,
     re.VERBOSE | re.IGNORECASE,
 )
