@@ -21,6 +21,10 @@ def test_search_semantic_uses_query_embedding_role(monkeypatch):
             assert query_embedding == [0.4, 0.3, 0.2, 0.1]
             return []
 
+        def search_documents(self, db, *, query_embedding, limit, filters):
+            assert query_embedding == [0.4, 0.3, 0.2, 0.1]
+            return []
+
     monkeypatch.setattr(search_service.cache_service, "get", lambda key: None)
     monkeypatch.setattr(search_service.cache_service, "set", lambda key, value, ttl_seconds: True)
     monkeypatch.setattr(search_service, "_is_postgres", lambda db: True)
