@@ -47,6 +47,14 @@ def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, b
     """
     if not texts:
         return []
+    # Keep the public ``document_service`` facade patchable for callers and
+    # tests without reintroducing an import cycle.  When it exposes an
+    # explicit replacement, delegate once; the identity guard prevents the
+    # normal re-export from recursing back into this function.
+    facade = sys.modules.get("app.services.document_service")
+    override = getattr(facade, "embed_many_with_metadata", None) if facade else None
+    if override is not None and override is not embed_many_with_metadata:
+        return override(texts)
     try:
         embeddings = embed_many(texts)
     except EmbeddingProviderError as exc:
