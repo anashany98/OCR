@@ -67,8 +67,10 @@ def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, b
         return [(None, "failed", True) for _ in texts]
 
     provider = settings.embedding_provider.lower().strip() or "local_hash"
-    fallback = provider in {"local", "local_hash"}
-    return [(embedding, provider, fallback) for embedding in embeddings]
+    # ``local_hash`` is an explicit configured provider, not an emergency
+    # fallback. A successfully generated vector must therefore clear the
+    # re-embed queue; only an actual provider error above marks it pending.
+    return [(embedding, provider, False) for embedding in embeddings]
 
 
 def _truncate_to_token_budget(text: str, max_tokens: int) -> str:
