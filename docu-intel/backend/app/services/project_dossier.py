@@ -386,3 +386,54 @@ def _visible_document_ids(db: Session, project_id: int, scope: AccessScope) -> l
 def _sum_amounts(rows: list[dict[str, Any]]) -> float | None:
     amounts = [row["total"] for row in rows if row["total"] is not None]
     return round(sum(amounts), 2) if amounts else None
+
+
+def get_project_people(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
+    from app.models.communication import Contact, ProjectParticipant
+    stmt = select(ProjectParticipant, Contact).outerjoin(Contact, ProjectParticipant.contact_id == Contact.id).where(ProjectParticipant.project_id == project_id)
+    people = []
+    for participant, contact in db.execute(stmt).all():
+        payload = redact_for_scope({"name": contact.name if contact else None, "email": contact.email if contact else participant.email, "phone": contact.phone if contact else None}, access_scope.can_view_prices, access_scope.is_admin)
+        people.append({**payload, "role": participant.role, "confidence": participant.role_confidence, "source": {"project_id": project_id}})
+    return people
+
+
+def get_project_communications(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
+    ids = _visible_document_ids(db, project_id, access_scope)
+    from app.models.communication import CommunicationMessage, CommunicationThread
+    stmt = select(CommunicationMessage, CommunicationThread).join(CommunicationThread).where(CommunicationThread.project_id == project_id, CommunicationMessage.document_id.in_(ids)).order_by(CommunicationMessage.sent_at)
+    out = []
+    for message, thread in db.execute(stmt).all():
+        payload = redact_for_scope({"subject": message.subject, "from": message.from_email, "body": message.body_text}, access_scope.can_view_prices, access_scope.is_admin)
+        out.append({"thread_id": thread.id, "message_id": message.id, "sent_at": str(message.sent_at) if message.sent_at else None, **payload, "source_document_id": message.document_id})
+    return out
+
+
+def get_project_issues(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
+    ids = _visible_document_ids(db, project_id, access_scope)
+    from app.models.communication import ProjectIssue
+    rows = db.scalars(select(ProjectIssue).where(ProjectIssue.project_id == project_id, ProjectIssue.source_document_id.in_(ids)).order_by(ProjectIssue.created_at)).all()
+    return [{"id": row.id, "title": row.title, "description": redact_for_scope({"description": row.description}, access_scope.can_view_prices, access_scope.is_admin)["description"], "severity": row.severity, "status": row.status, "source_document_id": row.source_document_id} for row in rows]
+
+
+def get_project_timeline(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
+    ids = _visible_document_ids(db, project_id, access_scope)
+    from app.models.communication import ProjectEvent
+    rows = db.scalars(select(ProjectEvent).where(ProjectEvent.project_id == project_id, ProjectEvent.source_document_id.in_(ids)).order_by(ProjectEvent.event_date, ProjectEvent.created_at)).all()
+    return [{"type": row.event_type, "title": row.title, "date": str(row.event_date or row.created_at), "source_document_id": row.source_document_id, "source_message_id": row.source_message_id} for row in rows]
