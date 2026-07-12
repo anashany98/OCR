@@ -111,10 +111,12 @@ def test_cascading_factory_reuses_single_engine_instance(monkeypatch):
     tesseract_module.TesseractOCREngine = _FakeTesseract
     paddle_module = ModuleType("app.ocr.paddle")
     paddle_module.PaddleOCREngine = _FakePaddle
+    paddle_module._get_gpu_device = lambda: None
     monkeypatch.setitem(sys.modules, "app.ocr.tesseract", tesseract_module)
     monkeypatch.setitem(sys.modules, "app.ocr.paddle", paddle_module)
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", False)
+    monkeypatch.setattr(settings, "paddleocr_gpu_only", False)
     factory.get_ocr_engine_class.cache_clear()
     if hasattr(factory, "clear_ocr_engine_cache"):
         factory.clear_ocr_engine_cache()

@@ -208,6 +208,8 @@ class TestExercise:
 
         engine = MagicMock()
         engine.name = "fake"
+        engine.primary = None
+        engine.fallback = None
         engine.extract.return_value = MagicMock(text="ok", confidence=0.5)
         factory_module._exercise(engine)
         engine.extract.assert_called_once()

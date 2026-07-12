@@ -281,6 +281,37 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
         logger.error("OCR engine warmup failed (best-effort)", exc_info=True)
         _mark_warmup_failed(engine)
 
+    # CR10: Track which OCR tiers are available after warmup.
+    from app.services.metrics.ocr import set_ocr_tier_available
+
+    # Check primary engine (always available if warmup succeeded)
+    primary_ok = not getattr(engine, "_init_failed", False)
+    set_ocr_tier_available("tesseract", primary_ok)
+
+    # Check fallback (PaddleOCR)
+    fallback = getattr(engine, "fallback", None)
+    if fallback is not None:
+        fallback_ok = not getattr(fallback, "_init_failed", False)
+        set_ocr_tier_available("paddleocr", fallback_ok)
+    else:
+        set_ocr_tier_available("paddleocr", False)
+
+    # Check PP-Structure
+    pp = getattr(engine, "pp_structure", None)
+    if pp is not None:
+        pp_ok = not getattr(pp, "_init_failed", False)
+        set_ocr_tier_available("pp_structure", pp_ok)
+    else:
+        set_ocr_tier_available("pp_structure", False)
+
+    # Check VLM OCR
+    vlm = getattr(engine, "vlm_ocr", None)
+    if vlm is not None:
+        vlm_ok = not getattr(vlm, "_init_failed", False)
+        set_ocr_tier_available("vlm", vlm_ok)
+    else:
+        set_ocr_tier_available("vlm", False)
+
 
 def _mark_warmup_failed(engine: BaseOCREngine) -> None:
     """Flag an engine and its sub-engines as unavailable after a failed
@@ -412,8 +443,12 @@ def _exercise(engine: BaseOCREngine) -> None:
         cv2.imwrite(str(image_path), img)
         # Exercise only the OCR tiers (1-3), skip Tier 4 (VLM)
         # to avoid blocking the worker boot.
-        if getattr(engine, "primary", None) is not None:
-            engine.primary.extract(image_path)
+        primary = getattr(engine, "primary", None)
+        if primary is not None:
+            primary.extract(image_path)
+        else:
+            # Standalone configured engines do not expose cascade tiers.
+            engine.extract(image_path)
         if getattr(engine, "fallback", None) is not None:
             engine.fallback.extract(image_path)
     except Exception as exc:

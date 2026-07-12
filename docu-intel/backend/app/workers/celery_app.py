@@ -128,14 +128,11 @@ def preload_worker_ocr_engine(**_kwargs) -> None:
         # worker must not be blocked forever. Also skip Tier 4
         # warmup entirely to avoid blocking on vision model loading.
         def _warmup():
-            from app.ocr.factory import get_ocr_engine
-            engine = get_ocr_engine()
-            # Only warm up Tesseract and PaddleOCR (Tiers 1-2),
-            # skip Tier 4 (VLM) to avoid blocking on model loading.
-            if hasattr(engine, "primary"):
-                engine.primary.extract(Path("/dev/null") if Path("/dev/null").exists() else Path(__file__))
-            if hasattr(engine, "fallback"):
-                engine.fallback.extract(Path("/dev/null") if Path("/dev/null").exists() else Path(__file__))
+            from app.ocr.factory import preload_ocr_engine
+
+            # Keep worker boot aligned with the factory's single, tested
+            # warmup contract (including its best-effort synthetic exercise).
+            preload_ocr_engine()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(_warmup)
@@ -143,8 +140,10 @@ def preload_worker_ocr_engine(**_kwargs) -> None:
                 future.result(timeout=120)
             except concurrent.futures.TimeoutError:
                 logger.warning("OCR warmup timed out after 120s — continuing (models load lazily)")
-            except Exception as exc:
-                logger.warning("OCR warmup failed (continuing): %s", exc)
+            except Exception:
+                # Let the outer handler record the stack trace and metric;
+                # it still keeps the worker process alive after reporting.
+                raise
     except Exception:
         # OCR-INIT-1: preserve the full stack trace (no more
         # ``logger.warning(exc)`` swallowing the chain) and emit
