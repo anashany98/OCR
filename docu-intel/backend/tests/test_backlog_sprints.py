@@ -132,7 +132,7 @@ def test_register_upload_rejects_files_over_configured_limit(tmp_path, monkeypat
             )
 
 
-def test_file_security_validates_magic_signatures_and_blocks_office_docs(tmp_path, monkeypatch):
+def test_file_security_validates_magic_signatures_and_permits_safe_office_docs(tmp_path, monkeypatch):
     from app.services.file_security import inspect_file_for_ingestion
 
     monkeypatch.setattr(settings, "allowed_file_extensions", [".pdf", ".png", ".jpg", ".xlsx", ".docx"])
@@ -142,7 +142,9 @@ def test_file_security_validates_magic_signatures_and_blocks_office_docs(tmp_pat
     docx.write_bytes(b"PK\x03\x04fake office document")
 
     assert inspect_file_for_ingestion(fake_pdf).reason == "invalid_pdf_signature"
-    assert inspect_file_for_ingestion(docx).reason == "office_document_blocked"
+    # .docx is parsed by the supported document pipeline. Macro-enabled
+    # formats remain blocked and ZIP contents are inspected separately.
+    assert inspect_file_for_ingestion(docx).allowed is True
 
 
 def test_parser_limits_reject_huge_images_and_excel(monkeypatch, tmp_path):
