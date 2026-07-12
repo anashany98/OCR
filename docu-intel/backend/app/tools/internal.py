@@ -56,6 +56,18 @@ from app.tools.plans import (  # noqa: F401
     search_plans,
 )
 from app.tools.search import hybrid_search, search_entities  # noqa: F401
+from app.services.project_dossier import (  # noqa: F401
+    get_project_dossier,
+    get_project_financials,
+    get_project_products,
+    get_project_people,
+    get_project_communications,
+    get_project_issues,
+    get_project_timeline,
+    list_project_documents,
+    resolve_project,
+    search_project_images,
+)
 from app.tools.shipping import (  # noqa: F401
     SHIPPING_KEYWORDS,
     find_delivery_note_in_scope,
