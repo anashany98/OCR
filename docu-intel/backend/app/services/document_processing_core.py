@@ -824,6 +824,15 @@ def _apply_classification_and_extraction(
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
     plan_result = _get_effective_persist_plan_extraction()(db, document, text)
+    if document.document_type in {"plano", "memoria_descriptiva", "memoria_constructiva", "mediciones_obra"}:
+        try:
+            from app.services.technical_pipeline import process_technical_document
+            process_technical_document(
+                db, document.id, text, document.original_filename,
+                document.document_type, blocks=pages,
+            )
+        except Exception:
+            logger.exception("technical_pipeline_failed document_id=%s", document.id)
     track_stage_duration("extraction", time.perf_counter() - t_extract)
 
     quality = _get_effective_evaluate_document_quality()(
