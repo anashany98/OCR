@@ -124,7 +124,7 @@ def test_prepare_document_chunks_can_rebuild_from_existing_page_text(monkeypatch
     assert calls and "ABC123" in calls[0][0]
 
 
-def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
+def test_worker_notifies_immediately_for_permanent_failures(monkeypatch):
     from app.workers import tasks as worker_tasks
 
     notifications: list[tuple[int, int, str]] = []
@@ -138,6 +138,9 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
             pass
 
         def commit(self):
+            pass
+
+        def add(self, item):
             pass
 
         def close(self):
@@ -158,21 +161,21 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
     worker_tasks.process_document_task.request.retries = 1
     try:
         worker_tasks.process_document_task.run(12, 34)
-    except RuntimeError:
-        pass
+    except Exception as exc:
+        assert exc.__class__.__name__ == "Reject"
     else:
         raise AssertionError("task should re-raise processing failures")
 
     worker_tasks.process_document_task.request.retries = worker_tasks.process_document_task.max_retries
     try:
         worker_tasks.process_document_task.run(12, 34)
-    except RuntimeError:
-        pass
+    except Exception as exc:
+        assert exc.__class__.__name__ == "Reject"
     else:
         raise AssertionError("task should re-raise processing failures")
 
     assert calls == [False, True]
-    assert notifications == [(34, 12, "boom")]
+    assert notifications == [(34, 12, "boom"), (34, 12, "boom")]
 
 
 def test_process_document_intermediate_retry_does_not_mark_final_failure_or_emit_webhook(monkeypatch):
