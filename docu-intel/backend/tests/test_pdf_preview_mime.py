@@ -70,7 +70,7 @@ def test_picks_image_jpeg_for_dot_jpg():
     # only cares that ``FileResponse`` is called with the right
     # ``media_type`` argument.
     with pytest.MonkeyPatch.context() as m:
-        m.setattr("fastapi.responses.FileResponse", fake_fileresponse)
+        m.setattr("app.api.routes.documents.FileResponse", fake_fileresponse)
         m.setattr(fake_db, "get", lambda *_a, **_k: fake_doc)
         # The route also calls can_access_document — patch it to
         # bypass the access check.
@@ -118,7 +118,7 @@ def test_picks_image_jpeg_for_dot_jpeg():
     fake_db = MagicMock()
 
     with pytest.MonkeyPatch.context() as m:
-        m.setattr("fastapi.responses.FileResponse", fake_fileresponse)
+        m.setattr("app.api.routes.documents.FileResponse", fake_fileresponse)
         m.setattr(fake_db, "get", lambda *_a, **_k: fake_doc)
         m.setattr(
             "app.api.routes.documents.can_access_document",
@@ -163,7 +163,7 @@ def test_picks_image_png_for_dot_png():
     fake_db = MagicMock()
 
     with pytest.MonkeyPatch.context() as m:
-        m.setattr("fastapi.responses.FileResponse", fake_fileresponse)
+        m.setattr("app.api.routes.documents.FileResponse", fake_fileresponse)
         m.setattr(fake_db, "get", lambda *_a, **_k: fake_doc)
         m.setattr(
             "app.api.routes.documents.can_access_document",
