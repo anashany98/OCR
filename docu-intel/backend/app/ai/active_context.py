@@ -374,6 +374,28 @@ def persist_context_after_answer(
             from app.tools import internal
 
             resolved_doc_payload = internal.get_document_full_details(db, resolved_doc_id)
+        resolved_project: dict | None = None
+        if resolved_doc_id is not None:
+            from app.models.project import DocumentOccurrence, Project
+
+            occurrences = list(db.scalars(
+                select(DocumentOccurrence)
+                .where(DocumentOccurrence.document_id == resolved_doc_id)
+                .where(DocumentOccurrence.project_id.is_not(None))
+                .order_by(DocumentOccurrence.id)
+            ).all())
+            # A document shared by several projects is intentionally
+            # ambiguous: never select one silently for a follow-up.
+            if len(occurrences) == 1:
+                project = db.get(Project, occurrences[0].project_id)
+                if project:
+                    resolved_project = {
+                        "id": project.id,
+                        "name": project.name,
+                        "brand_id": project.brand_id,
+                        "hotel_id": project.hotel_id,
+                        "budget_scope_id": occurrences[0].budget_scope_id,
+                    }
         update_after_answer(
             ctx,
             intent=intent,
@@ -393,6 +415,7 @@ def persist_context_after_answer(
                 if resolved_doc_payload
                 else None
             ),
+            resolved_project=resolved_project,
             retrieved_document_ids=[getattr(src, "document_id", None) for src in context_items],
         )
         save_active_context(db, user, session_id, ctx)

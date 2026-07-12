@@ -61,7 +61,11 @@ function loadConversations(): Conversation[] {
     const raw = localStorage.getItem(CONVERSATIONS_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed
+      if (Array.isArray(parsed)) {
+        // Local storage deliberately holds metadata only. Rehydrate a safe
+        // empty message array until server-side history is requested.
+        return parsed.map((conversation) => ({ ...conversation, messages: [] }))
+      }
     }
   } catch { /* ignore */ }
   return []
