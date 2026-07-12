@@ -71,7 +71,7 @@ def test_picks_image_jpeg_for_dot_jpg():
     # ``media_type`` argument.
     with pytest.MonkeyPatch.context() as m:
         m.setattr("fastapi.responses.FileResponse", fake_fileresponse)
-        m.setattr("app.api.routes.documents.db.get", lambda *_a, **_k: fake_doc, raising=False)
+        m.setattr(fake_db, "get", lambda *_a, **_k: fake_doc)
         # The route also calls can_access_document — patch it to
         # bypass the access check.
         m.setattr(
@@ -85,7 +85,7 @@ def test_picks_image_jpeg_for_dot_jpg():
             raising=False,
         )
         # The page lookup uses ``db.scalar`` — patch it.
-        m.setattr("app.api.routes.documents.db.scalar", lambda *_a, **_k: fake_page, raising=False)
+        m.setattr(fake_db, "scalar", lambda *_a, **_k: fake_page)
         # The path resolver returns our fake path.
         m.setattr(
             "app.api.routes.documents._resolve_files_dir_path",
@@ -115,10 +115,11 @@ def test_picks_image_jpeg_for_dot_jpeg():
     fake_path = _FakePath(".jpeg")
     fake_doc = MagicMock(id=1, source_path="/data/files/x.jpeg")
     fake_page = MagicMock(image_path="/data/files/x.jpeg")
+    fake_db = MagicMock()
 
     with pytest.MonkeyPatch.context() as m:
         m.setattr("fastapi.responses.FileResponse", fake_fileresponse)
-        m.setattr("app.api.routes.documents.db.get", lambda *_a, **_k: fake_doc, raising=False)
+        m.setattr(fake_db, "get", lambda *_a, **_k: fake_doc)
         m.setattr(
             "app.api.routes.documents.can_access_document",
             lambda *_a, **_k: True,
@@ -129,7 +130,7 @@ def test_picks_image_jpeg_for_dot_jpeg():
             lambda *_a, **_k: MagicMock(),
             raising=False,
         )
-        m.setattr("app.api.routes.documents.db.scalar", lambda *_a, **_k: fake_page, raising=False)
+        m.setattr(fake_db, "scalar", lambda *_a, **_k: fake_page)
         m.setattr(
             "app.api.routes.documents._resolve_files_dir_path",
             lambda *_a, **_k: fake_path,
@@ -138,7 +139,7 @@ def test_picks_image_jpeg_for_dot_jpeg():
         get_document_page_image(
             document_id=1,
             page_number=1,
-            db=MagicMock(),
+            db=fake_db,
             user=MagicMock(),
         )
 
@@ -159,10 +160,11 @@ def test_picks_image_png_for_dot_png():
     fake_path = _FakePath(".png")
     fake_doc = MagicMock(id=1, source_path="/data/files/x.png")
     fake_page = MagicMock(image_path="/data/files/x.png")
+    fake_db = MagicMock()
 
     with pytest.MonkeyPatch.context() as m:
         m.setattr("fastapi.responses.FileResponse", fake_fileresponse)
-        m.setattr("app.api.routes.documents.db.get", lambda *_a, **_k: fake_doc, raising=False)
+        m.setattr(fake_db, "get", lambda *_a, **_k: fake_doc)
         m.setattr(
             "app.api.routes.documents.can_access_document",
             lambda *_a, **_k: True,
@@ -173,7 +175,7 @@ def test_picks_image_png_for_dot_png():
             lambda *_a, **_k: MagicMock(),
             raising=False,
         )
-        m.setattr("app.api.routes.documents.db.scalar", lambda *_a, **_k: fake_page, raising=False)
+        m.setattr(fake_db, "scalar", lambda *_a, **_k: fake_page)
         m.setattr(
             "app.api.routes.documents._resolve_files_dir_path",
             lambda *_a, **_k: fake_path,
@@ -182,7 +184,7 @@ def test_picks_image_png_for_dot_png():
         get_document_page_image(
             document_id=1,
             page_number=1,
-            db=MagicMock(),
+            db=fake_db,
             user=MagicMock(),
         )
 
@@ -197,9 +199,10 @@ def test_no_filename_means_404():
 
     fake_doc = MagicMock(id=1, source_path="/data/files/x.pdf")
     fake_page = MagicMock(image_path=None)  # no preview
+    fake_db = MagicMock()
 
     with pytest.MonkeyPatch.context() as m:
-        m.setattr("app.api.routes.documents.db.get", lambda *_a, **_k: fake_doc, raising=False)
+        m.setattr(fake_db, "get", lambda *_a, **_k: fake_doc)
         m.setattr(
             "app.api.routes.documents.can_access_document",
             lambda *_a, **_k: True,
@@ -210,12 +213,12 @@ def test_no_filename_means_404():
             lambda *_a, **_k: MagicMock(),
             raising=False,
         )
-        m.setattr("app.api.routes.documents.db.scalar", lambda *_a, **_k: fake_page, raising=False)
+        m.setattr(fake_db, "scalar", lambda *_a, **_k: fake_page)
         with pytest.raises(HTTPException) as excinfo:
             get_document_page_image(
                 document_id=1,
                 page_number=1,
-                db=MagicMock(),
+                db=fake_db,
                 user=MagicMock(),
             )
     assert excinfo.value.status_code == 404
