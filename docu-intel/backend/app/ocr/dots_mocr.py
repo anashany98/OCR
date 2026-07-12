@@ -172,6 +172,9 @@ class DotsMOCREngine:
             ],
             "max_tokens": 4000,
             "temperature": 0.0,
+            # Kept for the native DotsMOCR endpoint; OpenAI-compatible
+            # adapters simply ignore it.
+            "image_base64": image_b64,
         }
         headers = (
             {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else None
@@ -191,6 +194,8 @@ class DotsMOCREngine:
                 msg = choices[0].get("message") or {}
                 text = str(msg.get("content") or "").strip()
         except (AttributeError, IndexError):
+            pass
+        if not text:
             text = str(data.get("text") or data.get("content") or "").strip()
 
         confidence = _coerce_confidence(data.get("confidence"))
