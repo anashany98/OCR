@@ -158,7 +158,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
+        - celery -A app.workers.celery_app.celery_app inspect ping -t 5 -d worker-heavy@$$(hostname) 2>/dev/null | grep -q pong || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
