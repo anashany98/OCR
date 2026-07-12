@@ -343,6 +343,13 @@ def classify_document(
             scores[doc_type] = scores.get(doc_type, 0) + 0.55
             matches.setdefault(doc_type, []).append(f"folder:{folder}")
 
+    # A dedicated confection folder is a strong operational signal. These
+    # sheets naturally contain dimensions, so generic measurement vocabulary
+    # must not reclassify them as a croquis.
+    if re.search(r"(^|/|\\)confeccion($|/|\\)", normalized_path):
+        scores["hoja_confeccion"] = scores.get("hoja_confeccion", 0) + 1.10
+        matches.setdefault("hoja_confeccion", []).append("folder:confeccion")
+
     # --- Phase 4: Plan detection (with image guard) ---
     if re.search(r"(^|/|\\)planos($|/|\\)", normalized_path) and _has_strong_plan_signal(
         normalized_filename, normalized_text, extension,
