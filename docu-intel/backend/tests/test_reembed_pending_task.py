@@ -299,7 +299,7 @@ def test_reembed_task_ignores_pending_and_duplicate_documents():
         ok_id = _make_document(db, document_id_seed=23, status="processed", has_needing_chunk=True)
 
         rows = _select_reembed_candidates(db, limit=50)
-        ids = [document.id for document, _ in rows]
+        ids = [document.id for document, *_reasons in rows]
         assert ok_id in ids
         assert 20 not in ids
         assert 21 not in ids
