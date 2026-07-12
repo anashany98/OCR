@@ -15,6 +15,7 @@ def test_local_embedding_is_1024_dimensional_and_semantically_useful():
 
 def test_search_semantic_uses_query_embedding_role(monkeypatch):
     calls: list[str] = []
+    monkeypatch.setattr(search_service.settings, "search_use_query_transformer", False)
 
     class _FakePgvectorStore:
         def search(self, db, *, query_embedding, limit, filters):
