@@ -18,7 +18,20 @@ New-Item -ItemType Directory -Force -Path $ArtifactsDirectory | Out-Null
 $StatePath = Join-Path $ArtifactsDirectory "state.json"
 
 if ($Resume -and (Test-Path $StatePath)) {
-    $State = Get-Content -Raw -Path $StatePath | ConvertFrom-Json -AsHashtable
+    # Keep the runner compatible with Windows PowerShell 5.1 as well as
+    # PowerShell 7: ``ConvertFrom-Json -AsHashtable`` only exists in PS 6+.
+    $Previous = Get-Content -Raw -Path $StatePath | ConvertFrom-Json
+    $State = @{
+        run_id = [string]$Previous.run_id
+        started_at = [string]$Previous.started_at
+        stages = @{}
+    }
+    foreach ($Property in $Previous.stages.PSObject.Properties) {
+        $State.stages[$Property.Name] = @{
+            status = [string]$Property.Value.status
+            log = [string]$Property.Value.log
+        }
+    }
 } else {
     $State = @{
         run_id = "terra-cert-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))"
@@ -70,18 +83,36 @@ function Invoke-CertificationStage {
 
 function Invoke-Docker {
     param([Parameter(Mandatory)][string[]]$Arguments)
-    & docker @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "docker $($Arguments -join ' ') exited with $LASTEXITCODE"
+    Invoke-External "docker" $Arguments
+}
+
+function Invoke-External {
+    param(
+        [Parameter(Mandatory)][string]$File,
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
+    # Windows PowerShell 5.1 turns native stderr into a terminating error
+    # under ``ErrorActionPreference=Stop`` even when the process exited 0.
+    # Preserve the process exit code as the contract instead.
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $File @Arguments
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($ExitCode -ne 0) {
+        throw "$File $($Arguments -join ' ') exited with $ExitCode"
     }
 }
 
 Invoke-CertificationStage "baseline" {
-    git diff --check
-    python -m compileall -q backend/app
+    Invoke-External "git" @("diff", "--check")
+    Invoke-External "python" @("-m", "compileall", "-q", "backend/app")
     Push-Location backend
     try {
-        python -m pytest -q tests/test_project_path_resolver.py tests/test_classification.py tests/test_mass_ingestion.py
+        Invoke-External "python" @("-m", "pytest", "-q", "tests/test_project_path_resolver.py", "tests/test_classification.py", "tests/test_mass_ingestion.py")
     } finally {
         Pop-Location
     }
@@ -90,7 +121,7 @@ Invoke-CertificationStage "baseline" {
 Invoke-CertificationStage "tenant-isolation" {
     Push-Location backend
     try {
-        python -m pytest -q tests/test_tenant_deny_by_default.py tests/test_tenant_deny_by_default_exhaustive.py tests/test_tenant_access.py
+        Invoke-External "python" @("-m", "pytest", "-q", "tests/test_tenant_deny_by_default.py", "tests/test_tenant_deny_by_default_exhaustive.py", "tests/test_tenant_access.py")
     } finally {
         Pop-Location
     }
@@ -99,19 +130,19 @@ Invoke-CertificationStage "tenant-isolation" {
 Invoke-CertificationStage "backend-suite" {
     Push-Location backend
     try {
-        python -m pytest -q tests
+        Invoke-External "python" @("-m", "pytest", "-q", "tests")
     } finally {
         Pop-Location
     }
 }
 
 if (-not $SkipFrontend) {
-    Invoke-CertificationStage "frontend-build" { npm --prefix frontend run build }
-    Invoke-CertificationStage "frontend-tests" { npm --prefix frontend run test }
+    Invoke-CertificationStage "frontend-build" { Invoke-External "npm" @("--prefix", "frontend", "run", "build") }
+    Invoke-CertificationStage "frontend-tests" { Invoke-External "npm" @("--prefix", "frontend", "run", "test") }
 }
 
 if (-not $SkipDocker) {
-    $TemporaryDatabase = "$($State.run_id -replace '[^a-zA-Z0-9_]', '_').ToLowerInvariant()"
+    $TemporaryDatabase = ("$($State.run_id -replace '[^a-zA-Z0-9_]', '_')").ToLowerInvariant()
     if ($TemporaryDatabase -notmatch '^terra_cert_[a-z0-9_]+$') {
         throw "Refusing to use unsafe temporary database name: $TemporaryDatabase"
     }

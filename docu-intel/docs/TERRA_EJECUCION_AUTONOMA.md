@@ -5,13 +5,13 @@
 ## Ejecucion normal
 
 ```powershell
-pwsh -File scripts/terra_certify.ps1
+powershell -NoProfile -File scripts/terra_certify.ps1
 ```
 
 Si una etapa falla, se conserva `state.json` y su log. Tras corregir el problema, reanudar sin repetir las que ya pasaron:
 
 ```powershell
-pwsh -File scripts/terra_certify.ps1 -Resume
+powershell -NoProfile -File scripts/terra_certify.ps1 -Resume
 ```
 
 Opciones intencionadas:

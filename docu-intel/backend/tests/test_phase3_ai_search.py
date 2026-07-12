@@ -4,7 +4,13 @@ from app.services import search_service
 from app.services.search_service import SearchResult, merge_hybrid_results
 
 
-def test_local_embedding_is_1024_dimensional_and_semantically_useful():
+def test_local_embedding_is_1024_dimensional_and_semantically_useful(monkeypatch):
+    # This is an offline unit contract; it must not depend on a running
+    # OpenAI-compatible embedding server from the developer environment.
+    from app.services import embeddings
+
+    monkeypatch.setattr(embeddings.settings, "embedding_provider", "local_hash")
+    monkeypatch.setattr(embeddings.settings, "embedding_dimensions", 1024)
     query_vector = embed_text("pedido referencia ABC123")
     related_vector = embed_text("Lineas del pedido con referencia ABC123")
     unrelated_vector = embed_text("plano salon escala y superficie")

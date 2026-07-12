@@ -7,6 +7,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from app.core.config import settings
 settings.database_url = "sqlite+pysqlite:///:memory:"
+# Performance tests use synthetic vectors and must not issue network requests
+# to an operator's embedding service.
+settings.embedding_provider = "local_hash"
+settings.embedding_dimensions = 1024
 from app.database.base import Base
 from app.models import Document, ExtractionJob, DocumentPage, DocumentBlock, DocumentChunk, Budget, ExtractionJob
 from app.services.search_service import search_text, search_semantic, search_hybrid

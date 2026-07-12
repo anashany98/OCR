@@ -20,6 +20,12 @@ def test_ocr_runtime_pins_numpy_to_numpy_one_abi():
 def test_paddleocr_initialization_runs_inside_process_lock(monkeypatch):
     from app.ocr import paddle
 
+    # A preceding timeout test may intentionally poison the process-level
+    # circuit breaker.  This unit tests the successful constructor path, so
+    # isolate that mutable process state explicitly.
+    monkeypatch.setattr(paddle, "_PROCESS_INIT_FAILED", False)
+    monkeypatch.setattr(paddle, "_PROCESS_INIT_FAILED_AT", 0.0)
+
     events: list[str] = []
     kwargs_seen: list[dict] = []
 
