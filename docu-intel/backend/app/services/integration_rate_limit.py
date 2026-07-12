@@ -43,8 +43,17 @@ def enforce_integration_rate_limit(*, client_id: int, technician_id: str) -> Non
         # ``EVALSHA`` on subsequent calls (no payload shipping
         # after the first invocation) which is the recommended
         # pattern in the redis-py docs.
-        incr = cache_service.client.register_script(_LUA_INCR_WITH_TTL)
-        count = int(incr(keys=[key], args=[60]))
+        client = cache_service.client
+        if hasattr(client, "register_script"):
+            incr = client.register_script(_LUA_INCR_WITH_TTL)
+            count = int(incr(keys=[key], args=[60]))
+        else:
+            # Minimal Redis-compatible clients used by embedded deployments
+            # and tests may not implement Lua registration. Preserve the
+            # same first-hit TTL semantics as a best-effort fallback.
+            count = int(client.incr(key))
+            if count == 1:
+                client.expire(key, 60)
     except Exception:
         # Fail open: we do not want a Redis blip to lock out a paying
         # integration client. Operators see the log line in Sentry.
