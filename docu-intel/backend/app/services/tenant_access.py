@@ -115,6 +115,12 @@ def resolve_user_access_scope(db: Session, user: User) -> AccessScope:
     Admin users ALWAYS get the full access scope regardless of the
     flag — admin is the break-glass role.
     """
+    # SQLite is used for isolated test/local sessions where primary keys are
+    # routinely reused across independent in-memory databases. A process-wide
+    # cache keyed only by user id would leak an earlier session's scope.
+    if db.get_bind().dialect.name == "sqlite":
+        return _resolve_user_access_scope_uncached(db, user)
+
     # Fast path: return cached scope if available (avoids DB queries
     # for repeated requests from the same user within 60s).
     cached = _get_cached_scope(user.id)
