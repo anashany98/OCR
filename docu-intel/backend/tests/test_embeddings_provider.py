@@ -43,8 +43,11 @@ def test_openai_compatible_embedding_client_posts_to_local_embeddings_endpoint()
     assert len(requests) == 1
 
 
-def test_embedding_dimension_mismatch_fails_fast():
+def test_embedding_dimension_mismatch_fails_fast(monkeypatch):
     from app.services.embeddings import coerce_embedding_dimensions
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "embedding_allow_dimension_coercion", False)
 
     with pytest.raises(EmbeddingProviderError, match="dimension mismatch"):
         coerce_embedding_dimensions([1, 2], 4)
