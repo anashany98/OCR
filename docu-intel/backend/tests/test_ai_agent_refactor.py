@@ -370,7 +370,8 @@ def test_answer_question_does_not_cap_chat_with_wait_for():
 
 def test_low_ocr_constants_have_expected_values():
     from app.ai.agent import LOW_OCR_CONFIDENCE_THRESHOLD, LOW_OCR_MARKER
-    assert LOW_OCR_CONFIDENCE_THRESHOLD == 0.70
+    # The canonical threshold is shared with quality/re-embed policy.
+    assert LOW_OCR_CONFIDENCE_THRESHOLD == 0.60
     assert LOW_OCR_MARKER == "[OCR DUDOSO]"
 
 
