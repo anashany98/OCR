@@ -165,16 +165,32 @@ def test_apply_classification_and_extraction_passes_learned_rules(monkeypatch):
         lambda *a, **kw: type("R", (), {"needs_review": False})(),
     )
     monkeypatch.setattr(
+        document_processing_core, "_get_effective_persist_business_extraction",
+        lambda: document_processing_core.persist_business_extraction,
+    )
+    monkeypatch.setattr(
         document_processing_core, "persist_plan_extraction",
         lambda *a, **kw: type("R", (), {"needs_review": False})(),
+    )
+    monkeypatch.setattr(
+        document_processing_core, "_get_effective_persist_plan_extraction",
+        lambda: document_processing_core.persist_plan_extraction,
     )
     monkeypatch.setattr(
         document_processing_core, "evaluate_document_quality",
         lambda *a, **kw: type("Q", (), {"needs_review": False})(),
     )
     monkeypatch.setattr(
+        document_processing_core, "_get_effective_evaluate_document_quality",
+        lambda: document_processing_core.evaluate_document_quality,
+    )
+    monkeypatch.setattr(
         document_processing_core, "update_document_quality",
         lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        document_processing_core, "_get_effective_update_document_quality",
+        lambda: document_processing_core.update_document_quality,
     )
 
     fake_db = type("DB", (), {"execute": lambda self, *a, **kw: None, "flush": lambda self, *a, **kw: None})()
