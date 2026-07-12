@@ -139,6 +139,10 @@ def _get_effective_persist_business_extraction():
     return _facade_attr("persist_business_extraction", persist_business_extraction)
 
 
+def _get_effective_emit_webhook():
+    return _facade_attr("emit_integration_webhook", emit_integration_webhook)
+
+
 def _get_effective_persist_plan_extraction():
     return _facade_attr("persist_plan_extraction", persist_plan_extraction)
 
@@ -390,7 +394,7 @@ def process_document(
             needs_review = _process_classification_only(db, document)
             document.status = "needs_review" if needs_review else "processed"
         else:
-            needs_review = _process_full_parse(db, document)
+            needs_review = _facade_attr("_process_full_parse", _process_full_parse)(db, document)
             document.status = "needs_review" if needs_review else "processed"
 
         track_stage_duration("total", time.perf_counter() - t_total)
@@ -479,7 +483,7 @@ def _handle_process_failure(
     db.commit()
     if final_failure and document and job:
         track_document_failed()
-        emit_integration_webhook(
+        _get_effective_emit_webhook()(
             "document.failed",
             {
                 "document_id": document.id,

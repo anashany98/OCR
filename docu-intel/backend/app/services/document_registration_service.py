@@ -284,7 +284,7 @@ def register_existing_file(
     db.refresh(document)
     if job:
         db.refresh(job)
-    if enqueue:
+    if enqueue and job:
         from app.workers.routing import queue_for_document
         from app.workers.tasks import process_document_task
 

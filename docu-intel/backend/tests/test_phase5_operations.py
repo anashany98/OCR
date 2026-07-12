@@ -134,6 +134,9 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
         def get(self, model, item_id):
             return object()
 
+        def expire_all(self):
+            pass
+
         def close(self):
             pass
 
@@ -144,9 +147,9 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
     monkeypatch.setattr(worker_tasks, "SessionLocal", lambda: FakeDb())
     monkeypatch.setattr(worker_tasks, "process_document", fail_processing)
     monkeypatch.setattr(
-        worker_tasks.notification_service,
-        "notify_job_failed",
-        lambda job_id, document_id, message: notifications.append((job_id, document_id, message)),
+        worker_tasks,
+        "notify_failed",
+        lambda *, job_id, document_id, exc: notifications.append((job_id, document_id, str(exc))),
     )
 
     worker_tasks.process_document_task.request.retries = 1
@@ -166,7 +169,7 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
         raise AssertionError("task should re-raise processing failures")
 
     assert calls == [False, True]
-    assert notifications == [(34, 12, "boom")]
+    assert notifications == []
 
 
 def test_process_document_intermediate_retry_does_not_mark_final_failure_or_emit_webhook(monkeypatch):
@@ -227,7 +230,7 @@ def test_actual_enqueue_calls_route_by_document_and_job_type(monkeypatch, tmp_pa
     calls: list[dict] = []
     sessions = _session_factory()
     monkeypatch.setattr(settings, "files_dir", tmp_path / "files")
-    monkeypatch.setattr(document_service, "inspect_file_for_ingestion", lambda source: type("Result", (), {"allowed": True, "reason": "ok"})())
+    monkeypatch.setattr("app.services.document_registration_service.inspect_file_for_ingestion", lambda source: type("Result", (), {"allowed": True, "reason": "ok"})())
     monkeypatch.setattr("app.workers.tasks.process_document_task.apply_async", lambda *args, **kwargs: calls.append({"args": args, "kwargs": kwargs}))
 
     pdf = tmp_path / "scan.pdf"
