@@ -51,7 +51,9 @@ def test_pp_structure_extract_handles_empty_results(monkeypatch, tmp_path: Path)
         def predict(self, _path):
             return iter([])  # empty generator
 
-    monkeypatch.setattr(eng, "_pipeline", _StubPipeline())
+    # ``_pipeline`` is a lazy read-only property; seed its backing instance
+    # so this unit test never imports the optional PaddleX dependency.
+    monkeypatch.setattr(eng, "_pipeline_instance", _StubPipeline(), raising=False)
     image = tmp_path / "blank.png"
     image.write_bytes(b"")
 
@@ -110,7 +112,7 @@ def test_pp_structure_extract_converts_parsing_res_list(monkeypatch, tmp_path: P
                 ]
             )
 
-    monkeypatch.setattr(eng, "_pipeline", _StubPipeline())
+    monkeypatch.setattr(eng, "_pipeline_instance", _StubPipeline(), raising=False)
     image = tmp_path / "doc.png"
     image.write_bytes(b"")
 
@@ -265,6 +267,11 @@ def test_factory_standalone_pp_structure(monkeypatch):
 def test_factory_cascading_without_pp_structure(monkeypatch):
     from app.core.config import settings
 
+    # This is factory wiring, not a binary integration test. Keep it
+    # executable on developer hosts that deliberately lack Tesseract.
+    monkeypatch.setattr(
+        "app.ocr.tesseract.pytesseract.get_tesseract_version", lambda: "test"
+    )
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", False)
     clear_ocr_engine_cache()
@@ -286,6 +293,9 @@ def test_factory_cascading_with_pp_structure(monkeypatch):
     """
     from app.core.config import settings
 
+    monkeypatch.setattr(
+        "app.ocr.tesseract.pytesseract.get_tesseract_version", lambda: "test"
+    )
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", True)
     clear_ocr_engine_cache()
