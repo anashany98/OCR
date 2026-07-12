@@ -35,7 +35,7 @@ def test_compute_document_embedding_returns_vector_on_success(monkeypatch):
         "app.services.document_embedding_pipeline.embed_many",
         return_value=[[0.1] * dim],
     ), patch(
-        "app.services.document_embedding_pipeline.should_create_embeddings",
+        "app.services.document_embedding_pipeline._should_create_embeddings",
         return_value=True,
     ):
         embedding, provider, fallback = compute_document_embedding(page_texts)
@@ -61,7 +61,7 @@ def test_compute_document_embedding_truncates_to_token_budget():
         "app.services.document_embedding_pipeline.embed_many",
         side_effect=lambda texts: captured.setdefault(0, texts) or [[0.1] * _embedding_dim_from_settings()],
     ), patch(
-        "app.services.document_embedding_pipeline.should_create_embeddings",
+        "app.services.document_embedding_pipeline._should_create_embeddings",
         return_value=True,
     ):
         with patch.object(settings, "document_embedding_max_tokens", 5):
@@ -82,7 +82,7 @@ def test_compute_document_embedding_fails_without_hash_fallback():
         "app.services.document_embedding_pipeline.embed_many",
         side_effect=EmbeddingProviderError("model not loaded"),
     ), patch(
-        "app.services.document_embedding_pipeline.should_create_embeddings",
+        "app.services.document_embedding_pipeline._should_create_embeddings",
         return_value=True,
     ):
         result = compute_document_embedding(page_texts)
@@ -101,7 +101,7 @@ def test_compute_document_embedding_skips_when_disabled():
         "app.services.document_embedding_pipeline.embed_many",
         return_value=[[0.1] * _embedding_dim_from_settings()],
     ), patch(
-        "app.services.document_embedding_pipeline.should_create_embeddings",
+        "app.services.document_embedding_pipeline._should_create_embeddings",
         return_value=False,
     ):
         result = compute_document_embedding(page_texts)
@@ -109,11 +109,14 @@ def test_compute_document_embedding_skips_when_disabled():
     assert result == (None, None, False)
 
 
-def test_apply_document_embedding_populates_document_embedding():
+def test_apply_document_embedding_populates_document_embedding(monkeypatch):
     """Ingestion wires the whole-document embedding onto ``Document``."""
     from app.database.base import Base
     from app.models import Document, DocumentPage
     from app.services.document_embedding_pipeline import apply_document_embedding
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
 
     engine = _memory_engine()
     Base.metadata.create_all(engine)
@@ -131,6 +134,7 @@ def test_apply_document_embedding_populates_document_embedding():
             status="processed",
         )
         db.add(document)
+        db.flush()
         db.add(DocumentPage(document_id=document.id, page_number=1, text="Factura con importe."))
         db.commit()
         document_id = document.id
@@ -140,7 +144,7 @@ def test_apply_document_embedding_populates_document_embedding():
             "app.services.document_embedding_pipeline.embed_many",
             return_value=[[0.2] * dim],
         ), patch(
-            "app.services.document_embedding_pipeline.should_create_embeddings",
+            "app.services.document_embedding_pipeline._should_create_embeddings",
             return_value=True,
         ):
             produced = apply_document_embedding(
@@ -177,6 +181,7 @@ def test_apply_document_embedding_marks_needs_reembedding_on_failure():
             status="processed",
         )
         db.add(document)
+        db.flush()
         db.add(DocumentPage(document_id=document.id, page_number=1, text="Factura rota."))
         db.commit()
         document_id = document.id
@@ -185,7 +190,7 @@ def test_apply_document_embedding_marks_needs_reembedding_on_failure():
             "app.services.document_embedding_pipeline.embed_many",
             side_effect=EmbeddingProviderError("model not loaded"),
         ), patch(
-            "app.services.document_embedding_pipeline.should_create_embeddings",
+        "app.services.document_embedding_pipeline._should_create_embeddings",
             return_value=True,
         ):
             produced = apply_document_embedding(
