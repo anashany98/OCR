@@ -320,7 +320,24 @@ def test_upload_requires_upload_scope(tmp_path, monkeypatch):
 def test_upload_with_scope_registers_document_and_job(tmp_path, monkeypatch):
     client, sessions = _test_client(tmp_path)
     _seed_integration_data(sessions)
+    from app.models import ApiClientBudgetScope, BudgetScope
     from app.core.config import settings
+
+    with sessions() as db:
+        integration_client = db.scalar(
+            select(IntegrationClient).where(IntegrationClient.name == "external-tool")
+        )
+        scope = BudgetScope(budget_code="2026/143", display_name="Presupuesto 2026/143")
+        db.add(scope)
+        db.flush()
+        db.add(
+            ApiClientBudgetScope(
+                api_client_id=integration_client.id,
+                budget_scope_id=scope.id,
+                can_query=True,
+            )
+        )
+        db.commit()
 
     monkeypatch.setattr(settings, "files_dir", tmp_path / "files")
     monkeypatch.setattr(settings, "integration_enqueue_uploads", False)
@@ -329,6 +346,7 @@ def test_upload_with_scope_registers_document_and_job(tmp_path, monkeypatch):
         "/integrations/v1/documents/upload",
         headers=_headers(),
         files={"file": ("nota.txt", b"Referencia ABC123", "text/plain")},
+        data={"budget_code": "2026/143"},
     )
 
     assert response.status_code == 200

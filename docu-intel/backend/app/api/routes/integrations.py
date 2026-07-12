@@ -134,7 +134,7 @@ def execute_tool(
 
 @router.post("/documents/upload", response_model=IntegrationUploadResponse)
 def upload_document(
-    budget_code: str = Form(...),
+    budget_code: str = Form(default=""),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     context: IntegrationContext = Depends(get_integration_context),
