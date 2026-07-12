@@ -21,11 +21,13 @@ def _embedding_dim_from_settings() -> int:
     return int(settings.embedding_dimensions or 768)
 
 
-def test_compute_document_embedding_returns_vector_on_success():
+def test_compute_document_embedding_returns_vector_on_success(monkeypatch):
     """Happy path: a whole-document embedding is produced and the
     provider label / fallback flag are returned alongside it."""
     from app.services.document_embedding_pipeline import compute_document_embedding
+    from app.core.config import settings
 
+    monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
     dim = _embedding_dim_from_settings()
     page_texts = [(1, "Primera página con contenido."), (2, "Segunda página con más texto.")]
 
