@@ -806,6 +806,10 @@ def _apply_classification_and_extraction(
     document.confidence = classification.confidence
     document.page_count = page_count
 
+    if (document.extension or "").lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}:
+        from app.services.image_analysis_service import analyze_image_document
+        analyze_image_document(db, document, text=text)
+
     t_extract = time.perf_counter()
     business_result = _get_effective_persist_business_extraction()(
         db,
