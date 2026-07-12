@@ -106,7 +106,9 @@ def test_prepare_document_chunks_can_rebuild_from_existing_page_text(monkeypatch
         return [[0.1] * 1024 for _ in texts]
 
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: True)
-    monkeypatch.setattr(document_service, "embed_many", fake_embed_many)
+    monkeypatch.setattr(
+        "app.services.document_embedding_pipeline.embed_many", fake_embed_many
+    )
 
     chunks = prepare_document_chunks(
         document_id=42,
