@@ -132,9 +132,12 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
 
     class FakeDb:
         def get(self, model, item_id):
-            return object()
+            return type("Row", (), {"status": "processing"})()
 
         def expire_all(self):
+            pass
+
+        def commit(self):
             pass
 
         def close(self):
@@ -169,7 +172,7 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
         raise AssertionError("task should re-raise processing failures")
 
     assert calls == [False, True]
-    assert notifications == []
+    assert notifications == [(34, 12, "boom")]
 
 
 def test_process_document_intermediate_retry_does_not_mark_final_failure_or_emit_webhook(monkeypatch):
