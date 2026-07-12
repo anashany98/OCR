@@ -57,6 +57,23 @@ class ProjectDossier:
     first_document_at: str | None = None
     last_document_at: str | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """Stable DTO consumed by tools and the chat layer."""
+        return {
+            "project": {"id": self.project_id, "name": self.project_name, "status": self.status},
+            "identity": {"year": self.year, "brand": self.brand_name, "hotel": self.hotel_name},
+            "description": {"text": self.description, "deterministic": True},
+            "documents": {"unique_documents": self.total_documents, "occurrences": self.total_documents, "by_category": self.documents_by_category},
+            "financials": {"totals": {"budget": self.budget_total, "orders": self.order_total, "invoices": self.invoice_total}},
+            "people": {"count": self.participant_count},
+            "communications": {"threads": self.thread_count, "messages": self.message_count},
+            "issues": {"open_count": self.open_issues},
+            "images": {"count": self.image_count},
+            "timeline": {"first": self.first_document_at, "last": self.last_document_at},
+            "data_gaps": [],
+            "sources": [],
+        }
+
 
 def resolve_project(
     db: Session,
@@ -327,3 +344,45 @@ def search_project_images(
             "source_path": occ.source_path if access_scope.is_admin else None,
         })
     return results
+
+
+def get_project_financials(db: Session, project_id: int, *, access_scope: AccessScope | None) -> dict[str, Any]:
+    """Return source-backed financial records without crossing document scope."""
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
+    ids = _visible_document_ids(db, project_id, access_scope)
+    from app.models.business import Budget, Invoice, Order
+    def rows(model, number_field: str) -> list[dict[str, Any]]:
+        result = []
+        for row in db.scalars(select(model).where(model.document_id.in_(ids))).all():
+            result.append({"id": row.id, "number": getattr(row, number_field, None), "total": float(row.total_amount) if row.total_amount is not None and access_scope.can_view_prices else None, "currency": row.currency if access_scope.can_view_prices else None, "source_document_id": row.document_id})
+        return result
+    budgets, orders, invoices = rows(Budget, "budget_number"), rows(Order, "order_number"), rows(Invoice, "invoice_number")
+    return {"budgets": budgets, "orders": orders, "invoices": invoices, "totals": {"budget": _sum_amounts(budgets), "orders": _sum_amounts(orders), "invoices": _sum_amounts(invoices)}}
+
+
+def get_project_products(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+    require_project_access(db, project, access_scope)
+    ids = _visible_document_ids(db, project_id, access_scope)
+    from app.models.business import Budget, BudgetLine, Order, OrderLine
+    products: list[dict[str, Any]] = []
+    for model, line_model, parent_key in ((Budget, BudgetLine, "budget_id"), (Order, OrderLine, "order_id")):
+        stmt = select(line_model, model).join(model, getattr(line_model, parent_key) == model.id).where(model.document_id.in_(ids))
+        for line, parent in db.execute(stmt).all():
+            products.append({"reference": line.reference, "description": line.description, "quantity": line.quantity, "unit": line.unit, "unit_price": float(line.unit_price) if line.unit_price is not None and access_scope.can_view_prices else None, "total_price": float(line.total_price) if line.total_price is not None and access_scope.can_view_prices else None, "source_document_id": parent.document_id})
+    return products
+
+
+def _visible_document_ids(db: Session, project_id: int, scope: AccessScope) -> list[int]:
+    stmt = apply_access_predicates(select(DocumentOccurrence.document_id).join(Document).where(DocumentOccurrence.project_id == project_id), scope, document_column=Document.id)
+    return list(db.scalars(stmt).all())
+
+
+def _sum_amounts(rows: list[dict[str, Any]]) -> float | None:
+    amounts = [row["total"] for row in rows if row["total"] is not None]
+    return round(sum(amounts), 2) if amounts else None
