@@ -749,7 +749,7 @@ def coerce_embedding_dimensions(raw_embedding: object, dimensions: int) -> list[
     vector = [float(value) for value in raw_embedding]
     if len(vector) != dimensions and not settings.embedding_allow_dimension_coercion:
         raise EmbeddingProviderError(
-            f"Embedding dimension mismatch: got {len(vector)}, expected {dimensions}. "
+                f"embedding dimension mismatch: got {len(vector)}, expected {dimensions}. "
             "Check EMBEDDING_MODEL/EMBEDDING_DIMENSIONS or enable "
             "EMBEDDING_ALLOW_DIMENSION_COERCION only during a controlled migration."
         )
