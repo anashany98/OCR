@@ -19,7 +19,10 @@ from app.services.metrics import _registry, track_ocr_dpi_escalation
 # ---------------------------------------------------------------------------
 
 
-def test_dpi_ladder_contains_expected_values():
+def test_dpi_ladder_contains_expected_values(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "pdf_ocr_dpi", 300)
     ladder = _get_dpi_ladder()
     assert ladder == [300, 400, 600]
 

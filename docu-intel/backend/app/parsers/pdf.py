@@ -260,9 +260,8 @@ _DPI_MIN_CONFIDENCE = 0.55  # DPI-escalación umbral (relajado vs low_ocr=0.70)
 def _get_dpi_ladder(page_width: float = 0, page_height: float = 0) -> list[int]:
     """Build the DPI ladder dynamically from the configured base DPI.
 
-    Two-step ladder: [base, base+100]. The previous 3rd step (+300) was
-    almost never needed and tripled OCR time on hard pages. With base=200
-    most pages pass on step 1; the +100 step covers borderline scans.
+    The final +300 step is reserved for pages whose lower-DPI attempts are
+    empty; the caller stops before it for merely low-quality OCR.
     For small pages (width < 400pt), start 100 DPI higher so the
     rendered image is large enough for OCR.
     """
