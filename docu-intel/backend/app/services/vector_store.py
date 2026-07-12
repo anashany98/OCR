@@ -33,6 +33,12 @@ class PgvectorStore:
         filters: dict[str, Any] | None,
     ) -> list[VectorSearchMatch]:
         effective_filters = filters or {}
+        # Vector retrieval is a low-level primitive and must never turn an
+        # omitted tenant/budget filter into a corpus-wide nearest-neighbour
+        # query.  Callers must establish the concrete budget scope before
+        # they reach this adapter.
+        if not effective_filters.get("budget_scope_id"):
+            raise ValueError("PgvectorStore.search requires budget_scope_id filter")
         if _is_postgres(db):
             return self._search_postgres(
                 db, query_embedding=query_embedding, limit=limit, filters=effective_filters
