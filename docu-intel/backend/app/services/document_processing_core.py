@@ -80,6 +80,14 @@ class _LazyOCREngine:
 
     def _load(self):
         if self._engine is None:
+            engine_factory = _get_effective_ocr_engine_class()
+            # The public document_service facade deliberately exposes this
+            # hook for integration tests and controlled deployments. Honour
+            # an explicit override before taking the normal singleton path.
+            if engine_factory is not get_ocr_engine_class:
+                candidate = engine_factory()
+                self._engine = candidate() if isinstance(candidate, type) else candidate
+                return self._engine
             # Use get_ocr_engine() which returns the singleton
             # (already instantiated by preload_ocr_engine during worker boot).
             # The old code called get_ocr_engine_class()() which broke
