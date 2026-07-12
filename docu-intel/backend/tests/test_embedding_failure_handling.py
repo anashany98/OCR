@@ -63,10 +63,13 @@ def test_embed_many_with_metadata_empty_input():
     assert embed_many_with_metadata([]) == []
 
 
-def test_embed_many_with_metadata_passes_through_on_success():
+def test_embed_many_with_metadata_passes_through_on_success(monkeypatch):
     """Happy path: when the embedding call works, we get the vectors
     plus the configured provider label and the fallback flag."""
     from app.services.document_embedding_pipeline import embed_many_with_metadata
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
 
     with patch("app.services.document_embedding_pipeline.embed_many", return_value=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
     ):
