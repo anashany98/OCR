@@ -44,12 +44,13 @@ def test_openai_compatible_embedding_client_posts_to_local_embeddings_endpoint()
 
 
 def test_embedding_dimension_mismatch_fails_fast(monkeypatch):
+    from app.services.embeddings import EmbeddingProviderError as CurrentEmbeddingProviderError
     from app.services.embeddings import coerce_embedding_dimensions
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "embedding_allow_dimension_coercion", False)
 
-    with pytest.raises(EmbeddingProviderError, match="dimension mismatch"):
+    with pytest.raises(CurrentEmbeddingProviderError, match="dimension mismatch"):
         coerce_embedding_dimensions([1, 2], 4)
 
 
@@ -91,10 +92,12 @@ def test_embed_many_uses_configured_local_openai_provider(monkeypatch):
 
 
 def test_embed_text_fails_fast_when_remote_provider_is_not_configured(monkeypatch):
+    from app.services.embeddings import EmbeddingProviderError as CurrentEmbeddingProviderError
+
     monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
     monkeypatch.setattr(settings, "embedding_base_url", "")
     monkeypatch.setattr(settings, "ai_base_url", "")
     monkeypatch.setattr(settings, "embedding_dimensions", EMBEDDING_DIMENSIONS)
 
-    with pytest.raises(EmbeddingProviderError, match="requires EMBEDDING_BASE_URL"):
+    with pytest.raises(CurrentEmbeddingProviderError, match="requires EMBEDDING_BASE_URL"):
         embed_text("pedido referencia ABC123")
