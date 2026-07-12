@@ -547,6 +547,30 @@ def search_hybrid(
 
         effective_limit = max(limit, 10)
 
+        text_results: list[SearchResult] = []
+        semantic_results: list[SearchResult] = []
+        bm25_results: list[SearchResult] = []
+
+        # SQLite ``:memory:`` databases are connection-local. A new session
+        # in a worker thread would therefore query an empty database rather
+        # than the caller's transaction. Keep that development/test path
+        # sequential; production PostgreSQL retains the parallel strategy.
+        if not _is_postgres(db):
+            strategies = [("text", search_text), ("semantic", search_semantic)]
+            if settings.search_use_bm25:
+                strategies.append(("bm25", search_bm25))
+            for name, strategy in strategies:
+                try:
+                    result = strategy(db, query, effective_limit, filters)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("%s search failed: %s", name, exc)
+                    continue
+                if name == "text":
+                    text_results = result
+                elif name == "semantic":
+                    semantic_results = result
+                else:
+                    bm25_results = result
         # Run text, semantic, and BM25 searches in parallel for
         # lower latency. Each strategy is independent and hits a
         # different code path (ILIKE, pgvector, tsvector).
@@ -555,41 +579,39 @@ def search_hybrid(
         # SQLAlchemy sessions are NOT thread-safe. Sharing the
         # same session across ThreadPoolExecutor threads causes
         # data corruption and InvalidRequestError under load.
-        _thread_factory = sessionmaker(bind=get_engine())
-        futures = {}
-        text_results: list[SearchResult] = []
-        semantic_results: list[SearchResult] = []
-        bm25_results: list[SearchResult] = []
+        else:
+            _thread_factory = sessionmaker(bind=get_engine())
+            futures = {}
 
-        def _run_with_session(fn, *args, **kwargs):
-            sess = _thread_factory()
-            try:
-                return fn(sess, *args, **kwargs)
-            finally:
-                sess.close()
+            def _run_with_session(fn, *args, **kwargs):
+                sess = _thread_factory()
+                try:
+                    return fn(sess, *args, **kwargs)
+                finally:
+                    sess.close()
 
-        futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters)] = "text"
-        futures[
-            _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters)
-        ] = "semantic"
-        if settings.search_use_bm25:
+            futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters)] = "text"
             futures[
-                _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters)
-            ] = "bm25"
+                _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters)
+            ] = "semantic"
+            if settings.search_use_bm25:
+                futures[
+                    _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters)
+                ] = "bm25"
 
-        for future in as_completed(futures):
-            name = futures[future]
-            try:
-                result = future.result()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("%s search failed: %s", name, exc)
-                continue
-            if name == "text":
-                text_results = result
-            elif name == "semantic":
-                semantic_results = result
-            elif name == "bm25":
-                bm25_results = result
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    result = future.result()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("%s search failed: %s", name, exc)
+                    continue
+                if name == "text":
+                    text_results = result
+                elif name == "semantic":
+                    semantic_results = result
+                elif name == "bm25":
+                    bm25_results = result
 
         track_search_strategy_used("hybrid", "executed")
 
