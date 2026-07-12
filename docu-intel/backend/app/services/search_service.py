@@ -363,6 +363,12 @@ def _run_semantic_search(
     for document, chunk in rows:
         embedding = _coerce_embedding(chunk.embedding)
         if embedding:
+            # Existing corpora can contain vectors produced before an
+            # embedding-model migration.  They cannot be compared safely to
+            # the current query vector; omit only that stale candidate rather
+            # than failing the entire search (or silently truncating it).
+            if len(embedding) != len(query_embedding):
+                continue
             score = cosine_similarity(query_embedding, embedding)
         else:
             score = _lexical_overlap_score(normalized_query, chunk.chunk_text)
