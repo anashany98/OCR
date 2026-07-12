@@ -6,6 +6,8 @@ Extracted from agent.py to keep the orchestrator under 800 lines.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 
@@ -21,16 +23,14 @@ async def try_local_ai_answer(
     warnings: list[str],
     *,
     fallback: str,
+    client_factory: Callable[[], Any] | None = None,
 ) -> str | None:
     """One-shot LLM call with the same context as the streaming
     path. Returns the model's answer, or ``fallback`` (and logs
     why) when the LLM is misconfigured, fails validation, or
     fabricates documents.
     """
-    from app.ai.local_client import (
-        ContextSizeExceededError,
-        LocalOpenAICompatibleClient,
-    )
+    from app.ai.local_client import ContextSizeExceededError, LocalOpenAICompatibleClient
     from app.ai.prompts import build_ai_messages, build_context_text
     from app.ai.validation import (
         question_is_spanish,
@@ -44,7 +44,7 @@ async def try_local_ai_answer(
     context_text = build_context_text(context_items)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
     messages = build_ai_messages(question, context_text, warning_text)
-    client = LocalOpenAICompatibleClient()
+    client = (client_factory or LocalOpenAICompatibleClient)()
     try:
         answer = await client.chat(messages, temperature=0.0)
     except ContextSizeExceededError:

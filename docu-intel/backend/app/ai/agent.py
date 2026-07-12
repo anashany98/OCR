@@ -357,9 +357,7 @@ async def answer_question(
     answer_text = grounded.answer
     model_name = grounded.model_name
     if has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
-        from app.ai.local_answer import try_local_ai_answer
-
-        ai_answer = await try_local_ai_answer(
+        ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )
         # Only adopt the LLM output if it actually produced something new.
@@ -508,6 +506,20 @@ async def answer_question(
 # ---------------------------------------------------------------------------
 
 # _try_local_ai_answer extracted to app.ai.local_answer (FASE 6.1)
+# Keep the old private import surface so extension code and tests retain the
+# agent-level client injection point after the module split.
+async def _try_local_ai_answer(question, context_items, warnings, *, fallback):
+    from app.ai.local_answer import try_local_ai_answer
+
+    return await try_local_ai_answer(
+        question,
+        context_items,
+        warnings,
+        fallback=fallback,
+        client_factory=LocalOpenAICompatibleClient,
+    )
+
+
 from app.ai.local_answer import _polish_answer_text  # noqa: F401 — used in streaming path
 
 
@@ -709,6 +721,7 @@ __all__ = [
     "_is_low_ocr_context",
     "_average_confidence",
     "_money_filters",
+    "_try_local_ai_answer",
     # Constants
     "LOW_OCR_CONFIDENCE_THRESHOLD",
     "LOW_OCR_MARKER",
