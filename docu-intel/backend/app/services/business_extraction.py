@@ -1404,6 +1404,8 @@ def _extract_lines(text: str) -> list[ExtractedLine]:
                 unit=(gd.get("unit") or "").strip() or None,
                 unit_price=_parse_amount(gd.get("unit_price")),
                 total_price=_parse_amount(gd.get("total_price")),
+                # Regex extraction has no calibrated model probability.
+                # Keep this placeholder until we calibrate against a labelled sample.
                 confidence=0.82,
             )
         )
