@@ -689,7 +689,9 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
     db.flush()
     try:
         page_path = _resolve_files_dir_path(page.image_path)
-        engine = get_ocr_engine_class()()
+        engine_factory = _get_effective_ocr_engine_class()
+        candidate = engine_factory()
+        engine = candidate() if isinstance(candidate, type) else candidate
         ocr = engine.extract(page_path)
     except Exception as exc:
         page.page_status = "failed"

@@ -264,6 +264,7 @@ def test_admin_page_reprocess_enqueues_page_specific_ocr_job(monkeypatch):
 def test_process_page_specific_ocr_job_replaces_only_selected_page(monkeypatch, tmp_path: Path):
     from app.ocr.paddle import OCRBlock, OCRResult
     from app.services import document_service
+    from app.services import document_processing_core
 
     client, sessions = _test_client()
     monkeypatch.setattr(settings, "files_dir", tmp_path)
@@ -283,6 +284,7 @@ def test_process_page_specific_ocr_job_replaces_only_selected_page(monkeypatch, 
             )
 
     monkeypatch.setattr(document_service, "get_ocr_engine_class", lambda: FakeOcrEngine)
+    monkeypatch.setattr(document_processing_core, "_get_effective_ocr_engine_class", lambda: FakeOcrEngine)
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: False)
 
     with sessions() as db:
@@ -334,6 +336,7 @@ def test_page_specific_ocr_job_routes_to_heavy_queue(monkeypatch):
 
 def test_page_specific_ocr_missing_image_path_does_not_call_full_parse(monkeypatch):
     from app.services import document_service
+    from app.services import document_processing_core
 
     client, sessions = _test_client()
     monkeypatch.setattr(document_service, "_process_full_parse", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("full parse should not run")))
@@ -387,6 +390,7 @@ def test_page_specific_ocr_outside_files_dir_fails_without_full_parse(monkeypatc
 
 def test_failed_page_specific_ocr_marks_page_failed_without_failing_document(monkeypatch, tmp_path: Path):
     from app.services import document_service
+    from app.services import document_processing_core
 
     client, sessions = _test_client()
     monkeypatch.setattr(settings, "files_dir", tmp_path)
@@ -399,6 +403,7 @@ def test_failed_page_specific_ocr_marks_page_failed_without_failing_document(mon
             raise RuntimeError("ocr timeout")
 
     monkeypatch.setattr(document_service, "get_ocr_engine_class", lambda: FailingOcrEngine)
+    monkeypatch.setattr(document_processing_core, "_get_effective_ocr_engine_class", lambda: FailingOcrEngine)
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: False)
 
     with sessions() as db:
@@ -413,7 +418,7 @@ def test_failed_page_specific_ocr_marks_page_failed_without_failing_document(mon
         refreshed_job = db.get(ExtractionJob, job.id)
 
     assert refreshed_document.status == "needs_review"
-    assert refreshed_document.quality_status == "needs_human_review"
+    assert refreshed_document.quality_status == "technical_failure"
     assert refreshed_page.page_status == "failed"
     assert refreshed_page.error_message == "ocr timeout"
     assert refreshed_page.attempts == 1
