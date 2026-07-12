@@ -42,7 +42,7 @@ export function PlanoAnnotationPage() {
   const documentId = Number(id)
   const navigate = useNavigate()
   const a = usePlanAnnotation(documentId)
-  const overlays = usePlanOverlays(a.plan?.id)
+  const overlays = usePlanOverlays(a.plan?.id ?? null, documentId)
 
   if (!a.plan && a.plansList.isLoading) {
     return (
