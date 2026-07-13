@@ -991,7 +991,7 @@ def _maybe_run_hyperextract(
 ) -> None:
     """Optionally invoke Hyper-Extract after the OCR is done.
 
-    Three short-circuits keep this call free in the default config:
+    Four short-circuits keep this call free in the default config:
 
     1. ``HYPEREXTRACT_ENABLED=false`` — the service is fully bypassed,
        no provider call, no DB write, no extra latency.
@@ -1001,12 +1001,27 @@ def _maybe_run_hyperextract(
     3. Empty OCR text — there is nothing to extract; we record a
        ``skipped`` row only when the feature is otherwise enabled, so
        the operator can see why no extraction ran.
-
-    The function never raises; any error is logged at WARNING level
-    and the document keeps its existing OCR / business state.
+    4. **MiniMax M3 (FASE 3) idempotence** — the document already has
+       a valid extraction whose fingerprint matches the freshly
+       computed one (text hash + document_type + classifier_version +
+       provider + model + prompt version + schema version + extractor
+       version). We persist a new row tagged ``skipped`` with the
+       ``fingerprint_reuse`` warning so the audit trail shows why no
+       network call was made, but the provider is never contacted.
+       The metric :data:`EXTRACTION_FINGERPRINT_REUSED` records the
+       hit and the previous result is reused unchanged.
     """
     from app.models import DocumentExtraction
+    from app.services.classification_v2 import (
+        CLASSIFIER_VERSION,
+        extraction_fingerprint,
+        hash_text_for_fingerprint,
+    )
     from app.services.hyperextract.service import get_hyperextract_service
+    from app.services.metrics.minimax_m3 import (
+        ExtractionFingerprintTimer,
+        track_extraction_reused,
+    )
 
     service = get_hyperextract_service()
     if not service.is_enabled():
@@ -1029,18 +1044,90 @@ def _maybe_run_hyperextract(
         db.flush()
         return
 
-    try:
-        envelope = service.extract_from_text(
-            document_id=document.id,
-            text=text,
-            document_type=document_type,
-            metadata={
-                "filename": document.original_filename,
-                "document_type": document_type,
-                "page_count": document.page_count,
-            },
-            image_path=_first_page_image_path(document),
+    # FASE 3 — idempotence fingerprint. The components are listed
+    # in the same order as the database column comments so the
+    # fingerprint is stable across reloads.
+    fingerprint = extraction_fingerprint(
+        text_hash=hash_text_for_fingerprint(text),
+        document_type=document_type or "",
+        classifier_version=getattr(document, "classifier_version", None)
+        or CLASSIFIER_VERSION,
+        provider=settings.hyperextract_provider,
+        model=settings.hyperextract_model,
+        prompt_version=getattr(settings, "hyperextract_prompt_version", None)
+        or "v1",
+        schema_version=getattr(settings, "hyperextract_schema_version", None)
+        or "v1",
+        extractor_version="hyperextract-service-1.0.0",
+    )
+    route_label = "llm_text"
+
+    # Look for a recent successful extraction with the same fingerprint.
+    prior_row = (
+        db.query(DocumentExtraction)
+        .filter(
+            DocumentExtraction.document_id == document.id,
+            DocumentExtraction.status == "success",
         )
+        .order_by(DocumentExtraction.id.desc())
+        .first()
+    )
+    prior_payload = prior_row.fields_json if prior_row and prior_row.fields_json else None
+    # Reuse the prior result if its persisted fingerprint matches.
+    # We persist the fingerprint on the document so a re-classification
+    # that changes the document_type invalidates the cache cleanly.
+    if (
+        prior_row is not None
+        and getattr(document, "extraction_fingerprint", None) == fingerprint
+        and prior_payload is not None
+    ):
+        with ExtractionFingerprintTimer(route=route_label, chars=len(text)) as t:
+            t.set_outcome("cache_hit")
+        track_extraction_reused(route=route_label)
+        db.add(
+            DocumentExtraction(
+                document_id=document.id,
+                document_type=prior_row.document_type,
+                provider=prior_row.provider,
+                model=prior_row.model,
+                status="skipped",
+                fields_json=prior_row.fields_json,
+                entities_json=prior_row.entities_json,
+                relations_json=prior_row.relations_json,
+                warnings_json=["fingerprint_reuse"],
+                latency_ms=0,
+            )
+        )
+        db.flush()
+        return
+
+    try:
+        with ExtractionFingerprintTimer(route=route_label, chars=len(text)) as t:
+            envelope = service.extract_from_text(
+                document_id=document.id,
+                text=text,
+                document_type=document_type,
+                metadata={
+                    "filename": document.original_filename,
+                    "document_type": document_type,
+                    "page_count": document.page_count,
+                },
+                image_path=_first_page_image_path(document),
+            )
+            # Map the provider status to the bounded outcome label.
+            status = str(envelope.get("status") or "error")
+            if status == "success":
+                t.set_outcome("success")
+            elif status == "failed":
+                err = str(envelope.get("error_message") or "")
+                if "invalid_json" in err or "json" in err:
+                    t.set_outcome("invalid_json")
+                elif "timeout" in err:
+                    t.set_outcome("timeout")
+                else:
+                    t.set_outcome("provider_error")
+            else:
+                t.set_outcome("error")
     except Exception as exc:  # pragma: no cover - defensive, service swallows internally
         logger.warning(
             "hyperextract: unexpected exception during pipeline run (document_id=%s): %s",
@@ -1070,6 +1157,18 @@ def _maybe_run_hyperextract(
         )
     )
     db.flush()
+    # Record the fingerprint on the document so a re-run with the
+    # same inputs short-circuits. We use a server-side UTC stamp so
+    # the field is independent of the test harness clock.
+    from datetime import UTC, datetime
+
+    try:
+        document.extraction_fingerprint = fingerprint
+        document.extraction_fingerprint_at = datetime.now(UTC)
+    except Exception:
+        # The migration may not yet be applied in older databases;
+        # the check is best-effort.
+        pass
 
 
 def _first_page_image_path(document: Document) -> str | None:
