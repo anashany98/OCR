@@ -24,6 +24,23 @@ MSG_EXTENSIONS = {".msg"}
 DXF_EXTENSIONS = {".dxf"}
 
 
+class UnsupportedDocumentFormatError(ValueError):
+    """Raised when a file has no safe text-extraction route.
+
+    Reading arbitrary binary data as UTF-8 with ``errors=ignore`` can create
+    corrupted pseudo-text that contaminates chunks and retrieval.  This error
+    lets the pipeline expose a manual-review/convert action instead.
+    """
+
+
+def _unsupported_format(path: Path) -> UnsupportedDocumentFormatError:
+    extension = path.suffix.lower() or "(sin extensión)"
+    return UnsupportedDocumentFormatError(
+        f"Formato no compatible para extracción segura: {extension}. "
+        "Convierte el archivo a PDF, DXF o a un formato de documento compatible."
+    )
+
+
 def parse_document(
     path: Path,
     output_dir: Path,
@@ -59,4 +76,4 @@ def parse_document(
         return parse_dxf(path, output_dir)
     if extension in TEXT_EXTENSIONS:
         return parse_plain_text(path)
-    return parse_plain_text(path)
+    raise _unsupported_format(path)

@@ -46,6 +46,7 @@ MAGIC_SIGNATURES = {
     ".xls": [(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "invalid_xls_signature")],
     ".doc": [(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "invalid_doc_signature")],
     ".docx": [(b"PK\x03\x04", "invalid_docx_signature"), (b"PK\x05\x06", "invalid_docx_signature")],
+    ".msg": [(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "invalid_msg_signature")],
 }
 
 

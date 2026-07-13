@@ -98,6 +98,7 @@ class Settings(BaseSettings):
             ".eml",
             ".doc",
             ".docx",
+            ".msg",
             ".dxf",
         ]
     )
