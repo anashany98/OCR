@@ -2,7 +2,7 @@ import type { AIAnswer, AIQuestion } from "@/types/api"
 import { request } from "./core"
 
 export type AIStreamEvent =
-  | { type: "start"; model: string }
+  | { type: "start"; model: string; cache_hit?: boolean }
   | { type: "delta"; text: string }
   | { type: "thinking"; text: string }
   | {
@@ -11,6 +11,7 @@ export type AIStreamEvent =
       model: string
       confidence: number | null
       fallback: boolean
+      cache_hit?: boolean
       resolved_document: AIAnswer["resolved_document"]
       sources: NonNullable<AIAnswer["sources"]>
       followups: string[]
