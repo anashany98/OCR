@@ -195,7 +195,7 @@ async def ask_stream(
                 mode=mode,
                 scope_key=scope_key,
                 session_id=session_id,
-                model=model_route.model or "default",
+                model=model_route.cache_key or "default",
                 prompt_version=CHAT_PROMPT_VERSION,
                 knowledge_version=current_knowledge_version(db),
             )
