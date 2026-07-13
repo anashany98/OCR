@@ -81,6 +81,8 @@ describe("hasThumbnailExt", () => {
     expect(hasThumbnailExt(".png")).toBe(true)
     expect(hasThumbnailExt(".JPG")).toBe(true)
     expect(hasThumbnailExt(".webp")).toBe(true)
+    expect(hasThumbnailExt(".msg")).toBe(true)
+    expect(hasThumbnailExt(".docx")).toBe(true)
   })
 
   it("rejects non-image extensions", () => {

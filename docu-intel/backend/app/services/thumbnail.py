@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import contextlib
 import io
+import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -100,6 +102,41 @@ def generate_image_thumbnail(image_path: Path, document_hash: str) -> Path | Non
         _save(img, thumb_path)
         return thumb_path.relative_to(settings.files_dir)
     except Exception:
+        return None
+
+
+def generate_office_thumbnail(document_path: Path, document_hash: str) -> Path | None:
+    """Render the first page of a Word/OpenDocument file without persisting a PDF.
+
+    LibreOffice is already part of the backend image for document extraction.
+    The conversion lives in a private temporary directory, uses no shell, and
+    delegates final rasterisation to the same PDF thumbnail code used elsewhere.
+    """
+    if document_path.suffix.lower() not in {".doc", ".docx", ".odt", ".rtf"}:
+        return None
+    try:
+        with tempfile.TemporaryDirectory(prefix="docu-intel-preview-") as output_dir:
+            result = subprocess.run(
+                [
+                    "soffice",
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    output_dir,
+                    str(document_path),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return None
+            converted = Path(output_dir) / f"{document_path.stem}.pdf"
+            if not converted.exists():
+                return None
+            return generate_pdf_thumbnail(converted, document_hash)
+    except (OSError, subprocess.SubprocessError):
         return None
 
 

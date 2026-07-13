@@ -11,6 +11,7 @@ from app.services.thumbnail import (
     generate_excel_thumbnail,
     generate_image_thumbnail,
     generate_msg_thumbnail,
+    generate_office_thumbnail,
     generate_pdf_thumbnail,
     get_thumbnail_path,
 )
@@ -47,6 +48,8 @@ def get_document_thumbnail(
         thumb_relative = generate_excel_thumbnail(stored_path, document.file_hash)
     elif document.extension in {".msg"}:
         thumb_relative = generate_msg_thumbnail(stored_path, document.file_hash)
+    elif document.extension in {".doc", ".docx", ".odt", ".rtf"}:
+        thumb_relative = generate_office_thumbnail(stored_path, document.file_hash)
     else:
         raise HTTPException(status_code=404, detail="No thumbnail available for this file type")
 

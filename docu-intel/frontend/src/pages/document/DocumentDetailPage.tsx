@@ -142,7 +142,10 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
   const page = d.selectedPage
   const isExcel = [".xlsx", ".xls", ".xlsm"].includes(doc?.extension ?? "")
   const isPdf = doc?.extension?.toLowerCase() === ".pdf"
-  const isMsg = doc?.extension?.toLowerCase() === ".msg"
+  const hasOnDemandThumbnail = [
+    ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
+    ".msg", ".doc", ".docx", ".odt", ".rtf",
+  ].includes(doc?.extension?.toLowerCase() ?? "")
   const excelText = isExcel && d.pages.length > 0 ? d.pages.map((p) => p.text || "").join("\n\n") : ""
   const [imgError, setImgError] = useState(false)
   const [thumbError, setThumbError] = useState(false)
@@ -169,7 +172,7 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
             </div>
           ) : isPdf && imgError ? (
             <FallbackPreview doc={doc} message="No se pudo generar la imagen de esta página. El PDF puede estar dañado o el procesamiento no ha terminado." />
-          ) : doc && !thumbError && (doc.extension?.toLowerCase() === ".png" || doc.extension?.toLowerCase() === ".jpg" || doc.extension?.toLowerCase() === ".jpeg" || doc.extension?.toLowerCase() === ".webp") ? (
+          ) : doc && !thumbError && hasOnDemandThumbnail ? (
             <div className="flex flex-1 items-center justify-center bg-[var(--bg-surface-2)] p-4">
               <img
                 className="max-h-full max-w-full rounded object-contain shadow-sm"
