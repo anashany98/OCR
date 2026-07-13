@@ -659,6 +659,9 @@ def _process_full_parse(db: Session, document: Document) -> bool:
                 route=getattr(extracted, "route", "unknown") or "unknown",
                 engine=extracted_block.source_engine or "none",
             )
+    for page_number, page in existing_pages.items():
+        if page_number not in seen_page_numbers:
+            db.delete(page)
     db.flush()
     track_stage_duration("persist", time.perf_counter() - t_persist)
 
@@ -926,9 +929,6 @@ def _apply_classification_and_extraction(
                 db, document.id, text, document.original_filename,
                 document.document_type, blocks=pages,
             )
-    for page_number, page in existing_pages.items():
-        if page_number not in seen_page_numbers:
-            db.delete(page)
         except Exception:
             logger.exception("technical_pipeline_failed document_id=%s", document.id)
     track_stage_duration("extraction", time.perf_counter() - t_extract)
