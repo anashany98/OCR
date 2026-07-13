@@ -210,7 +210,7 @@ export function OcrReviewQueue({ data }: { data: OcrReviewData }) {
 // ---------------------------------------------------------------------------
 // OcrDetails — right column with sticky header + tabs (Preview / OCR / Blocks).
 // ---------------------------------------------------------------------------
-type DetailsTab = "preview" | "text" | "blocks"
+type DetailsTab = "preview" | "text" | "blocks" | "attempts"
 export function OcrDetails({ data }: { data: OcrReviewData }) {
   const { data: pageData, state, mutations } = data
   const selected = pageData.selected
@@ -243,6 +243,9 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
               <span>Página {selected.page_number}</span>
               <span className="text-[var(--text-muted)]/60">·</span>
               <span className="tabular-nums">OCR {formatPercent(selected.ocr_confidence)}</span>
+              {selected.ocr_calibrated_confidence != null && (
+                <span className="tabular-nums">Verificada {formatPercent(selected.ocr_calibrated_confidence)}</span>
+              )}
               <span className="text-[var(--text-muted)]/60">·</span>
               <span>{formatDate(selected.created_at)}</span>
             </CardDescription>
@@ -359,6 +362,11 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
             label: `Bloques (${selected.blocks?.length ?? 0})`,
             icon: <FileText className="h-3.5 w-3.5" />,
           },
+          {
+            value: "attempts",
+            label: `Intentos (${selected.attempts?.length ?? 0})`,
+            icon: <RefreshCcw className="h-3.5 w-3.5" />,
+          },
         ]}
       />
 
@@ -366,6 +374,7 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
         {tab === "preview" && <PreviewPane selected={selected} />}
         {tab === "text" && <TextPane selected={selected} />}
         {tab === "blocks" && <BlocksPane selected={selected} />}
+        {tab === "attempts" && <AttemptsPane selected={selected} />}
       </CardContent>
     </Card>
   )
@@ -444,6 +453,30 @@ function BlocksPane({ selected }: { selected: SelectedPage }) {
               <TableCell className="max-w-[480px] whitespace-pre-wrap text-[13px]">
                 {block.text ?? "-"}
               </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function AttemptsPane({ selected }: { selected: SelectedPage }) {
+  const attempts = selected.attempts ?? []
+  if (!attempts.length) {
+    return <div className="p-6 text-sm text-[var(--text-muted)]">Sin historial de intentos para esta pÃ¡gina.</div>
+  }
+  return (
+    <div className="h-full max-h-[480px] overflow-auto">
+      <Table>
+        <TableHeader><TableRow><TableHead>Motor</TableHead><TableHead>Confianza</TableHead><TableHead>Decisión</TableHead><TableHead>Texto</TableHead></TableRow></TableHeader>
+        <TableBody>
+          {attempts.map((attempt) => (
+            <TableRow key={attempt.id} className={attempt.selected ? "bg-muted/40" : undefined}>
+              <TableCell><Badge variant="outline">{attempt.engine}</Badge></TableCell>
+              <TableCell>{formatPercent(attempt.calibrated_confidence ?? attempt.raw_confidence)}</TableCell>
+              <TableCell>{attempt.decision ?? "pendiente"}</TableCell>
+              <TableCell className="max-w-[360px] whitespace-pre-wrap text-xs">{attempt.text || attempt.error_message || "-"}</TableCell>
             </TableRow>
           ))}
         </TableBody>
