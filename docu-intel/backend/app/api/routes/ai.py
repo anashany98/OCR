@@ -670,10 +670,42 @@ async def ask_stream(
             + json.dumps({"state": "cache", "cache_hit": False, "elapsed_ms": 0.0}).encode()
             + b"\n\n"
         )
-        response = await _build_stream_response(request, payload, db, user)
-        async for raw_chunk in response.body_iterator:
-            chunk = raw_chunk.encode() if isinstance(raw_chunk, str) else raw_chunk
-            yield _with_status_elapsed(chunk, (perf_counter() - started) * 1000.0)
+        lease = None
+        try:
+            from app.ai.prompts import CHAT_PROMPT_VERSION
+            from app.services.ai_cache import answer_cache_key
+            from app.services.ai_singleflight import chat_singleflight
+            from app.services.knowledge_version import current_knowledge_version
+
+            scope = resolve_user_access_scope(db, user)
+            route = select_chat_model(payload.question)
+            key = answer_cache_key(
+                payload.question,
+                user.id,
+                mode=payload.mode,
+                scope_key=access_scope_cache_key(scope),
+                session_id=payload.session_id,
+                model=route.cache_key,
+                prompt_version=CHAT_PROMPT_VERSION,
+                knowledge_version=current_knowledge_version(db),
+            )
+            lease = await chat_singleflight.acquire(key)
+            if lease.waited:
+                yield (
+                    b"event: status\ndata: "
+                    + json.dumps(
+                        {"state": "cache", "cache_hit": False, "waiting": True,
+                         "elapsed_ms": round((perf_counter() - started) * 1000.0, 1)}
+                    ).encode()
+                    + b"\n\n"
+                )
+            response = await _build_stream_response(request, payload, db, user)
+            async for raw_chunk in response.body_iterator:
+                chunk = raw_chunk.encode() if isinstance(raw_chunk, str) else raw_chunk
+                yield _with_status_elapsed(chunk, (perf_counter() - started) * 1000.0)
+        finally:
+            if lease is not None:
+                await lease.release()
 
     return StreamingResponse(
         immediate_event_stream(),

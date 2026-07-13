@@ -119,6 +119,30 @@ def _cache_key(
     return f"{AI_CACHE_PREFIX}{user_id}:{digest}"
 
 
+def answer_cache_key(
+    question: str,
+    user_id: int,
+    *,
+    mode: str | None = None,
+    scope_key: str | None = None,
+    session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
+) -> str:
+    """Return the isolated exact-answer key for cache and single-flight use."""
+    return _cache_key(
+        question,
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
+
+
 def _cache_isolation_key(
     user_id: int,
     *,
