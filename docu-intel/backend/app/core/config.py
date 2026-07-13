@@ -148,6 +148,9 @@ class Settings(BaseSettings):
     # Max concurrent LLM/vision requests. Prevents VRAM exhaustion
     # when many users ask questions simultaneously. Set to 0 to disable.
     ai_max_concurrent_requests: int = 4
+    # Deterministic answers for a deliberately narrow set of trusted
+    # structured facts. They avoid an LLM request while retaining the source.
+    ai_structured_answer_enabled: bool = True
     # M11 (Sprint 4): hard token budget for the context sent to the LLM.
     # The system prompt + user prompt overhead is ~800 tokens; the
     # remainder is context.  Local 8B models typically have 8K context;

@@ -50,6 +50,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.ai.local_client import ContextSizeExceededError, LocalOpenAICompatibleClient
+from app.ai.structured_answer import decide_structured_answer
 from app.ai.structured_output import to_structured_response
 from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
@@ -356,7 +357,17 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    if has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
+    structured_decision = None
+    if settings.ai_structured_answer_enabled:
+        structured_decision = decide_structured_answer(
+            question,
+            context_items,
+            can_view_prices=access_scope.can_view_prices,
+        )
+    if structured_decision is not None:
+        answer_text = structured_decision.answer
+        model_name = "backend_structured"
+    elif has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
         ai_answer = await _try_local_ai_answer(
             question, context_items, warnings, fallback=grounded.answer
         )

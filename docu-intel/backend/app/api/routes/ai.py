@@ -26,6 +26,7 @@ from app.ai.confidence_gates import evaluate_gates_for_turn
 from app.ai.local_client import LocalOpenAICompatibleClient  # noqa: F401
 from app.ai.reference_resolver import resolve_references
 from app.ai.scope_guard import enforce_budget_scope
+from app.ai.structured_answer import decide_structured_answer
 from app.ai.tools import ToolCall, select_structured_tools
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -315,6 +316,13 @@ async def ask_stream(
         question=question, context_items=context_items, warnings=warnings
     )
     answer_context_available = has_answer_context(context_items)
+    structured_decision = None
+    if settings.ai_structured_answer_enabled:
+        structured_decision = decide_structured_answer(
+            question,
+            context_items,
+            can_view_prices=access_scope.can_view_prices,
+        )
     # 3) serialise sources (deduped) for the end event.
     from app.ai.agent import _dedupe_sources  # local import
 
@@ -385,7 +393,9 @@ async def ask_stream(
         )
         # start event: announce the model + that the LLM is running
         start_model = (
-            settings.ai_model
+            "backend_structured"
+            if structured_decision is not None
+            else settings.ai_model
             if answer_context_available and settings.ai_base_url and settings.ai_model
             else "backend_grounded_fallback"
         )
@@ -410,7 +420,16 @@ async def ask_stream(
         confidence = grounded.confidence
         use_fallback = True
 
-        if answer_context_available and settings.ai_base_url and settings.ai_model:
+        if structured_decision is not None:
+            full_text = structured_decision.answer
+            model_name = "backend_structured"
+            use_fallback = False
+            yield (
+                b"event: delta\ndata: "
+                + json.dumps({"text": full_text}).encode()
+                + b"\n\n"
+            )
+        elif answer_context_available and settings.ai_base_url and settings.ai_model:
             try:
                 # Real token-by-token streaming: each plain-text piece the
                 # generator yields is emitted immediately as its own ``delta``
