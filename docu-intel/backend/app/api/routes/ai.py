@@ -4,6 +4,7 @@ import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -141,9 +142,7 @@ async def ask(
     return answer_row
 
 
-@router.post("/ask/stream")
-@limiter.limit("10/minute")
-async def ask_stream(
+async def _build_stream_response(
     request: Request,
     payload: AskRequest,
     db: Session = Depends(get_db),
@@ -631,6 +630,55 @@ async def ask_stream(
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # disable nginx buffering
         },
+    )
+
+
+def _with_status_elapsed(chunk: bytes, elapsed_ms: float) -> bytes:
+    """Attach timing only to safe status events, leaving answer deltas intact."""
+    prefix = b"event: status\ndata: "
+    if not chunk.startswith(prefix):
+        return chunk
+    try:
+        payload = json.loads(chunk[len(prefix) :].strip())
+        if not isinstance(payload, dict):
+            return chunk
+        payload["elapsed_ms"] = round(elapsed_ms, 1)
+        return prefix + json.dumps(payload, ensure_ascii=False).encode() + b"\n\n"
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return chunk
+
+
+@router.post("/ask/stream")
+@limiter.limit("10/minute")
+async def ask_stream(
+    request: Request,
+    payload: AskRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Return an SSE response before cache lookup or retrieval begins.
+
+    The existing builder owns permissions, cache isolation and persistence. A
+    thin outer stream yields the first non-sensitive state immediately, then
+    forwards that trusted builder's events while adding elapsed time.
+    """
+
+    async def immediate_event_stream() -> AsyncIterator[bytes]:
+        started = perf_counter()
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "cache", "cache_hit": False, "elapsed_ms": 0.0}).encode()
+            + b"\n\n"
+        )
+        response = await _build_stream_response(request, payload, db, user)
+        async for raw_chunk in response.body_iterator:
+            chunk = raw_chunk.encode() if isinstance(raw_chunk, str) else raw_chunk
+            yield _with_status_elapsed(chunk, (perf_counter() - started) * 1000.0)
+
+    return StreamingResponse(
+        immediate_event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
