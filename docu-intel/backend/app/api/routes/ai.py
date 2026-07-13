@@ -57,12 +57,16 @@ async def ask(
     """Non-streaming endpoint. Kept for backward compatibility and for
     quick smoke tests. The UI should prefer `/ask/stream`."""
     # FASE 4 — read the cache before invoking the LLM. The cache
-    # key already includes user, scope, session and mode, so a hit
-    # is safe to serve directly.
+    # key includes user, scope, session, mode, model, prompt version
+    # and the knowledge version so a hit is safe to serve directly
+    # and a change in any of those dimensions cannot leak across.
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
     try:
+        from app.ai.prompts import CHAT_PROMPT_VERSION
+        from app.core.config import settings as _settings
         from app.services.ai_cache import get_cached_answer_async as _get_cached
+        from app.services.knowledge_version import current_knowledge_version
         from app.services.metrics.rag import track_chat_cache_lookup
 
         cached = await _get_cached(
@@ -71,6 +75,9 @@ async def ask(
             mode=payload.mode,
             scope_key=scope_key,
             session_id=payload.session_id,
+            model=_settings.ai_model or "default",
+            prompt_version=CHAT_PROMPT_VERSION,
+            knowledge_version=current_knowledge_version(db),
         )
         track_chat_cache_lookup(
             kind="exact" if cached and not cached.get("_semantic_match_score") else "semantic",
@@ -159,13 +166,19 @@ async def ask_stream(
     # FASE 4 — read the AI cache *before* building the context. The
     # previous flow ran the expensive retrieval + LLM call first
     # and only wrote to the cache at the end. The cache key already
-    # includes tenant, user, scope, session, mode and the normalised
-    # question, so a hit is safe to serve without re-querying.
+    # includes tenant, user, scope, session, mode, model, prompt
+    # version and the knowledge version, so a hit is safe to serve
+    # without re-querying. The first SSE event (``start``) is
+    # emitted from inside the cached branch below so the client
+    # sees progress within a few milliseconds even on a cold path.
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
     cached: dict | None = None
     try:
+        from app.ai.prompts import CHAT_PROMPT_VERSION
+        from app.core.config import settings as _settings
         from app.services.ai_cache import get_cached_answer_async as _get_cached
+        from app.services.knowledge_version import current_knowledge_version
         from app.services.metrics.rag import (
             track_chat_cache_lookup,
             track_chat_stage,
@@ -178,6 +191,9 @@ async def ask_stream(
                 mode=mode,
                 scope_key=scope_key,
                 session_id=session_id,
+                model=_settings.ai_model or "default",
+                prompt_version=CHAT_PROMPT_VERSION,
+                knowledge_version=current_knowledge_version(db),
             )
         track_chat_cache_lookup(
             kind="exact" if cached and not cached.get("_semantic_match_score") else "semantic",
@@ -492,10 +508,16 @@ async def ask_stream(
         )
 
         # Feed the answer into the AI cache so subsequent similar
-        # questions (and exact re-asks) skip the LLM. The cache embeds
-        # the question and stores it as a sidecar semantic index.
+        # questions (and exact re-asks) skip the LLM. The cache
+        # embeds the question and stores it as a sidecar semantic
+        # index. The key is the full isolation vector (user + scope
+        # + session + mode + model + prompt_version + knowledge_version)
+        # so a follow-up with any change in those dimensions is
+        # guaranteed to miss.
         try:
+            from app.ai.prompts import CHAT_PROMPT_VERSION
             from app.services.ai_cache import cache_answer_async as _cache_answer_async
+            from app.services.knowledge_version import current_knowledge_version
 
             await _cache_answer_async(
                 question=question,
@@ -509,6 +531,9 @@ async def ask_stream(
                 mode=mode,
                 scope_key=access_scope_cache_key(access_scope),
                 session_id=session_id,
+                model=model_name,
+                prompt_version=CHAT_PROMPT_VERSION,
+                knowledge_version=current_knowledge_version(db),
             )
         except Exception as exc:
             logger.debug("Cache write failed: %s", exc)

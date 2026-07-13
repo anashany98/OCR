@@ -924,6 +924,74 @@ def _apply_classification_and_extraction(
     document.confidence = classification.confidence
     document.page_count = page_count
 
+    # MiniMax M3 (FASE 2) — multi-dimensional classification in the
+    # normal ingestion path, not only in /documents/reclassify.
+    # The function reuses the same text and learned rules the
+    # single-dimension call used, so the business type is stable
+    # while source_format, subtype, tags and the classification
+    # evidence JSON are populated for the admin UI, the chat
+    # retrieval and the cache invalidation key.
+    from app.services.classification_v2 import classify_multidim
+
+    try:
+        parser_signature = None
+        if getattr(document, "extension", None):
+            ext = document.extension.lower()
+            parser_signature = {
+                ".msg": "extract_msg",
+                ".eml": "eml-parser",
+                ".xlsx": "openpyxl",
+                ".xls": "xlrd",
+                ".docx": "python-docx",
+                ".pdf": "pymupdf",
+                ".png": "paddleocr",
+                ".jpg": "paddleocr",
+                ".jpeg": "paddleocr",
+                ".tif": "tesseract",
+                ".tiff": "tesseract",
+                ".dxf": "ezdxf",
+            }.get(ext)
+        multi = classify_multidim(
+            filename=document.original_filename,
+            source_path=document.source_path,
+            mime_type=document.mime_type,
+            parser_signature=parser_signature,
+            text=text,
+            learned_rules=learned_rules,
+            content_route=content_route,
+        )
+        # The multi-dim call returns a (possibly) different business
+        # type when its layered evidence outvotes the rules engine.
+        # We keep the rule engine's verdict for ``document_type`` so
+        # the FASE 2 audit and the reclassify flow stay in lock-step
+        # with the new module.
+        document.source_format = multi.source_format
+        document.document_subtype = multi.document_subtype
+        document.content_tags = list(multi.content_tags)
+        document.classification_evidence = dict(multi.evidence)
+        document.classifier_version = multi.classifier_version
+        from datetime import UTC, datetime
+
+        document.classified_at = datetime.now(UTC)
+        # Track the winning layer for the operator dashboards.
+        from app.services.metrics.minimax_m3 import track_classification_layer
+
+        track_classification_layer(
+            dimension="document_type",
+            path="rules" if not learned_rules else "rules+learned",
+            size_class="small" if len(text) < 6_000 else "medium" if len(text) < 24_000 else "large",
+        )
+        track_classification_layer(
+            dimension="source_format",
+            path="extension+parser",
+            size_class="small",
+        )
+    except Exception as exc:
+        # The new classifier MUST NEVER break the ingestion path.
+        # A failure here falls back to the rule-engine verdict
+        # already persisted above.
+        logger.warning("classify_multidim failed for document_id=%s: %s", document.id, exc)
+
     if (getattr(document, "extension", None) or "").lower() in {".msg", ".eml"}:
         from app.services.communication_ingestion import materialize_communication
         materialize_communication(db, document, text=text)

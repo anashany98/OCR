@@ -46,6 +46,105 @@ RULES: dict[str, list[str]] = {
     "pedido": ["pedido", "orden de compra", "fecha pedido", "referencia pedido"],
     "factura": ["factura", "nº factura", "no factura", "base imponible", "iva", "total factura"],
     "albaran": ["albaran", "albarán", "entrega", "recibido", "mercancia", "mercancía"],
+    # MiniMax M3 (FASE 2) — explicit "incidencia" type. The plan
+    # called out ``incidencia sillas.pdf`` being mislabelled as
+    # ``croquis_medida`` even though the body talks about an issue.
+    # Promoting the keyword to its own type closes that case
+    # without re-training the whole rule engine.
+    "incidencia": [
+        "incidencia",
+        "incidencias",
+        "parte de incidencia",
+        "informe de incidencia",
+        "averia",
+        "avería",
+        "reparacion urgente",
+        "reparación urgente",
+        "rotura",
+    ],
+    # MiniMax M3 (FASE 2) — explicit "medicion" type, evaluated
+    # BEFORE ``croquis_medida`` so a filename or text that
+    # contains the word "medición" wins over the croquis pattern.
+    # ``medición 2 armarios.docx`` and similar measurement
+    # documents now report as ``medicion`` instead of
+    # ``croquis_medida``.
+    "medicion": [
+        "medicion",
+        "medición",
+        "medida",
+        "medidas",
+        "hoja de medicion",
+        "hoja de medición",
+        "cuadro de mediciones",
+        "estado de mediciones",
+        "ancho",
+        "alto",
+        "largo",
+        "cantidad",
+        "armario",
+        "armarios",
+    ],
+    # MiniMax M3 (FASE 2) — new business types the manifest audits.
+    "informe": [
+        "informe",
+        "informe tecnico",
+        "informe técnico",
+        "resumen ejecutivo",
+        "acta",
+        "resumen",
+    ],
+    "confirmacion": [
+        "confirmacion",
+        "confirmación",
+        "confirmado",
+        "aceptado",
+        "acepta",
+        "ok puertas",
+    ],
+    "pago": [
+        "pago",
+        "comprobante de pago",
+        "transferencia",
+        "recibo",
+        "sepa",
+        "banca a distancia",
+    ],
+    "foto": [
+        "foto",
+        "fotos",
+        "fotografia",
+        "fotografías",
+        "imagen de obra",
+    ],
+    "orden_trabajo": [
+        "orden de trabajo",
+        "orden trabajo",
+        "ot",
+        "parte de trabajo",
+        "encuadernacion",
+        "tapiceria",
+    ],
+    "croquis": [
+        "croquis",
+        "croquis de planta",
+        "esquema",
+    ],
+    # MiniMax M3 (FASE 2) — explicit "incidencia" type. The plan
+    # called out ``incidencia sillas.pdf`` being mislabelled as
+    # ``croquis_medida`` even though the body talks about an issue.
+    # Promoting the keyword to its own type closes that case
+    # without re-training the whole rule engine.
+    "incidencia": [
+        "incidencia",
+        "incidencias",
+        "parte de incidencia",
+        "informe de incidencia",
+        "averia",
+        "avería",
+        "reparacion urgente",
+        "reparación urgente",
+        "rotura",
+    ],
     "hoja_confeccion": [
         "hoja de confeccion",
         "hoja de confección",
@@ -429,6 +528,27 @@ def classify_document(
     for doc_type, kws in matched_keywords.items():
         if len(kws) >= 3 and scores.get(doc_type, 0) > 0:
             scores[doc_type] = scores.get(doc_type, 0) + 0.15  # bonus for strong text signal
+
+    # --- Phase 7b: MiniMax M3 (FASE 2) — prefer specific over generic ---
+    # ``incidencia`` and ``medicion`` are deliberately narrow types.
+    # When their score ties with the broader ``croquis_medida`` /
+    # generic catch-all buckets we promote the specific type so a
+    # file that talks about an issue is not collapsed into a
+    # ``croquis`` and a file whose filename or text is "medición"
+    # does not become a "croquis_medida".
+    for specific, generic in (("incidencia", "croquis_medida"), ("medicion", "croquis_medida")):
+        if scores.get(specific, 0) > 0 and scores.get(specific, 0) >= scores.get(generic, 0):
+            scores[specific] = scores.get(specific, 0) + 0.20
+        # Filename signal is a stronger commitment than text
+        # matches like "ancho"/"alto" that fire for any croquis.
+        # Promote whenever the specific type has a filename match
+        # and the generic bucket only has text matches.
+        elif (
+            scores.get(specific, 0) > 0
+            and any(m.startswith("filename:") for m in matches.get(specific, []))
+            and not any(m.startswith("filename:") for m in matches.get(generic, []))
+        ):
+            scores[specific] = scores.get(specific, 0) + 0.30
 
     # --- Phase 8: Prefer specific subtypes over generic "plano" ---
     # PM1.1: When a specific plan subtype (plano_estructura, plano_electrico, etc.)
