@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     ai_provider: str = "local_openai_compatible"
     ai_base_url: str = ""
     ai_model: str = ""
+    # Optional low-latency model for short factual chat turns. Empty keeps the
+    # current single-model behaviour, making rollout and rollback explicit.
+    ai_fast_model: str = ""
+    ai_model_routing_enabled: bool = True
     ai_api_key: str = ""
     ai_request_timeout_seconds: float = 120.0
     ai_max_retries: int = 2

@@ -50,6 +50,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.ai.local_client import ContextSizeExceededError, LocalOpenAICompatibleClient
+from app.ai.model_routing import select_chat_model
 from app.ai.structured_answer import decide_structured_answer
 from app.ai.structured_output import to_structured_response
 from app.core.config import settings
@@ -368,8 +369,9 @@ async def answer_question(
         answer_text = structured_decision.answer
         model_name = "backend_structured"
     elif has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
+        model_route = select_chat_model(question)
         ai_answer = await _try_local_ai_answer(
-            question, context_items, warnings, fallback=grounded.answer
+            question, context_items, warnings, fallback=grounded.answer, model=model_route.model
         )
         # Only adopt the LLM output if it actually produced something new.
         # `_try_local_ai_answer` returns the same `fallback` string when the
@@ -379,7 +381,7 @@ async def answer_question(
         # the LLM for content it did not produce.
         if ai_answer and ai_answer != grounded.answer:
             answer_text = ai_answer
-            model_name = settings.ai_model or grounded.model_name
+            model_name = model_route.model or grounded.model_name
 
     structured = to_structured_response(answer_text, context_items=context_items, warnings=warnings)
 
@@ -507,6 +509,7 @@ async def answer_question(
         mode=mode,
         scope_key=scope_key,
         session_id=session_id,
+        model=model_name,
     )
 
     # CTX-2: persist the active context (current budget, current
@@ -534,7 +537,7 @@ async def answer_question(
 # _try_local_ai_answer extracted to app.ai.local_answer (FASE 6.1)
 # Keep the old private import surface so extension code and tests retain the
 # agent-level client injection point after the module split.
-async def _try_local_ai_answer(question, context_items, warnings, *, fallback):
+async def _try_local_ai_answer(question, context_items, warnings, *, fallback, model=None):
     from app.ai.local_answer import try_local_ai_answer
 
     return await try_local_ai_answer(
@@ -542,6 +545,7 @@ async def _try_local_ai_answer(question, context_items, warnings, *, fallback):
         context_items,
         warnings,
         fallback=fallback,
+        model=model,
         client_factory=LocalOpenAICompatibleClient,
     )
 
@@ -565,6 +569,8 @@ async def _stream_local_ai_answer(
     question: str,
     context_items: list[ContextItem],
     warnings: list[str],
+    *,
+    model: str | None = None,
 ) -> AsyncIterator[str | tuple[str, str] | StreamOutcome]:
     """Stream chunks of the LLM's answer. Yields plain-text deltas, optional
     ``("thinking", chunk)`` tuples (reasoning models), and a final
@@ -577,7 +583,8 @@ async def _stream_local_ai_answer(
     retry once with thinking enabled. Both log a clear warning so the
     operator can see the root cause.
     """
-    if not settings.ai_base_url or not settings.ai_model:
+    selected_model = model or settings.ai_model
+    if not settings.ai_base_url or not selected_model:
         return
 
     context_text = build_context_text(context_items)
@@ -590,7 +597,7 @@ async def _stream_local_ai_answer(
     accumulated: list[str] = []
     thinking_accumulated: list[str] = []
     aborted = False
-    client = LocalOpenAICompatibleClient()
+    client = LocalOpenAICompatibleClient(model=selected_model)
     # MiniMax M3 (FASE 1/4) — record the time-to-first-token for
     # the model queue. The timer is reported through
     # track_chat_stream_event with event="delta"; the model
@@ -654,7 +661,7 @@ async def _stream_local_ai_answer(
     # Qwen3 + LM Studio: with ``/no_think`` it can return EMPTY (0 tokens).
     # Retry ONCE with thinking enabled, buffered (nothing streamed yet);
     # only in the pure-empty case (no text AND no reasoning).
-    if not full and not thinking_accumulated and not aborted and "qwen" in (settings.ai_model or "").lower():
+    if not full and not thinking_accumulated and not aborted and "qwen" in selected_model.lower():
         logger.warning("Qwen3 empty with /no_think — retry thinking on: %s", question[:100])
         retry_messages = build_ai_messages(question, context_text, warning_text, enable_thinking=True)
         retry_parts: list[str] = []

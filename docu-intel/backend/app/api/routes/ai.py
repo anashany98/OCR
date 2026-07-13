@@ -24,6 +24,7 @@ from app.ai.agent import (
 )
 from app.ai.confidence_gates import evaluate_gates_for_turn
 from app.ai.local_client import LocalOpenAICompatibleClient  # noqa: F401
+from app.ai.model_routing import select_chat_model
 from app.ai.reference_resolver import resolve_references
 from app.ai.scope_guard import enforce_budget_scope
 from app.ai.structured_answer import decide_structured_answer
@@ -63,6 +64,7 @@ async def ask(
     # and a change in any of those dimensions cannot leak across.
     access_scope = resolve_user_access_scope(db, user)
     scope_key = access_scope_cache_key(access_scope)
+    model_route = select_chat_model(payload.question)
     try:
         from app.ai.prompts import CHAT_PROMPT_VERSION
         from app.core.config import settings as _settings
@@ -76,7 +78,7 @@ async def ask(
             mode=payload.mode,
             scope_key=scope_key,
             session_id=payload.session_id,
-            model=_settings.ai_model or "default",
+            model=model_route.model or "default",
             prompt_version=CHAT_PROMPT_VERSION,
             knowledge_version=current_knowledge_version(db),
         )
@@ -163,6 +165,7 @@ async def ask_stream(
     question = payload.question
     mode = payload.mode
     session_id = payload.session_id
+    model_route = select_chat_model(question)
 
     # FASE 4 — read the AI cache *before* building the context. The
     # previous flow ran the expensive retrieval + LLM call first
@@ -192,7 +195,7 @@ async def ask_stream(
                 mode=mode,
                 scope_key=scope_key,
                 session_id=session_id,
-                model=_settings.ai_model or "default",
+                model=model_route.model or "default",
                 prompt_version=CHAT_PROMPT_VERSION,
                 knowledge_version=current_knowledge_version(db),
             )
@@ -395,7 +398,7 @@ async def ask_stream(
         start_model = (
             "backend_structured"
             if structured_decision is not None
-            else settings.ai_model
+            else model_route.model
             if answer_context_available and settings.ai_base_url and settings.ai_model
             else "backend_grounded_fallback"
         )
@@ -436,7 +439,9 @@ async def ask_stream(
                 # event (the frontend appends them: ``assembled += ev.text``).
                 # Previously we buffered everything and emitted a single delta
                 # at the end, so the user saw no live typing.
-                async for chunk in _stream_local_ai_answer(question, context_items, warnings):
+                async for chunk in _stream_local_ai_answer(
+                    question, context_items, warnings, model=model_route.model
+                ):
                     if isinstance(chunk, StreamOutcome):
                         # Terminal outcome. ``chunk.text`` is the final
                         # accumulated text. When the generator streamed
@@ -455,7 +460,7 @@ async def ask_stream(
                                     + json.dumps({"text": full_text}).encode()
                                     + b"\n\n"
                                 )
-                            model_name = settings.ai_model
+                            model_name = model_route.model
                             use_fallback = False
                         break
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "thinking":

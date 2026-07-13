@@ -23,6 +23,7 @@ async def try_local_ai_answer(
     warnings: list[str],
     *,
     fallback: str,
+    model: str | None = None,
     client_factory: Callable[[], Any] | None = None,
 ) -> str | None:
     """One-shot LLM call with the same context as the streaming
@@ -38,13 +39,14 @@ async def try_local_ai_answer(
         response_looks_spanish,
     )
 
-    if not settings.ai_base_url or not settings.ai_model:
+    selected_model = model or settings.ai_model
+    if not settings.ai_base_url or not selected_model:
         return None
 
     context_text = build_context_text(context_items)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
     messages = build_ai_messages(question, context_text, warning_text)
-    client = (client_factory or LocalOpenAICompatibleClient)()
+    client = client_factory() if client_factory else LocalOpenAICompatibleClient(model=selected_model)
     try:
         answer = await client.chat(messages, temperature=0.0)
     except ContextSizeExceededError:
@@ -70,7 +72,7 @@ async def try_local_ai_answer(
         )
         return None
 
-    if not answer and "qwen" in (settings.ai_model or "").lower():
+    if not answer and "qwen" in selected_model.lower():
         logger.warning(
             "Qwen3 returned an empty answer (0 tokens) with /no_think — "
             "retrying once with thinking enabled for question: %s",
