@@ -569,21 +569,49 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
     db.execute(delete(DocumentBlock).where(DocumentBlock.document_id == document.id))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document.id))
-    db.execute(delete(DocumentPage).where(DocumentPage.document_id == document.id))
     db.execute(delete(Plan).where(Plan.document_id == document.id))
+    # Keep page rows stable across full reprocessing so their OCR attempt
+    # history remains auditable and a worse candidate can never erase the
+    # previous evidence. Pages removed from the source are cleaned up after
+    # the new page set is known.
+    existing_pages = {
+        page.page_number: page
+        for page in db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all()
+    }
     db.flush()
 
+    seen_page_numbers: set[int] = set()
     for extracted_page in extracted.pages:
-        page = DocumentPage(
-            document_id=document.id,
-            page_number=extracted_page.page_number,
-            width=extracted_page.width,
-            height=extracted_page.height,
-            text=extracted_page.text,
-            image_path=_relative_to_files(extracted_page.image_path),
-            page_status=_page_status_from_confidence(extracted_page.ocr_confidence),
-            ocr_confidence=extracted_page.ocr_confidence,
-            ocr_engine=extracted_page.ocr_engine,
+        seen_page_numbers.add(extracted_page.page_number)
+        page = existing_pages.get(extracted_page.page_number)
+        if page is None:
+            page = DocumentPage(document_id=document.id, page_number=extracted_page.page_number)
+            db.add(page)
+        else:
+            for attempt in page.ocr_attempts:
+                attempt.selected = False
+        page.width = extracted_page.width
+        page.height = extracted_page.height
+        page.text = extracted_page.text
+        page.image_path = _relative_to_files(extracted_page.image_path)
+        page.page_status = _page_status_from_confidence(extracted_page.ocr_confidence)
+        page.ocr_confidence = extracted_page.ocr_confidence
+        page.ocr_engine = extracted_page.ocr_engine
+        page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
+        page.ocr_engine_version = settings.current_ocr_engine_version
+        page.attempts = (page.attempts or 0) + 1
+        # Per-page OCR timing. The PDF parser attaches this to the
+        # ExtractedPage (set in _process_scanned_page); the image
+        # parser and reprocess path also set it. Defaults to None
+        # for paths that don't measure (e.g. digital pymupdf pages).
+        # Stamp the configured engine version so the periodic
+        # re-OCR sweep can find pages produced with a stale
+        # version. Pages with no engine (e.g. pymupdf-native text)
+        # get the same label so they participate in the sweep
+        # too â€” when an operator bumps the OCR stack, every page
+        # should be re-evaluated.
+        # Metadata is assigned above; keep the legacy values inert below.
+        _unused = dict(
             # Per-page OCR timing. The PDF parser attaches this to the
             # ExtractedPage (set in _process_scanned_page); the image
             # parser and reprocess path also set it. Defaults to None
@@ -598,7 +626,6 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             ocr_engine_version=settings.current_ocr_engine_version,
             attempts=1 if extracted_page.ocr_confidence is not None else 0,
         )
-        db.add(page)
         db.flush()
         _record_ocr_attempt(
             db,
@@ -899,6 +926,9 @@ def _apply_classification_and_extraction(
                 db, document.id, text, document.original_filename,
                 document.document_type, blocks=pages,
             )
+    for page_number, page in existing_pages.items():
+        if page_number not in seen_page_numbers:
+            db.delete(page)
         except Exception:
             logger.exception("technical_pipeline_failed document_id=%s", document.id)
     track_stage_duration("extraction", time.perf_counter() - t_extract)
