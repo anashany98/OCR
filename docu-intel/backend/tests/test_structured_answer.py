@@ -49,3 +49,34 @@ def test_non_amount_question_does_not_short_circuit():
         )
         is None
     )
+
+
+def test_supplier_answer_does_not_require_price_permission():
+    item = ContextItem(
+        title="Pedido 7",
+        summary="Pedido 7 - Proveedor Maderas SL - Cliente Obra Norte - 100.00 EUR",
+        document_id=7,
+        document_filename="PEDIDO_7.pdf",
+        confidence=0.95,
+    )
+
+    decision = decide_structured_answer("Quien es el proveedor?", [item], can_view_prices=False)
+
+    assert decision is not None
+    assert "Maderas SL" in decision.answer
+
+
+def test_status_answer_keeps_source():
+    item = ContextItem(
+        title="Presupuesto 7",
+        summary="Presupuesto 7 - Cliente Obra Norte - 100.00 EUR - Estado aceptado",
+        document_id=7,
+        document_filename="PRESUPUESTO_7.pdf",
+        confidence=0.95,
+    )
+
+    decision = decide_structured_answer("Cual es el estado?", [item], can_view_prices=True)
+
+    assert decision is not None
+    assert "aceptado" in decision.answer
+    assert "PRESUPUESTO_7.pdf" in decision.answer
