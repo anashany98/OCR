@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     dwg_converter_path: str = ""
     dwg_converter_timeout_seconds: int = 120
     dwg_converter_version: str = "ACAD2018"
+    # Docker containers cannot execute a Windows ``ODAFileConverter.exe``.
+    # On Docker Desktop, a local authenticated bridge can invoke the
+    # operator-installed executable on the Windows host instead.
+    dwg_converter_bridge_url: str = ""
+    dwg_converter_bridge_token: str = ""
     file_storage_strategy: Literal["copy", "hardlink", "auto"] = "auto"
     watcher_enabled: bool = True
     watcher_backend: Literal["native", "polling"] = "native"

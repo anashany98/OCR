@@ -46,6 +46,36 @@ def test_dwg_converter_absence_gives_operator_action(tmp_path: Path, monkeypatch
         parse_dwg(source, tmp_path / "out")
 
 
+def test_dwg_uses_authenticated_windows_bridge_when_configured(monkeypatch, tmp_path: Path):
+    from app.core.config import settings
+    from app.parsers import dwg
+
+    source = tmp_path / "plan.dwg"
+    source.write_bytes(b"AC1018 fake")
+    destination = tmp_path / "plan.dxf"
+    calls: dict[str, object] = {}
+
+    class Response:
+        status_code = 200
+        content = b"0\nSECTION\n0\nEOF\n"
+        text = ""
+
+    def fake_post(url, **kwargs):
+        calls["url"] = url
+        calls.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr("app.parsers.dwg.httpx.post", fake_post)
+    monkeypatch.setattr(settings, "dwg_converter_bridge_url", "http://host.docker.internal:8789")
+    monkeypatch.setattr(settings, "dwg_converter_bridge_token", "x" * 32)
+
+    dwg._convert_dwg_to_dxf(source, destination)
+
+    assert calls["url"] == "http://host.docker.internal:8789/convert"
+    assert calls["headers"] == {"X-Docu-Intel-Bridge-Token": "x" * 32}
+    assert destination.read_bytes().startswith(b"0\nSECTION")
+
+
 def test_dwg_is_recognized_as_a_plan_and_requires_its_binary_signature(tmp_path: Path, monkeypatch):
     from app.core.config import settings
 

@@ -15,6 +15,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import httpx
+
 from app.core.config import settings
 from app.parsers.dxf import parse_dxf
 from app.parsers.types import ExtractedDocument
@@ -50,6 +52,10 @@ def _convert_dwg_to_dxf(source: Path, destination: Path) -> None:
     conversion folder contains only a copied input, so the original upload is
     never modified even when ODA's audit option repairs recoverable defects.
     """
+    if settings.dwg_converter_bridge_url.strip():
+        _convert_through_windows_bridge(source, destination)
+        return
+
     executable = _converter_path()
     with tempfile.TemporaryDirectory(prefix="docu_intel_dwg_") as temp_dir:
         workspace = Path(temp_dir)
@@ -88,6 +94,42 @@ def _convert_dwg_to_dxf(source: Path, destination: Path) -> None:
             logger.warning("DWG conversion failed for %s: %s", source.name, detail[:500])
             raise DwgConversionError("No se pudo convertir el plano DWG a DXF de forma segura.")
         shutil.copy2(generated, destination)
+
+
+def _convert_through_windows_bridge(source: Path, destination: Path) -> None:
+    """Convert through the localhost-only Windows ODA bridge.
+
+    Docker Desktop Linux containers cannot execute ``ODAFileConverter.exe``.
+    The bridge keeps the executable on the host, receives one temporary copy
+    over the Docker host gateway, and returns only the generated DXF.
+    """
+    base_url = settings.dwg_converter_bridge_url.rstrip("/")
+    token = settings.dwg_converter_bridge_token.strip()
+    if not token:
+        raise DwgConversionError(
+            "El puente ODA está configurado sin DWG_CONVERTER_BRIDGE_TOKEN."
+        )
+
+    try:
+        with source.open("rb") as handle:
+            response = httpx.post(
+                f"{base_url}/convert",
+                files={"file": (source.name, handle, "application/acad")},
+                headers={"X-Docu-Intel-Bridge-Token": token},
+                timeout=settings.dwg_converter_timeout_seconds,
+            )
+    except httpx.TimeoutException as exc:
+        raise DwgConversionError("El puente ODA agotó el tiempo máximo de conversión.") from exc
+    except httpx.HTTPError as exc:
+        raise DwgConversionError("No se pudo contactar con el puente ODA de Windows.") from exc
+
+    if response.status_code != 200:
+        detail = response.text.strip()[:300]
+        logger.warning("DWG bridge conversion failed for %s: %s", source.name, detail)
+        raise DwgConversionError("El puente ODA no pudo convertir el plano DWG a DXF.")
+    if not response.content:
+        raise DwgConversionError("El puente ODA devolvió un DXF vacío.")
+    destination.write_bytes(response.content)
 
 
 def parse_dwg(path: Path, output_dir: Path) -> ExtractedDocument:
