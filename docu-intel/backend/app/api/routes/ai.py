@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -34,6 +35,7 @@ from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
 from app.schemas.ai import AIAnswerRead, AIQuestionRead, AskRequest
 from app.services.ai_cache import get_cache_stats, invalidate_all_ai_cache
 from app.services.business_redaction import redact_business_payload_for_scope
+from app.services.source_sanitizer import sanitize_sources_batch
 from app.services.tenant_access import (
     access_scope_cache_key,
     filter_documents_for_scope,
@@ -54,6 +56,61 @@ async def ask(
 ) -> AIAnswerRead:
     """Non-streaming endpoint. Kept for backward compatibility and for
     quick smoke tests. The UI should prefer `/ask/stream`."""
+    # FASE 4 — read the cache before invoking the LLM. The cache
+    # key already includes user, scope, session and mode, so a hit
+    # is safe to serve directly.
+    access_scope = resolve_user_access_scope(db, user)
+    scope_key = access_scope_cache_key(access_scope)
+    try:
+        from app.services.ai_cache import get_cached_answer_async as _get_cached
+        from app.services.metrics.rag import track_chat_cache_lookup
+
+        cached = await _get_cached(
+            question=payload.question,
+            user_id=user.id,
+            mode=payload.mode,
+            scope_key=scope_key,
+            session_id=payload.session_id,
+        )
+        track_chat_cache_lookup(
+            kind="exact" if cached and not cached.get("_semantic_match_score") else "semantic",
+            outcome="hit" if cached else "miss",
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.debug("cache_lookup_failed: %s", exc)
+        cached = None
+        track_chat_cache_lookup(kind="exact", outcome="error")
+
+    if cached and cached.get("answer"):
+        # Persist a synthetic AIAnswer row so /ai/history and the
+        # cache hit share a single source of truth.
+        question_row = AIQuestion(user_id=user.id, question=payload.question)
+        db.add(question_row)
+        db.flush()
+        answer_row = AIAnswer(
+            question_id=question_row.id,
+            answer=str(cached.get("answer") or ""),
+            confidence=cached.get("confidence"),
+            model_name=cached.get("model_name") or "cache",
+        )
+        db.add(answer_row)
+        for src in cached.get("sources") or []:
+            answer_row.sources.append(
+                AIAnswerSource(
+                    document_id=src.get("document_id"),
+                    page_number=src.get("page_number"),
+                    block_id=src.get("block_id"),
+                    relevance_score=src.get("relevance_score"),
+                    excerpt=src.get("excerpt"),
+                )
+            )
+        db.commit()
+        from app.ai.agent import _suggest_followups  # local import
+
+        followups = _suggest_followups(payload.question, None, [])
+        answer_row.followups = followups  # type: ignore[attr-defined]
+        return answer_row
+
     answer_row = await answer_question(
         db,
         user=user,
@@ -66,7 +123,6 @@ async def ask(
     from app.ai.agent import _suggest_followups  # local import
 
     tools = select_tools_for_question(payload.question)
-    access_scope = resolve_user_access_scope(db, user)
     context_items, _, _ = collect_context(db, tools, payload.question, access_scope=access_scope)
     followups = _suggest_followups(payload.question, None, context_items)
     # Pydantic + from_attributes will copy AIAnswer fields; attach followups
@@ -92,10 +148,93 @@ async def ask_stream(
                            "resolved_document": {...} | null, "sources": [...] }
       - on LLM failure the end event has "fallback": true and the answer is the
         grounded fallback text (so the client can render it directly).
+      - when the answer is served from the AI cache the end event
+        also has "cache_hit": true so the UI can show a "cached"
+        badge (MiniMax M3 FASE 4).
     """
     question = payload.question
     mode = payload.mode
     session_id = payload.session_id
+
+    # FASE 4 — read the AI cache *before* building the context. The
+    # previous flow ran the expensive retrieval + LLM call first
+    # and only wrote to the cache at the end. The cache key already
+    # includes tenant, user, scope, session, mode and the normalised
+    # question, so a hit is safe to serve without re-querying.
+    access_scope = resolve_user_access_scope(db, user)
+    scope_key = access_scope_cache_key(access_scope)
+    cached: dict | None = None
+    try:
+        from app.services.ai_cache import get_cached_answer_async as _get_cached
+        from app.services.metrics.rag import (
+            track_chat_cache_lookup,
+            track_chat_stage,
+        )
+
+        with track_chat_stage("cache_lookup"):
+            cached = await _get_cached(
+                question=question,
+                user_id=user.id,
+                mode=mode,
+                scope_key=scope_key,
+                session_id=session_id,
+            )
+        track_chat_cache_lookup(
+            kind="exact" if cached and not cached.get("_semantic_match_score") else "semantic",
+            outcome="hit" if cached else "miss",
+        )
+    except Exception as exc:  # pragma: no cover - cache must never break the stream
+        logger.debug("cache_lookup_failed: %s", exc)
+        track_chat_cache_lookup(kind="exact", outcome="error")
+
+    if cached and cached.get("answer"):
+        # Serve the cached answer without re-running the LLM. The
+        # end event carries the same payload shape as the live path
+        # so the frontend can render it identically.
+        cached_answer = str(cached.get("answer") or "")
+        cached_confidence = cached.get("confidence")
+        cached_model = cached.get("model_name") or "cache"
+        cached_sources = cached.get("sources") or []
+
+        async def cached_stream() -> AsyncIterator[bytes]:
+            yield (
+                b"event: start\ndata: "
+                + json.dumps({"model": cached_model, "cache_hit": True}).encode()
+                + b"\n\n"
+            )
+            # Emit the answer as a single delta so the streaming UI
+            # still grows the bubble. The end event is the
+            # authoritative source of the full text.
+            yield (
+                b"event: delta\ndata: "
+                + json.dumps({"text": cached_answer}).encode()
+                + b"\n\n"
+            )
+            yield (
+                b"event: end\ndata: "
+                + json.dumps(
+                    {
+                        "answer": cached_answer,
+                        "model": cached_model,
+                        "confidence": cached_confidence,
+                        "fallback": False,
+                        "cache_hit": True,
+                        "sources": cached_sources,
+                        "followups": [],
+                    },
+                    ensure_ascii=False,
+                ).encode()
+                + b"\n\n"
+            )
+
+        return StreamingResponse(
+            cached_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # 1) build the same context the non-streaming path builds:
     # reference resolution, structured-first tools, active scope and
@@ -115,7 +254,6 @@ async def ask_stream(
         tools = [t for t in tools if t.name != "hybrid_search"] + [
             ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}})
         ]
-    access_scope = resolve_user_access_scope(db, user)
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
     )
@@ -294,6 +432,10 @@ async def ask_stream(
 
         # Persist the final answer to the DB so /ai/history and the work
         # inbox stay in sync with the streamed response.
+        #
+        # CR1: Sanitize source references before persistence so stale
+        # block_id values cannot FK-abort the transaction.
+        sanitized_sources = sanitize_sources_batch(db, sources_payload)
         question_row = AIQuestion(user_id=user.id, question=question)
         db.add(question_row)
         db.flush()
@@ -308,17 +450,35 @@ async def ask_stream(
         )
         db.add(answer_row)
         db.flush()
-        for src in sources_payload:
+        for src in sanitized_sources:
             answer_row.sources.append(
                 AIAnswerSource(
-                    document_id=src["document_id"],
-                    page_number=src["page_number"],
-                    block_id=src["block_id"],
-                    relevance_score=src["relevance_score"],
-                    excerpt=src["excerpt"],
+                    document_id=src.document_id,
+                    page_number=src.page_number,
+                    block_id=src.block_id,
+                    relevance_score=src.relevance_score,
+                    excerpt=src.excerpt,
                 )
             )
-        db.commit()
+        try:
+            db.commit()
+        except Exception as exc:
+            logger.error("Failed to persist answer + sources: %s", exc)
+            from app.services.metrics.rag import track_ai_stream_persist_failure
+
+            track_ai_stream_persist_failure("answer")
+            with contextlib.suppress(Exception):
+                db.rollback()
+        # CR8: Track answers without sources.
+        if not sanitized_sources:
+            from app.services.metrics.rag import track_answer_without_source
+
+            reason = "no_context" if not answer_context_available else "all_stale"
+            track_answer_without_source(reason)
+            # Still yield end event so the client gets the answer text
+            # (already streamed) but marks it as not persisted.
+        # CR2: Persist context in a separate, best-effort commit so
+        # a context failure never rolls back the answer.
         persist_context_after_answer(
             db,
             user=user,
@@ -356,6 +516,7 @@ async def ask_stream(
             "confidence": confidence,
             "fallback": use_fallback,
             "resolved_document": resolved_json,
+            "answer_id": answer_row.id,
             "sources": [
                 {
                     "id": s.id,
