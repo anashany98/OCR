@@ -145,6 +145,12 @@ def upload_batch(
             )
         except Exception:
             logger.exception("batch_upload_failed filename=%s", file.filename)
+            # ``register_upload`` normally commits one file at a time, but a
+            # database error before that commit leaves this shared request
+            # session unusable.  Roll it back before advancing to the next
+            # selected file so one bad item cannot turn the whole folder into
+            # an HTTP 500.
+            db.rollback()
             failed += 1
 
     db.commit()
