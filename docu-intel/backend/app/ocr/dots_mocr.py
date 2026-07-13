@@ -244,8 +244,9 @@ class DotsMOCREngine:
 
     def _post(self, payload: dict, headers: dict | None) -> dict:
         """Single HTTP attempt. Wrapped by the breaker in ``_call_with_retry``."""
+        endpoint = _chat_completions_endpoint(self.config.endpoint)
         with httpx.Client(timeout=self.config.timeout_seconds) as client:
-            response = client.post(self.config.endpoint, json=payload, headers=headers)
+            response = client.post(endpoint, json=payload, headers=headers)
             response.raise_for_status()
             return response.json()
 
@@ -262,6 +263,25 @@ def _coerce_confidence(value: object) -> float | None:
         return max(0.0, min(1.0, float(value)))
     except (TypeError, ValueError):
         return None
+
+
+def _chat_completions_endpoint(endpoint: str | None) -> str:
+    """Accept either an OpenAI-compatible base URL or a direct OCR URL.
+
+    Deployments commonly configure ``DOTS_MOCR_ENDPOINT`` as
+    ``http://host:port/v1``.  Posting the OCR payload to that base path can
+    yield a successful but empty response, so a low-confidence page silently
+    falls back to the weaker OCR result.  OpenAI-compatible servers expect
+    the actual inference route at ``/v1/chat/completions``.  A deployment
+    that already provides a dedicated endpoint (for example ``/ocr``) keeps
+    that URL unchanged.
+    """
+    if not endpoint:
+        raise RuntimeError("dots.mocr endpoint is not configured")
+    normalized = endpoint.rstrip("/")
+    if normalized.endswith("/v1"):
+        return f"{normalized}/chat/completions"
+    return normalized
 
 
 def _parse_blocks(raw_blocks: object) -> list[OCRBlock]:

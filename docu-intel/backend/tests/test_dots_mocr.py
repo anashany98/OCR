@@ -8,6 +8,7 @@ import pytest
 from app.ocr.dots_mocr import (
     DotsMOCRConfig,
     DotsMOCREngine,
+    _chat_completions_endpoint,
     reset_dots_mocr_breaker,
 )
 from app.services.circuit_breaker import (
@@ -80,6 +81,19 @@ class _RecordingClient:
         # No behaviour registered for this attempt — default to success
         # so the retry loop exits cleanly on the next attempt.
         return _OkResponse()
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        ("http://vlm.local/v1", "http://vlm.local/v1/chat/completions"),
+        ("http://vlm.local/v1/", "http://vlm.local/v1/chat/completions"),
+        ("http://vlm.local/ocr", "http://vlm.local/ocr"),
+        ("http://vlm.local/v1/chat/completions", "http://vlm.local/v1/chat/completions"),
+    ],
+)
+def test_chat_completions_endpoint_normalizes_openai_base_url(configured, expected):
+    assert _chat_completions_endpoint(configured) == expected
 
 
 def test_dots_mocr_posts_image_and_parses_blocks(tmp_path, monkeypatch):
