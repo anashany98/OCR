@@ -82,7 +82,10 @@ describe("hasThumbnailExt", () => {
     expect(hasThumbnailExt(".JPG")).toBe(true)
     expect(hasThumbnailExt(".webp")).toBe(true)
     expect(hasThumbnailExt(".msg")).toBe(true)
+    expect(hasThumbnailExt(".eml")).toBe(true)
     expect(hasThumbnailExt(".docx")).toBe(true)
+    expect(hasThumbnailExt(".dxf")).toBe(true)
+    expect(hasThumbnailExt(".dwg")).toBe(true)
   })
 
   it("rejects non-image extensions", () => {

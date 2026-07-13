@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -16,7 +16,7 @@ import {
   Type,
 } from "lucide-react"
 
-import { pageImageUrl, thumbnailUrl, downloadUrl } from "@/api/client"
+import { documentPreviewUrl, pageImageUrl, thumbnailUrl, downloadUrl } from "@/api/client"
 import { AutoBreadcrumbs } from "@/components/layout/AutoBreadcrumbs"
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { DocumentProgressBar, StatusBadge } from "@/components/layout/StatusBadge"
@@ -146,13 +146,14 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
     ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
     ".msg", ".doc", ".docx", ".odt", ".rtf",
   ].includes(doc?.extension?.toLowerCase() ?? "")
+  const hasFullGeneratedPreview = [".eml", ".dxf", ".dwg"].includes(doc?.extension?.toLowerCase() ?? "")
   const excelText = isExcel && d.pages.length > 0 ? d.pages.map((p) => p.text || "").join("\n\n") : ""
   const [imgError, setImgError] = useState(false)
   const [thumbError, setThumbError] = useState(false)
 
-  // Reset errors when page changes
+  // Reset errors when the selected document or page changes.
   const pageKey = page?.page_number ?? "none"
-  useState(() => { setImgError(false); setThumbError(false) })
+  useEffect(() => { setImgError(false); setThumbError(false) }, [doc?.id, pageKey])
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -172,6 +173,15 @@ function ViewerCard({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
             </div>
           ) : isPdf && imgError ? (
             <FallbackPreview doc={doc} message="No se pudo generar la imagen de esta página. El PDF puede estar dañado o el procesamiento no ha terminado." />
+          ) : doc && !thumbError && hasFullGeneratedPreview ? (
+            <div className="flex flex-1 items-center justify-center overflow-auto bg-[var(--bg-surface-2)] p-4">
+              <img
+                className="max-h-full max-w-full rounded object-contain shadow-sm"
+                src={documentPreviewUrl(doc.id)}
+                alt={`Vista previa de ${doc.original_filename}`}
+                onError={() => setThumbError(true)}
+              />
+            </div>
           ) : doc && !thumbError && hasOnDemandThumbnail ? (
             <div className="flex flex-1 items-center justify-center bg-[var(--bg-surface-2)] p-4">
               <img

@@ -11,6 +11,7 @@ export {
   ApiError,
   type BatchUploadResult,
   buildSearchParams,
+  documentPreviewUrl,
   downloadUrl,
   pageImageUrl,
   request,

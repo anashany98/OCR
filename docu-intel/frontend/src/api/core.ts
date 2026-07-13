@@ -62,6 +62,10 @@ export function thumbnailUrl(documentId: number) {
   return `${API_BASE_URL}` + "/documents/" + documentId + "/thumbnail"
 }
 
+export function documentPreviewUrl(documentId: number) {
+  return `${API_BASE_URL}` + "/documents/" + documentId + "/preview"
+}
+
 export function pageImageUrl(documentId: number, pageNumber: number) {
   return `${API_BASE_URL}` + "/documents/" + documentId + "/pages/" + pageNumber + "/image"
 }

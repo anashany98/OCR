@@ -813,6 +813,12 @@ def test_thumbnail_endpoint_respects_user_hotel_scope(tmp_path, monkeypatch):
 
     assert response.status_code == 404
 
+    preview_response = client.get(
+        f"/documents/{document_id}/preview", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert preview_response.status_code == 404
+
 
 def test_specific_folder_rule_wins_and_equal_conflict_quarantines():
     client, sessions = _test_client()

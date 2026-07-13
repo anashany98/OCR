@@ -83,7 +83,7 @@ export function hasThumbnailExt(extension: string | null | undefined): boolean {
   if (!extension) return false
   return [
     ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
-    ".msg", ".doc", ".docx", ".odt", ".rtf",
+    ".msg", ".eml", ".doc", ".docx", ".odt", ".rtf", ".dxf", ".dwg",
   ].includes(
     extension.toLowerCase(),
   )

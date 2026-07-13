@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { api, downloadUrl, pageImageUrl } from "@/api/client"
+import { api, documentPreviewUrl, downloadUrl, pageImageUrl } from "@/api/client"
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -15,6 +15,12 @@ describe("downloadUrl", () => {
 describe("pageImageUrl", () => {
   it("builds a protected OCR page preview endpoint", () => {
     expect(pageImageUrl(42, 3)).toContain("/documents/42/pages/3/image")
+  })
+})
+
+describe("documentPreviewUrl", () => {
+  it("builds a protected generated document preview endpoint", () => {
+    expect(documentPreviewUrl(42)).toContain("/documents/42/preview")
   })
 })
 
