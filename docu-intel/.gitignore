@@ -24,4 +24,8 @@ lms_server.log.err
 *.tsbuildinfo
 # Generated golden fixture PNGs (created at runtime by test fixture builder)
 backend/tests/fixtures/golden/
+# MiniMax M3 performance data (local benchmark outputs, may contain timing only)
+data/minimax-m3-performance/
+# MiniMax M3 corpus snapshots (local-only, never commit raw document dumps)
+data/minimax-m3-corpus-snapshot.txt
 
