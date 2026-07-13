@@ -447,6 +447,9 @@ async def ask_stream(
             resolved_document_json=json.dumps(resolved_json, default=str, ensure_ascii=False)
             if resolved_json
             else None,
+            prompt_version=getattr(__import__(
+                "app.ai.prompts", fromlist=["CHAT_PROMPT_VERSION"]
+            ), "CHAT_PROMPT_VERSION", None),
         )
         db.add(answer_row)
         db.flush()
