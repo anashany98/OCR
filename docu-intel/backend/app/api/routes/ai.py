@@ -214,6 +214,11 @@ async def ask_stream(
 
         async def cached_stream() -> AsyncIterator[bytes]:
             yield (
+                b"event: status\ndata: "
+                + json.dumps({"state": "cache", "cache_hit": True}).encode()
+                + b"\n\n"
+            )
+            yield (
                 b"event: start\ndata: "
                 + json.dumps({"model": cached_model, "cache_hit": True}).encode()
                 + b"\n\n"
