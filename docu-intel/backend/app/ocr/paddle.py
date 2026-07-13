@@ -17,6 +17,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -83,6 +84,54 @@ def _get_gpu_device() -> str | None:
     if devices and devices[0].strip():
         return devices[0].strip()
     return None
+
+
+def gpu_has_headroom(minimum_free_memory_mb: int | None = None) -> bool:
+    """Return whether the worker's assigned GPU has enough free VRAM.
+
+    CUDA visibility alone is insufficient on a desktop machine: LM Studio or
+    another local model may already occupy almost all VRAM.  Starting Paddle
+    in that condition leads to a cgroup SIGKILL, which loses the Celery child
+    and stalls the queue.  A failed probe is deliberately treated as no
+    headroom, so the cascade can use its safe Tesseract/VLM path.
+    """
+    device = _get_gpu_device()
+    if device is None:
+        return False
+    minimum = (
+        settings.paddle_gpu_min_free_memory_mb
+        if minimum_free_memory_mb is None
+        else minimum_free_memory_mb
+    )
+    visible_device = os.environ.get("NVIDIA_VISIBLE_DEVICES", device).strip()
+    if not visible_device or visible_device.lower() in {"all", "void", "none"}:
+        visible_device = device
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--id=" + visible_device.split(",")[0],
+                "--query-gpu=memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=5,
+        )
+        free_memory_mb = int(result.stdout.strip().splitlines()[0])
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, IndexError):
+        logger.warning("Unable to determine free VRAM; disabling GPU OCR for this worker")
+        return False
+    if free_memory_mb < minimum:
+        logger.warning(
+            "GPU OCR deferred: only %s MiB VRAM free on GPU %s (minimum %s MiB)",
+            free_memory_mb,
+            visible_device,
+            minimum,
+        )
+        return False
+    return True
 
 
 class PaddleOCREngine:

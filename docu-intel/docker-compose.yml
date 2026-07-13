@@ -91,11 +91,8 @@ services:
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2} -n worker-fast@%h
     restart: unless-stopped
-    # H-2: enabled. The image's ENTRYPOINT (docker-entrypoint.sh)
-    # chowns bind-mounts that are still owned by root, so the
-    # non-root appuser can write to /app/data/files and /app/data/input
-    # on Linux/Windows hosts.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # The entrypoint must start as root to repair nested bind-mount ownership,
+    # then drops privileges to appuser before starting Celery.
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,7 +121,7 @@ services:
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_CPU_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy@%h
     restart: unless-stopped
     # Recycle the worker process after every task (--max-tasks-per-child=1)
     # to release VRAM/RAM leaked by PaddleOCR/PP-Structure on CPU. Combined
@@ -135,8 +132,7 @@ services:
     # 45g host while still protecting the OS. The --max-tasks-per-child=1
     # ensures the 30g working set is released back between jobs.
     mem_limit: ${WORKER_HEAVY_MEM_LIMIT:-40g}
-    # H-2: enabled. See worker-fast for the bind-mount chown design.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # See worker-fast: entrypoint repairs nested ownership then drops privilege.
     depends_on:
       postgres:
         condition: service_healthy
@@ -165,6 +161,7 @@ services:
       start_period: 180s
 
   worker-heavy-cpu-2:
+    profiles: ["cpu-fallback"]
     build:
       context: ./backend
     env_file: .env
@@ -173,9 +170,8 @@ services:
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-cpu-2@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_CPU_FALLBACK_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-cpu-2@%h
     restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     mem_limit: 4g
     cpus: 2
     depends_on:
@@ -209,8 +205,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-0@%h
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_GPU_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-0@%h
     restart: unless-stopped
     mem_limit: 8g
     depends_on:
@@ -257,8 +252,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-1@%h
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_GPU_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-1@%h
     restart: unless-stopped
     mem_limit: 8g
     depends_on:
@@ -307,8 +301,7 @@ services:
       - WORKER_NAME=worker-maintenance
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1} -n worker-maintenance@%h
     restart: unless-stopped
-    # H-2: enabled. See worker-fast.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # Entry point repairs nested bind-mount ownership, then runs as appuser.
     depends_on:
       postgres:
         condition: service_healthy
@@ -333,8 +326,7 @@ services:
     env_file: .env
     command: python -m app.ingestion.watcher
     restart: unless-stopped
-    # H-2: enabled. See worker-fast.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # Entry point repairs nested bind-mount ownership, then runs as appuser.
     depends_on:
       postgres:
         condition: service_healthy
@@ -359,8 +351,7 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
     restart: unless-stopped
-    # H-2: enabled. See worker-fast.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # Entry point repairs nested bind-mount ownership, then runs as appuser.
     depends_on:
       redis:
         condition: service_healthy

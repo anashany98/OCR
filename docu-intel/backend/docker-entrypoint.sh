@@ -23,7 +23,13 @@ for d in /app/data/files /app/data/input /app/data/output; do
     # ``stat -c`` is GNU; BSD stat uses ``-f %u``. The python:3.11-slim
     # and nvidia/cuda bases both ship the GNU variant.
     current_uid="$(stat -c %u "$d" 2>/dev/null || echo 0)"
-    if [ "$current_uid" != "$APP_UID" ]; then
+    # The mount root can already belong to appuser while cache directories
+    # created by an older root-run worker remain below it.  Those stale
+    # ``*_pages`` directories make PDF rendering fail with EACCES.  Inspect a
+    # shallow directory tree as a cheap startup check; only recurse when a
+    # repair is actually needed.
+    nested_wrong_owner="$(find "$d" -xdev -maxdepth 3 -type d ! -uid "$APP_UID" -print -quit 2>/dev/null)"
+    if [ "$current_uid" != "$APP_UID" ] || [ -n "$nested_wrong_owner" ]; then
         # ``--no-dereference`` keeps symlinks intact (the docs already
         # have hardlink/auto strategies that may create them).
         chown -R --no-dereference "${APP_UID}:${APP_GID}" "$d" 2>/dev/null || true

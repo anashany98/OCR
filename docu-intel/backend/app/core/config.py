@@ -281,6 +281,11 @@ class Settings(BaseSettings):
     # visible GPU (CUDA_VISIBLE_DEVICES unset) and degrades to Tier 1 (Tesseract)
     # + Tier 4 (vision LLM). GPU workers are unaffected.
     paddleocr_gpu_only: bool = True
+    # Leave a small VRAM reserve for the desktop model server and the display
+    # driver.  If the assigned GPU has less than this available, the cascade
+    # skips Paddle/PP-Structure for this task instead of letting the kernel
+    # kill the Celery child during model initialisation.
+    paddle_gpu_min_free_memory_mb: int = 2048
     # Number of scanned pages to OCR in parallel within a single document.
     # Each worker thread opens its own fitz handle and runs the cascade
     # independently; the OCR C extensions release the GIL so this achieves

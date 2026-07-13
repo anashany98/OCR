@@ -141,7 +141,7 @@ def _get_or_create_engine(factory) -> BaseOCREngine:
 
 def _build_cascading_engine() -> BaseOCREngine:
     from app.ocr.cascading import CascadingOCREngine
-    from app.ocr.paddle import PaddleOCREngine, _get_gpu_device
+    from app.ocr.paddle import PaddleOCREngine, _get_gpu_device, gpu_has_headroom
     from app.ocr.tesseract import TesseractOCREngine
 
     kwargs: dict[str, object] = dict(
@@ -160,15 +160,17 @@ def _build_cascading_engine() -> BaseOCREngine:
     # the server recognition model). When paddleocr_gpu_only is set (default)
     # we wire it in only when a GPU is visible to this process, and otherwise
     # the cascade degrades to Tier 1 (Tesseract) + Tier 4 (vision LLM).
-    paddle_gpu_ok = (not settings.paddleocr_gpu_only) or (_get_gpu_device() is not None)
+    paddle_gpu_ok = (not settings.paddleocr_gpu_only) or (
+        _get_gpu_device() is not None and gpu_has_headroom()
+    )
     if paddle_gpu_ok:
         kwargs["fallback"] = PaddleOCREngine(lang=settings.paddle_lang)
     else:
         logger.warning(
-            "PaddleOCR (Tier 2) disabled: no GPU visible and "
+            "PaddleOCR (Tier 2) disabled: no usable GPU headroom and "
             "paddleocr_gpu_only=true. Cascade runs Tier 1 + Tier 4 only."
         )
-    if settings.ocr_cascading_use_pp_structure:
+    if settings.ocr_cascading_use_pp_structure and paddle_gpu_ok:
         from app.ocr.pp_structure import PPStructureEngine
 
         # A2: a worker CPU booted with the GPU-only Tier 3 flag on
