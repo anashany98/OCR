@@ -9,6 +9,7 @@ from app.parsers.content_router import classify_content
 logger = logging.getLogger("app.parsers.router")
 from app.parsers.doc import parse_doc
 from app.parsers.docx import parse_docx
+from app.parsers.dwg import parse_dwg
 from app.parsers.dxf import parse_dxf
 from app.parsers.excel import parse_excel
 from app.parsers.image import parse_image
@@ -22,6 +23,7 @@ EXCEL_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
 TEXT_EXTENSIONS = {".txt", ".csv", ".tsv", ".log", ".eml"}
 MSG_EXTENSIONS = {".msg"}
 DXF_EXTENSIONS = {".dxf"}
+DWG_EXTENSIONS = {".dwg"}
 
 
 class UnsupportedDocumentFormatError(ValueError):
@@ -74,6 +76,8 @@ def parse_document(
         return parse_msg(path)
     if extension in DXF_EXTENSIONS:
         return parse_dxf(path, output_dir)
+    if extension in DWG_EXTENSIONS:
+        return parse_dwg(path, output_dir)
     if extension in TEXT_EXTENSIONS:
         return parse_plain_text(path)
     raise _unsupported_format(path)

@@ -6,7 +6,7 @@ from app.parsers.router import UnsupportedDocumentFormatError, parse_document
 from app.services.file_security import inspect_file_for_ingestion
 
 
-@pytest.mark.parametrize("suffix", [".dwg", ".zip", ".rar", ".mp4"])
+@pytest.mark.parametrize("suffix", [".zip", ".rar", ".mp4"])
 def test_binary_formats_without_a_parser_are_not_read_as_plain_text(tmp_path: Path, suffix: str):
     binary_file = tmp_path / f"sample{suffix}"
     binary_file.write_bytes(b"\x00\xff\x01\x02not-text")

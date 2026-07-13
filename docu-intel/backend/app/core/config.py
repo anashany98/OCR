@@ -100,8 +100,16 @@ class Settings(BaseSettings):
             ".docx",
             ".msg",
             ".dxf",
+            ".dwg",
         ]
     )
+    # Absolute path inside the worker/container to ODA File Converter.  The
+    # converter is optional because it is a separately licensed executable;
+    # when absent, DWG files remain visible for manual conversion instead of
+    # being decoded as corrupt text.
+    dwg_converter_path: str = ""
+    dwg_converter_timeout_seconds: int = 120
+    dwg_converter_version: str = "ACAD2018"
     file_storage_strategy: Literal["copy", "hardlink", "auto"] = "auto"
     watcher_enabled: bool = True
     watcher_backend: Literal["native", "polling"] = "native"

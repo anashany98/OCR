@@ -112,7 +112,7 @@ _TEXT_EXTENSIONS = {".txt", ".csv", ".tsv", ".log", ".eml", ".msg"}
 _EXCEL_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
 _DOC_EXTENSIONS = {".doc", ".docx"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
-_DXF_EXTENSIONS = {".dxf"}
+_DXF_EXTENSIONS = {".dxf", ".dwg"}
 
 
 def _normalise(value: str) -> str:
@@ -213,7 +213,7 @@ def classify_content(
         return ContentClassification(ContentRoute.TEXT_ONLY, 1.0, f"extension={ext}")
 
     if ext in _DXF_EXTENSIONS:
-        return ContentClassification(ContentRoute.STANDARD_OCR, 1.0, f"extension={ext}, using DXF parser")
+        return ContentClassification(ContentRoute.STANDARD_OCR, 1.0, f"extension={ext}, using plan parser")
 
     if folder in _INTERIOR_FOLDERS:
         return ContentClassification(
