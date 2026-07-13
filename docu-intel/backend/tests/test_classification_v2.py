@@ -80,6 +80,7 @@ def test_docx_keeps_word_source_format():
     )
     assert case["source_format"] == "word", case
     assert "medicion" in case["content_tags"], case
+    assert case["document_type"] == "medicion", case
 
 
 def test_image_ppto_keeps_image_source_format():
@@ -108,7 +109,7 @@ def test_pdf_incidencia_keeps_pdf_source_format():
     assert case["document_subtype"] in (None, "proveedor"), case
     # Even if document_type stays as the rule-engine default, the
     # PDF must NEVER be relabelled as a product photo.
-    assert case["document_type"] != "foto_producto", case
+    assert case["document_type"] == "incidencia", case
 
 
 def test_pdf_with_ppto_kept_as_presupuesto():

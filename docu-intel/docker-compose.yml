@@ -320,6 +320,33 @@ services:
       retries: 3
       start_period: 60s
 
+  worker-hyperextract:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      - WORKER_NAME=worker-hyperextract
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q hyperextract --concurrency=${WORKER_HYPEREXTRACT_CONCURRENCY:-1} -n worker-hyperextract@%h
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+      - ./backend/app:/app/app
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d worker-hyperextract@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   watcher:
     build:
       context: ./backend

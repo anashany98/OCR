@@ -590,6 +590,9 @@ class Settings(BaseSettings):
     # standard ``process_document`` pipeline. When False, only explicit
     # calls via the API or the test script trigger an extraction.
     hyperextract_run_in_pipeline: bool = False
+    # Keep provider calls off the OCR worker. When pipeline extraction is
+    # enabled, a post-commit Celery task performs it on the dedicated queue.
+    hyperextract_async: bool = True
 
     metrics_token: str = ""
     admin_email: str = "admin@local"

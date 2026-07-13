@@ -297,6 +297,9 @@ def reclassify_documents(
             result.document_type != old_type
             or result.source_format != old_source
             or result.document_subtype != old_subtype
+            or list(doc.content_tags or []) != list(result.content_tags)
+            or doc.classification_evidence != dict(result.evidence)
+            or doc.classifier_version != result.classifier_version
         ):
             changes.append(
                 {
@@ -328,6 +331,9 @@ def reclassify_documents(
             unchanged += 1
 
     if not dry_run and changes:
+        from app.services.knowledge_version import bump_knowledge_version
+
+        bump_knowledge_version(db, event="documents_reclassified")
         db.commit()
 
     track_classification_reclassify(

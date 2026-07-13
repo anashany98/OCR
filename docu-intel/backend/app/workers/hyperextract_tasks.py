@@ -6,9 +6,9 @@ configured in :mod:`app.workers.celery_app` and is intentionally
 low-priority so enrichment cannot starve the OCR path or the
 chat path.
 
-The pipeline in :mod:`app.services.document_processing_core`
-already runs ``_maybe_run_hyperextract`` inline. The Celery
-tasks in this module are an alternative entry point used by:
+The document pipeline schedules this task after committing OCR,
+classification and deterministic extraction. This module is also
+used by:
 
 * the operator-driven "retry failed extractions" button on the
   admin panel (lower-priority than interactive, but still
@@ -40,10 +40,9 @@ logger = logging.getLogger("app.workers.hyperextract_tasks")
 def enqueue_hyperextract_task(self, document_id: int) -> dict:
     """Run the structured-extraction stage for a single document.
 
-    The task is enqueued from the admin endpoint, the periodic
-    backfill or the post-OCR webhook. The work is identical to
-    the in-pipeline path; routing through Celery simply means
-    the LLM call cannot block an interactive request.
+    The task is enqueued after OCR commits, from the admin endpoint
+    or from the periodic backfill. Routing through Celery means the
+    provider call cannot block the OCR critical path.
     """
     from app.database.session import SessionLocal
     from app.models.document import Document
@@ -63,6 +62,9 @@ def enqueue_hyperextract_task(self, document_id: int) -> dict:
             text=text,
             document_type=document.document_type,
         )
+        from app.services.knowledge_version import bump_knowledge_version
+
+        bump_knowledge_version(db, event="hyperextract_completed")
         db.commit()
         return {"document_id": document_id, "status": "completed"}
     except Exception as exc:

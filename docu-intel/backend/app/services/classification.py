@@ -412,6 +412,16 @@ def classify_document(
     if is_image and ("ppto" in normalized_filename or "presupuesto" in normalized_filename):
         return ClassificationResult("presupuesto", 0.98, ["filename:presupuesto_abbrev"])
 
+    # A filename explicitly declaring an incident or measurement is
+    # stronger than generic furniture and dimension terms found in
+    # the OCR body. These two labels are operational queues, so
+    # choosing the specific type avoids sending an incident to the
+    # croquis workflow merely because it mentions chairs or sizes.
+    if re.search(r"\bincidencias?\b", normalized_filename):
+        return ClassificationResult("incidencia", 0.98, ["filename:incidencia"])
+    if re.search(r"\bmedici[oó]n(?:es)?\b", normalized_filename):
+        return ClassificationResult("medicion", 0.98, ["filename:medicion"])
+
     # --- Phase 0: Image subtypes from content_route (highest priority) ---
     # El content_router ya detectó si es foto de interiorismo/tela usando CLIP
     # + keywords + carpeta. Esa señal es muy fiable (conf 0.7+), la respetamos.

@@ -73,6 +73,35 @@ def _celery_broker_available() -> bool:
         return False
 
 
+def _hyperextract_pipeline_enabled() -> bool:
+    return bool(
+        settings.hyperextract_enabled
+        and settings.hyperextract_run_in_pipeline
+        and settings.hyperextract_async
+    )
+
+
+def _enqueue_hyperextract_after_commit(document_id: int) -> None:
+    """Queue optional extraction only after the document transaction commits."""
+    if not _hyperextract_pipeline_enabled():
+        return
+    if not _celery_broker_available():
+        logger.warning(
+            "hyperextract_not_enqueued_broker_unavailable document_id=%s",
+            document_id,
+        )
+        return
+    try:
+        from app.workers.hyperextract_tasks import enqueue_hyperextract_task
+
+        enqueue_hyperextract_task.apply_async(
+            args=(document_id,),
+            queue="hyperextract",
+        )
+    except Exception:
+        logger.exception("hyperextract_enqueue_failed document_id=%s", document_id)
+
+
 class _LazyOCREngine:
     """Defer heavy OCR model construction until a parser calls extract()."""
 
@@ -473,6 +502,7 @@ def process_document(
                 watched_file=watched,
             )
         db.commit()
+        _enqueue_hyperextract_after_commit(document.id)
         _emit_document_webhooks(document, job)
     except Exception as exc:
         _handle_process_failure(
@@ -960,11 +990,11 @@ def _apply_classification_and_extraction(
             learned_rules=learned_rules,
             content_route=content_route,
         )
-        # The multi-dim call returns a (possibly) different business
-        # type when its layered evidence outvotes the rules engine.
-        # We keep the rule engine's verdict for ``document_type`` so
-        # the FASE 2 audit and the reclassify flow stay in lock-step
-        # with the new module.
+        # Persist the same business type emitted by the multi-dimensional
+        # classifier. Keeping the old one-dimensional verdict here made
+        # normal ingestion disagree with the reclassification endpoint.
+        document.document_type = multi.document_type
+        document.confidence = multi.confidence
         document.source_format = multi.source_format
         document.document_subtype = multi.document_subtype
         document.content_tags = list(multi.content_tags)
@@ -1039,14 +1069,16 @@ def _apply_classification_and_extraction(
     # network timeout, malformed JSON — is contained here and logged
     # for the operator; the document keeps the OCR result and the
     # business extraction as if Hyper-Extract did not exist.
-    t_hyper = time.perf_counter()
-    _maybe_run_hyperextract(
-        db,
-        document,
-        text=text,
-        document_type=document.document_type,
-    )
-    track_stage_duration("hyperextract", time.perf_counter() - t_hyper)
+    # The provider invocation is scheduled post-commit by
+    # process_document, on the dedicated hyperextract worker.
+    try:
+        from app.services.knowledge_version import bump_knowledge_version
+
+        bump_knowledge_version(db, event="document_processed")
+    except Exception:
+        logger.exception(
+            "knowledge_version_bump_failed document_id=%s", document.id
+        )
     return quality.needs_review
 
 
