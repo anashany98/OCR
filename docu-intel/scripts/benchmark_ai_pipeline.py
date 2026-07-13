@@ -31,6 +31,7 @@ import os
 import statistics
 import sys
 import time
+import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,9 @@ class Scenario:
     must_abstain: bool
     expected_silence_marker: list[str]
     mode: str = "hybrid"
+    user: str | None = None
+    depends_on: str | None = None
+    must_hit_cache: bool = False
 
 
 @dataclasses.dataclass
@@ -82,6 +86,7 @@ class RunResult:
     first_delta_ms: float | None
     sources_count: int | None
     answer_preview: str | None
+    cache_hit: bool = False
     quality_pass: bool = False
     quality_reason: str | None = None
 
@@ -107,6 +112,9 @@ def _load_questions() -> list[Scenario]:
                 must_abstain=bool(entry.get("must_abstain")),
                 expected_silence_marker=entry.get("expected_silence_marker") or [],
                 mode=entry.get("kind") or "hybrid",
+                user=entry.get("user"),
+                depends_on=entry.get("depends_on"),
+                must_hit_cache=bool(entry.get("must_hit_cache")),
             )
         )
     return out
@@ -117,7 +125,9 @@ def _load_questions() -> list[Scenario]:
 # ---------------------------------------------------------------------------
 
 
-def _check_quality(scenario: Scenario, answer: str, sources: list[dict]) -> tuple[bool, str | None]:
+def _check_quality(
+    scenario: Scenario, answer: str, sources: list[dict], *, cache_hit: bool = False
+) -> tuple[bool, str | None]:
     text = (answer or "").lower()
     if scenario.must_abstain:
         # The answer must NOT include a verbatim fact and MUST
@@ -128,17 +138,18 @@ def _check_quality(scenario: Scenario, answer: str, sources: list[dict]) -> tupl
         if not any(marker.lower() in text for marker in scenario.expected_silence_marker):
             return False, "abstain_marker_missing"
         return True, None
-    # Non-abstain path: at least one fact must be present.
-    fact_hit = False
+    # Each entry represents one required fact. Its ``values`` are acceptable
+    # variants of that fact, not alternatives to every other required fact.
     for fact in scenario.must_contain_facts:
-        for value in fact.get("values") or []:
-            if str(value).lower() in text:
-                fact_hit = True
-                break
-        if fact_hit:
-            break
-    if not fact_hit and scenario.must_contain_facts:
-        return False, "no_must_contain_fact_found"
+        values = [str(value).lower() for value in fact.get("values") or []]
+        regex = fact.get("regex")
+        if values and not any(value in text for value in values):
+            return False, f"missing_required_fact:{fact.get('field', 'unknown')}"
+        if regex:
+            import re
+
+            if not re.search(str(regex), answer or "", flags=re.IGNORECASE):
+                return False, f"missing_required_pattern:{fact.get('field', 'unknown')}"
     for forbidden in scenario.must_not_contain:
         if forbidden.lower() in text:
             return False, f"forbidden_present: '{forbidden}'"
@@ -147,7 +158,53 @@ def _check_quality(scenario: Scenario, answer: str, sources: list[dict]) -> tupl
         for doc_id in scenario.must_cite_documents:
             if doc_id not in cited:
                 return False, f"missing_citation:{doc_id}"
+    if scenario.must_hit_cache and not cache_hit:
+        return False, "cache_hit_required"
     return True, None
+
+
+def _parse_credentials(
+    values: list[str] | None, *, default_user: str, default_password: str
+) -> dict[str, str]:
+    """Parse repeatable ``EMAIL=PASSWORD`` options without ever logging them."""
+    credentials = {default_user: default_password}
+    for value in values or []:
+        email, separator, password = value.partition("=")
+        if not separator or not email.strip() or not password:
+            raise ValueError("--credential debe tener el formato EMAIL=CONTRASENA")
+        credentials[email.strip()] = password
+    return credentials
+
+
+def _request_plan(scenarios: list[Scenario]) -> list[tuple[Scenario, str, str]]:
+    """Create isolated sessions and preserve declared golden dependencies.
+
+    A new benchmark invocation gets new session ids, so its first request is
+    genuinely cold. Dependent scenarios reuse their parent's session. A cache
+    assertion also reuses the parent's mode because mode belongs to the cache
+    isolation vector.
+    """
+    run_id = uuid.uuid4().hex
+    by_name = {scenario.name: scenario for scenario in scenarios}
+    sessions: dict[str, str] = {}
+    plan: list[tuple[Scenario, str, str]] = []
+    for scenario in scenarios:
+        if scenario.depends_on:
+            if scenario.depends_on not in sessions:
+                raise ValueError(
+                    f"scenario {scenario.name!r} depends on {scenario.depends_on!r}, "
+                    "which must appear earlier in the selected set"
+                )
+            session_id = sessions[scenario.depends_on]
+        else:
+            session_id = f"m3-benchmark-{run_id}-{scenario.name}"
+            sessions[scenario.name] = session_id
+
+        mode = scenario.mode
+        if scenario.must_hit_cache and scenario.depends_on:
+            mode = by_name[scenario.depends_on].mode
+        plan.append((scenario, session_id, mode))
+    return plan
 
 
 # ---------------------------------------------------------------------------
@@ -178,9 +235,9 @@ class BenchmarkClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}"}
 
-    def ask_stream(self, scenario: Scenario) -> RunResult:
+    def ask_stream(self, scenario: Scenario, *, session_id: str, mode: str) -> RunResult:
         url = f"{self.base_url}/api/v1/ai/ask/stream"
-        body = {"question": scenario.question, "mode": scenario.mode}
+        body = {"question": scenario.question, "mode": mode, "session_id": session_id}
         t0 = time.perf_counter()
         first_event: float | None = None
         first_delta: float | None = None
@@ -224,7 +281,9 @@ class BenchmarkClient:
         except Exception as exc:
             error = repr(exc)[:200]
         total_ms = (time.perf_counter() - t0) * 1000.0
-        quality_pass, quality_reason = _check_quality(scenario, answer, sources)
+        quality_pass, quality_reason = _check_quality(
+            scenario, answer, sources, cache_hit=cache_hit
+        )
         return RunResult(
             scenario=scenario.name,
             run_index=0,
@@ -236,6 +295,7 @@ class BenchmarkClient:
             first_delta_ms=first_delta,
             sources_count=len(sources) if end_seen else None,
             answer_preview=answer[:160] if answer else None,
+            cache_hit=cache_hit,
             quality_pass=quality_pass,
             quality_reason=quality_reason,
         )
@@ -317,6 +377,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--user", default=DEFAULT_USER)
     parser.add_argument("--password", default=DEFAULT_PASS)
     parser.add_argument(
+        "--credential",
+        action="append",
+        default=[],
+        metavar="EMAIL=CONTRASENA",
+        help="Credencial adicional para un escenario que declara otro usuario; repetible.",
+    )
+    parser.add_argument(
         "--warm-runs", type=int, default=3, help="Number of warm runs per scenario"
     )
     parser.add_argument(
@@ -326,11 +393,23 @@ def main(argv: list[str] | None = None) -> int:
         "--output-json", default=None, help="Optional path to write the JSON report"
     )
     parser.add_argument(
+        "--request-interval-seconds",
+        type=float,
+        default=7.0,
+        help=(
+            "SeparaciÃ³n mÃ­nima entre consultas; 7 s deja margen para el "
+            "lÃ­mite global de 10/minuto, que tambiÃ©n cuenta el login."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate the tool itself without hitting the API",
     )
     args = parser.parse_args(argv)
+    if args.request_interval_seconds < 0:
+        print("--request-interval-seconds debe ser >= 0", file=sys.stderr)
+        return 2
 
     scenarios = _load_questions()
     if args.scenario:
@@ -360,20 +439,74 @@ def main(argv: list[str] | None = None) -> int:
         _print_table(scenarios, rows)
         return 0
 
-    client = BenchmarkClient(args.base_url, args.user, args.password)
-    print(">> login…", flush=True)
     try:
-        client.login()
-    except Exception as exc:
-        print(f"!! login failed: {exc}", file=sys.stderr)
+        credentials = _parse_credentials(
+            args.credential, default_user=args.user, default_password=args.password
+        )
+        request_plan = _request_plan(scenarios)
+    except ValueError as exc:
+        print(f"!! invalid configuration: {exc}", file=sys.stderr)
         return 2
 
     all_runs: list[RunResult] = []
-    for s in scenarios:
+    clients: dict[str, BenchmarkClient] = {}
+    last_request_started: float | None = None
+    for s, session_id, mode in request_plan:
         print(f">> scenario {s.name} (warm_runs={args.warm_runs})", flush=True)
+        email = s.user or args.user
+        password = credentials.get(email)
+        if password is None:
+            print("   [skip] missing credential for scenario user", flush=True)
+            all_runs.append(
+                RunResult(
+                    scenario=s.name,
+                    run_index=0,
+                    cold=True,
+                    status_code=0,
+                    error="missing_scenario_credential",
+                    total_ms=0.0,
+                    first_event_ms=None,
+                    first_delta_ms=None,
+                    sources_count=None,
+                    answer_preview=None,
+                    quality_reason="missing_scenario_credential",
+                )
+            )
+            continue
+        client = clients.get(email)
+        if client is None:
+            client = BenchmarkClient(args.base_url, email, password)
+            try:
+                client.login()
+            except Exception as exc:
+                print(f"   [skip] scenario login failed: {exc}", flush=True)
+                all_runs.append(
+                    RunResult(
+                        scenario=s.name,
+                        run_index=0,
+                        cold=True,
+                        status_code=0,
+                        error="scenario_login_failed",
+                        total_ms=0.0,
+                        first_event_ms=None,
+                        first_delta_ms=None,
+                        sources_count=None,
+                        answer_preview=None,
+                        quality_reason="scenario_login_failed",
+                    )
+                )
+                continue
+            clients[email] = client
         for run_index in range(args.warm_runs + 1):
-            cold = run_index == 0
-            r = client.ask_stream(s)
+            # A declared cache-repeat intentionally reuses its dependency's
+            # key, so even its first observation is a warm request.
+            cold = run_index == 0 and not s.must_hit_cache
+            if last_request_started is not None:
+                delay = args.request_interval_seconds - (time.monotonic() - last_request_started)
+                if delay > 0:
+                    time.sleep(delay)
+            last_request_started = time.monotonic()
+            r = client.ask_stream(s, session_id=session_id, mode=mode)
             r.scenario = s.name
             r.run_index = run_index
             r.cold = cold
@@ -425,7 +558,14 @@ def main(argv: list[str] | None = None) -> int:
     # FASE 8 quality contract: at least 90% of successful runs must
     # pass the quality checks. Also: any scenario whose p95 total
     # exceeds the target fails the suite.
-    total_successful = sum(1 for r in all_runs if r.status_code == 200 and not r.error)
+    incomplete = [r for r in all_runs if r.status_code != 200 or r.error]
+    if incomplete:
+        print(
+            f"!! certification incomplete: {len(incomplete)} run(s) did not return HTTP 200.",
+            file=sys.stderr,
+        )
+        return 1
+    total_successful = len(all_runs)
     total_quality = sum(1 for r in all_runs if r.quality_pass and r.status_code == 200)
     quality_fraction = total_quality / total_successful if total_successful else 0.0
     if quality_fraction < TARGET_QUALITY_FRACTION:
