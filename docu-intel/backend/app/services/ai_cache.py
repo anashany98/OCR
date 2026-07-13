@@ -72,7 +72,7 @@ AI_SEMANTIC_PREFIX = "ai:sem:"
 # Index version is a per-deployment constant. Bumping it invalidates
 # every cached entry by changing the key namespace, which is the
 # cheap way to roll out a key-format change without a Redis flush.
-CACHE_INDEX_VERSION = 1
+CACHE_INDEX_VERSION = 2
 SEMANTIC_SIM_THRESHOLD = 0.92  # cosine similarity above this = cache hit
 
 
@@ -104,10 +104,32 @@ def _cache_key(
     same question text MUST be added here, otherwise two distinct
     answers could collide and the user would see stale data.
     """
+    isolation = _cache_isolation_key(
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
     normalized_question = question.strip().lower()
-    # Encode every dimension with a fixed-width label so the
-    # concatenation cannot be ambiguous (e.g. ``mode=hybrid`` and
-    # ``scope_key=hybrid`` are not the same key).
+    payload = f"{isolation}\u0001q={normalized_question}".encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()
+    return f"{AI_CACHE_PREFIX}{user_id}:{digest}"
+
+
+def _cache_isolation_key(
+    user_id: int,
+    *,
+    mode: str | None = None,
+    scope_key: str | None = None,
+    session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
+) -> str:
+    """Return cache dimensions that must match for semantic reuse."""
     parts = [
         f"v={CACHE_INDEX_VERSION}",
         f"u={user_id}",
@@ -117,11 +139,8 @@ def _cache_key(
         f"scope={scope_key or 'default-scope'}",
         f"session={session_id or 'no-session'}",
         f"kv={knowledge_version}",
-        f"q={normalized_question}",
     ]
-    payload = "\u0001".join(parts).encode("utf-8")
-    digest = hashlib.sha256(payload).hexdigest()
-    return f"{AI_CACHE_PREFIX}{user_id}:{digest}"
+    return "\u0001".join(parts)
 
 
 def _semantic_key(user_id: int) -> str:
@@ -181,6 +200,15 @@ def get_cached_answer(
         prompt_version=prompt_version,
         knowledge_version=knowledge_version,
     )
+    isolation = _cache_isolation_key(
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
     exact = cache_service.get(key)
     if exact:
         return exact
@@ -201,8 +229,8 @@ def get_cached_answer(
         best_match: tuple[float, str | None] = (0.0, None)
         for entry in sem_index:  # type: ignore[union-attr]
             entry_key = entry.get("key")
-            if not entry_key or entry_key != key:
-                # The encoded isolation vector differs. Skip
+            if not entry_key or entry.get("isolation") != isolation:
+                # The isolation vector differs. Skip
                 # without even computing cosine.
                 continue
             vec = entry.get("embedding")
@@ -239,12 +267,21 @@ def cache_answer(
     The ``answer`` payload should already be the canonical response
     dict (with ``answer``, ``confidence``, ``model_name``,
     ``sources``). The function stores the exact-key entry and
-    appends a sidecar semantic index entry whose ``key`` is the
-    full isolation vector. Any future lookup that does not match
+    appends a sidecar semantic index entry with the full isolation
+    vector. Any future lookup that does not match
     the same vector will skip the entry before computing cosine.
     """
     key = _cache_key(
         question,
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
+    isolation = _cache_isolation_key(
         user_id,
         mode=mode,
         scope_key=scope_key,
@@ -265,9 +302,8 @@ def cache_answer(
     enriched.setdefault("_model", model)
     enriched.setdefault("_knowledge_version", knowledge_version)
     ok = cache_service.set(key, enriched, effective_ttl)
-    # Sidecar: append a {embedding, key} to the per-user semantic
-    # index. The ``key`` carries the full isolation vector so the
-    # lookup can filter on it without recomputing it.
+    # Sidecar: append the vector and its isolation dimensions to the
+    # per-user semantic index.
     try:
         vec = _embed_question(question)
         if vec:
@@ -277,6 +313,7 @@ def cache_answer(
                 {
                     "embedding": vec,
                     "key": key,
+                    "isolation": isolation,
                     "ts": hashlib.md5(question.encode()).hexdigest()[:8],
                 }
             )
@@ -319,6 +356,21 @@ def invalidate_scope(scope_key: str) -> int:
         if payload.get("_scope_key") == scope_key:
             cache_service.delete(key)
             deleted += 1
+    for sem_key in client.scan_iter(match=f"{AI_SEMANTIC_PREFIX}*", count=200):
+        index = cache_service.get(sem_key)
+        if not isinstance(index, list):
+            continue
+        retained = []
+        for entry in index:
+            isolation = entry.get("isolation") if isinstance(entry, dict) else None
+            parts = str(isolation).split("") if isolation else []
+            if f"scope={scope_key}" not in parts:
+                retained.append(entry)
+        if len(retained) != len(index):
+            if retained:
+                cache_service.set(sem_key, retained, AI_CACHE_TTL)
+            else:
+                cache_service.delete(sem_key)
     return deleted
 
 

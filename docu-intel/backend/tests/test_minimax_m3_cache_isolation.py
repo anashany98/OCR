@@ -20,6 +20,7 @@ import uuid
 
 import pytest
 
+import app.services.ai_cache as ai_cache
 from app.services.ai_cache import (
     AI_CACHE_PREFIX,
     CACHE_INDEX_VERSION,
@@ -201,6 +202,52 @@ def test_same_question_different_knowledge_version_misses():
         knowledge_version=2,
     )
     assert hit_other is None
+
+
+def test_semantic_reformulation_hits_with_same_isolation(monkeypatch):
+    _clean_user(9150)
+    monkeypatch.setattr(ai_cache, "_embed_question", lambda _: [1.0, 0.0])
+    cache_answer(
+        "cual es el importe del presupuesto",
+        9150,
+        {"answer": "12.000 EUR", "confidence": 0.9, "model_name": "m1"},
+        mode="hybrid",
+        scope_key="scopeA",
+        session_id="sess-1",
+        model="m1",
+        prompt_version="v1",
+        knowledge_version=1,
+    )
+    hit = get_cached_answer(
+        "cuanto cuesta el presupuesto",
+        9150,
+        mode="hybrid",
+        scope_key="scopeA",
+        session_id="sess-1",
+        model="m1",
+        prompt_version="v1",
+        knowledge_version=1,
+    )
+    assert hit is not None
+    assert hit["answer"] == "12.000 EUR"
+    assert hit["_semantic_match_score"] == 1.0
+
+
+def test_semantic_reformulation_never_crosses_scope(monkeypatch):
+    _clean_user(9151)
+    monkeypatch.setattr(ai_cache, "_embed_question", lambda _: [1.0, 0.0])
+    _put_and_get(9151, "importe del presupuesto", scope="scopeA")
+    hit = get_cached_answer(
+        "cuanto cuesta el presupuesto",
+        9151,
+        mode="hybrid",
+        scope_key="scopeB",
+        session_id="sess-1",
+        model="m1",
+        prompt_version="v1",
+        knowledge_version=1,
+    )
+    assert hit is None
 
 
 def test_revoked_user_does_not_hit_other_user_cache():
