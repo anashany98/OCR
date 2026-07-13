@@ -56,7 +56,11 @@ COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY scripts /app/scripts
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# The repository is also built from Windows hosts.  Normalize CRLF here so
+# ``tini`` can execute the shell script instead of reporting a misleading
+# "No such file or directory" for its /bin/sh shebang.
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app
 
