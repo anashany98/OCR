@@ -92,6 +92,10 @@ def _ocr_review_payload(page: DocumentPage, document: Document) -> OcrReviewPage
         page_id=page.id,
         page_number=page.page_number,
         ocr_confidence=page.ocr_confidence,
+        ocr_calibrated_confidence=page.ocr_calibrated_confidence,
+        ocr_content_kind=page.ocr_content_kind,
+        ocr_decision=page.ocr_decision,
+        ocr_decision_reasons_json=page.ocr_decision_reasons_json or [],
         review_status=page.review_status,
         review_notes=page.review_notes,
         reviewed_at=page.reviewed_at,
@@ -114,6 +118,25 @@ def _ocr_review_payload(page: DocumentPage, document: Document) -> OcrReviewPage
                 "source_engine": block.source_engine,
             }
             for block in sorted(blocks, key=lambda item: item.id)
+        ],
+        attempts=[
+            {
+                "id": attempt.id,
+                "attempt_index": attempt.attempt_index,
+                "engine": attempt.engine,
+                "route": attempt.route,
+                "text": attempt.text,
+                "raw_confidence": attempt.raw_confidence,
+                "calibrated_confidence": attempt.calibrated_confidence,
+                "quality_score": attempt.quality_score,
+                "latency_ms": attempt.latency_ms,
+                "decision": attempt.decision,
+                "decision_reasons_json": attempt.decision_reasons_json or [],
+                "selected": attempt.selected,
+                "error_message": attempt.error_message,
+                "created_at": attempt.created_at,
+            }
+            for attempt in sorted(page.ocr_attempts, key=lambda item: item.attempt_index)
         ],
         preview_url=f"/documents/{document.id}/pages/{page.page_number}/image"
         if page.image_path

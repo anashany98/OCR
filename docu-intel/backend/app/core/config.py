@@ -182,6 +182,9 @@ class Settings(BaseSettings):
     dots_mocr_api_key: str = ""
     dots_mocr_timeout_seconds: float = 120.0
     dots_mocr_quality_threshold: float = 0.62
+    ocr_auto_accept_confidence: float = 0.70
+    ocr_auto_accept_improvement: float = 0.15
+    ocr_manuscript_route_threshold: float = 0.75
     # Domain-specific VLM prompt. "generic" uses standard OCR prompt;
     # "interior_design" uses a specialized prompt for hand-drawn sketches,
     # furniture measurements, fabric samples, and curtain dimensions.

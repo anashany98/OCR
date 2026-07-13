@@ -111,6 +111,23 @@ class OcrReviewBlockRead(BaseModel):
     source_engine: str | None
 
 
+class OcrAttemptRead(BaseModel):
+    id: int
+    attempt_index: int
+    engine: str
+    route: str | None
+    text: str | None
+    raw_confidence: float | None
+    calibrated_confidence: float | None
+    quality_score: float | None
+    latency_ms: int | None
+    decision: str | None
+    decision_reasons_json: list[str]
+    selected: bool
+    error_message: str | None
+    created_at: datetime
+
+
 class OcrReviewPageRead(BaseModel):
     document_id: int
     original_filename: str
@@ -120,6 +137,10 @@ class OcrReviewPageRead(BaseModel):
     page_id: int
     page_number: int
     ocr_confidence: float | None
+    ocr_calibrated_confidence: float | None = None
+    ocr_content_kind: str | None = None
+    ocr_decision: str | None = None
+    ocr_decision_reasons_json: list[str] = Field(default_factory=list)
     review_status: str
     review_notes: str | None
     reviewed_at: datetime | None
@@ -130,6 +151,7 @@ class OcrReviewPageRead(BaseModel):
     text: str
     text_excerpt: str
     blocks: list[OcrReviewBlockRead]
+    attempts: list[OcrAttemptRead] = Field(default_factory=list)
     preview_url: str | None
     created_at: datetime
 

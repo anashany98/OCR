@@ -33,6 +33,7 @@ from app.models.document import (
     DocumentChunk,
     DocumentEntity,
     DocumentPage,
+    OcrAttempt,
     ExtractionJob,
     ImageAnalysis,
 )
@@ -94,6 +95,7 @@ __all__ = [
     "DocumentEntity",
     "DocumentExtraction",
     "DocumentPage",
+    "OcrAttempt",
     "DocumentTimelineEvent",
     "ExtractionJob",
     "FolderAssignmentRule",

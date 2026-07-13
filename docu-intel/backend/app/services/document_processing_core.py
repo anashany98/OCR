@@ -18,9 +18,11 @@ from app.models import (
     DocumentEntity,
     DocumentPage,
     ExtractionJob,
+    OcrAttempt,
     Plan,
 )
 from app.ocr.factory import get_ocr_engine_class
+from app.ocr.base import OCRResult
 from app.parsers.router import parse_document
 from app.services.business_extraction import persist_business_extraction
 from app.services.cache import cache_service
@@ -35,6 +37,7 @@ from app.services.metrics import (
 )
 from app.services.plan_extraction import persist_plan_extraction
 from app.services.quality import evaluate_document_quality, update_document_quality
+from app.services.ocr_decision import decide_ocr_result
 from app.services.tenant_access import apply_folder_rules_to_document
 from app.services.webhooks import emit_integration_webhook
 from app.workers.learning_tasks import _load_active_learned_rules
@@ -266,6 +269,45 @@ def _page_status_from_confidence(ocr_confidence: float | None) -> str:
     if ocr_confidence < settings.low_ocr_confidence_threshold:
         return "processed_low_confidence"
     return "processed"
+
+
+def _record_ocr_attempt(
+    db: Session,
+    *,
+    page: DocumentPage,
+    result: OCRResult,
+    route: str | None,
+    selected: bool = True,
+) -> None:
+    """Persist the selected candidate as durable OCR evidence.
+
+    Parsers currently expose the winning result only.  Recording that result
+    here still gives every old and new page a uniform audit trail; cascades can
+    add their intermediate candidates later without changing this contract.
+    """
+    decision = decide_ocr_result(result)
+    page.ocr_calibrated_confidence = decision.calibrated_confidence
+    page.ocr_decision = decision.decision
+    page.ocr_decision_reasons_json = decision.reasons
+    page.page_status = _page_status_from_confidence(decision.calibrated_confidence)
+    if decision.decision == "review_required":
+        page.review_status = "pending"
+    db.add(
+        OcrAttempt(
+            page_id=page.id,
+            attempt_index=(page.attempts or 0),
+            engine=result.engine or page.ocr_engine or "unknown",
+            engine_version=settings.current_ocr_engine_version,
+            route=route,
+            text=result.text,
+            raw_confidence=result.confidence,
+            calibrated_confidence=decision.calibrated_confidence,
+            quality_score=decision.quality_score,
+            decision=decision.decision,
+            decision_reasons_json=decision.reasons,
+            selected=selected,
+        )
+    )
 
 
 def _load_existing_page_texts(db: Session, document_id: int) -> list[tuple[int, str | None]]:
@@ -558,6 +600,17 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         )
         db.add(page)
         db.flush()
+        _record_ocr_attempt(
+            db,
+            page=page,
+            result=OCRResult(
+                text=extracted_page.text,
+                confidence=extracted_page.ocr_confidence,
+                blocks=[],
+                engine=extracted_page.ocr_engine or "unknown",
+            ),
+            route=getattr(extracted, "route", None),
+        )
         for extracted_block in extracted_page.blocks:
             bbox = extracted_block.bbox or (None, None, None, None)
             block = DocumentBlock(
@@ -703,12 +756,13 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
     actual_engine = ocr.engine or engine.name
     page.text = sanitize_text_for_database(ocr.text)
     page.ocr_confidence = ocr.confidence
-    page.page_status = _page_status_from_confidence(ocr.confidence)
+    page.ocr_engine = actual_engine
     page.processing_time_ms = int((time.perf_counter() - started) * 1000)
     page.review_status = "pending"
     page.review_notes = None
     page.reviewed_at = None
     page.reviewed_by_id = None
+    _record_ocr_attempt(db, page=page, result=ocr, route="manual_reprocess")
 
     db.execute(
         delete(DocumentBlock)

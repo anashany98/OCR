@@ -139,6 +139,14 @@ class DocumentPage(Base):
         String(40), default="processed", nullable=False, index=True
     )
     ocr_confidence: Mapped[float | None] = mapped_column(Float)
+    # ``ocr_confidence`` is the raw value reported by the winning engine.
+    # The calibrated score is the common decision value used for automatic
+    # acceptance and review, including engines (such as VLM OCR) that do not
+    # return a native confidence.
+    ocr_calibrated_confidence: Mapped[float | None] = mapped_column(Float, index=True)
+    ocr_content_kind: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    ocr_decision: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    ocr_decision_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     # Which engine produced this page's text. NULL for pages that haven't been
     # processed yet. Values: pymupdf | paddleocr | empty
     ocr_engine: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -164,6 +172,36 @@ class DocumentPage(Base):
 
     document = relationship("Document", back_populates="pages")
     blocks = relationship("DocumentBlock", back_populates="page", cascade="all, delete-orphan")
+    ocr_attempts = relationship("OcrAttempt", back_populates="page", cascade="all, delete-orphan")
+
+
+class OcrAttempt(Base):
+    """Immutable evidence for each OCR candidate considered for a page."""
+
+    __tablename__ = "ocr_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("document_pages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    attempt_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    engine: Mapped[str] = mapped_column(String(80), nullable=False)
+    engine_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    route: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    text: Mapped[str | None] = mapped_column(Text)
+    raw_confidence: Mapped[float | None] = mapped_column(Float)
+    calibrated_confidence: Mapped[float | None] = mapped_column(Float)
+    quality_score: Mapped[float | None] = mapped_column(Float)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    decision: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    decision_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    selected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    page = relationship("DocumentPage", back_populates="ocr_attempts")
 
 
 class DocumentBlock(Base):
