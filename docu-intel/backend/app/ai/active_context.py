@@ -270,8 +270,15 @@ def update_after_answer(
             # Project changes invalidate document-specific follow-up state.
             ctx.current_document_id = None
             ctx.current_document_path = None
+            ctx.current_document_type = None
             ctx.current_invoice_number = None
             ctx.current_order_number = None
+            ctx.current_delivery_note_number = None
+            ctx.current_budget_number = None
+            ctx.current_budget_id = None
+            ctx.current_budget_scope_id = None
+            ctx.current_client_name = None
+            ctx.current_folder_path = None
         if new_project_id is not None:
             ctx.current_project_id = int(new_project_id)
         for key, attr in (("name", "current_project_name"), ("brand_id", "current_brand_id"), ("hotel_id", "current_hotel_id"), ("budget_scope_id", "current_budget_scope_id")):

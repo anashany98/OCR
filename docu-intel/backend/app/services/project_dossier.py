@@ -18,7 +18,7 @@ from sqlalchemy import Text, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.budget_scope import BudgetScope
-from app.models.document import Document
+from app.models.document import Document, ImageAnalysis
 from app.models.project import DocumentOccurrence, Project
 from app.models.tenant import HotelChain
 from app.services.sensitive_data import redact_for_scope
@@ -57,6 +57,8 @@ class ProjectDossier:
     # Metadata
     first_document_at: str | None = None
     last_document_at: str | None = None
+    data_gaps: list[str] = field(default_factory=list)
+    sources: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Stable DTO consumed by tools and the chat layer."""
@@ -71,8 +73,8 @@ class ProjectDossier:
             "issues": {"open_count": self.open_issues},
             "images": {"count": self.image_count},
             "timeline": {"first": self.first_document_at, "last": self.last_document_at},
-            "data_gaps": [],
-            "sources": [],
+            "data_gaps": self.data_gaps,
+            "sources": self.sources,
         }
 
 
@@ -162,6 +164,14 @@ def get_project_dossier(
             document_column=Document.id,
         )
     ).all()))
+    visible_sources = [
+        {"document_id": document_id, "filename": filename, "kind": "document"}
+        for document_id, filename in db.execute(
+            select(Document.id, Document.original_filename)
+            .where(Document.id.in_(visible_document_ids))
+            .order_by(Document.id)
+        ).all()
+    ]
 
     # Count occurrences by category.  A source file can legitimately appear
     # twice in a project, so this deliberately does not use DISTINCT here.
@@ -210,7 +220,7 @@ def get_project_dossier(
         invoice_total = float(invoice_row) if invoice_row else None
 
     # Communications
-    from app.models.communication import CommunicationThread, CommunicationMessage
+    from app.models.communication import CommunicationMessage, CommunicationThread
     message_count = db.scalar(
         select(func.count(CommunicationMessage.id)).join(
             CommunicationThread
@@ -241,6 +251,14 @@ def get_project_dossier(
     # Image count
     image_count = docs_by_category.get("imagenes", 0) + docs_by_category.get("fotos", 0)
 
+    from app.models.communication import ProjectParticipant
+
+    participant_count = db.scalar(
+        select(func.count(ProjectParticipant.id)).where(
+            ProjectParticipant.project_id == project_id
+        )
+    ) or 0
+
     # Date range
     first_date = db.scalar(
         select(func.min(DocumentOccurrence.first_seen_at)).where(
@@ -269,13 +287,25 @@ def get_project_dossier(
         budget_total=budget_total if access_scope.can_view_prices else None,
         order_total=order_total if access_scope.can_view_prices else None,
         invoice_total=invoice_total if access_scope.can_view_prices else None,
-        participant_count=0,
+        participant_count=participant_count,
         thread_count=thread_count,
         message_count=message_count,
         open_issues=open_issues,
         image_count=image_count,
         first_document_at=str(first_date) if first_date else None,
         last_document_at=str(last_date) if last_date else None,
+        data_gaps=[
+            gap
+            for gap, present in (
+                ("documents", bool(visible_document_ids)),
+                ("financials", any(value is not None for value in (budget_total, order_total, invoice_total))),
+                ("communications", bool(message_count)),
+                ("issues", bool(open_issues)),
+                ("images", bool(image_count)),
+            )
+            if not present
+        ],
+        sources=[{"project_id": project.id, "kind": "project"}, *visible_sources],
     )
 
 

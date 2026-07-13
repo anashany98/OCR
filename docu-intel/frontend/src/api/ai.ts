@@ -24,6 +24,13 @@ export type AIStreamEvent =
       followups: string[]
     }
 
+export type ChatSessionMessage = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  created_at: string
+}
+
 export const aiApi = {
   askAI: (question: string, mode?: string, sessionId?: string) =>
     request<AIAnswer>("/ai/ask", {
@@ -71,6 +78,8 @@ export const aiApi = {
   },
   aiAnswer: (id: number) => request<AIAnswer>(`/ai/answers/` + id),
   aiHistory: () => request<AIQuestion[]>(`/ai/history`),
+  chatSessionMessages: (sessionId: string) =>
+    request<ChatSessionMessage[]>(`/ai/sessions/${encodeURIComponent(sessionId)}/messages`),
   postFeedback: (answerId: number, vote: number, reason?: string, comment?: string) =>
     request<{ accepted: boolean; reason: string; new_chunk_weight: number | null }>(
       `/ai/answers/${answerId}/feedback`,

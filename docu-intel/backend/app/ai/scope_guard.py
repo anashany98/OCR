@@ -144,7 +144,7 @@ def enforce_budget_scope(
     is_global, hint = detect_global_intent(question)
     warnings: list[str] = []
 
-    if not state.has_budget_scope:
+    if not state.has_budget_scope and state.current_project_id is None:
         return ScopeGuardOutcome(
             tools=list(tools),
             warnings=warnings,

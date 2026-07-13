@@ -38,5 +38,12 @@ def test_dossier_and_document_list_filter_each_occurrence_before_returning_data(
     documents = list_project_documents(session, project.id, access_scope=_scope(chain_a.id))
 
     assert dossier.total_documents == 1
+    assert dossier.participant_count == 0
+    payload = dossier.to_dict()
+    assert payload["sources"] == [
+        {"project_id": project.id, "kind": "project"},
+        {"document_id": visible.id, "filename": "a.pdf", "kind": "document"},
+    ]
+    assert "financials" in payload["data_gaps"]
     assert [row["filename"] for row in documents] == ["a.pdf"]
     assert documents[0]["source_path"] is None

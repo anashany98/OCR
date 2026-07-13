@@ -263,4 +263,22 @@ ejecutado backfill real ni modificado el corpus.
 Validación: 25 pruebas de identidad, ingesta contextual, sesiones de scope,
 ciclo de proyecto, backfill e integración; Ruff y compilación backend. En
 PostgreSQL temporal: `0060 -> 0061`, `0061 -> 0060` y `0060 -> 0061` pasan.
+
+### 2026-07-13 — Fases 6 y 7
+
+- **Fase 6 completada:** el dossier calcula documentos, apariciones,
+  finanzas, participantes, comunicaciones, incidencias, imágenes y cronología
+  exclusivamente desde documentos autorizados. El DTO incorpora fuentes
+  estables y `data_gaps`, y respeta la ocultación de precios y PII.
+- **Fase 7 completada:** `project_id` pasa de contexto de sesión a filtro
+  efectivo de ILIKE, BM25 y pgvector mediante `document_occurrences`; el
+  guard de alcance se aplica incluso cuando solo hay proyecto activo y un
+  cambio de proyecto invalida documento, presupuesto y carpeta anteriores.
+  Los turnos se registran por sesión y usuario, `GET
+  /ai/sessions/{session_id}/messages` no revela sesiones ajenas y el frontend
+  rehidrata cuerpos desde ese endpoint sin guardarlos en `localStorage`.
+
+Validación: `compileall`, Ruff de los módulos modificados, pruebas backend
+dirigidas de dossier/filtros/contexto/historial y build de producción del
+frontend. No se ejecutó backfill real ni se modificó el corpus.
 La base temporal se eliminó al terminar.

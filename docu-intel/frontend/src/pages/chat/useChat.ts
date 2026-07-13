@@ -141,6 +141,34 @@ export function useChat() {
     if (activeConvId) localStorage.setItem(ACTIVE_CONV_KEY, activeConvId)
   }, [activeConvId])
 
+  // Message bodies are never kept in localStorage. Rehydrate the selected
+  // conversation from the owner-bound server session instead, so a reload or
+  // a second tab keeps its own project context without mixing histories.
+  useEffect(() => {
+    if (!hydrated || !activeConvId) return
+    let cancelled = false
+    api.chatSessionMessages(activeConvId)
+      .then((serverMessages) => {
+        if (cancelled) return
+        setConversations((prev) => prev.map((conversation) => {
+          if (conversation.id !== activeConvId) return conversation
+          return {
+            ...conversation,
+            messages: serverMessages.map((message) => ({
+              id: message.id,
+              role: message.role,
+              content: message.content,
+              createdAt: message.created_at,
+            })),
+          }
+        }))
+      })
+      // A browser can hold a locally-created conversation before its first
+      // request. A 404 is expected in that state and should leave it empty.
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [activeConvId, hydrated])
+
   // Active conversation.
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null
   const messages = activeConv?.messages ?? []

@@ -135,6 +135,12 @@ def test_active_context_scope_filters_emits_source_path_like():
     assert "Presupuesto 260009" in filters["source_path_like"]
 
 
+def test_active_context_scope_filters_preserves_project_scope_without_budget():
+    from app.ai.active_context import ActiveContext
+
+    assert ActiveContext(current_project_id=22).scope_filters() == {"project_id": 22}
+
+
 # ---------------------------------------------------------------------------
 # CTX-3: Reference resolver
 # ---------------------------------------------------------------------------
@@ -214,6 +220,19 @@ def test_scope_guard_pins_hybrid_search_to_active_budget():
     )
     assert out.scope_pinned is True
     assert out.tools[0].arguments["filters"]["source_path_like"] == "%Presupuesto 260009%"
+
+
+def test_scope_guard_pins_hybrid_search_to_active_project_without_budget():
+    from app.ai.active_context import ActiveContext
+    from app.ai.scope_guard import enforce_budget_scope
+    from app.ai.tools import ToolCall
+
+    tools = [ToolCall("hybrid_search", {"query": "facturas", "filters": {"limit": 5}})]
+    out = enforce_budget_scope(
+        question="que facturas hay", state=ActiveContext(current_project_id=77), tools=tools
+    )
+    assert out.scope_pinned is True
+    assert out.tools[0].arguments["filters"]["project_id"] == 77
 
 
 def test_scope_guard_allows_global_when_user_asks_for_todos():

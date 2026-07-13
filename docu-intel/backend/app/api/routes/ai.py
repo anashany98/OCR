@@ -11,7 +11,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.active_context import ActiveContext, load_active_context, persist_context_after_answer
+from app.ai.active_context import (
+    ActiveContext,
+    get_or_create_session,
+    load_active_context,
+    persist_context_after_answer,
+    record_message,
+)
 from app.ai.agent import (
     StreamOutcome,
     _build_memory_block,
@@ -34,7 +40,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.database.session import get_db
-from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
+from app.models import AIAnswer, AIAnswerSource, AIQuestion, ChatMessage, ChatSession, User
 from app.schemas.ai import AIAnswerRead, AIQuestionRead, AskRequest
 from app.services.ai_cache import get_cache_stats, invalidate_all_ai_cache
 from app.services.business_redaction import redact_business_payload_for_scope
@@ -47,6 +53,35 @@ from app.services.tenant_access import (
 
 logger = logging.getLogger("app.api.routes.ai")
 router = APIRouter()
+
+
+def _record_session_turn(
+    db: Session,
+    *,
+    user: User,
+    session_id: str | None,
+    question: str,
+    answer: str,
+    question_id: int | None = None,
+) -> None:
+    """Append a complete turn to the owner-bound session history.
+
+    This is deliberately best-effort. History improves the UI but must never
+    turn a successful answer into an error. The session helper enforces the
+    ``(user_id, session_uuid)`` boundary; no client-supplied session can read
+    or write another user's history.
+    """
+    if not session_id:
+        return
+    try:
+        session, _ = get_or_create_session(db, user, session_id)
+        record_message(db, session, role="user", content=question, question_id=question_id)
+        record_message(db, session, role="assistant", content=answer)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("chat session history save failed: %s", exc)
+        with contextlib.suppress(Exception):
+            db.rollback()
 
 
 @router.post("/ask", response_model=AIAnswerRead)
@@ -233,6 +268,13 @@ async def _build_stream_response(
                 b"event: delta\ndata: "
                 + json.dumps({"text": cached_answer}).encode()
                 + b"\n\n"
+            )
+            _record_session_turn(
+                db,
+                user=user,
+                session_id=session_id,
+                question=question,
+                answer=cached_answer,
             )
             yield (
                 b"event: end\ndata: "
@@ -569,6 +611,14 @@ async def _build_stream_response(
             resolved_doc_id=resolved_doc_id,
             context_items=context_items,
         )
+        _record_session_turn(
+            db,
+            user=user,
+            session_id=session_id,
+            question=question,
+            answer=full_text,
+            question_id=question_row.id,
+        )
 
         # Feed the answer into the AI cache so subsequent similar
         # questions (and exact re-asks) skip the LLM. The cache
@@ -730,6 +780,43 @@ def history(
             .limit(50)
         ).all()
     )
+
+
+@router.get("/sessions/{session_id}/messages")
+def session_messages(
+    session_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Return the message history for one of the current user's sessions.
+
+    A missing foreign session is indistinguishable from a missing session, so
+    callers cannot use this endpoint to discover other users' session ids.
+    """
+    session = db.scalar(
+        select(ChatSession).where(
+            ChatSession.session_uuid == session_id,
+            ChatSession.user_id == user.id,
+        )
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    rows = db.scalars(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session.id)
+        .order_by(ChatMessage.id.asc())
+    ).all()
+    return [
+        {
+            "id": str(item.id),
+            "role": item.role,
+            "content": item.content,
+            "created_at": item.created_at.isoformat(),
+            "intent": item.intent,
+            "was_structured_hit": item.was_structured_hit,
+        }
+        for item in rows
+    ]
 
 
 @router.get("/answers/{answer_id}", response_model=AIAnswerRead)
