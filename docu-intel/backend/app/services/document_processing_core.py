@@ -665,6 +665,14 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     db.flush()
     track_stage_duration("persist", time.perf_counter() - t_persist)
 
+    # OCR evidence is durable at this point.  Publish lexical availability
+    # before optional extraction and embeddings so long-running enrichment
+    # cannot hide a document whose text is already usable.
+    document.text_search_ready = True
+    document.pipeline_stage = "text_ready"
+    db.commit()
+    cache_service.invalidate_search_cache()
+
     page_texts_list = [(page.page_number, page.text) for page in extracted.pages]
     t_classify = time.perf_counter()
     needs_review = _apply_classification_and_extraction(
