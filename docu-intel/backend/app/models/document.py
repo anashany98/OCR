@@ -70,6 +70,10 @@ class Document(Base):
     extraction_fingerprint_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    # MiniMax M3 (FASE 3) — the route the last extraction took
+    # (text LLM vs VLM). Computed from source_format and OCR
+    # confidence and persisted for the admin panel.
+    processing_route: Mapped[str | None] = mapped_column(String(40), index=True)
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
     quality_status: Mapped[str] = mapped_column(
         String(50), default="pending", nullable=False, index=True

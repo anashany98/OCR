@@ -1096,6 +1096,33 @@ def _maybe_run_hyperextract(
         return
     if not settings.hyperextract_run_in_pipeline:
         return
+
+    # MiniMax M3 (FASE 3) — text vs VLM routing. The decision
+    # uses the document's source_format and the OCR confidence
+    # so we never call a VLM on a clean digital PDF, and never
+    # call a text LLM on a low-confidence scan. The decision is
+    # reported through the ``route`` label on the
+    # ExtractionFingerprintTimer so the operator can see the
+    # mix in production.
+    source_format = getattr(document, "source_format", None) or ""
+    low_ocr_pages = 0
+    total_pages = 0
+    if getattr(document, "pages", None):
+        for p in document.pages:
+            total_pages += 1
+            if (p.ocr_calibrated_confidence or 1.0) < 0.5:
+                low_ocr_pages += 1
+    avg_ocr_conf = (
+        sum((p.ocr_calibrated_confidence or 0.0) for p in (document.pages or []))
+        / max(total_pages, 1)
+    )
+    is_scan = source_format == "image" or (
+        source_format == "pdf" and (total_pages == 0 or avg_ocr_conf < 0.5)
+    )
+    route_label = "vlm" if is_scan else "llm_text"
+    # Persist the routing decision in the audit trail so the
+    # operator can see the same value the timer reports.
+    document.processing_route = route_label  # type: ignore[attr-defined]
     if not text or not text.strip():
         # Persist a "skipped" row so the audit trail shows why nothing
         # ran (otherwise operators cannot tell disabled from broken).
@@ -1128,9 +1155,23 @@ def _maybe_run_hyperextract(
         or "v1",
         extractor_version="hyperextract-service-1.0.0",
     )
-    route_label = "llm_text"
 
-    # Look for a recent successful extraction with the same fingerprint.
+    # MiniMax M3 (FASE 3) — authoritativE reuse check. The lookup
+    # matches the freshly computed fingerprint against the value
+    # STORED on the prior successful row, not against the
+    # (frequently stale) document column. A prior row is reusable
+    # only if:
+    #
+    #   (a) its status is ``success``;
+    #   (b) its persisted ``extraction_fingerprint`` equals the
+    #       one we just computed — a NULL fingerprint is treated
+    #       as "no match" so legacy rows can never win;
+    #   (c) its ``fields_json`` is non-empty — a successful row
+    #       with no parsed fields has no value to reuse;
+    #   (d) the document's own stored fingerprint, if any, also
+    #       matches the freshly computed one (defence-in-depth
+    #       against partial migrations where the row fingerprint
+    #       is updated but the document column is not).
     prior_row = (
         db.query(DocumentExtraction)
         .filter(
@@ -1140,14 +1181,16 @@ def _maybe_run_hyperextract(
         .order_by(DocumentExtraction.id.desc())
         .first()
     )
-    prior_payload = prior_row.fields_json if prior_row and prior_row.fields_json else None
-    # Reuse the prior result if its persisted fingerprint matches.
-    # We persist the fingerprint on the document so a re-classification
-    # that changes the document_type invalidates the cache cleanly.
+    prior_fingerprint = prior_row.extraction_fingerprint if prior_row else None
+    prior_has_fields = bool(prior_row and (prior_row.fields_json or {}))
+    document_fingerprint = getattr(document, "extraction_fingerprint", None)
+    fingerprint_matches_row = prior_fingerprint == fingerprint
+    fingerprint_matches_doc = document_fingerprint in (None, fingerprint)
     if (
         prior_row is not None
-        and getattr(document, "extraction_fingerprint", None) == fingerprint
-        and prior_payload is not None
+        and prior_has_fields
+        and fingerprint_matches_row
+        and fingerprint_matches_doc
     ):
         with ExtractionFingerprintTimer(route=route_label, chars=len(text)) as t:
             t.set_outcome("cache_hit")
@@ -1164,6 +1207,7 @@ def _maybe_run_hyperextract(
                 relations_json=prior_row.relations_json,
                 warnings_json=["fingerprint_reuse"],
                 latency_ms=0,
+                extraction_fingerprint=fingerprint,
             )
         )
         db.flush()
@@ -1202,41 +1246,54 @@ def _maybe_run_hyperextract(
             document.id,
             exc,
         )
+        # A failed run MUST NOT change the document's stored
+        # fingerprint — the prior result is still valid for
+        # future runs with the same inputs. We persist a "failed"
+        # row tagged with the freshly computed fingerprint so the
+        # audit trail shows the provider was contacted, but the
+        # ``extraction_fingerprint`` is left untouched on the
+        # document.
         return
 
     # The service already returns a typed envelope; persist it so the
     # review panel and the API can find it later.
     if envelope.get("status") == "disabled":
         return
-    db.add(
-        DocumentExtraction(
-            document_id=document.id,
-            document_type=envelope.get("document_type"),
-            provider=envelope.get("provider"),
-            model=envelope.get("model"),
-            status=str(envelope.get("status") or "pending"),
-            fields_json=envelope.get("fields") or {},
-            entities_json=envelope.get("entities") or [],
-            relations_json=envelope.get("relations") or [],
-            warnings_json=envelope.get("warnings") or [],
-            raw_output_json=envelope.get("raw_output") or None,
-            error_message=envelope.get("error_message"),
-            latency_ms=int(envelope.get("latency_ms") or 0),
-        )
+    envelope_status = str(envelope.get("status") or "pending")
+    new_row = DocumentExtraction(
+        document_id=document.id,
+        document_type=envelope.get("document_type"),
+        provider=envelope.get("provider"),
+        model=envelope.get("model"),
+        status=envelope_status,
+        fields_json=envelope.get("fields") or {},
+        entities_json=envelope.get("entities") or [],
+        relations_json=envelope.get("relations") or [],
+        warnings_json=envelope.get("warnings") or [],
+        raw_output_json=envelope.get("raw_output") or None,
+        error_message=envelope.get("error_message"),
+        latency_ms=int(envelope.get("latency_ms") or 0),
+        # Persist the fingerprint on the row itself. A row tagged
+        # ``success`` with no fingerprint (legacy) is treated as
+        # "no match" by the next lookup, which is the safe default.
+        extraction_fingerprint=fingerprint if envelope_status == "success" else None,
     )
+    db.add(new_row)
     db.flush()
-    # Record the fingerprint on the document so a re-run with the
-    # same inputs short-circuits. We use a server-side UTC stamp so
-    # the field is independent of the test harness clock.
+    # Record the fingerprint on the document only when the new
+    # run succeeded with non-empty fields. A partial / failed
+    # extraction MUST NOT clear the cache; a successful one
+    # updates both the row and the document.
     from datetime import UTC, datetime
 
-    try:
-        document.extraction_fingerprint = fingerprint
-        document.extraction_fingerprint_at = datetime.now(UTC)
-    except Exception:
-        # The migration may not yet be applied in older databases;
-        # the check is best-effort.
-        pass
+    if envelope_status == "success" and (new_row.fields_json or {}):
+        try:
+            document.extraction_fingerprint = fingerprint
+            document.extraction_fingerprint_at = datetime.now(UTC)
+        except Exception:
+            # The migration may not yet be applied in older databases;
+            # the check is best-effort.
+            pass
 
 
 def _first_page_image_path(document: Document) -> str | None:

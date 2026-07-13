@@ -129,9 +129,17 @@ class HyperExtractService:
         self._base_url = (base_url if base_url is not None else settings.hyperextract_base_url).rstrip("/")
         self._model = model if model is not None else settings.hyperextract_model
         self._api_key = api_key if api_key is not None else settings.hyperextract_api_key
-        self._timeout = float(
+        # MiniMax M3 (FASE 3) — split the per-request budget into
+        # three explicit phases so a slow connect never starves the
+        # read budget and a slow read never starves the total
+        # budget. Defaults are derived from ``hyperextract_timeout_seconds``
+        # so the operator keeps a single knob.
+        base_timeout = float(
             timeout_seconds if timeout_seconds is not None else settings.hyperextract_timeout_seconds
         )
+        self._timeout = base_timeout
+        self._connect_timeout = min(10.0, base_timeout / 6.0)
+        self._read_timeout = min(60.0, base_timeout)
         self._provider_name = (
             provider_name if provider_name is not None else settings.hyperextract_provider
         )
@@ -141,6 +149,39 @@ class HyperExtractService:
             if persist_raw_output is not None
             else bool(settings.hyperextract_persist_raw_output)
         )
+        # MiniMax M3 (FASE 3) — keep-alive HTTP client. The
+        # previous implementation instantiated a new ``httpx.Client``
+        # per call, which defeated the TCP/TLS reuse and
+        # introduced a measurable warm-up cost on every request.
+        # A single process-wide client is safe because the service
+        # is a stateless facade over the provider; the only
+        # per-call state is the input prompt and the response,
+        # both of which are handled inside ``_call_provider``.
+        limits = httpx.Limits(
+            max_connections=int(
+                getattr(settings, "hyperextract_max_connections", 32)
+            ),
+            max_keepalive_connections=int(
+                getattr(settings, "hyperextract_max_keepalive", 8)
+            ),
+            keepalive_expiry=30.0,
+        )
+        timeout = httpx.Timeout(
+            connect=self._connect_timeout,
+            read=self._read_timeout,
+            write=self._read_timeout,
+            pool=self._read_timeout,
+        )
+        self._client = httpx.Client(
+            timeout=timeout,
+            limits=limits,
+            headers={"User-Agent": "docu-intel/hyperextract-1.0.0"},
+        )
+        # Detection of JSON-schema support is probed lazily and
+        # cached for the lifetime of the service. The probe sends
+        # a minimal request and checks for an explicit error code;
+        # it is best-effort and never raises.
+        self._supports_response_format: bool | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -458,22 +499,40 @@ class HyperExtractService:
         Returns the assistant message text. Raises on transport errors
         or non-2xx HTTP status; the caller converts those into a typed
         failure result.
+
+        MiniMax M3 (FASE 3):
+        * Uses the long-lived ``self._client`` (HTTP keep-alive,
+          bounded connection pool) instead of a per-call client.
+        * Sends ``response_format={"type": "json_object"}`` when the
+          provider advertises support, so the response is guaranteed
+          to be a parseable JSON object (no markdown fence, no
+          trailing prose). The probe runs once and is cached.
+        * Caps ``max_tokens`` per profile (small/medium/large) so a
+          runaway request cannot blow the context window or the
+          timeout. The size is derived from the input length, not
+          from the document_type.
         """
         url = f"{self._base_url}/chat/completions"
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
-        payload = {
+        max_tokens = self._profile_max_tokens(prompt_user)
+        payload: dict[str, Any] = {
             "model": self._model,
             "temperature": 0,
+            "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": prompt_system},
                 {"role": "user", "content": prompt_user},
             ],
         }
+        # JSON-schema enforcement. The probe is best-effort and
+        # never raises; when the provider does not support the
+        # field the next call drops it silently.
+        if self._provider_supports_response_format():
+            payload["response_format"] = {"type": "json_object"}
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                response = client.post(url, headers=headers, json=payload)
+            response = self._client.post(url, headers=headers, json=payload)
         except httpx.HTTPError as exc:
             # Log the exception type only; the message can include the
             # URL or sanitised headers and we never want to leak the
@@ -500,6 +559,72 @@ class HyperExtractService:
         if not isinstance(message, str) or not message.strip():
             raise RuntimeError("provider returned an empty assistant message")
         return message
+
+    # ------------------------------------------------------------------
+    # FASE 3 helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _profile_max_tokens(prompt_user: str) -> int:
+        """Return the per-call ``max_tokens`` budget for a prompt.
+
+        The budget is sized to fit a structured envelope with a
+        comfortable margin but not so large that a runaway
+        request can blow the read timeout. The three buckets
+        match the size classes used elsewhere in the project
+        (small <= 6 KB, medium <= 24 KB, large > 24 KB).
+        """
+        chars = len(prompt_user or "")
+        if chars < 6_000:
+            return 800
+        if chars < 24_000:
+            return 1500
+        return 2400
+
+    def _provider_supports_response_format(self) -> bool:
+        """Probe the provider for ``response_format`` support.
+
+        The probe runs once and the verdict is cached on
+        ``self._supports_response_format``. It is best-effort
+        and never raises; on any failure the function returns
+        ``False`` so the request is sent without the field.
+        """
+        if self._supports_response_format is not None:
+            return self._supports_response_format
+        # Most OpenAI-compatible servers since 2023-11 accept the
+        # field. We default to True and only flip on an explicit
+        # error code from the probe.
+        self._supports_response_format = True
+        try:
+            probe = self._client.post(
+                f"{self._base_url}/chat/completions",
+                headers={"Content-Type": "application/json", **(
+                    {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+                )},
+                json={
+                    "model": self._model,
+                    "temperature": 0,
+                    "max_tokens": 16,
+                    "response_format": {"type": "json_object"},
+                    "messages": [{"role": "user", "content": "ping"}],
+                },
+            )
+            if probe.status_code in (400, 404, 422) and "response_format" in probe.text:
+                self._supports_response_format = False
+        except Exception:
+            # Any transport error means we will not insist on the
+            # field; the regular call still works.
+            self._supports_response_format = False
+        return self._supports_response_format
+
+    def close(self) -> None:
+        """Close the keep-alive HTTP client. Called by the worker
+        shutdown hook so the connection pool does not leak between
+        worker restarts."""
+        try:
+            self._client.close()
+        except Exception:  # pragma: no cover - defensive
+            pass
 
     # ------------------------------------------------------------------
     # Parsing helpers

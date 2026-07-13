@@ -20,6 +20,7 @@ celery_app = Celery(
         "app.workers.learning_health_tasks",
         "app.workers.webhooks_tasks",
         "app.workers.embedding_tasks",
+        "app.workers.hyperextract_tasks",
     ],
 )
 celery_app.conf.update(
@@ -81,6 +82,17 @@ celery_app.conf.task_routes = {
     "app.workers.webhooks_tasks.deliver_pending_webhooks_task": {"queue": "maintenance"},
     "app.workers.embedding_tasks.reembed_pending_documents_task": {"queue": "maintenance"},
     "app.workers.embedding_tasks.embed_document_task": {"queue": "embeddings"},
+    # MiniMax M3 (FASE 3) — route Hyper-Extract enrichment to a
+    # dedicated low-priority queue so it never preempts the OCR
+    # path or the chat path. ``text_fast`` remains the interactive
+    # queue; ``hyperextract`` is for non-urgent enrichment that
+    # can be paused or drained at the operator's discretion.
+    "app.workers.hyperextract_tasks.enqueue_hyperextract_task": {
+        "queue": "hyperextract"
+    },
+    "app.workers.hyperextract_tasks.replay_failed_extractions_task": {
+        "queue": "hyperextract"
+    },
 }
 
 
