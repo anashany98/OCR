@@ -57,6 +57,68 @@ class QueryVariation:
     weight: float  # 1.0 = original, < 1.0 = variation
 
 
+@dataclass(frozen=True)
+class QueryPlan:
+    """Bounded retrieval plan produced before any vector search runs."""
+
+    version: str
+    strategy: str
+    variations: tuple[QueryVariation, ...]
+
+
+_EXACT_TOOL_NAMES = frozenset(
+    {
+        "find_document_by_filename",
+        "get_budget_by_number",
+        "get_order_by_number",
+        "get_document_full_details",
+    }
+)
+_SYNTHESIS_HINTS = frozenset(
+    {"compara", "comparar", "diferencia", "relacion", "resumen", "analiza", "todos"}
+)
+
+
+def build_query_plan(question: str, *, tool_names: set[str] | None = None) -> QueryPlan:
+    """Choose a small, explainable set of retrieval variants.
+
+    Exact document routes must never fan out into semantic variants. Factual
+    questions receive only the original query; synthesis questions may receive
+    one additional variation. This prevents multiplicative expansion between
+    the chat collector and the semantic-search layer.
+    """
+    original = QueryVariation(text=question, weight=1.0)
+    names = tool_names or set()
+    if not settings.search_query_plan_enabled:
+        return QueryPlan(settings.search_query_plan_version, "legacy", (original,))
+    if names & _EXACT_TOOL_NAMES:
+        return QueryPlan(settings.search_query_plan_version, "exact", (original,))
+
+    normalized = question.lower()
+    is_synthesis = any(hint in normalized for hint in _SYNTHESIS_HINTS)
+    max_total = (
+        settings.search_max_variants_synthesis
+        if is_synthesis
+        else settings.search_max_variants_factual
+    )
+    if max_total <= 1 or not settings.search_multi_query_enabled:
+        return QueryPlan(settings.search_query_plan_version, "factual", (original,))
+
+    candidates = generate_query_variations(question, max_variants=max_total - 1)
+    candidates.extend(expand_numbered_query(question)[1:])
+    selected: list[QueryVariation] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = candidate.text.lower().strip()
+        if not key or key in seen:
+            continue
+        selected.append(candidate)
+        seen.add(key)
+        if len(selected) >= max_total:
+            break
+    return QueryPlan(settings.search_query_plan_version, "synthesis", tuple(selected or [original]))
+
+
 def generate_query_variations(
     original: str,
     max_variants: int | None = None,

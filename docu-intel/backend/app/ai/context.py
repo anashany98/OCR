@@ -41,7 +41,7 @@ from app.services.tenant_access import (
 )
 from app.tools import internal
 
-from .multi_query import expand_numbered_query, generate_query_variations
+from .multi_query import build_query_plan
 from .tools import ToolCall, _extract_document_number, _extract_room_name, _normalize
 
 # ---------------------------------------------------------------------------
@@ -578,12 +578,11 @@ def collect_context(
             _hit = False
             _error = False
 
-            # Multi-query: run the original + N variations, then
-            # merge via score-weighted dedup. This improves recall
-            # when the user's phrasing differs from the document's.
-            variations = generate_query_variations(query)
-            numbered = expand_numbered_query(query)
-            all_variations = variations + [v for v in numbered if v.text != query]
+            # Build one bounded plan before retrieval. In particular, an
+            # exact document route never becomes a second fan-out of vector
+            # searches, and a factual query remains a single lookup.
+            plan = build_query_plan(query, tool_names={item.name for item in tools})
+            all_variations = list(plan.variations)
 
             # Deduplicate by text (keep highest weight)
             seen: dict[str, float] = {}
