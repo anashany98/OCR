@@ -46,8 +46,8 @@ autorizado no debe poder inferir que esos datos existen.
 |---|---|---|---|
 | 0 | Baseline reproducible | parcial | compilación, migración temporal, build y fallos conocidos registrados |
 | 1 | Permisos de extremo a extremo | parcial | ninguna recuperación exacta, semántica, dossier o fuente filtra después de leer |
-| 2 | Identidad contextual de presupuesto | parcial | unicidad por año/marca/hotel/código; sin fusiones implícitas |
-| 3 | Ingesta jerárquica atómica | parcial | occurrence, proyecto y enlace de presupuesto se crean o revierten juntos |
+| 2 | Identidad contextual de presupuesto | implementado | unicidad por año/marca/hotel/código; sin fusiones implícitas |
+| 3 | Ingesta jerárquica atómica | implementado | occurrence, proyecto y enlace de presupuesto se crean o revierten juntos |
 | 4 | Escaneo de corpus controlado | implementado | inbox acotado; corpus solo mediante backfill con cursor y métricas |
 | 5 | Backfill seguro | implementado base | `dry-run` no escribe; lotes reanudables, contadores veraces y conflictos visibles |
 | 6 | Dossier autorizado | parcial | DTO determinista completo, sin doble conteo ni datos fuera de scope |
@@ -239,7 +239,28 @@ archivos modificados y 69 pruebas dirigidas de ingesta/watcher/worker/búsqueda
 exacta, backfill/occurrences/ciclo de proyecto y clasificación/content routing.
 Todas pasan.
 
-Pendiente para las siguientes fases autónomas: migraciones contextuales sobre
-PostgreSQL real, conflicto folder/contenido, dossier/chat completo, conexión de
-enriquecimientos, overlays y certificación Docker/E2E completa. No se ha
+Pendiente para las siguientes fases autónomas: dossier/chat completo, conexión
+de enriquecimientos, overlays y certificación Docker/E2E completa. No se ha
 ejecutado backfill real ni modificado el corpus.
+
+### 2026-07-13 — Fases 2 y 3
+
+- **Fase 2 completada:** se reutiliza la identidad contextual ya introducida
+  por `0053_contextual_budget_identity`; los helpers de scope y proyecto ahora
+  toleran la carrera entre lectura y creación mediante savepoints y relectura
+  tras la restricción única de PostgreSQL. Las integraciones heredadas solo
+  resuelven scopes legacy o un código contextual inequívoco; un código con dos
+  contextos devuelve ausencia en vez de elegir uno arbitrariamente.
+- **Fase 3 completada:** la migración
+  `0061_contextual_occurrence_provenance` añade evidencia y estado de
+  asociación a cada occurrence. La ingesta guarda código de carpeta, código
+  extraído, código resuelto y los estados `verified`, `folder_only`,
+  `content_only`, `conflict` o `manual`. Un conflicto queda visible y no se
+  confirma; una ruta fuera del corpus no genera pertenencia de proyecto; un
+  SHA nuevo en la misma ruta actualiza la occurrence viva sin borrar el
+  Document histórico.
+
+Validación: 25 pruebas de identidad, ingesta contextual, sesiones de scope,
+ciclo de proyecto, backfill e integración; Ruff y compilación backend. En
+PostgreSQL temporal: `0060 -> 0061`, `0061 -> 0060` y `0060 -> 0061` pasan.
+La base temporal se eliminó al terminar.
