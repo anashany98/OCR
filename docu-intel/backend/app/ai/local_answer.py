@@ -24,6 +24,8 @@ async def try_local_ai_answer(
     *,
     fallback: str,
     model: str | None = None,
+    context_tokens: int | None = None,
+    max_output_tokens: int = 4000,
     client_factory: Callable[[], Any] | None = None,
 ) -> str | None:
     """One-shot LLM call with the same context as the streaming
@@ -43,20 +45,20 @@ async def try_local_ai_answer(
     if not settings.ai_base_url or not selected_model:
         return None
 
-    context_text = build_context_text(context_items)
+    context_text = build_context_text(context_items, max_tokens_override=context_tokens)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
     messages = build_ai_messages(question, context_text, warning_text)
     client = client_factory() if client_factory else LocalOpenAICompatibleClient(model=selected_model)
     try:
-        answer = await client.chat(messages, temperature=0.0)
+        answer = await client.chat(messages, temperature=0.0, max_tokens=max_output_tokens)
     except ContextSizeExceededError:
-        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
+        halved = max(1000, (context_tokens or settings.ai_max_context_tokens or 6000) // 2)
         logger.warning("Prompt exceeded context_length — retry budget=%d: %s", halved, question[:100])
         messages = build_ai_messages(
             question, build_context_text(context_items, max_tokens_override=halved), warning_text
         )
         try:
-            answer = await client.chat(messages, temperature=0.0)
+            answer = await client.chat(messages, temperature=0.0, max_tokens=max_output_tokens)
         except Exception as exc:
             logger.warning("Context-shrunk retry failed: %s", exc)
             answer = ""
@@ -82,7 +84,7 @@ async def try_local_ai_answer(
             question, context_text, warning_text, enable_thinking=True
         )
         try:
-            answer = await client.chat(retry_messages, temperature=0.0)
+            answer = await client.chat(retry_messages, temperature=0.0, max_tokens=max_output_tokens)
         except Exception as exc:
             logger.warning("Qwen3 thinking-enabled retry failed: %s", exc)
             answer = ""

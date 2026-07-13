@@ -78,7 +78,7 @@ async def ask(
             mode=payload.mode,
             scope_key=scope_key,
             session_id=payload.session_id,
-            model=model_route.model or "default",
+            model=model_route.cache_key or "default",
             prompt_version=CHAT_PROMPT_VERSION,
             knowledge_version=current_knowledge_version(db),
         )
@@ -440,7 +440,12 @@ async def ask_stream(
                 # Previously we buffered everything and emitted a single delta
                 # at the end, so the user saw no live typing.
                 async for chunk in _stream_local_ai_answer(
-                    question, context_items, warnings, model=model_route.model
+                    question,
+                    context_items,
+                    warnings,
+                    model=model_route.model,
+                    context_tokens=model_route.context_tokens,
+                    max_output_tokens=model_route.max_output_tokens,
                 ):
                     if isinstance(chunk, StreamOutcome):
                         # Terminal outcome. ``chunk.text`` is the final
@@ -590,7 +595,7 @@ async def ask_stream(
                 mode=mode,
                 scope_key=access_scope_cache_key(access_scope),
                 session_id=session_id,
-                model=model_name,
+                model=("backend_structured:exact" if structured_decision is not None else model_route.cache_key),
                 prompt_version=CHAT_PROMPT_VERSION,
                 knowledge_version=current_knowledge_version(db),
             )

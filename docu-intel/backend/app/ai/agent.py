@@ -358,6 +358,7 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
+    model_route = select_chat_model(question)
     structured_decision = None
     if settings.ai_structured_answer_enabled:
         structured_decision = decide_structured_answer(
@@ -369,9 +370,14 @@ async def answer_question(
         answer_text = structured_decision.answer
         model_name = "backend_structured"
     elif has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
-        model_route = select_chat_model(question)
         ai_answer = await _try_local_ai_answer(
-            question, context_items, warnings, fallback=grounded.answer, model=model_route.model
+            question,
+            context_items,
+            warnings,
+            fallback=grounded.answer,
+            model=model_route.model,
+            context_tokens=model_route.context_tokens,
+            max_output_tokens=model_route.max_output_tokens,
         )
         # Only adopt the LLM output if it actually produced something new.
         # `_try_local_ai_answer` returns the same `fallback` string when the
@@ -509,7 +515,7 @@ async def answer_question(
         mode=mode,
         scope_key=scope_key,
         session_id=session_id,
-        model=model_name,
+        model=("backend_structured:exact" if structured_decision is not None else model_route.cache_key),
     )
 
     # CTX-2: persist the active context (current budget, current
@@ -537,7 +543,16 @@ async def answer_question(
 # _try_local_ai_answer extracted to app.ai.local_answer (FASE 6.1)
 # Keep the old private import surface so extension code and tests retain the
 # agent-level client injection point after the module split.
-async def _try_local_ai_answer(question, context_items, warnings, *, fallback, model=None):
+async def _try_local_ai_answer(
+    question,
+    context_items,
+    warnings,
+    *,
+    fallback,
+    model=None,
+    context_tokens=None,
+    max_output_tokens=4000,
+):
     from app.ai.local_answer import try_local_ai_answer
 
     return await try_local_ai_answer(
@@ -546,6 +561,8 @@ async def _try_local_ai_answer(question, context_items, warnings, *, fallback, m
         warnings,
         fallback=fallback,
         model=model,
+        context_tokens=context_tokens,
+        max_output_tokens=max_output_tokens,
         client_factory=LocalOpenAICompatibleClient,
     )
 
@@ -571,6 +588,8 @@ async def _stream_local_ai_answer(
     warnings: list[str],
     *,
     model: str | None = None,
+    context_tokens: int | None = None,
+    max_output_tokens: int = 4000,
 ) -> AsyncIterator[str | tuple[str, str] | StreamOutcome]:
     """Stream chunks of the LLM's answer. Yields plain-text deltas, optional
     ``("thinking", chunk)`` tuples (reasoning models), and a final
@@ -587,7 +606,7 @@ async def _stream_local_ai_answer(
     if not settings.ai_base_url or not selected_model:
         return
 
-    context_text = build_context_text(context_items)
+    context_text = build_context_text(context_items, max_tokens_override=context_tokens)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
 
     # Reuse the system + user prompts that the non-streaming path uses, so
@@ -610,7 +629,7 @@ async def _stream_local_ai_answer(
         # 4000 tokens (was 2000) so Qwen3 thinking-mode can fit both its
         # reasoning trace and a real answer in the same completion.
         async for piece in client.chat_stream(
-            base_messages, temperature=0.0, max_tokens=4000
+            base_messages, temperature=0.0, max_tokens=max_output_tokens
         ):
             if _t_first_token is None:
                 _t_first_token = _perf_counter()
@@ -635,13 +654,13 @@ async def _stream_local_ai_answer(
         # Prompt too big for the loaded context_length (caller fault — the
         # client avoided the circuit breaker). Shrink the budget and retry
         # ONCE, buffered (nothing was streamed yet).
-        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
+        halved = max(1000, (context_tokens or settings.ai_max_context_tokens or 6000) // 2)
         logger.warning("Stream exceeded context_length — retry budget=%d: %s", halved, question[:100])
         shrunk = build_ai_messages(
             question, build_context_text(context_items, max_tokens_override=halved), warning_text
         )
         try:
-            async for piece in client.chat_stream(shrunk, temperature=0.0, max_tokens=4000):
+            async for piece in client.chat_stream(shrunk, temperature=0.0, max_tokens=max_output_tokens):
                 if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
                     continue
                 accumulated.append(piece)  # type: ignore[arg-type]
@@ -666,7 +685,7 @@ async def _stream_local_ai_answer(
         retry_messages = build_ai_messages(question, context_text, warning_text, enable_thinking=True)
         retry_parts: list[str] = []
         try:
-            async for piece in client.chat_stream(retry_messages, temperature=0.0, max_tokens=4000):
+            async for piece in client.chat_stream(retry_messages, temperature=0.0, max_tokens=max_output_tokens):
                 if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
                     continue
                 retry_parts.append(piece)  # type: ignore[arg-type]

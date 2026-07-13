@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.ai.answer_profiles import select_answer_profile
 from app.core.config import settings
 
 
@@ -10,6 +11,12 @@ from app.core.config import settings
 class ChatModelRoute:
     model: str
     profile: str
+    context_tokens: int
+    max_output_tokens: int
+
+    @property
+    def cache_key(self) -> str:
+        return f"{self.model}:{self.profile}"
 
 
 _DEEP_REASONING_MARKERS = frozenset(
@@ -37,10 +44,21 @@ def select_chat_model(question: str) -> ChatModelRoute:
     """
     primary = settings.ai_model
     normalized = question.lower().strip()
+    answer_profile = select_answer_profile(question)
     is_simple = (
         len(normalized) <= 140
         and not any(marker in normalized for marker in _DEEP_REASONING_MARKERS)
     )
     if settings.ai_model_routing_enabled and settings.ai_fast_model and is_simple:
-        return ChatModelRoute(model=settings.ai_fast_model, profile="fast_factual")
-    return ChatModelRoute(model=primary, profile="primary")
+        return ChatModelRoute(
+            model=settings.ai_fast_model,
+            profile=answer_profile.name,
+            context_tokens=answer_profile.context_tokens,
+            max_output_tokens=answer_profile.max_output_tokens,
+        )
+    return ChatModelRoute(
+        model=primary,
+        profile=answer_profile.name,
+        context_tokens=answer_profile.context_tokens,
+        max_output_tokens=answer_profile.max_output_tokens,
+    )
