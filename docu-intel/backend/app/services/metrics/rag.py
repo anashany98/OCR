@@ -3,8 +3,20 @@
 from __future__ import annotations
 
 from ._registry import (
+    AI_SOURCE_STALE_BLOCK,
+    AI_STREAM_PERSIST_FAILURE,
+    ANSWERS_WITHOUT_SOURCES,
+    CHAT_CACHE_LOOKUP,
+    CHAT_CACHE_LOOKUP_LATENCY,
+    CHAT_RETRIEVAL_DURATION,
+    CHAT_RETRIEVAL_OUTCOME,
+    CHAT_STAGE_DURATION,
+    CHAT_STAGE_OUTCOME,
+    CHAT_STREAM_FIRST_EVENT,
+    CHAT_STREAM_TOTAL,
     CHUNK_WEIGHT_ADJUSTMENTS,
     FEEDBACK_VOTES,
+    FOLLOWUP_RESOLUTION,
     MMR_AVG_PAIRWISE_SIMILARITY,
     MMR_OUTCOMES,
     PROMPT_INJECTION_ATTEMPTS,
@@ -133,3 +145,171 @@ def track_chunk_weight_adjustment(*, direction: str, source_count: int) -> None:
         direction=clean_direction,
         source_count_bucket=bucket,
     ).inc()
+
+
+# ---------------------------------------------------------------------------
+# CR1 — AI source persistence
+# ---------------------------------------------------------------------------
+
+
+def track_ai_source_stale_block() -> None:
+    """Record that an AIAnswerSource was saved with block_id=NULL
+    because the referenced DocumentBlock no longer exists."""
+    AI_SOURCE_STALE_BLOCK.inc()
+
+
+def track_ai_stream_persist_failure(stage: str) -> None:
+    """Record a failure during AI stream answer persistence.
+
+    ``stage`` is one of ``"answer" | "sources" | "context" | "cache"``.
+    """
+    clean_stage = (stage or "unknown").lower().strip() or "unknown"
+    AI_STREAM_PERSIST_FAILURE.labels(stage=clean_stage).inc()
+
+
+# ---------------------------------------------------------------------------
+# CR3 — Follow-up resolution
+# ---------------------------------------------------------------------------
+
+
+def track_followup_resolution(kind: str, outcome: str) -> None:
+    """Record a follow-up question resolution attempt.
+
+    ``kind`` is the detected reference type (``"pronoun" | "ellipsis" |
+    "explicit" | "none"``). ``outcome`` is ``"resolved" | "no_context" |
+    "ambiguous" | "global"``.
+    """
+    clean_kind = (kind or "none").lower().strip() or "none"
+    clean_outcome = (outcome or "unknown").lower().strip() or "unknown"
+    FOLLOWUP_RESOLUTION.labels(kind=clean_kind, outcome=clean_outcome).inc()
+
+
+# ---------------------------------------------------------------------------
+# CR8 — Answers without sources
+# ---------------------------------------------------------------------------
+
+
+def track_answer_without_source(reason: str) -> None:
+    """Record an AI answer persisted without any cited source.
+
+    ``reason`` is one of ``"no_context" | "fallback" | "error" |
+    "all_stale"``.
+    """
+    clean_reason = (reason or "unknown").lower().strip() or "unknown"
+    ANSWERS_WITHOUT_SOURCES.labels(reason=clean_reason).inc()
+
+
+# ---------------------------------------------------------------------------
+# MiniMax M3 — chat path stage instrumentation
+# ---------------------------------------------------------------------------
+# Use ``track_chat_stage`` as a context manager so a slow stage is
+# recorded even when the surrounding code raises. Outcomes are
+# ``"ok" | "empty" | "error" | "skipped"``. The stage label set is
+# fixed to keep cardinality bounded; pass one of the values listed in
+# the docstring of ``_ALLOWED_STAGES``.
+# ---------------------------------------------------------------------------
+
+
+_ALLOWED_STAGES = frozenset(
+    {
+        "reference_resolution",
+        "tool_selection",
+        "scope_enforcement",
+        "context_collection",
+        "confidence_gates",
+        "memory_block",
+        "grounded_response",
+        "source_sanitization",
+        "persistence",
+        "cache_lookup",
+        "cache_write",
+    }
+)
+
+
+def track_chat_stage(stage: str) -> "ChatStageTimer":
+    """Return a context manager that records the wall-clock duration
+    of ``stage`` and tags the outcome on exit.
+
+    Usage::
+
+        with track_chat_stage("context_collection") as timer:
+            items = collect_context(...)
+            timer.set_outcome("ok" if items else "empty")
+    """
+    if stage not in _ALLOWED_STAGES:
+        # Defensive: drop unknown stages into a single bucket so a
+        # typo cannot blow up the metric cardinality.
+        stage = "other"
+    return ChatStageTimer(stage)
+
+
+class ChatStageTimer:
+    def __init__(self, stage: str) -> None:
+        self.stage = stage
+        self.outcome = "ok"
+        self._t0: float = 0.0
+        self._recorded = False
+
+    def set_outcome(self, outcome: str) -> None:
+        self.outcome = (outcome or "unknown").lower().strip() or "unknown"
+
+    def __enter__(self) -> "ChatStageTimer":
+        import time as _time
+
+        self._t0 = _time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        import time as _time
+
+        if self._recorded:
+            return
+        self._recorded = True
+        elapsed = max(_time.perf_counter() - self._t0, 0.0)
+        # An exception always wins over an explicit outcome.
+        if exc is not None:
+            self.outcome = "error"
+        try:
+            CHAT_STAGE_DURATION.labels(stage=self.stage).observe(elapsed)
+            CHAT_STAGE_OUTCOME.labels(stage=self.stage, outcome=self.outcome).inc()
+        except Exception:  # pragma: no cover - metrics must never raise
+            pass
+
+
+def track_chat_retrieval(strategy: str, outcome: str, *, latency_ms: int = 0) -> None:
+    """Record a retrieval sub-path. ``strategy`` is one of the bounded
+    set documented on :data:`CHAT_RETRIEVAL_DURATION`. ``outcome`` is
+    ``hit | miss | skipped | error``."""
+    clean_strategy = (strategy or "unknown").lower().strip() or "unknown"
+    clean_outcome = (outcome or "unknown").lower().strip() or "unknown"
+    CHAT_RETRIEVAL_OUTCOME.labels(strategy=clean_strategy, outcome=clean_outcome).inc()
+    if latency_ms and latency_ms > 0:
+        CHAT_RETRIEVAL_DURATION.labels(strategy=clean_strategy).observe(latency_ms / 1000.0)
+
+
+def track_chat_cache_lookup(kind: str, outcome: str, *, latency_ms: int = 0) -> None:
+    """Record an AI cache lookup. ``kind`` is ``exact`` or ``semantic``;
+    ``outcome`` is ``hit | miss | error | disabled``."""
+    clean_kind = (kind or "unknown").lower().strip() or "unknown"
+    clean_outcome = (outcome or "unknown").lower().strip() or "unknown"
+    CHAT_CACHE_LOOKUP.labels(kind=clean_kind, outcome=clean_outcome).inc()
+    if latency_ms and latency_ms >= 0:
+        CHAT_CACHE_LOOKUP_LATENCY.labels(kind=clean_kind).observe(latency_ms / 1000.0)
+
+
+def track_chat_stream_event(event: str, *, latency_ms: float) -> None:
+    """Record the time of an SSE event relative to the request start.
+
+    ``event`` is one of ``start | delta | end | error``. Only the
+    cumulative latency to that event is recorded — no event payload.
+    """
+    clean_event = (event or "other").lower().strip() or "other"
+    if latency_ms and latency_ms > 0:
+        CHAT_STREAM_FIRST_EVENT.labels(event=clean_event).observe(latency_ms / 1000.0)
+
+
+def track_chat_stream_total(*, latency_ms: float) -> None:
+    """Record the total wall-clock duration of a stream call."""
+    if latency_ms and latency_ms > 0:
+        CHAT_STREAM_TOTAL.observe(latency_ms / 1000.0)
