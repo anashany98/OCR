@@ -45,6 +45,31 @@ def test_embedded_image_ocr_persists_only_meaningful_text(tmp_path: Path, monkey
     assert list((tmp_path / "embedded").glob("*.png"))
 
 
+def test_non_image_attachments_do_not_consume_the_image_limit(tmp_path: Path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "max_embedded_images_per_document", 1)
+    monkeypatch.setattr(
+        "app.parsers.embedded_images.parse_image",
+        lambda path, output_dir, ocr_engine: ExtractedDocument(
+            pages=[ExtractedPage(page_number=1, text="texto de imagen")]
+        ),
+    )
+
+    pages = extract_embedded_image_pages(
+        [
+            EmbeddedImage("notes.txt", b"not an image"),
+            EmbeddedImage("photo.png", _png_bytes()),
+        ],
+        output_dir=tmp_path,
+        ocr_engine=object(),
+        first_page_number=1,
+    )
+
+    assert len(pages) == 1
+    assert "photo.png" in pages[0].text
+
+
 def test_docx_media_is_discovered_without_changing_the_document(tmp_path: Path):
     from app.parsers.docx import _embedded_images
 

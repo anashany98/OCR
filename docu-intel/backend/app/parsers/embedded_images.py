@@ -45,10 +45,8 @@ def extract_embedded_image_pages(
     media_dir = output_dir / "embedded"
     media_dir.mkdir(parents=True, exist_ok=True)
 
-    for index, image in enumerate(images):
-        if index >= settings.max_embedded_images_per_document:
-            logger.warning("Embedded image limit reached; remaining images skipped")
-            break
+    accepted_images = 0
+    for image in images:
         suffix = Path(image.filename).suffix.lower()
         if suffix not in IMAGE_EXTENSIONS:
             logger.info("Skipping embedded non-image attachment: %s", image.filename)
@@ -56,9 +54,13 @@ def extract_embedded_image_pages(
         if not image.content or len(image.content) > settings.max_embedded_image_bytes:
             logger.warning("Skipping embedded image outside byte limit: %s", image.filename)
             continue
+        if accepted_images >= settings.max_embedded_images_per_document:
+            logger.warning("Embedded image limit reached; remaining images skipped")
+            break
+        accepted_images += 1
 
         digest = hashlib.sha256(image.content).hexdigest()[:16]
-        stored_image = media_dir / f"embedded_{index + 1}_{digest}{suffix}"
+        stored_image = media_dir / f"embedded_{accepted_images}_{digest}{suffix}"
         stored_image.write_bytes(image.content)
         try:
             document: ExtractedDocument = parse_image(stored_image, media_dir, ocr_engine)
