@@ -134,17 +134,6 @@ RULES: dict[str, list[str]] = {
     # ``croquis_medida`` even though the body talks about an issue.
     # Promoting the keyword to its own type closes that case
     # without re-training the whole rule engine.
-    "incidencia": [
-        "incidencia",
-        "incidencias",
-        "parte de incidencia",
-        "informe de incidencia",
-        "averia",
-        "avería",
-        "reparacion urgente",
-        "reparación urgente",
-        "rotura",
-    ],
     "hoja_confeccion": [
         "hoja de confeccion",
         "hoja de confección",
@@ -182,168 +171,385 @@ RULES: dict[str, list[str]] = {
     "email_exportado": ["from:", "to:", "subject:", "asunto:", "enviado:"],
     # --- NUEVOS: tipos de imagen (interiorismo/decoración) ---
     "foto_producto": [
-        "cortina", "cortinas", "mueble", "muebles", "sillon",
-        "sofa", "mesa", "silla", "sillas", "armario", "cocina", "bano",
-        "dormitorio", "salon", "comedor", "terraza", "persiana", "persianas",
-        "toldo", "toldos", "banderola", "panel", "paneles", "tapizado",
+        "cortina",
+        "cortinas",
+        "mueble",
+        "muebles",
+        "sillon",
+        "sofa",
+        "mesa",
+        "silla",
+        "sillas",
+        "armario",
+        "cocina",
+        "bano",
+        "dormitorio",
+        "salon",
+        "comedor",
+        "terraza",
+        "persiana",
+        "persianas",
+        "toldo",
+        "toldos",
+        "banderola",
+        "panel",
+        "paneles",
+        "tapizado",
     ],
     "muestra_tela": [
-        "tela", "telas", "visillo", "visillos", "forro", "forros",
-        "lino", "algodon", "poliester", "muestra", "muestras",
-        "colchoneta", "colchonetas", "felpudo", "moqueta", "alfombra",
+        "tela",
+        "telas",
+        "visillo",
+        "visillos",
+        "forro",
+        "forros",
+        "lino",
+        "algodon",
+        "poliester",
+        "muestra",
+        "muestras",
+        "colchoneta",
+        "colchonetas",
+        "felpudo",
+        "moqueta",
+        "alfombra",
     ],
     "croquis_medida": [
-        "croquis", "medida", "medidas", "medicion",
-        "ancho", "largo", "alto", "caida", "cadam", "rosca",
-        "bastidor", "barra", "guia", "medicion por incidencia",
+        "croquis",
+        "medida",
+        "medidas",
+        "medicion",
+        "ancho",
+        "largo",
+        "alto",
+        "caida",
+        "cadam",
+        "rosca",
+        "bastidor",
+        "barra",
+        "guia",
+        "medicion por incidencia",
     ],
     # --- NUEVOS: tipos de documento administrativo ---
     "comprobante_pago": [
-        "comprobante", "comprobante de pago", "pago", "sepa",
-        "transferencia", "recibo", "justificante", "banca a distancia",
-        "servicio de banca", "cargo", "abono",
+        "comprobante",
+        "comprobante de pago",
+        "pago",
+        "sepa",
+        "transferencia",
+        "recibo",
+        "justificante",
+        "banca a distancia",
+        "servicio de banca",
+        "cargo",
+        "abono",
     ],
     "dua": [
-        "dua", "aduana", "aduanero", "despacho", "circuito verde",
-        "export", "d export", "documentoa unico aduanero",
+        "dua",
+        "aduana",
+        "aduanero",
+        "despacho",
+        "circuito verde",
+        "export",
+        "d export",
+        "documentoa unico aduanero",
     ],
     "albaran_transporte": [
-        "pop", "recogida", "mbe", "ups", "dhl", "envio",
-        "transporte", "etiqueta", "entrega ups",
-        "mail boxes", "mailbox",
+        "pop",
+        "recogida",
+        "mbe",
+        "ups",
+        "dhl",
+        "envio",
+        "transporte",
+        "etiqueta",
+        "entrega ups",
+        "mail boxes",
+        "mailbox",
         # Sinónimos de documento de carga/transporte
-        "packing", "box palet", "pod", "palet", "albaran",
+        "packing",
+        "box palet",
+        "pod",
+        "palet",
+        "albaran",
     ],
     # --- NUEVOS: fichas técnicas / certificados ---
     "ficha_tecnica": [
-        "ficha tecnica", "ficha técnica", "datasheet", "data sheet",
-        "certificate", "certificado", "certificacion", "technical data",
-        "ficha", "sgibe",
+        "ficha tecnica",
+        "ficha técnica",
+        "datasheet",
+        "data sheet",
+        "certificate",
+        "certificado",
+        "certificacion",
+        "technical data",
+        "ficha",
+        "sgibe",
     ],
     # --- NUEVOS: tarifas / listas de precios ---
     "tarifa": [
-        "precios", "tarifa", "tarifas", "price list", "lista precios",
-        "lista de precios", "catalogo precios",
+        "precios",
+        "tarifa",
+        "tarifas",
+        "price list",
+        "lista precios",
+        "lista de precios",
+        "catalogo precios",
     ],
     # --- NUEVOS: proformas / confirmaciones de pedido (sinónimos) ---
     "proforma": [
-        "proforma", "conferma d'ordine", "conferma ordine", "conferma",
-        "confirmacion de pedido", "confirmacion pedido",
-        "confirmacion de compra", "pro forma",
+        "proforma",
+        "conferma d'ordine",
+        "conferma ordine",
+        "conferma",
+        "confirmacion de pedido",
+        "confirmacion pedido",
+        "confirmacion de compra",
+        "pro forma",
     ],
     # --- NUEVOS: manuales / instrucciones de uso ---
     "instrucciones": [
-        "instruccion", "instrucciones", "mantenimiento",
-        "manual de", "manual", "modo de empleo", "ficha instrucciones",
+        "instruccion",
+        "instrucciones",
+        "mantenimiento",
+        "manual de",
+        "manual",
+        "modo de empleo",
+        "ficha instrucciones",
     ],
     # --- NUEVOS: renders / imágenes 3D de interiores ---
     "render": [
-        "render", "conceptrender", "concept render", "render 3d",
-        "visualizacion", "vista 3d",
+        "render",
+        "conceptrender",
+        "concept render",
+        "render 3d",
+        "visualizacion",
+        "vista 3d",
     ],
     # --- PM1.1: Tipos documentales técnicos de obra ---
     "plano_arquitectura": [
-        "plano arquitectura", "planta", "alzado", "seccion",
-        "corte", "detalle constructivo", "emplazamiento",
-        "escala", "cotas",  # Shared with generic "plano"
+        "plano arquitectura",
+        "planta",
+        "alzado",
+        "seccion",
+        "corte",
+        "detalle constructivo",
+        "emplazamiento",
+        "escala",
+        "cotas",  # Shared with generic "plano"
     ],
     "plano_estructura": [
-        "plano estructura", "estructura", "hormigon", "hormigón",
-        "acero", "armadura", "cimentacion", "cimentación",
-        "forjado", "viga", "columna", "sobrecimiento",
-        "escala", "cotas",  # Shared with generic "plano"
-        "seccion constructiva", "corte constructivo",  # Structural sections
-        "muro exterior", "tabique", "aislamiento",  # Construction details
+        "plano estructura",
+        "estructura",
+        "hormigon",
+        "hormigón",
+        "acero",
+        "armadura",
+        "cimentacion",
+        "cimentación",
+        "forjado",
+        "viga",
+        "columna",
+        "sobrecimiento",
+        "escala",
+        "cotas",  # Shared with generic "plano"
+        "seccion constructiva",
+        "corte constructivo",  # Structural sections
+        "muro exterior",
+        "tabique",
+        "aislamiento",  # Construction details
     ],
     "plano_electrico": [
-        "plano electrico", "eléctrico", "electricidad",
-        "toma de corriente", "interruptor", "cuadro electrico",
-        "linea electrica", "cableado", "instalacion electrica",
+        "plano electrico",
+        "eléctrico",
+        "electricidad",
+        "toma de corriente",
+        "interruptor",
+        "cuadro electrico",
+        "linea electrica",
+        "cableado",
+        "instalacion electrica",
     ],
     "plano_fontaneria": [
-        "plano fontaneria", "fontanería", "sanitario",
-        "tuberia", "tubería", "agua fria", "agua caliente",
-        "alcantarillado", "desague", "desagüe",
+        "plano fontaneria",
+        "fontanería",
+        "sanitario",
+        "tuberia",
+        "tubería",
+        "agua fria",
+        "agua caliente",
+        "alcantarillado",
+        "desague",
+        "desagüe",
     ],
     "plano_climatizacion": [
-        "plano climatizacion", "climatización", "aire acondicionado",
-        "calefaccion", "calefacción", "ventilacion", "ventilación",
-        "hvac", "tuberia refrigerante",
+        "plano climatizacion",
+        "climatización",
+        "aire acondicionado",
+        "calefaccion",
+        "calefacción",
+        "ventilacion",
+        "ventilación",
+        "hvac",
+        "tuberia refrigerante",
     ],
     "plano_contra_incendios": [
-        "plano contra incendios", "contra incendios", "proteccion pasiva",
-        "reaccion al fuego", "resistencia al fuego",
-        "extintor", "bomba de incendios", "senalizacion",
+        "plano contra incendios",
+        "contra incendios",
+        "proteccion pasiva",
+        "reaccion al fuego",
+        "resistencia al fuego",
+        "extintor",
+        "bomba de incendios",
+        "senalizacion",
     ],
     "croquis_medicion": [
-        "croquis medicion", "croquis de medicion", "mediciones",
-        "medidas", "superficies", "cuadro de superficies",
+        "croquis medicion",
+        "croquis de medicion",
+        "mediciones",
+        "medidas",
+        "superficies",
+        "cuadro de superficies",
     ],
     "memoria_descriptiva": [
-        "memoria descriptiva", "descripcion de obra",
-        "objeto de la obra", "descripcion del proyecto",
+        "memoria descriptiva",
+        "descripcion de obra",
+        "objeto de la obra",
+        "descripcion del proyecto",
     ],
     "memoria_constructiva": [
-        "memoria constructiva", "solucion constructiva",
-        "descripcion constructiva", "proceso de ejecucion",
-        "metodo de obra", "condiciones de ejecucion",
+        "memoria constructiva",
+        "solucion constructiva",
+        "descripcion constructiva",
+        "proceso de ejecucion",
+        "metodo de obra",
+        "condiciones de ejecucion",
     ],
     "pliego_condiciones": [
-        "pliego de condiciones", "pliego tecnico",
-        "pliego administrativo", "clausulas administrativas",
-        "clausulas tecnicas", "prescripciones tecnicas",
-        "condiciones generales", "condiciones particulares",
+        "pliego de condiciones",
+        "pliego tecnico",
+        "pliego administrativo",
+        "clausulas administrativas",
+        "clausulas tecnicas",
+        "prescripciones tecnicas",
+        "condiciones generales",
+        "condiciones particulares",
     ],
     "mediciones_obra": [
-        "mediciones de obra", "cuadro de mediciones",
-        "medicion por partidas", "computation de metricos",
-        "c metros", "metricas", "certificacion de obra",
+        "mediciones de obra",
+        "cuadro de mediciones",
+        "medicion por partidas",
+        "computation de metricos",
+        "c metros",
+        "metricas",
+        "certificacion de obra",
     ],
     "estudio_seguridad": [
-        "estudio de seguridad", "plan de seguridad",
-        "evaluacion de riesgos", "epi", "proteccion colectiva",
-        "seguridad en obra", "coordinador de seguridad",
+        "estudio de seguridad",
+        "plan de seguridad",
+        "evaluacion de riesgos",
+        "epi",
+        "proteccion colectiva",
+        "seguridad en obra",
+        "coordinador de seguridad",
     ],
     "gestion_residuos": [
-        "gestion de residuos", "plan de residuos",
-        "residuos de construccion", "rasa", "reciclaje",
+        "gestion de residuos",
+        "plan de residuos",
+        "residuos de construccion",
+        "rasa",
+        "reciclaje",
         "eliminacion de residuos",
     ],
     "manual_instalacion": [
-        "manual de instalacion", "manual de instalación",
-        "instrucciones de montaje", "guia de instalacion",
+        "manual de instalacion",
+        "manual de instalación",
+        "instrucciones de montaje",
+        "guia de instalacion",
         "procedimiento de instalacion",
     ],
 }
 
 # Keywords that need word-boundary matching (avoid "cota" → "mascota")
 WORD_BOUNDARY_KEYWORDS = {
-    "presupuesto", "oferta", "pedido", "factura", "albaran", "albarán",
-    "escala", "alzado", "cota", "cotas", "contrato", "clausula", "cláusula",
-    "planta", "seccion", "sección", "montaje", "costura", "patron", "patrón",
-    "tela", "muestra", "total",
+    "presupuesto",
+    "oferta",
+    "pedido",
+    "factura",
+    "albaran",
+    "albarán",
+    "escala",
+    "alzado",
+    "cota",
+    "cotas",
+    "contrato",
+    "clausula",
+    "cláusula",
+    "planta",
+    "seccion",
+    "sección",
+    "montaje",
+    "costura",
+    "patron",
+    "patrón",
+    "tela",
+    "muestra",
+    "total",
     # --- NUEVOS ---
-    "pago", "pop", "dua", "ups", "mbe", "envio", "envío",
-    "recogida", "transporte", "comprobante", "aduana", "sepa",
-    "transferencia", "recibo", "croquis", "medida",
+    "pago",
+    "pop",
+    "dua",
+    "ups",
+    "mbe",
+    "envio",
+    "envío",
+    "recogida",
+    "transporte",
+    "comprobante",
+    "aduana",
+    "sepa",
+    "transferencia",
+    "recibo",
+    "croquis",
+    "medida",
     # --- NUEVOS (expansión de diccionario) ---
-    "precios", "tarifa", "pod", "proforma", "render", "manual",
-    "certificado", "ficha", "layout", "aperturas", "packing",
-    "palet", "instruccion", "mantenimiento",
+    "precios",
+    "tarifa",
+    "pod",
+    "proforma",
+    "render",
+    "manual",
+    "certificado",
+    "ficha",
+    "layout",
+    "aperturas",
+    "packing",
+    "palet",
+    "instruccion",
+    "mantenimiento",
     # --- PM1.1: Tipos técnicos ---
-    "estructura", "hormigon", "electricidad", "fontaneria",
-    "climatizacion", "incendios", "memoria", "pliego",
-    "mediciones", "seguridad", "residuos", "instalacion",
+    "estructura",
+    "hormigon",
+    "electricidad",
+    "fontaneria",
+    "climatizacion",
+    "incendios",
+    "memoria",
+    "pliego",
+    "mediciones",
+    "seguridad",
+    "residuos",
+    "instalacion",
 }
 
 FOLDER_HINTS = {
     "presupuestos": "presupuesto",
     "pedidos": "pedido",
     "facturas": "factura",
-    "imagenes": "foto_producto",     # --- CAMBIO: era "imagen" ---
-    "telas": "muestra_tela",          # --- NUEVO ---
-    "muestras": "muestra_tela",       # --- NUEVO ---
-    "croquis": "croquis_medida",      # --- NUEVO ---
+    "imagenes": "foto_producto",  # --- CAMBIO: era "imagen" ---
+    "telas": "muestra_tela",  # --- NUEVO ---
+    "muestras": "muestra_tela",  # --- NUEVO ---
+    "croquis": "croquis_medida",  # --- NUEVO ---
     # --- PM1.1: Carpetas técnicas de obra ---
     "planos": "plano",
     "planos_arquitectura": "plano_arquitectura",
@@ -406,6 +612,15 @@ def classify_document(
     if extension in {".msg", ".eml"}:
         return ClassificationResult("email_exportado", 0.98, [f"extension:{extension}"])
 
+    # A spreadsheet may list furniture, quantities and dimensions, but it is
+    # still a spreadsheet.  The visual content route is not meaningful for
+    # this medium and must not turn it into a photo or a measurement sheet.
+    if extension in {".xls", ".xlsx", ".xlsm", ".csv", ".tsv"} and content_route in {
+        "interior_design",
+        "fabric_description",
+    }:
+        return ClassificationResult("excel", 0.98, [f"extension:{extension}"])
+
     # Same principle for a scanned quote: the filename is an explicit
     # business declaration, whereas computer-vision sees the furniture listed
     # inside it and would otherwise label the scan as a product photo.
@@ -436,7 +651,8 @@ def classify_document(
         else:
             # interior_design: distinguir croquis (con medidas) de foto simple
             croquis_signals = sum(
-                1 for kw in ("croquis", "medida", "medidas", "medicion", "cota", "cotas")
+                1
+                for kw in ("croquis", "medida", "medidas", "medicion", "cota", "cotas")
                 if _match_keyword(_normalize(kw), normalized_text)
                 or _match_keyword(_normalize(kw), normalized_filename)
             )
@@ -452,7 +668,9 @@ def classify_document(
         pattern_norm = _normalize(rule.pattern_value)
         if not pattern_norm:
             continue
-        if _match_keyword(pattern_norm, normalized_filename) or _match_keyword(pattern_norm, normalized_text):
+        if _match_keyword(pattern_norm, normalized_filename) or _match_keyword(
+            pattern_norm, normalized_text
+        ):
             scores[rule.target_class] = scores.get(rule.target_class, 0) + LEARNED_CONFIDENCE_BOOST
             matches.setdefault(rule.target_class, []).append(f"learned:{rule.pattern_value}")
 
@@ -477,7 +695,9 @@ def classify_document(
 
     # --- Phase 4: Plan detection (with image guard) ---
     if re.search(r"(^|/|\\)planos($|/|\\)", normalized_path) and _has_strong_plan_signal(
-        normalized_filename, normalized_text, extension,
+        normalized_filename,
+        normalized_text,
+        extension,
     ):
         scores["plano"] = scores.get("plano", 0) + 0.55
         matches.setdefault("plano", []).append("folder:planos")
@@ -515,14 +735,20 @@ def classify_document(
     #       "imagen" and lost.
     if is_image and scores.get("plano", 0) > 0:
         plan_filename_kws = (
-            "plano", "planta", "alzado", "seccion", "sección", "cotas",
+            "plano",
+            "planta",
+            "alzado",
+            "seccion",
+            "sección",
+            "cotas",
         )
         filename_signals = sum(
             1 for kw in plan_filename_kws if _match_keyword(kw, normalized_filename)
         )
         has_filename_signal = filename_signals >= 1
         text_signals = sum(
-            1 for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
+            1
+            for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
             if _match_keyword(kw, normalized_text)
         )
         in_planos_folder = bool(re.search(r"(^|/|\\)planos($|/|\\)", normalized_path))
@@ -531,6 +757,15 @@ def classify_document(
             # Suppress plano classification for images without strong signals
             scores.pop("plano", None)
             matches.pop("plano", None)
+
+    # An ordinary photograph stored in ``planos/`` is not a plan merely
+    # because its OCR happened to mention scale/cotas.  Keep its public type
+    # generic unless the guarded plan branch above retained real plan evidence.
+    in_planos_folder = bool(re.search(r"(^|/|\\)planos($|/|\\)", normalized_path))
+    if is_image and in_planos_folder and "plano" not in scores:
+        return ClassificationResult(
+            "imagen", 0.85, ["folder:planos", "image_without_plan_evidence"]
+        )
 
     # --- Phase 7: Cross-validation — if folder says X but text strongly says Y ---
     # If text has 3+ keyword matches for a different type, boost that type
@@ -566,11 +801,14 @@ def classify_document(
     # This ensures technical documents get properly categorized while still
     # falling back to "plano" when no specific subtype matches strongly.
     _PLAN_SUBTYPES = {
-        "plano_arquitectura", "plano_estructura", "plano_electrico",
-        "plano_fontaneria", "plano_climatizacion", "plano_contra_incendios",
+        "plano_arquitectura",
+        "plano_estructura",
+        "plano_electrico",
+        "plano_fontaneria",
+        "plano_climatizacion",
+        "plano_contra_incendios",
     }
     if "plano" in scores:
-        plano_score = scores["plano"]
         # Find the best specific subtype
         best_subtype = None
         best_subtype_score = 0
@@ -613,13 +851,7 @@ def _match_keyword(keyword: str, text: str) -> bool:
 
 
 def _normalize(value: str) -> str:
-    return " ".join(
-        value.lower()
-        .replace("\\", "/")
-        .replace("_", " ")
-        .replace("-", " ")
-        .split()
-    )
+    return " ".join(value.lower().replace("\\", "/").replace("_", " ").replace("-", " ").split())
 
 
 def _has_strong_plan_signal(filename: str, text: str, extension: str) -> bool:
@@ -635,13 +867,15 @@ def _has_strong_plan_signal(filename: str, text: str, extension: str) -> bool:
     if extension in IMAGE_EXTENSIONS:
         # Images need stronger evidence
         signals = {
-            kw for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
+            kw
+            for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
             if _match_keyword(kw, text)
         }
         return len(signals) >= 3
     # For text-based files, standard detection
     signals = {
-        kw for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
+        kw
+        for kw in ("plano", "planta", "alzado", "seccion", "sección", "cota", "cotas", "m2")
         if _match_keyword(kw, text)
     }
     return len(signals) >= 3

@@ -17,8 +17,20 @@ DEFAULT_SUBFOLDERS = ["presupuestos", "pedidos", "facturas", "planos", "imagenes
 
 
 def scan_input_folders(
-    db: Session, *, user: User | None = None, enqueue: bool = True, limit: int | None = None
+    db: Session,
+    *,
+    user: User | None = None,
+    enqueue: bool = True,
+    limit: int | None = None,
+    max_examined: int | None = None,
 ) -> dict:
+    """Scan only the dynamic inbox.
+
+    ``limit`` retains its historical meaning (maximum registrations).
+    ``max_examined`` bounds periodic callers even when their first files are
+    ignored, unstable, or already known.  The immutable source corpus is
+    intentionally excluded: it is owned by the explicit backfill command.
+    """
     settings.input_dir.mkdir(parents=True, exist_ok=True)
     for folder in DEFAULT_SUBFOLDERS:
         (settings.input_dir / folder).mkdir(parents=True, exist_ok=True)
@@ -37,120 +49,122 @@ def scan_input_folders(
     # the explicit backfill command; recursively walking it here made every
     # periodic poll traverse tens of thousands of immutable files.
     for path in _iter_files(settings.input_dir):
-            if limit is not None and registered >= limit:
-                break
-            scanned += 1
-            source_path = str(path)
-            if is_ingestion_paused():
-                _record_path_status(db, path, "paused")
-                db.commit()
-                paused += 1
-                break
-            if not should_accept_more_jobs(db):
-                size_bytes, mtime_epoch = path_metadata(path)
-                watched = upsert_watched_file(
-                    db,
-                    path=source_path,
-                    status="backpressure",
-                    size_bytes=size_bytes,
-                    mtime_epoch=mtime_epoch,
-                )
-                record_ingestion_event(
-                    db,
-                    event_type="backpressure",
-                    source_path=source_path,
-                    watched_file=watched,
-                    details={"max_pending_jobs": settings.ingestion_max_pending_jobs},
-                )
-                db.commit()
-                backpressure += 1
-                break
-            if not is_allowed_file_path(path):
-                size_bytes, mtime_epoch = path_metadata(path)
-                watched = upsert_watched_file(
-                    db,
-                    path=source_path,
-                    status="ignored",
-                    size_bytes=size_bytes,
-                    mtime_epoch=mtime_epoch,
-                )
-                record_ingestion_event(
-                    db,
-                    event_type="ignored",
-                    source_path=source_path,
-                    watched_file=watched,
-                    details={"reason": "extension_not_allowed"},
-                )
-                db.commit()
-                ignored += 1
-                continue
-            if not is_file_stable(path, settings.ingestion_stable_seconds):
-                _record_path_status(
-                    db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds}
-                )
-                db.commit()
-                unstable += 1
-                continue
-            existing_document = db.scalar(
-                select(Document)
-                .where(Document.source_path == source_path)
-                .order_by(Document.id.desc())
-                .limit(1)
+        if limit is not None and registered >= limit:
+            break
+        if max_examined is not None and scanned >= max_examined:
+            break
+        scanned += 1
+        source_path = str(path)
+        if is_ingestion_paused():
+            _record_path_status(db, path, "paused")
+            db.commit()
+            paused += 1
+            break
+        if not should_accept_more_jobs(db):
+            size_bytes, mtime_epoch = path_metadata(path)
+            watched = upsert_watched_file(
+                db,
+                path=source_path,
+                status="backpressure",
+                size_bytes=size_bytes,
+                mtime_epoch=mtime_epoch,
             )
-            if existing_document:
-                current_hash = calculate_sha256(path)
-                if existing_document.file_hash == current_hash:
-                    _record_path_status(
-                        db,
-                        path,
-                        "skipped",
-                        document_id=existing_document.id,
-                        details={"reason": "source_path_already_registered"},
-                    )
-                    db.commit()
-                    skipped += 1
-                    continue
+            record_ingestion_event(
+                db,
+                event_type="backpressure",
+                source_path=source_path,
+                watched_file=watched,
+                details={"max_pending_jobs": settings.ingestion_max_pending_jobs},
+            )
+            db.commit()
+            backpressure += 1
+            break
+        if not is_allowed_file_path(path):
+            size_bytes, mtime_epoch = path_metadata(path)
+            watched = upsert_watched_file(
+                db,
+                path=source_path,
+                status="ignored",
+                size_bytes=size_bytes,
+                mtime_epoch=mtime_epoch,
+            )
+            record_ingestion_event(
+                db,
+                event_type="ignored",
+                source_path=source_path,
+                watched_file=watched,
+                details={"reason": "extension_not_allowed"},
+            )
+            db.commit()
+            ignored += 1
+            continue
+        if not is_file_stable(path, settings.ingestion_stable_seconds):
+            _record_path_status(
+                db, path, "unstable", details={"stable_seconds": settings.ingestion_stable_seconds}
+            )
+            db.commit()
+            unstable += 1
+            continue
+        existing_document = db.scalar(
+            select(Document)
+            .where(Document.source_path == source_path)
+            .order_by(Document.id.desc())
+            .limit(1)
+        )
+        if existing_document:
+            current_hash = calculate_sha256(path)
+            if existing_document.file_hash == current_hash:
                 _record_path_status(
                     db,
                     path,
-                    "modified",
+                    "skipped",
                     document_id=existing_document.id,
-                    details={"previous_hash": existing_document.file_hash, "new_hash": current_hash},
+                    details={"reason": "source_path_already_registered"},
                 )
                 db.commit()
-            try:
-                document, _ = register_existing_file(
-                    db,
-                    source=path,
-                    original_filename=path.name,
-                    source_path=source_path,
-                    user=user,
-                    enqueue=enqueue,
-                )
-            except Exception as exc:
-                db.rollback()
-                size_bytes, mtime_epoch = path_metadata(path)
-                watched = upsert_watched_file(
-                    db,
-                    path=source_path,
-                    status="failed",
-                    size_bytes=size_bytes,
-                    mtime_epoch=mtime_epoch,
-                    error_message=str(exc),
-                )
-                record_ingestion_event(
-                    db,
-                    event_type="failed",
-                    source_path=source_path,
-                    watched_file=watched,
-                    error_message=str(exc),
-                )
-                db.commit()
-                failed += 1
+                skipped += 1
                 continue
-            registered += 1
-            if document.status == "duplicate":
-                duplicates += 1
+            _record_path_status(
+                db,
+                path,
+                "modified",
+                document_id=existing_document.id,
+                details={"previous_hash": existing_document.file_hash, "new_hash": current_hash},
+            )
+            db.commit()
+        try:
+            document, _ = register_existing_file(
+                db,
+                source=path,
+                original_filename=path.name,
+                source_path=source_path,
+                user=user,
+                enqueue=enqueue,
+            )
+        except Exception as exc:
+            db.rollback()
+            size_bytes, mtime_epoch = path_metadata(path)
+            watched = upsert_watched_file(
+                db,
+                path=source_path,
+                status="failed",
+                size_bytes=size_bytes,
+                mtime_epoch=mtime_epoch,
+                error_message=str(exc),
+            )
+            record_ingestion_event(
+                db,
+                event_type="failed",
+                source_path=source_path,
+                watched_file=watched,
+                error_message=str(exc),
+            )
+            db.commit()
+            failed += 1
+            continue
+        registered += 1
+        if document.status == "duplicate":
+            duplicates += 1
 
     return {
         "scanned": scanned,

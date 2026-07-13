@@ -287,7 +287,7 @@ def enqueue_existing_files(
     """
     added = 0
     truncated = False
-    for path in root.rglob("*"):
+    for path in sorted(root.rglob("*"), key=lambda candidate: str(candidate)):
         if added >= limit:
             truncated = True
             break
@@ -317,6 +317,16 @@ def enqueue_existing_files(
             root,
         )
     return added
+
+
+def _watch_roots() -> tuple[Path, ...]:
+    """Return roots owned by the live watcher.
+
+    The immutable corpus is deliberately absent.  It is processed only by the
+    resumable backfill command so a restart or periodic rescan cannot enqueue
+    tens of thousands of historical files.
+    """
+    return (settings.input_dir,)
 
 
 class _WatchdogEventHandler:
@@ -356,22 +366,12 @@ def run_watch_loop() -> None:
         (settings.input_dir / folder).mkdir(parents=True, exist_ok=True)
 
     pending = PendingFileRegistry()
-    initial_count = enqueue_existing_files(pending, settings.input_dir)
-    logger.info("watcher_initial_pending count=%s input_dir=%s", initial_count, settings.input_dir)
-
-    observer.schedule(
-        _WatchdogEventHandler(pending).handler,
-        str(settings.input_dir),
-        recursive=settings.watcher_recursive,
-    )
-
-    # Also watch the read-only source corpus if it exists
-    if settings.source_corpus_dir.is_dir():
-        corpus_count = enqueue_existing_files(pending, settings.source_corpus_dir)
-        logger.info("watcher_source_corpus count=%s source=%s", corpus_count, settings.source_corpus_dir)
+    for root in _watch_roots():
+        initial_count = enqueue_existing_files(pending, root)
+        logger.info("watcher_initial_pending count=%s input_dir=%s", initial_count, root)
         observer.schedule(
             _WatchdogEventHandler(pending).handler,
-            str(settings.source_corpus_dir),
+            str(root),
             recursive=settings.watcher_recursive,
         )
 
@@ -395,7 +395,12 @@ def run_watch_loop() -> None:
                 if any(counts.values()):
                     logger.info("watcher_tick pending=%s counts=%s", len(pending), counts)
                 if time.monotonic() - last_rescan_at >= settings.watcher_rescan_interval_seconds:
-                    result = scan_input_folders(db, user=None, enqueue=True)
+                    result = scan_input_folders(
+                        db,
+                        user=None,
+                        enqueue=True,
+                        max_examined=settings.watcher_max_files_per_tick,
+                    )
                     logger.info("watcher_rescan result=%s", result)
                     last_rescan_at = time.monotonic()
             finally:

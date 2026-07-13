@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from celery.exceptions import Reject
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.database.session import SessionLocal
 from app.ingestion.scanner import scan_input_folders
 from app.models import Document, ExtractionJob
@@ -114,7 +115,12 @@ def scan_input_folders_task() -> dict:
     """
     db = SessionLocal()
     try:
-        return scan_input_folders(db, user=None, enqueue=True)
+        return scan_input_folders(
+            db,
+            user=None,
+            enqueue=True,
+            max_examined=settings.watcher_max_files_per_tick,
+        )
     finally:
         db.close()
 
@@ -152,6 +158,7 @@ def sweep_stale_jobs_task() -> dict:
             db.commit()
             logger.warning("Sweeper reset %d stale processing jobs", reset_count)
             from app.services.metrics.pipeline import track_stale_jobs_reset
+
             track_stale_jobs_reset(reset_count)
         return {"stale_reset": reset_count}
     except Exception as exc:
