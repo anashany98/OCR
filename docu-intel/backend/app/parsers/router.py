@@ -67,13 +67,13 @@ def parse_document(
     if extension == ".pdf":
         return parse_pdf(path, output_dir, ocr_engine, folder_hint=folder_hint)
     if extension in EXCEL_EXTENSIONS:
-        return parse_excel(path)
+        return parse_excel(path, output_dir=output_dir, ocr_engine=ocr_engine)
     if extension == ".docx":
-        return parse_docx(path)
+        return parse_docx(path, output_dir=output_dir, ocr_engine=ocr_engine)
     if extension == ".doc":
-        return parse_doc(path)
+        return parse_doc(path, output_dir=output_dir, ocr_engine=ocr_engine)
     if extension in MSG_EXTENSIONS:
-        return parse_msg(path)
+        return parse_msg(path, output_dir=output_dir, ocr_engine=ocr_engine)
     if extension in DXF_EXTENSIONS:
         return parse_dxf(path, output_dir)
     if extension in DWG_EXTENSIONS:

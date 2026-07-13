@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from app.ocr.base import BaseOCREngine
 from app.parsers.docx import parse_docx
 from app.parsers.types import ExtractedDocument
 
@@ -32,7 +33,11 @@ def _find_libreoffice() -> str | None:
     return None
 
 
-def parse_doc(path: Path) -> ExtractedDocument:
+def parse_doc(
+    path: Path,
+    output_dir: Path | None = None,
+    ocr_engine: BaseOCREngine | None = None,
+) -> ExtractedDocument:
     """Convert .doc to .docx via LibreOffice, then parse the result.
 
     Args:
@@ -92,4 +97,4 @@ def parse_doc(path: Path) -> ExtractedDocument:
                 f"stderr: {result.stderr.strip()[:300]}"
             )
 
-        return parse_docx(docx_files[0])
+        return parse_docx(docx_files[0], output_dir=output_dir, ocr_engine=ocr_engine)

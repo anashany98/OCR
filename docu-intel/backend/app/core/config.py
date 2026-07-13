@@ -477,6 +477,8 @@ class Settings(BaseSettings):
     max_upload_files: int = 2000
     max_pdf_pages: int = 1000  # Bumped for large plan sets
     max_image_megapixels: float = 40.0
+    max_embedded_images_per_document: int = 20
+    max_embedded_image_bytes: int = 10_000_000
     max_excel_rows: int = 100_000
     max_excel_sheets: int = 50
     pdf_ocr_dpi: int = 300

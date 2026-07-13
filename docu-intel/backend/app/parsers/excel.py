@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.config import settings
+from app.ocr.base import BaseOCREngine
+from app.parsers.embedded_images import EmbeddedImage, extract_embedded_image_pages
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 
 
@@ -105,7 +107,31 @@ def _escape_md(value: str) -> str:
     return s or " "
 
 
-def parse_excel(path: Path) -> ExtractedDocument:
+def _embedded_images(path: Path) -> list[EmbeddedImage]:
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(path, read_only=False, data_only=True)
+    except Exception:
+        return []
+    images: list[EmbeddedImage] = []
+    try:
+        for sheet in workbook.worksheets:
+            for index, image in enumerate(getattr(sheet, "_images", []), start=1):
+                content = image._data()
+                if isinstance(content, bytes):
+                    image_format = str(getattr(image, "format", "png") or "png").lower()
+                    images.append(EmbeddedImage(f"{sheet.title}_{index}.{image_format}", content))
+    finally:
+        workbook.close()
+    return images
+
+
+def parse_excel(
+    path: Path,
+    output_dir: Path | None = None,
+    ocr_engine: BaseOCREngine | None = None,
+) -> ExtractedDocument:
     import pandas as pd
 
     pages: list[ExtractedPage] = []
@@ -132,4 +158,12 @@ def parse_excel(path: Path) -> ExtractedDocument:
                 ],
             )
         )
+    pages.extend(
+        extract_embedded_image_pages(
+            _embedded_images(path),
+            output_dir=output_dir,
+            ocr_engine=ocr_engine,
+            first_page_number=len(pages) + 1,
+        )
+    )
     return ExtractedDocument(pages=pages)
