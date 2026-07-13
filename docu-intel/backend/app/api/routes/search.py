@@ -318,7 +318,13 @@ def _business_result(
 
 
 def _filters_with_scope_cache(filters: dict | None, scope) -> dict:
-    scoped_filters = dict(filters or {})
+    # This marker is an internal capability added by search_service only
+    # after checking ``scope.is_admin``.  Never accept it from request JSON.
+    scoped_filters = {
+        key: value
+        for key, value in (filters or {}).items()
+        if key != "_allow_global_semantic_search"
+    }
     if not scope.is_admin:
         scoped_filters["_cache_scope"] = access_scope_cache_key(scope)
     return scoped_filters

@@ -197,6 +197,21 @@ def test_pgvector_store_requires_budget_scope_filter():
         PgvectorStore().search(db=None, query_embedding=[0.1] * 1024, limit=10, filters={})  # type: ignore[arg-type]
 
 
+def test_pgvector_store_allows_only_the_internal_admin_global_marker(monkeypatch):
+    """The admin marker is the explicit exception to budget-scoped vectors."""
+    from app.services import vector_store
+    from app.services.vector_store import PgvectorStore
+
+    monkeypatch.setattr(vector_store, "_is_postgres", lambda _db: True)
+    monkeypatch.setattr(PgvectorStore, "_search_postgres", lambda *_args, **_kwargs: [])
+    assert PgvectorStore().search(
+        db=object(),
+        query_embedding=[0.1] * 1024,
+        limit=10,
+        filters={"_allow_global_semantic_search": True},
+    ) == []
+
+
 def test_text_search_applies_budget_scope_filter_in_sql():
     from app.models import DocumentPage
     from app.services.search_service import search_text

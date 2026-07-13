@@ -37,7 +37,14 @@ class PgvectorStore:
         # omitted tenant/budget filter into a corpus-wide nearest-neighbour
         # query.  Callers must establish the concrete budget scope before
         # they reach this adapter.
-        if not effective_filters.get("budget_scope_id"):
+        has_budget_scope = effective_filters.get("budget_scope_id") is not None
+        # ``_allow_global_semantic_search`` is an internal-only capability
+        # injected by search_service after it has resolved an administrator
+        # access scope.  It is deliberately not a public API filter: ordinary
+        # callers must still provide a concrete budget scope, preventing a
+        # tenant-wide nearest-neighbour query by accident.
+        allow_verified_admin_global = effective_filters.get("_allow_global_semantic_search") is True
+        if not has_budget_scope and not allow_verified_admin_global:
             raise ValueError("PgvectorStore.search requires budget_scope_id filter")
         if _is_postgres(db):
             return self._search_postgres(
@@ -162,6 +169,10 @@ class PgvectorStore:
         fused downstream via RRF (see ``search_service``).
         """
         effective_filters = filters or {}
+        has_budget_scope = effective_filters.get("budget_scope_id") is not None
+        allow_verified_admin_global = effective_filters.get("_allow_global_semantic_search") is True
+        if not has_budget_scope and not allow_verified_admin_global:
+            raise ValueError("PgvectorStore.search_documents requires budget_scope_id filter")
         if _is_postgres(db):
             return self._search_documents_postgres(
                 db, query_embedding=query_embedding, limit=limit, filters=effective_filters

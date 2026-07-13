@@ -445,8 +445,31 @@ def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -
     return results
 
 
+def _semantic_filters_for_access(filters: dict | None, access_scope=None) -> dict:
+    """Return filters safe for pgvector retrieval.
+
+    A concrete budget scope remains mandatory for ordinary callers.  Admins
+    are the sole break-glass role and may search unassigned uploads as well;
+    this private marker is only derived from the resolved server-side access
+    scope, never trusted from a client payload.
+    """
+    effective = {
+        key: value
+        for key, value in (filters or {}).items()
+        if key != "_allow_global_semantic_search"
+    }
+    if effective.get("budget_scope_id") is None and access_scope is not None and access_scope.is_admin:
+        effective["_allow_global_semantic_search"] = True
+    return effective
+
+
 def search_semantic(
-    db: Session, query: str, limit: int = 10, filters: dict | None = None
+    db: Session,
+    query: str,
+    limit: int = 10,
+    filters: dict | None = None,
+    *,
+    access_scope=None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     try:
@@ -454,7 +477,8 @@ def search_semantic(
         if not normalized:
             return []
 
-        cache_key = _make_search_cache_key(normalized, limit, filters, "semantic")
+        effective_filters = _semantic_filters_for_access(filters, access_scope)
+        cache_key = _make_search_cache_key(normalized, limit, effective_filters, "semantic")
         cached = cache_service.get(cache_key)
         if cached is not None:
             return [_dict_to_search_result(r) for r in cached]
@@ -494,7 +518,7 @@ def search_semantic(
                         query_embedding=embedding,
                         normalized_query=normalized,
                         limit=per_pass_limit,
-                        filters=filters,
+                        filters=effective_filters,
                     )
                 )
             if not per_pass:
@@ -505,7 +529,7 @@ def search_semantic(
                     query_embedding=query_embedding,
                     normalized_query=normalized,
                     limit=rerank_pool_size,
-                    filters=filters,
+                    filters=effective_filters,
                 )
             else:
                 results_sorted = _merge_reformulation_results(per_pass, limit=rerank_pool_size)
@@ -515,7 +539,7 @@ def search_semantic(
                 query_embedding=query_embedding,
                 normalized_query=normalized,
                 limit=rerank_pool_size,
-                filters=filters,
+                filters=effective_filters,
             )
 
         # Apply cross-encoder rerank + MMR, same as the hybrid path, so
@@ -533,11 +557,17 @@ def search_semantic(
 
 
 def search_hybrid(
-    db: Session, query: str, limit: int = 10, filters: dict | None = None
+    db: Session,
+    query: str,
+    limit: int = 10,
+    filters: dict | None = None,
+    *,
+    access_scope=None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     try:
-        cache_key = _make_search_cache_key(query.strip(), limit, filters, "hybrid")
+        effective_filters = _semantic_filters_for_access(filters, access_scope)
+        cache_key = _make_search_cache_key(query.strip(), limit, effective_filters, "hybrid")
         cached = cache_service.get(cache_key)
         if cached is not None:
             return [_dict_to_search_result(r) for r in cached]
@@ -561,7 +591,12 @@ def search_hybrid(
                 strategies.append(("bm25", search_bm25))
             for name, strategy in strategies:
                 try:
-                    result = strategy(db, query, effective_limit, filters)
+                    if name == "semantic":
+                        result = strategy(
+                            db, query, effective_limit, effective_filters, access_scope=access_scope
+                        )
+                    else:
+                        result = strategy(db, query, effective_limit, effective_filters)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("%s search failed: %s", name, exc)
                     continue
@@ -590,13 +625,22 @@ def search_hybrid(
                 finally:
                     sess.close()
 
-            futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters)] = "text"
+            futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, effective_filters)] = "text"
             futures[
-                _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters)
+                _search_pool.submit(
+                    _run_with_session,
+                    search_semantic,
+                    query,
+                    effective_limit,
+                    effective_filters,
+                    access_scope=access_scope,
+                )
             ] = "semantic"
             if settings.search_use_bm25:
                 futures[
-                    _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters)
+                    _search_pool.submit(
+                        _run_with_session, search_bm25, query, effective_limit, effective_filters
+                    )
                 ] = "bm25"
 
             for future in as_completed(futures):

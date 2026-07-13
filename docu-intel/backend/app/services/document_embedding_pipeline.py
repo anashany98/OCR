@@ -403,6 +403,25 @@ def reembed_document(db: Session, document_id: int) -> dict:
         db.delete(stale)
 
     document_embedding = apply_document_embedding(db, document_id, page_texts)
+
+    # Keep the document-level retrieval state in sync with the chunks we have
+    # just rebuilt.  The normal asynchronous embedding task does this after a
+    # successful run, but this admin re-embed path used to leave every document
+    # marked ``semantic_search_ready=False`` even when all of its chunks had
+    # vectors.  That made successful manual recovery invisible to semantic
+    # retrieval.
+    has_chunks = bool(new_chunks)
+    chunks_ready = has_chunks and all(
+        chunk.embedding is not None and not chunk.needs_reembedding
+        for chunk in new_chunks
+    )
+    document.needs_reembedding = has_chunks and not chunks_ready
+    document.semantic_search_ready = chunks_ready
+    if chunks_ready:
+        document.pipeline_stage = "searchable"
+    elif has_chunks:
+        document.pipeline_stage = "embedding_pending"
+
     db.commit()
 
     provider = settings.embedding_provider

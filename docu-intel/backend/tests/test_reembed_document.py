@@ -69,7 +69,7 @@ def test_reembed_document_populates_embeddings_on_success():
     """When the embedding provider works, all chunks get embeddings
     and ``needs_reembedding`` flips to False."""
     from app.database.base import Base
-    from app.models import DocumentChunk
+    from app.models import Document, DocumentChunk
     from app.services.document_embedding_pipeline import reembed_document
 
     engine = _memory_engine()
@@ -106,6 +106,10 @@ def test_reembed_document_populates_embeddings_on_success():
         for chunk in chunks:
             assert chunk.embedding is not None
             assert chunk.needs_reembedding is False
+        document = db.get(Document, document_id)
+        assert document.semantic_search_ready is True
+        assert document.needs_reembedding is False
+        assert document.pipeline_stage == "searchable"
 
 
 def _embedding_dim_from_settings() -> int:
@@ -121,7 +125,7 @@ def test_reembed_document_preserves_unembedded_chunks_when_provider_fails():
     """If the provider still fails, chunks keep ``needs_reembedding=True``
     and ``embedding=None`` — no silent hash fallback."""
     from app.database.base import Base
-    from app.models import DocumentChunk
+    from app.models import Document, DocumentChunk
     from app.services.document_embedding_pipeline import reembed_document
 
     engine = _memory_engine()
@@ -153,6 +157,10 @@ def test_reembed_document_preserves_unembedded_chunks_when_provider_fails():
         for chunk in chunks:
             assert chunk.embedding is None
             assert chunk.needs_reembedding is True
+        document = db.get(Document, document_id)
+        assert document.semantic_search_ready is False
+        assert document.needs_reembedding is True
+        assert document.pipeline_stage == "embedding_pending"
 
 
 def test_reembed_document_raises_on_missing_document():

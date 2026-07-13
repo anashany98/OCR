@@ -585,7 +585,7 @@ def collect_context(
             for variant_text, weight in seen.items():
                 try:
                     variant_results = internal.hybrid_search(
-                        db, variant_text, filters
+                        db, variant_text, filters, access_scope=access_scope
                     )
                     for rank, r in enumerate(variant_results):
                         if r.document_id is None:
