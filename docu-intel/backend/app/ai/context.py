@@ -673,7 +673,7 @@ def collect_context(
                 # instead. This avoids the LLM only seeing the
                 # bottom of an email because the chunker split it
                 # unevenly.
-                if len(chunks) == 1:
+                if len(chunks) == 1 or top.document_type == "albaran":
                     full_text = _fetch_full_document_text(db, doc_id, top.page_number)
                     if full_text and len(full_text) > len(chunks[0]):
                         chunks = [full_text]

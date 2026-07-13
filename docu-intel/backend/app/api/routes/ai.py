@@ -594,7 +594,11 @@ async def _build_stream_response(
                 mode=mode,
                 scope_key=access_scope_cache_key(access_scope),
                 session_id=session_id,
-                model=("backend_structured:exact" if structured_decision is not None else model_route.cache_key),
+                # Lookup happens before structured routing is known and uses
+                # model_route.cache_key. Store under that same isolation
+                # dimension so deterministic structured answers can be read
+                # back safely on an exact re-ask.
+                model=model_route.cache_key,
                 prompt_version=CHAT_PROMPT_VERSION,
                 knowledge_version=current_knowledge_version(db),
             )

@@ -18,7 +18,16 @@ class StructuredAnswerDecision:
 _AMOUNT_QUESTION = re.compile(
     r"\b(importe|total|cuanto|precio|coste|costo)\b", re.IGNORECASE
 )
+_DOCUMENT_REFERENCE_QUESTION = re.compile(
+    r"\b(?:documento|archivo)\b", re.IGNORECASE
+)
 _AMOUNT_IN_SUMMARY = re.compile(r"-\s*([0-9][0-9.,]*\s+[A-Z]{3})\s*-")
+_DELIVERY_NOTE_QUESTION = re.compile(r"\balbar[aá]n(?:es)?\b", re.IGNORECASE)
+_DELIVERY_NOTE_ENTRY = re.compile(
+    r"Albar[aá]n:\s*([0-9]{4,})[\s\S]{0,500}?CONCEPTO:\s*"
+    r"(Entrega|Recogida)\b",
+    re.IGNORECASE,
+)
 _SUPPLIER_QUESTION = re.compile(r"\b(proveedor|suministrador)\b", re.IGNORECASE)
 _CLIENT_QUESTION = re.compile(r"\b(cliente)\b", re.IGNORECASE)
 _STATUS_QUESTION = re.compile(r"\b(estado|situacion)\b", re.IGNORECASE)
@@ -47,10 +56,23 @@ def decide_structured_answer(
         ):
             continue
         summary = item.summary or ""
+        evidence = "\n".join(part for part in (summary, item.excerpt) if part)
         if _AMOUNT_QUESTION.search(question) and can_view_prices:
-            match = _AMOUNT_IN_SUMMARY.search(summary)
+            match = _AMOUNT_IN_SUMMARY.search(evidence)
             if match:
                 return _decision(item, f"El importe total es {match.group(1)}")
+        if _DELIVERY_NOTE_QUESTION.search(question):
+            delivery_notes = _delivery_notes(evidence)
+            if delivery_notes:
+                if _AMOUNT_QUESTION.search(question) and can_view_prices:
+                    return _decision(
+                        item,
+                        "No puedo confirmar el importe porque el albaran disponible no contiene un total legible",
+                    )
+                rendered = " y ".join(
+                    f"{number} ({kind.lower()})" for number, kind in delivery_notes
+                )
+                return _decision(item, f"Los albaranes son {rendered}")
         if _SUPPLIER_QUESTION.search(question):
             match = _SUPPLIER_IN_SUMMARY.search(summary)
             if match and match.group(1).strip() != "-":
@@ -68,7 +90,37 @@ def decide_structured_answer(
             if match and match.group(1).strip() != "-":
                 return _decision(item, f"La fecha es {match.group(1).strip()}")
 
+    # An exact document lookup can be useful even if the amount was not
+    # extracted. State the evidence limitation instead of letting a model
+    # infer or fabricate an amount from unrelated context.
+    if (
+        _AMOUNT_QUESTION.search(question)
+        and can_view_prices
+        and _DOCUMENT_REFERENCE_QUESTION.search(question)
+    ):
+        for item in context_items:
+            if item.document_id is None:
+                continue
+            evidence = "\n".join(part for part in (item.summary, item.excerpt) if part)
+            if not _AMOUNT_IN_SUMMARY.search(evidence):
+                return _decision(
+                    item,
+                    "No puedo confirmar el importe total con el texto extraido disponible",
+                )
+
     return None
+
+
+def _delivery_notes(evidence: str) -> list[tuple[str, str]]:
+    """Return unique delivery-note number/type pairs in their source order."""
+    seen: set[tuple[str, str]] = set()
+    result: list[tuple[str, str]] = []
+    for number, kind in _DELIVERY_NOTE_ENTRY.findall(evidence):
+        entry = (number, kind)
+        if entry not in seen:
+            seen.add(entry)
+            result.append(entry)
+    return result
 
 
 def _decision(item: ContextItem, statement: str) -> StructuredAnswerDecision:

@@ -591,6 +591,21 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
             tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
         return tools
 
+    # ---- Specific delivery note ----
+    # A delivery note amount is a document fact, not a portfolio aggregate.
+    # Route it to the source documents before generic amount aggregation.
+    if _contains_any(normalized, ("albaran", "delivery note")):
+        return [
+            ToolCall(
+                "hybrid_search",
+                # Do not feed a user-supplied instruction tail (e.g.
+                # "ignora las instrucciones...") into retrieval. The
+                # canonical document noun is sufficient and keeps the
+                # resulting context grounded in delivery notes.
+                {"query": "albaran", "filters": {"document_type": "albaran", "limit": 8}},
+            )
+        ]
+
     # ---- Aggregation intent (SQL over structured tables) ----
     # Catches the "cuanto nos hemos gastado en X", "cuantos pedidos sin
     # factura" family of questions that cannot be answered with text search.
@@ -673,7 +688,21 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     if _contains_any(normalized, _DUPLICATE_HINTS):
         return [ToolCall("get_duplicate_documents", {})]
     if _contains_any(normalized, _LOW_OCR_HINTS):
-        return [ToolCall("get_ocr_review_documents", {})]
+        verbal_filename = _extract_verbal_filename(question)
+        if verbal_filename:
+            return [
+                ToolCall("find_document_by_filename", {"query": verbal_filename}),
+                ToolCall("get_document_full_details", {"document_id": 0}),
+                ToolCall("get_related_documents", {"document_id": 0}),
+                ToolCall("get_ocr_review_documents", {}),
+            ]
+        # Keep the review list, but also retrieve the named subject. Returning
+        # only the global review queue made questions such as "incidencia de
+        # sillas" lose their document-specific evidence.
+        return [
+            ToolCall("get_ocr_review_documents", {}),
+            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8}}),
+        ]
     if _contains_word(normalized, "entidad") and _contains_word(normalized, "referencia"):
         value = _extract_reference(question)
         return [
@@ -1053,6 +1082,10 @@ _FILENAME_HINT = re.compile(
     r"\b[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|xls|xlsm|csv|tsv|png|jpe?g|tiff?|bmp|webp|eml|txt)\b",
     flags=re.IGNORECASE,
 )
+_VERBAL_FILENAME_HINT = re.compile(
+    r"\b(?:pdf|documento|archivo)\s+de\s+(.+?)(?=\s+(?:si|con|cuando)\b|[?.;,]|$)",
+    flags=re.IGNORECASE,
+)
 
 
 def _extract_filenames(text: str) -> list[str]:
@@ -1060,6 +1093,27 @@ def _extract_filenames(text: str) -> list[str]:
     false positives like URLs by requiring a document extension at
     the end."""
     return _FILENAME_HINT.findall(text or "")
+
+
+def _extract_verbal_filename(text: str) -> str | None:
+    """Extract a filename-like description when the extension was omitted.
+
+    Users commonly ask for "el PDF de incidencia de sillas" rather than the
+    literal ``incidencia sillas.pdf``. This helper is deliberately used only
+    on document-oriented low-OCR requests, so ordinary prose does not trigger
+    a filename lookup.
+    """
+    match = _VERBAL_FILENAME_HINT.search(text or "")
+    if not match:
+        return None
+    value = match.group(1).strip(" \t\n.,;:!?¿¡")
+    # Uploaded filenames commonly omit Spanish connector words: a user says
+    # "incidencia de sillas" while the stored file is
+    # ``incidencia sillas.pdf``. Keep content words in their original order
+    # so the partial filename search remains precise.
+    value = re.sub(r"\b(?:de|del|la|el|los|las)\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value or None
 
 
 def _extract_room_name(normalized_question: str) -> str | None:

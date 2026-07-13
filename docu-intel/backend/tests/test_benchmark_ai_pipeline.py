@@ -73,6 +73,14 @@ def test_quality_requires_every_declared_fact_and_required_cache_hit():
     assert benchmark._check_quality(scenario, "uno y dos", [], cache_hit=True) == (True, None)
 
 
+def test_quality_compares_document_ids_independently_of_json_number_type():
+    scenario = _scenario("cited", must_cite_documents=[161394])
+
+    assert benchmark._check_quality(
+        scenario, "respuesta", [{"document_id": 161394}]
+    ) == (True, None)
+
+
 def test_parse_credentials_never_accepts_an_ambiguous_value():
     assert benchmark._parse_credentials(
         ["viewer@local=viewer-secret"],

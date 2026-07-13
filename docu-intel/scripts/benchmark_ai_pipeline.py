@@ -156,7 +156,7 @@ def _check_quality(
     if scenario.must_cite_documents:
         cited = {str(src.get("document_id")) for src in sources or []}
         for doc_id in scenario.must_cite_documents:
-            if doc_id not in cited:
+            if str(doc_id) not in cited:
                 return False, f"missing_citation:{doc_id}"
     if scenario.must_hit_cache and not cache_hit:
         return False, "cache_hit_required"
