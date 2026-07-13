@@ -12,6 +12,16 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+/**
+ * A 401 is expected while the login form is open.  Redirecting with
+ * ``window.location.href`` from that same route reloads the complete SPA;
+ * the new provider calls ``/auth/me`` again, receives another 401 and loops
+ * indefinitely.  Only navigate when the user is currently elsewhere.
+ */
+export function redirectToLoginOnUnauthorized(location: Pick<Location, "pathname" | "replace"> = window.location) {
+  if (location.pathname !== "/login") location.replace("/login")
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -20,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setUser(null)
-      window.location.href = "/login"
+      redirectToLoginOnUnauthorized()
     })
   }, [])
 
