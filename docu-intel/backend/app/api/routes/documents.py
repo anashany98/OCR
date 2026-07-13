@@ -227,8 +227,25 @@ def reclassify_documents(
 
     This re-evaluates document_type without re-running OCR. Useful after
     classification rule changes. Set dry_run=true to preview changes.
+
+    MiniMax M3 (FASE 2):
+    * Uses :func:`app.services.classification_v2.classify_multidim` so
+      ``source_format``, ``document_subtype``, ``content_tags`` and
+      ``classification_evidence`` are recomputed in the same pass.
+    * Persists the new ``confidence`` to ``Document.confidence`` (the
+      correct mapped attribute) instead of the legacy
+      ``classification_confidence`` that did not exist as a column.
+    * Tags the run with the classifier version and emits the
+      ``track_classification_reclassify`` metric with the
+      ``relaunched_ocr``/``relaunched_extraction`` flags always set
+      to ``False`` so the operator can confirm the reclassify path
+      did not relaunch expensive work.
     """
-    from app.services.classification import LearnedRule, classify_document
+    from datetime import UTC, datetime
+
+    from app.services.classification import LearnedRule
+    from app.services.classification_v2 import classify_multidim
+    from app.services.metrics.minimax_m3 import track_classification_reclassify
 
     # Load learned rules
     learned_rules: list[LearnedRule] = []
@@ -254,43 +271,76 @@ def reclassify_documents(
         ).all()
     )
 
-    changes = []
+    changes: list[dict[str, object]] = []
     unchanged = 0
+    relaunched_ocr = False
+    relaunched_extraction = False
 
     for doc in documents:
         text = ""
         if hasattr(doc, "pages") and doc.pages:
             text = "\n".join(filter(None, (p.text for p in doc.pages if p.text)))
 
-        old_type = doc.document_type or "desconocido"
-        result = classify_document(
+        result = classify_multidim(
             filename=doc.original_filename,
             source_path=doc.source_path,
+            mime_type=doc.mime_type,
+            parser_signature=None,
             text=text,
             learned_rules=learned_rules,
         )
 
-        if result.document_type != old_type:
-            changes.append({
-                "id": doc.id,
-                "filename": doc.original_filename,
-                "old_type": old_type,
-                "new_type": result.document_type,
-                "confidence": result.confidence,
-            })
+        old_type = doc.document_type or "desconocido"
+        old_source = doc.source_format
+        old_subtype = doc.document_subtype
+        if (
+            result.document_type != old_type
+            or result.source_format != old_source
+            or result.document_subtype != old_subtype
+        ):
+            changes.append(
+                {
+                    "id": doc.id,
+                    "filename": doc.original_filename,
+                    "old_type": old_type,
+                    "new_type": result.document_type,
+                    "old_source_format": old_source,
+                    "new_source_format": result.source_format,
+                    "old_subtype": old_subtype,
+                    "new_subtype": result.document_subtype,
+                    "confidence": result.confidence,
+                }
+            )
             if not dry_run:
                 doc.document_type = result.document_type
-                doc.classification_confidence = result.confidence
+                doc.source_format = result.source_format
+                doc.document_subtype = result.document_subtype
+                doc.content_tags = list(result.content_tags)
+                doc.classification_evidence = dict(result.evidence)
+                doc.classifier_version = result.classifier_version
+                doc.classified_at = datetime.now(UTC)
+                # Persist the confidence on the mapped column. The
+                # previous code wrote to ``classification_confidence``,
+                # which is NOT a Document column; the value silently
+                # disappeared on commit.
+                doc.confidence = result.confidence
         else:
             unchanged += 1
 
     if not dry_run and changes:
         db.commit()
 
+    track_classification_reclassify(
+        relaunched_ocr=relaunched_ocr,
+        relaunched_extraction=relaunched_extraction,
+    )
+
     return {
         "total": len(documents),
         "changed": len(changes),
         "unchanged": unchanged,
+        "relaunched_ocr": relaunched_ocr,
+        "relaunched_extraction": relaunched_extraction,
         "changes": changes[:100],
         "dry_run": dry_run,
     }

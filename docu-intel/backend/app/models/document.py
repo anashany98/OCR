@@ -44,6 +44,32 @@ class Document(Base):
     document_type: Mapped[str] = mapped_column(
         String(50), default="desconocido", nullable=False, index=True
     )
+    # MiniMax M3 — multi-dimensional classification (FASE 2).
+    # ``source_format`` describes the physical file format (email,
+    # spreadsheet, word, pdf, image, dxf). It is computed from the
+    # extension, MIME and parser signature, never from the document
+    # content. ``document_subtype`` and ``content_tags`` refine the
+    # business meaning without overloading ``document_type``.
+    # ``classification_evidence`` records which signal won for each
+    # dimension so an operator can audit the assignment. All fields
+    # are nullable or default to safe values so existing rows remain
+    # valid without a backfill.
+    source_format: Mapped[str | None] = mapped_column(String(40), index=True)
+    document_subtype: Mapped[str | None] = mapped_column(String(80))
+    content_tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    classification_evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    classifier_version: Mapped[str | None] = mapped_column(String(40))
+    classified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # MiniMax M3 — extraction fingerprint (FASE 3). When
+    # ``extraction_fingerprint`` matches the freshly-computed value
+    # AND ``extraction_fingerprint_at`` is recent enough, the
+    # extraction pipeline can skip the provider call.
+    extraction_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    extraction_fingerprint_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
     quality_status: Mapped[str] = mapped_column(
         String(50), default="pending", nullable=False, index=True
