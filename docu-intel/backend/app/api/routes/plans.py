@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -645,9 +646,6 @@ def update_room(
 # PM7 — Overlays, confirmation, and learning
 # ===========================================================================
 
-from pydantic import BaseModel
-
-
 class OverlayRegion(BaseModel):
     """A labeled region on the plan (cajetín, legend, etc.)."""
     region_type: str  # "cajetin", "legend", "notes", "revision_table", "viewport"
@@ -655,6 +653,8 @@ class OverlayRegion(BaseModel):
     label: str
     confidence: float = 1.0
     page_number: int = 1
+    source_document: str = ""
+    source_kind: str = "derived"
 
 
 class ChatFactOverlay(BaseModel):
@@ -712,16 +712,58 @@ def get_plan_overlays(
     ):
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    # For now, return static regions based on document type
-    # In production, these would be detected by layout analysis
+    document = db.get(Document, plan.document_id)
+    source_document = document.original_filename if document else ""
+    # A title-block indicator has no geometry extractor yet, so keep it
+    # explicitly marked as derived. Room and dimension overlays below are
+    # source-backed facts with their persisted confidence and coordinates.
     regions = [
         OverlayRegion(
             region_type="cajetin",
             bbox=(0.05, 0.85, 0.35, 0.95),
             label=f"{plan.project_name or 'Proyecto'} - {plan.project_phase or ''}",
             confidence=0.9,
+            source_document=source_document,
+            source_kind="plan_metadata",
         ),
     ]
+
+    for dimension in db.scalars(
+        select(PlanDimension).where(PlanDimension.plan_id == plan_id)
+    ).all():
+        coordinates = (dimension.bbox_x1, dimension.bbox_y1, dimension.bbox_x2, dimension.bbox_y2)
+        if any(value is None for value in coordinates):
+            continue
+        regions.append(
+            OverlayRegion(
+                region_type="dimension",
+                bbox=coordinates,
+                label=dimension.raw_text or str(dimension.value_m or dimension.value or "Cota"),
+                confidence=dimension.confidence or 0.0,
+                page_number=dimension.page_number or 1,
+                source_document=source_document,
+                source_kind="ocr_dimension",
+            )
+        )
+
+    for room in db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id)).all():
+        points = room.polygon_json if isinstance(room.polygon_json, list) else []
+        coordinates = [(point.get("x"), point.get("y")) for point in points if isinstance(point, dict)]
+        coordinates = [(x, y) for x, y in coordinates if x is not None and y is not None]
+        if not coordinates:
+            continue
+        xs = [point[0] for point in coordinates]
+        ys = [point[1] for point in coordinates]
+        regions.append(
+            OverlayRegion(
+                region_type="room",
+                bbox=(min(xs), min(ys), max(xs), max(ys)),
+                label=room.name or "Estancia",
+                confidence=room.confidence or 0.0,
+                source_document=source_document,
+                source_kind=room.source or "ocr_room",
+            )
+        )
 
     if page:
         regions = [r for r in regions if r.page_number == page]

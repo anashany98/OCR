@@ -21,8 +21,8 @@ from app.models import (
     OcrAttempt,
     Plan,
 )
-from app.ocr.factory import get_ocr_engine_class
 from app.ocr.base import OCRResult
+from app.ocr.factory import get_ocr_engine_class
 from app.parsers.dwg import DwgConversionError
 from app.parsers.router import parse_document
 from app.services.business_extraction import persist_business_extraction
@@ -32,13 +32,12 @@ from app.services.ingestion_events import record_ingestion_event, upsert_watched
 from app.services.metrics import (
     track_document_failed,
     track_document_processed,
-    track_stage_duration,
-    track_stage_failure,
     track_page_processed,
+    track_stage_duration,
 )
+from app.services.ocr_decision import decide_ocr_result
 from app.services.plan_extraction import persist_plan_extraction
 from app.services.quality import evaluate_document_quality, update_document_quality
-from app.services.ocr_decision import decide_ocr_result
 from app.services.tenant_access import apply_folder_rules_to_document
 from app.services.webhooks import emit_integration_webhook
 from app.workers.learning_tasks import _load_active_learned_rules
@@ -1023,12 +1022,20 @@ def _apply_classification_and_extraction(
         logger.warning("classify_multidim failed for document_id=%s: %s", document.id, exc)
 
     if (getattr(document, "extension", None) or "").lower() in {".msg", ".eml"}:
-        from app.services.communication_ingestion import materialize_communication
-        materialize_communication(db, document, text=text)
+        try:
+            from app.services.communication_ingestion import materialize_communication
+
+            materialize_communication(db, document, text=text)
+        except Exception:
+            logger.exception("communication_enrichment_failed document_id=%s", document.id)
 
     if (getattr(document, "extension", None) or "").lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}:
-        from app.services.image_analysis_service import analyze_image_document
-        analyze_image_document(db, document, text=text)
+        try:
+            from app.services.image_analysis_service import analyze_image_document
+
+            analyze_image_document(db, document, text=text)
+        except Exception:
+            logger.exception("image_enrichment_failed document_id=%s", document.id)
 
     t_extract = time.perf_counter()
     business_result = _get_effective_persist_business_extraction()(
@@ -1043,10 +1050,23 @@ def _apply_classification_and_extraction(
     if document.document_type in {"plano", "memoria_descriptiva", "memoria_constructiva", "mediciones_obra"}:
         try:
             from app.services.technical_pipeline import process_technical_document
-            process_technical_document(
+            technical_result = process_technical_document(
                 db, document.id, text, document.original_filename,
                 document.document_type, blocks=pages,
             )
+            evidence = dict(document.classification_evidence or {})
+            evidence["technical_pipeline"] = {
+                "document_type": technical_result.document_type,
+                "rooms": technical_result.rooms_extracted,
+                "dimensions": technical_result.dimensions_extracted,
+                "chapters": technical_result.chapters_extracted,
+                "specifications": technical_result.specs_extracted,
+                "work_items": technical_result.work_items_extracted,
+                "validation_score": technical_result.validation_score,
+                "warnings": technical_result.warnings,
+                "source_document_id": document.id,
+            }
+            document.classification_evidence = evidence
         except Exception:
             logger.exception("technical_pipeline_failed document_id=%s", document.id)
     track_stage_duration("extraction", time.perf_counter() - t_extract)

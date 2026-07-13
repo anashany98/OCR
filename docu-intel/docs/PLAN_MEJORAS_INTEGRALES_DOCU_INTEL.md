@@ -281,4 +281,16 @@ PostgreSQL temporal: `0060 -> 0061`, `0061 -> 0060` y `0060 -> 0061` pasan.
 Validación: `compileall`, Ruff de los módulos modificados, pruebas backend
 dirigidas de dossier/filtros/contexto/historial y build de producción del
 frontend. No se ejecutó backfill real ni se modificó el corpus.
+
+### 2026-07-13 — Fases 8, 9 y 10
+
+- **Fase 8:** el análisis visual es opcional e idempotente; conserva las
+  etiquetas de compatibilidad y almacena confianza por etiqueta.
+- **Fase 9:** correo `.msg`/`.eml` materializa hilos, mensajes, contactos,
+  participantes, adjuntos fuente e incidencias, deduplicados por documento y
+  `Message-ID`.
+- **Fase 10:** los resultados técnicos se asocian a la evidencia del documento
+  y los overlays incluyen cotas/estancias con coordenadas, confianza y fuente.
+
+Validación: 13 pruebas dirigidas, compilación backend, Ruff y build frontend.
 La base temporal se eliminó al terminar.

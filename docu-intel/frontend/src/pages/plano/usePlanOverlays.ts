@@ -20,6 +20,8 @@ export type OverlayRegion = {
   label: string
   confidence: number
   page_number: number
+  source_document: string
+  source_kind: string
 }
 
 export type ChatFactOverlay = {

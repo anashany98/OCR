@@ -23,7 +23,10 @@ def analyze_image_document(db: Session, document: Document, *, text: str = "") -
     path = settings.files_dir / path
     if not path.is_file():
         return None
-    file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    # Do not load a high-resolution photograph into memory merely to make an
+    # idempotence key.  The document hash is authoritative when available;
+    # older rows fall back to a streaming digest.
+    file_hash = document.file_hash or _sha256_file(path)
     existing = db.scalar(select(ImageAnalysis).where(ImageAnalysis.document_id == document.id))
     if existing and existing.perceptual_hash == file_hash and existing.model_name == MODEL_NAME and existing.model_version == MODEL_VERSION:
         return existing
@@ -36,6 +39,13 @@ def analyze_image_document(db: Session, document: Document, *, text: str = "") -
         db.add(existing)
     existing.occurrence_id = occurrence.id if occurrence else None
     existing.labels_json = labels
+    # ``labels_json`` remains the compact legacy list consumed by search/UI.
+    # Store confidence beside every label in a structured field so individual
+    # visual facts stay auditable instead of inheriting one coarse score.
+    existing.objects_json = [
+        {"kind": "classification_label", "value": label, "confidence": float(confidence)}
+        for label, confidence in result["labels"]
+    ]
     existing.description = f"{result['primary_label']} ({result['primary_confidence']:.2f})"
     existing.visible_text = text or None
     existing.perceptual_hash = file_hash
@@ -43,3 +53,11 @@ def analyze_image_document(db: Session, document: Document, *, text: str = "") -
     existing.needs_review = result["primary_label"] == "desconocido"
     db.flush()
     return existing
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
