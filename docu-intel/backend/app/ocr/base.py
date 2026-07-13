@@ -48,6 +48,8 @@ class OCRResult:
     confidence: float | None
     blocks: list[OCRBlock]
     engine: str = ""
+    content_kind: str | None = None
+    route: str | None = None
 
 
 class BaseOCREngine(Protocol):

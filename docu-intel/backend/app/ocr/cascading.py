@@ -203,6 +203,9 @@ class CascadingOCREngine:
         clear_preprocess_cache()
 
         content_route = self.current_content_route
+        from app.ocr.routing import should_route_manuscript_first
+
+        content_kind, manuscript_first = should_route_manuscript_first(image_path, content_route)
 
         # FASE 5: content-route-aware tier skipping.
         # For photos/plans, Tesseract is useless — skip straight to
@@ -240,6 +243,20 @@ class CascadingOCREngine:
             start = time.perf_counter()
             primary_result = self.primary.extract(image_path)
             track_ocr_duration(time.perf_counter() - start)
+
+        primary_result.content_kind = content_kind
+        primary_result.route = "manuscript_first" if manuscript_first else "standard"
+
+        # A likely handwritten note gets a cheap classical reference first,
+        # then the vision OCR directly.  We still keep the reference so the
+        # acceptance policy can detect disagreements in numbers and dates.
+        if manuscript_first and self.vlm_ocr is not None:
+            track_ocr_tier4_invoked("explicit_call")
+            vision = self._try_tier4(image_path, primary_result)
+            if vision is not None:
+                vision.content_kind = content_kind
+                vision.route = "manuscript_first"
+                return vision
 
         # For photos, if OCR produces little text, try vision LLM directly
         if is_photo and self.vlm_ocr is not None:
