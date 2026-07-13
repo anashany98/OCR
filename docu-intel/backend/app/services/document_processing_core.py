@@ -23,6 +23,7 @@ from app.models import (
 )
 from app.ocr.factory import get_ocr_engine_class
 from app.ocr.base import OCRResult
+from app.parsers.dwg import DwgConversionError
 from app.parsers.router import parse_document
 from app.services.business_extraction import persist_business_extraction
 from app.services.cache import cache_service
@@ -489,6 +490,7 @@ def _handle_process_failure(
     final_failure: bool,
 ) -> tuple[Document | None, ExtractionJob | None]:
     db.rollback()
+    requires_manual_dwg_conversion = final_failure and isinstance(error, DwgConversionError)
     job = db.get(ExtractionJob, job_id)
     document = db.get(Document, document_id)
     if job:
@@ -498,22 +500,31 @@ def _handle_process_failure(
     if document:
         document.error_message = str(error)
         if final_failure:
-            document.status = "failed"
-            document.quality_status = "failed"
+            # A DWG with no available converter is not corrupt input and is not
+            # an OCR failure.  Keep it visible in the review queue with an
+            # actionable reason instead of hiding it among terminal failures.
+            document.status = "needs_review" if requires_manual_dwg_conversion else "failed"
+            document.quality_status = (
+                "needs_human_review" if requires_manual_dwg_conversion else "failed"
+            )
             document.quality_score = 0.0
-            document.quality_flags_json = ["processing_failed"]
+            document.quality_flags_json = (
+                ["dwg_conversion_required"]
+                if requires_manual_dwg_conversion
+                else ["processing_failed"]
+            )
             if document.source_path:
                 watched = upsert_watched_file(
                     db,
                     path=document.source_path,
-                    status="failed",
+                    status="needs_review" if requires_manual_dwg_conversion else "failed",
                     document_id=document.id,
                     job_id=job.id if job else None,
                     error_message=str(error),
                 )
                 record_ingestion_event(
                     db,
-                    event_type="failed",
+                    event_type="needs_review" if requires_manual_dwg_conversion else "failed",
                     source_path=document.source_path,
                     document_id=document.id,
                     job_id=job.id if job else None,
@@ -524,9 +535,10 @@ def _handle_process_failure(
             document.status = "processing"
     db.commit()
     if final_failure and document and job:
-        track_document_failed()
+        if not requires_manual_dwg_conversion:
+            track_document_failed()
         _get_effective_emit_webhook()(
-            "document.failed",
+            "document.needs_review" if requires_manual_dwg_conversion else "document.failed",
             {
                 "document_id": document.id,
                 "job_id": job.id,

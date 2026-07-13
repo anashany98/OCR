@@ -232,6 +232,45 @@ def test_process_document_final_retry_marks_failed_and_emits_one_webhook(monkeyp
         assert webhooks == ["document.failed"]
 
 
+def test_dwg_converter_unavailable_is_sent_to_review_not_terminal_failure(monkeypatch):
+    from app.parsers.dwg import DwgConversionError
+
+    sessions = _session_factory()
+    webhooks: list[str] = []
+
+    monkeypatch.setattr(
+        document_service,
+        "_process_full_parse",
+        lambda db, document: (_ for _ in ()).throw(DwgConversionError("Configure ODA File Converter")),
+    )
+    monkeypatch.setattr(
+        document_service,
+        "emit_integration_webhook",
+        lambda event, payload: webhooks.append(event),
+    )
+
+    with sessions() as db:
+        document = _document(db, "plano.dwg", status="pending", quality_status="pending")
+        job = ExtractionJob(document_id=document.id, job_type="extract", status="pending")
+        db.add(job)
+        db.commit()
+
+        try:
+            document_service.process_document(db, document_id=document.id, job_id=job.id, final_failure=True)
+        except DwgConversionError:
+            pass
+        else:
+            raise AssertionError("the worker must retain the conversion error for its task trace")
+
+        db.refresh(document)
+        db.refresh(job)
+        assert document.status == "needs_review"
+        assert document.quality_status == "needs_human_review"
+        assert document.quality_flags_json == ["dwg_conversion_required"]
+        assert job.status == "failed"
+        assert webhooks == ["document.needs_review"]
+
+
 def test_actual_enqueue_calls_route_by_document_and_job_type(monkeypatch, tmp_path: Path):
     calls: list[dict] = []
     sessions = _session_factory()
