@@ -444,23 +444,38 @@ async def answer_question(
     db.flush()
 
     sources_data = []
-    for source in dedupe_sources(context_items):
+    # CR1: Sanitize source references so stale block_id values
+    # cannot FK-abort the transaction.
+    from app.services.source_sanitizer import sanitize_sources_batch
+
+    raw_sources = [
+        {
+            "document_id": source.document_id,
+            "page_number": source.page_number,
+            "block_id": source.block_id,
+            "relevance_score": source.relevance_score,
+            "excerpt": source.excerpt or source.summary,
+        }
+        for source in dedupe_sources(context_items)
+    ]
+    sanitized_sources = sanitize_sources_batch(db, raw_sources)
+    for src in sanitized_sources:
         answer_row.sources.append(
             AIAnswerSource(
-                document_id=source.document_id,
-                page_number=source.page_number,
-                block_id=source.block_id,
-                relevance_score=source.relevance_score,
-                excerpt=source.excerpt or source.summary,
+                document_id=src.document_id,
+                page_number=src.page_number,
+                block_id=src.block_id,
+                relevance_score=src.relevance_score,
+                excerpt=src.excerpt,
             )
         )
         sources_data.append(
             {
-                "document_id": source.document_id,
-                "page_number": source.page_number,
-                "block_id": source.block_id,
-                "relevance_score": source.relevance_score,
-                "excerpt": source.excerpt or source.summary,
+                "document_id": src.document_id,
+                "page_number": src.page_number,
+                "block_id": src.block_id,
+                "relevance_score": src.relevance_score,
+                "excerpt": src.excerpt,
             }
         )
 
@@ -565,12 +580,31 @@ async def _stream_local_ai_answer(
     thinking_accumulated: list[str] = []
     aborted = False
     client = LocalOpenAICompatibleClient()
+    # MiniMax M3 (FASE 1/4) — record the time-to-first-token for
+    # the model queue. The timer is reported through
+    # track_chat_stream_event with event="delta"; the model
+    # caller can also surface it on the SSE stream.
+    from time import perf_counter as _perf_counter
+
+    _t_first_token: float | None = None
+    _t_model_queue = _perf_counter()
     try:
         # 4000 tokens (was 2000) so Qwen3 thinking-mode can fit both its
         # reasoning trace and a real answer in the same completion.
         async for piece in client.chat_stream(
             base_messages, temperature=0.0, max_tokens=4000
         ):
+            if _t_first_token is None:
+                _t_first_token = _perf_counter()
+                try:
+                    from app.services.metrics.rag import track_chat_stream_event
+
+                    track_chat_stream_event(
+                        "delta",
+                        latency_ms=(_t_first_token - _t_model_queue) * 1000.0,
+                    )
+                except Exception:  # pragma: no cover - metrics never raise
+                    pass
             # Pass through ("thinking", ...) tuples unchanged so the SSE
             # endpoint can emit them as their own event type.
             if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":

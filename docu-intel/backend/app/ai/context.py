@@ -564,6 +564,20 @@ def collect_context(
                 filters = dict(filters)
                 filters["_cache_scope"] = access_scope_cache_key(access_scope)
 
+            # MiniMax M3 (FASE 1) — instrument the hybrid search
+            # path so an operator can see the cost and the hit
+            # rate per strategy. The timer is a single context
+            # manager around the whole multi-variant block; the
+            # outcome is hit if at least one variant returned a
+            # non-empty result, otherwise miss.
+            from time import perf_counter as _perf_counter
+
+            from app.services.metrics.rag import track_chat_retrieval
+
+            _t0 = _perf_counter()
+            _hit = False
+            _error = False
+
             # Multi-query: run the original + N variations, then
             # merge via score-weighted dedup. This improves recall
             # when the user's phrasing differs from the document's.
@@ -587,6 +601,8 @@ def collect_context(
                     variant_results = internal.hybrid_search(
                         db, variant_text, filters, access_scope=access_scope
                     )
+                    if variant_results:
+                        _hit = True
                     for rank, r in enumerate(variant_results):
                         if r.document_id is None:
                             continue
@@ -600,8 +616,19 @@ def collect_context(
                         else:
                             merged_scores[key] = rrf_score
                             merged_results[key] = r
-                except Exception:
+                except Exception as exc:
+                    _error = True
+                    logger.debug("hybrid_search variant failed: %s", exc)
                     continue  # best-effort: skip failed variations
+            # Record the retrieval outcome (single counter per call
+            # regardless of the number of variations; the histogram
+            # is per-strategy and the strategy here is ``hybrid``).
+            _latency_ms = int((_perf_counter() - _t0) * 1000)
+            track_chat_retrieval(
+                "hybrid",
+                "hit" if _hit and not _error else ("error" if _error else "miss"),
+                latency_ms=_latency_ms,
+            )
 
             # Sort by merged score and take top results
             ranked_keys = sorted(merged_scores, key=merged_scores.get, reverse=True)

@@ -6,6 +6,13 @@ export type AIStreamEvent =
   | { type: "delta"; text: string }
   | { type: "thinking"; text: string }
   | {
+      type: "status"
+      state: "cache" | "exact_search" | "retrieval" | "context" | "generation"
+      cache_hit?: boolean
+      items?: number
+      model?: string
+    }
+  | {
       type: "end"
       answer: string
       model: string

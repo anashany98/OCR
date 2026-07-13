@@ -368,6 +368,16 @@ async def ask_stream(
             )
 
     async def event_stream() -> AsyncIterator[bytes]:
+        # MiniMax M3 (FASE 4/6) — emit a status event before the
+        # ``start`` so the UI can show "retrieving…" while we are
+        # still building the snapshot. The event is the same
+        # protocol the cache hit emits so the client can render a
+        # consistent progress indicator.
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "retrieval", "cache_hit": False}).encode()
+            + b"\n\n"
+        )
         # start event: announce the model + that the LLM is running
         start_model = (
             settings.ai_model
@@ -377,6 +387,16 @@ async def ask_stream(
         yield (
             b"event: start\ndata: "
             + json.dumps({"model": start_model}).encode()
+            + b"\n\n"
+        )
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "context", "items": len(context_items)}).encode()
+            + b"\n\n"
+        )
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "generation", "model": start_model}).encode()
             + b"\n\n"
         )
 
@@ -479,15 +499,25 @@ async def ask_stream(
                     excerpt=src.excerpt,
                 )
             )
-        try:
-            db.commit()
-        except Exception as exc:
-            logger.error("Failed to persist answer + sources: %s", exc)
-            from app.services.metrics.rag import track_ai_stream_persist_failure
+        # MiniMax M3 (FASE 1) — instrument the persistence stage
+        # with the chat_stage histogram. The timer records the
+        # commit + rollback path uniformly so an operator can see
+        # how much of the wall-clock is spent flushing.
+        from time import perf_counter as _perf_counter
+        from app.services.metrics.rag import track_chat_stage
 
-            track_ai_stream_persist_failure("answer")
-            with contextlib.suppress(Exception):
-                db.rollback()
+        with track_chat_stage("persistence") as t:
+            try:
+                db.commit()
+                t.set_outcome("ok")
+            except Exception as exc:
+                logger.error("Failed to persist answer + sources: %s", exc)
+                from app.services.metrics.rag import track_ai_stream_persist_failure
+
+                track_ai_stream_persist_failure("answer")
+                with contextlib.suppress(Exception):
+                    db.rollback()
+                t.set_outcome("error")
         # CR8: Track answers without sources.
         if not sanitized_sources:
             from app.services.metrics.rag import track_answer_without_source
