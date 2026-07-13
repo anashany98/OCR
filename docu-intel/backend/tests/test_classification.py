@@ -45,6 +45,42 @@ def test_image_with_furniture_keywords_is_foto_producto():
     assert result.document_type == "foto_producto"
 
 
+def test_email_with_furniture_terms_stays_email_not_product_photo():
+    result = classify_document(
+        filename="re_pedido_proveedor.msg",
+        source_path="/data/input/re_pedido_proveedor.msg",
+        text=(
+            "Asunto: RE: PEDIDO PROVEEDOR\nDe: compras@example.com\n"
+            "Para: proveedor@example.com\nNecesitamos las sillas y armarios."
+        ),
+        content_route="interior_design",
+    )
+
+    assert result.document_type == "email_exportado"
+
+
+def test_spreadsheet_with_furniture_terms_stays_excel_not_product_photo():
+    result = classify_document(
+        filename="carpinteria.xlsx",
+        source_path="/data/input/carpinteria.xlsx",
+        text="ARTICULO | CANTIDAD | ARMARIO | SILLA | MUEBLE | COSTE",
+        content_route="interior_design",
+    )
+
+    assert result.document_type == "excel"
+
+
+def test_scanned_ppto_is_quote_not_product_photo():
+    result = classify_document(
+        filename="ppto aceptado con descuento.jpeg",
+        source_path="/data/input/IMAGENES/ppto aceptado con descuento.jpeg",
+        text="",
+        content_route="interior_design",
+    )
+
+    assert result.document_type == "presupuesto"
+
+
 def test_image_with_fabric_keywords_is_muestra_tela():
     result = classify_document(
         filename="muestra.jpg",

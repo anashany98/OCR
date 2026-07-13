@@ -433,7 +433,11 @@ class HyperExtractService:
             "pedido, albaran, manual, normativa, presentacion, nomina, "
             "extracto_bancario, carta, nota, otro, etc.).\n"
             "- summary: una frase de maximo 20 palabras con el contenido "
-            "principal del documento."
+            "principal del documento.\n"
+            "Limites obligatorios para mantener una respuesta completa y valida: "
+            "maximo 12 claves en fields, 15 entities y 12 relations; cada array "
+            "anidado debe tener como maximo 12 elementos. Prioriza los datos "
+            "verificables y omite detalle secundario. Responde solo con el objeto JSON."
         )
         sections.append("Texto del documento:\n" + body)
         if truncated:

@@ -301,10 +301,20 @@ def classify_document(
     matches: dict[str, list[str]] = {}
     matched_keywords: dict[str, set[str]] = {}  # dedup per type
 
+    # A .msg/.eml is an exported email by definition.  Its body may discuss a
+    # supplier order or furniture, but its primary document type must remain
+    # email so communication ingestion, routing and review rules apply.
+    if extension in {".msg", ".eml"}:
+        return ClassificationResult("email_exportado", 0.98, [f"extension:{extension}"])
+
     # --- Phase 0: Image subtypes from content_route (highest priority) ---
     # El content_router ya detectó si es foto de interiorismo/tela usando CLIP
     # + keywords + carpeta. Esa señal es muy fiable (conf 0.7+), la respetamos.
-    if content_route in ("interior_design", "fabric_description"):
+    # The content router also returns visual-looking routes for PDFs, emails
+    # and spreadsheets that mention furniture.  Those are documents *about*
+    # furniture, not product photographs.  Restrict this high-weight signal to
+    # real image files so it cannot override a .msg/.xlsx classification.
+    if is_image and content_route in ("interior_design", "fabric_description"):
         if content_route == "fabric_description":
             scores["muestra_tela"] = 0.85
             matches["muestra_tela"] = [f"content_route:{content_route}"]
@@ -337,6 +347,13 @@ def classify_document(
         scores[doc_type] = scores.get(doc_type, 0) + 0.50
         matches.setdefault(doc_type, []).append(f"extension:{extension}")
 
+    # Scanned quotes are commonly named ``ppto``.  They are still JPEGs, but
+    # the explicit business filename is stronger evidence than a visual route
+    # that merely recognises furniture in the scan.
+    if is_image and ("ppto" in normalized_filename or "presupuesto" in normalized_filename):
+        scores["presupuesto"] = scores.get("presupuesto", 0) + 1.60
+        matches.setdefault("presupuesto", []).append("filename:presupuesto_abbrev")
+
     # --- Phase 3: Folder hint (reduced weight to not dominate over text) ---
     for folder, doc_type in FOLDER_HINTS.items():
         if re.search(rf"(^|/|\\){re.escape(folder)}($|/|\\)", normalized_path):
@@ -359,6 +376,10 @@ def classify_document(
 
     # --- Phase 5: Keyword matching (deduplicated, word-boundary) ---
     for doc_type, keywords in RULES.items():
+        # These classes describe the file medium.  A work order or spreadsheet
+        # mentioning "sillas" or "armarios" must not become foto_producto.
+        if not is_image and doc_type in {"foto_producto", "muestra_tela", "render"}:
+            continue
         for keyword in keywords:
             keyword_norm = _normalize(keyword)
             # Skip if this keyword already matched for this type
