@@ -283,6 +283,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/admin/ocr-automation-metrics",
+      "name": "ocr_automation_metrics"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/admin/ocr-errors",
       "name": "ocr_errors"
     },
