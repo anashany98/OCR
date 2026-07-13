@@ -361,8 +361,26 @@ class Settings(BaseSettings):
     search_mmr_pool_size: int = 0  # 0 = use the default
     # Multi-query expansion: generate N query variations to improve
     # recall when the user's phrasing differs from the document's.
-    search_multi_query_enabled: bool = True
+    search_multi_query_enabled: bool = False
     search_multi_query_max_variants: int = 3
+    # CHAT-LATENCY: the chat context collector already owns query
+    # expansion. Keeping the semantic layer's own expansion enabled creates
+    # a multiplicative number of embeddings and vector searches.
+    search_query_plan_enabled: bool = True
+    search_query_plan_version: str = "v1"
+    search_allow_nested_expansion: bool = False
+    search_max_variants_factual: int = 1
+    search_max_variants_synthesis: int = 2
+    # The in-process BGE cross-encoder is unsafe for latency when the
+    # backend has no CUDA device. It is opt-in until a bounded GPU or HTTP
+    # reranker passes the quality gate.
+    search_reranker_enabled: bool = False
+    search_reranker_backend: str = "off"  # off | local | http
+    search_reranker_max_candidates: int = 8
+    search_reranker_timeout_seconds: float = 0.5
+    # Exact document references already have authoritative structured
+    # context; semantic search is a fallback, not a compulsory second step.
+    search_exact_first_enabled: bool = True
     # R2 — Prompt-injection defence knobs. ``sensitivity``
     # controls how aggressive the regex detector is
     # (``low`` catches only obvious patterns, ``high`` is very

@@ -241,6 +241,8 @@ def _use_multi_query_strategy() -> bool:
     should run. Gated by the same flag as HyDE so an operator can
     turn both on/off together.
     """
+    if not settings.search_allow_nested_expansion:
+        return False
     if not settings.search_use_query_transformer:
         return False
     return settings.search_query_transform_strategy in ("multi_query", "auto")
@@ -416,11 +418,15 @@ def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -
     """
     # Cross-encoder rerank: needs a larger pool than the final limit to
     # actually re-order anything meaningful.
-    if len(results) > limit:
+    if settings.search_reranker_enabled and len(results) > limit:
         try:
             from app.services.reranker import rerank_sync
 
-            results = rerank_sync(query.strip(), results, top_k=limit)
+            results = rerank_sync(
+                query.strip(),
+                results[: settings.search_reranker_max_candidates],
+                top_k=limit,
+            )
         except Exception as exc:  # noqa: BLE001 - reranker is best-effort
             logger.warning("semantic rerank failed: %s", exc)
             from app.services.metrics.search import track_rerank_failure
@@ -673,11 +679,15 @@ def search_hybrid(
         )
 
         # Apply cross-encoder reranker for better precision
-        if len(merged) > limit:
+        if settings.search_reranker_enabled and len(merged) > limit:
             try:
                 from app.services.reranker import rerank_sync
 
-                merged = rerank_sync(query.strip(), merged, top_k=limit)
+                merged = rerank_sync(
+                    query.strip(),
+                    merged[: settings.search_reranker_max_candidates],
+                    top_k=limit,
+                )
             except Exception as exc:  # noqa: BLE001 - reranker is best-effort
                 logger.warning("hybrid rerank failed: %s", exc)
                 from app.services.metrics.search import track_rerank_failure

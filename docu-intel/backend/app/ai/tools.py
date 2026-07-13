@@ -20,6 +20,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.config import settings
+
 # Re-exported so other code in the project that imports
 # ``app.ai.agent._money_filters`` still works (this is the alias the
 # original agent.py used).
@@ -580,12 +582,14 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
             primary = ToolCall("get_order_by_number", {"order_number": document_number})
         else:
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
-        return [
+        tools = [
             primary,
             ToolCall("get_document_full_details", {"document_id": 0}),
             ToolCall("get_related_documents", {"document_id": 0}),
-            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}),
         ]
+        if not settings.search_exact_first_enabled:
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
+        return tools
 
     # ---- Aggregation intent (SQL over structured tables) ----
     # Catches the "cuanto nos hemos gastado en X", "cuantos pedidos sin
@@ -612,11 +616,13 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
                 "get_related_documents", {"document_id": 0}
             ),  # placeholder; replaced after lookup
         ]
-        # Always run a hybrid search too in case the user asks for content
-        # not covered by the entities (e.g. a specific page or paragraph).
-        search_filters: dict = {"limit": 6}
-        _maybe_apply_relevance_filter(search_filters, normalized, question)
-        tools.append(ToolCall("hybrid_search", {"query": question, "filters": search_filters}))
+        # Exact file resolution is authoritative for ordinary questions.
+        # Semantic retrieval stays available behind the rollback flag for
+        # questions that genuinely need a paragraph outside the details.
+        if not settings.search_exact_first_enabled:
+            search_filters: dict = {"limit": 6}
+            _maybe_apply_relevance_filter(search_filters, normalized, question)
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": search_filters}))
         return tools
 
     # ---- Presupuesto / pedido / factura by number -> details + relations ----
@@ -639,12 +645,14 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
             primary = ToolCall("get_order_by_number", {"order_number": document_number})
         else:
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
-        return [
+        tools = [
             primary,
             ToolCall("get_document_full_details", {"document_id": 0}),
             ToolCall("get_related_documents", {"document_id": 0}),
-            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}),
         ]
+        if not settings.search_exact_first_enabled:
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
+        return tools
 
     if _contains_any(normalized, _BUDGET_HINTS) and _contains_any(
         normalized, _ACCEPTED_WITHOUT_ORDER_HINTS
@@ -1027,7 +1035,7 @@ def _extract_document_number(text: str) -> str | None:
     match = re.search(r"\b\d{4}/\d+\b", text)
     if match:
         return match.group(0)
-    match = re.search(r"\b[A-Za-z]{0,8}\d{2,}[-/]\d+\b", text)
+    match = re.search(r"\b[A-Za-z]{0,8}\d{2,}[-/_]\d+\b", text)
     if match:
         return match.group(0)
     match = re.search(r"\b\d{5,7}\b", text)
