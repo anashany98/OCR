@@ -507,7 +507,11 @@ class ToolCall:
 # ---------------------------------------------------------------------------
 
 
-def select_tools_for_question(question: str) -> list[ToolCall]:
+def select_tools_for_question(
+    question: str,
+    *,
+    active_context: Any | None = None,
+) -> list[ToolCall]:
     """Pick the right set of internal tools for ``question``.
 
     Returns a list because some question types (a budget number +
@@ -532,8 +536,19 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
        filters we can infer from the question (supplier, client,
        amount range).
     """
-    normalized = _normalize(question)
-    document_number = _extract_document_number(question)
+    # A resolved follow-up contains a ``[Contexto: ...]`` prefix.  It is
+    # useful to the answer model, but must not be mistaken for a new user
+    # identifier (for example the active document database id).
+    routing_question = _strip_context_prefix(question)
+    normalized = _normalize(routing_question)
+    document_number = _extract_document_number(routing_question)
+    document_numbers = _extract_document_numbers(routing_question)
+
+    # A named hotel/hostal is an explicit subject, not a semantic hint.  Route
+    # it through literal retrieval so similarly named entities (Anibal vs
+    # Anidac) cannot be silently conflated.
+    if named_property := _extract_named_property(routing_question):
+        return [ToolCall("find_documents_by_exact_phrase", {"phrase": named_property})]
 
     # ---- Plan measurements ----
     # "Cuanto mide el salon" contains an aggregation hint ("cuanto"),
@@ -590,6 +605,40 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
         if not settings.search_exact_first_enabled:
             tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
         return tools
+
+    # A bare 5-7 digit identifier is common in document chat.  It used to
+    # fall into semantic retrieval, where nearby documents could outrank the
+    # actual identifier.  Search every supplied number exactly and let the
+    # collector report ambiguity instead of guessing.
+    if document_numbers:
+        tools = [
+            ToolCall("find_document_by_exact_identifier", {"number": number, "kind": "generic"})
+            for number in document_numbers
+        ]
+        if not settings.search_exact_first_enabled:
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
+        return tools
+
+    # A document-scoped follow-up without an extracted budget number must not
+    # degrade into a portfolio-wide aggregate.  Retrieve the active document
+    # directly; its structured details contain the budget amount when present.
+    active_document_id = (
+        getattr(active_context, "current_document_id", None)
+        if active_context is not None
+        else _extract_context_document_id(question)
+    )
+    if (
+        active_document_id
+        and not getattr(active_context, "current_budget_number", None)
+        and _is_aggregation_question(normalized)
+        and not _contains_any(normalized, ("todos", "global", "compara"))
+    ):
+        return [
+            ToolCall(
+                "get_document_full_details",
+                {"document_id": int(active_document_id)},
+            )
+        ]
 
     # ---- Specific delivery note ----
     # A delivery note amount is a document fact, not a portfolio aggregate.
@@ -816,7 +865,9 @@ def select_structured_tools(
     invoice_number = (active_context.current_invoice_number if active_context else None) or None
 
     # If the user named a budget number in the question, it wins.
-    explicit_budget = _extract_document_number(question)
+    # Do not treat an internal ``[Contexto: documento activo id=...]`` value
+    # as an explicit budget number supplied by the user.
+    explicit_budget = _extract_document_number(_strip_context_prefix(question))
     if explicit_budget and (
         "presupuesto" in _normalize(question)
         or "budget" in _normalize(question)
@@ -826,6 +877,18 @@ def select_structured_tools(
         budget_id = None
 
     if intent == INTENT_BUDGET_TOTAL:
+        # ``select_tools_for_question`` will retrieve this document directly
+        # when a document is active but no budget row/number is known.  Do not
+        # emit an empty budget-total lookup first: it adds a misleading
+        # "not found" result and used to make the fallback consider global
+        # aggregates.
+        if (
+            not budget_number
+            and budget_id is None
+            and active_context is not None
+            and getattr(active_context, "current_document_id", None)
+        ):
+            return []
         return [
             ToolCall(
                 "get_budget_total",
@@ -1053,6 +1116,24 @@ def _normalize(text: str) -> str:
     return normalized.encode("ascii", "ignore").decode("ascii")
 
 
+def _strip_context_prefix(text: str) -> str:
+    """Remove an internal follow-up context prefix before routing.
+
+    The prefix may contain database identifiers.  Those are internal state,
+    not identifiers supplied by the user, and must never redirect retrieval.
+    """
+    return re.sub(r"^\s*\[contexto\s*:[^\]]*\]\s*", "", text or "", flags=re.IGNORECASE)
+
+
+def _extract_context_document_id(text: str) -> int | None:
+    """Return the active document id carried by an internal context prefix."""
+    prefix = re.match(r"^\s*\[contexto\s*:(?P<context>[^\]]*)\]", text or "", re.I)
+    if not prefix:
+        return None
+    match = re.search(r"\bdocumento\s+activo\s+id=(\d+)", prefix.group("context"), re.I)
+    return int(match.group(1)) if match else None
+
+
 def _extract_document_number(text: str) -> str | None:
     """Pull a presupuesto / pedido number from a free-form question.
 
@@ -1069,6 +1150,61 @@ def _extract_document_number(text: str) -> str | None:
         return match.group(0)
     match = re.search(r"\b\d{5,7}\b", text)
     return match.group(0) if match else None
+
+
+def _extract_document_numbers(text: str) -> list[str]:
+    """Return all distinct bare numeric identifiers in user input order."""
+    found: list[str] = []
+    for value in re.findall(r"\b\d{5,7}\b", text or ""):
+        if value not in found:
+            found.append(value)
+    return found
+
+
+_PROPERTY_STOP_WORDS = frozenset(
+    {
+        "de",
+        "del",
+        "en",
+        "para",
+        "con",
+        "que",
+        "presupuesto",
+        "pedido",
+        "factura",
+        "necesito",
+        "quiero",
+        "quieres",
+        "es",
+        "son",
+        "tiene",
+        "tienen",
+    }
+)
+
+
+def _extract_named_property(text: str) -> str | None:
+    """Extract a deliberate hotel/hostal subject for literal retrieval.
+
+    The result is intentionally conservative: at most three non-stopword
+    tokens after the property noun are retained.  This keeps the phrase
+    specific enough to disambiguate names while avoiding the rest of a natural
+    language question.
+    """
+    match = re.search(r"\b(hotel|hostal)\s+([^?.!,;:\n]+)", text or "", flags=re.IGNORECASE)
+    if not match:
+        return None
+    tokens: list[str] = []
+    for token in re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9'’-]+", match.group(2)):
+        normalized = _normalize(token)
+        if normalized in _PROPERTY_STOP_WORDS:
+            break
+        tokens.append(token)
+        if len(tokens) == 3:
+            break
+    if not tokens:
+        return None
+    return f"{match.group(1)} {' '.join(tokens)}"
 
 
 def _extract_reference(text: str) -> str | None:

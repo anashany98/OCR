@@ -266,7 +266,7 @@ async def answer_question(
     # entities and relations when the user mentions a specific file or
     # number. The `mode` is just a hint about which search strategy to
     # prefer when multiple are viable.
-    tools = select_tools_for_question(question)
+    tools = select_tools_for_question(question, active_context=active_context)
 
     # CTX-6: structured-first path. The intent router may have
     # classified the question as one of the business intents that has

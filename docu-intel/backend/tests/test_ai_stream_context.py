@@ -49,7 +49,7 @@ async def test_ai_stream_uses_same_structured_context_path(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}})],
     )
     monkeypatch.setattr(
         route,
@@ -127,7 +127,7 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(
@@ -223,7 +223,7 @@ async def test_ai_stream_without_document_context_uses_not_found_fallback(monkey
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(
@@ -304,7 +304,7 @@ async def test_ai_stream_memory_only_does_not_call_llm(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(

@@ -40,7 +40,7 @@ async def test_stream_emits_one_delta_per_token(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(
@@ -145,7 +145,7 @@ async def test_stream_falls_back_when_validation_rejects(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(

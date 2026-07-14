@@ -21,6 +21,7 @@ without spinning up a full DB session.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -43,6 +44,8 @@ from app.tools import internal
 
 from .multi_query import build_query_plan
 from .tools import ToolCall, _extract_document_number, _extract_room_name, _normalize
+
+logger = logging.getLogger("app.ai.context")
 
 # ---------------------------------------------------------------------------
 # Public dataclasses (re-exported by agent.py for backward compat)
@@ -287,7 +290,93 @@ def collect_context(
             )
             if not payload.get("found"):
                 warnings.append("No he encontrado conceptos de envio dentro del ambito activo.")
-        if tool.name == "find_document_by_filename":
+        elif tool.name in {
+            "find_document_by_exact_identifier",
+            "find_documents_by_exact_phrase",
+        }:
+            # Exact routes are authoritative.  Unlike semantic retrieval they
+            # may return several documents only when the same literal appears
+            # in several authorized sources; in that case expose the evidence
+            # and warn instead of selecting one arbitrarily.
+            from app.services.exact_document_search import (
+                search_exact_by_number,
+                search_exact_phrase,
+            )
+
+            if tool.name == "find_document_by_exact_identifier":
+                value = str(tool.arguments.get("number") or "").strip()
+                matches = (
+                    search_exact_by_number(
+                        db,
+                        number=value,
+                        kind=str(tool.arguments.get("kind") or "generic"),
+                        limit=5,
+                        access_scope=access_scope,
+                    )
+                    if value
+                    else []
+                )
+                label = f"numero exacto '{value}'"
+            else:
+                value = str(tool.arguments.get("phrase") or "").strip()
+                matches = (
+                    search_exact_phrase(
+                        db,
+                        phrase=value,
+                        limit=5,
+                        access_scope=access_scope,
+                    )
+                    if value
+                    else []
+                )
+                label = f"frase exacta '{value}'"
+
+            if not matches:
+                warnings.append(f"No he encontrado documentos autorizados con {label}.")
+                continue
+
+            # ``search_exact_*`` returns one entry per document, sorted by
+            # evidence quality.  Keep that order for reproducible answers.
+            unique_matches = []
+            seen_match_ids: set[int] = set()
+            for match in matches:
+                if match.document_id not in seen_match_ids:
+                    unique_matches.append(match)
+                    seen_match_ids.add(match.document_id)
+
+            if len(unique_matches) > 1:
+                warnings.append(
+                    f"He encontrado {len(unique_matches)} documentos con {label}; "
+                    "no voy a atribuirlos a uno solo sin mas contexto."
+                )
+
+            for match in unique_matches:
+                details = internal.get_document_full_details(db, match.document_id)
+                if details is None:
+                    continue
+                details = redact_business_payload_for_scope(details, access_scope)
+                rendered = render_document_details(details)
+                summary = (
+                    f"Coincidencia literal de {label} en {match.matched_in}.\n"
+                    f"{rendered}"
+                )
+                context.append(
+                    ContextItem(
+                        title=f"Documento encontrado por {label}: {match.original_filename}",
+                        summary=summary,
+                        document_id=match.document_id,
+                        document_filename=match.original_filename,
+                        page_number=match.page_number,
+                        relevance_score=0.99 if len(unique_matches) == 1 else 0.95,
+                        excerpt=summary[:1000],
+                        confidence=details.get("confidence"),
+                        source_path=match.source_path,
+                    )
+                )
+
+            if len(unique_matches) == 1:
+                resolved_doc_id = unique_matches[0].document_id
+        elif tool.name == "find_document_by_filename":
             query = tool.arguments.get("query") or ""
             documents = internal.find_document_by_filename(db, query)
             if access_scope:
@@ -324,12 +413,18 @@ def collect_context(
                     f"No he encontrado ningun documento cuyo nombre contenga '{query}'."
                 )
         elif tool.name == "get_document_full_details":
-            if resolved_doc_id is None:
+            # The smart selector may directly address the active document on
+            # a follow-up (for example "por cuanto esta presupuestado?").
+            # Placeholder calls still use the document resolved earlier in
+            # the same tool chain.
+            target_doc_id = resolved_doc_id or tool.arguments.get("document_id")
+            if target_doc_id in (None, 0):
                 # Skip silently if the lookup didn't resolve a document.
                 continue
-            details = internal.get_document_full_details(db, resolved_doc_id)
+            details = internal.get_document_full_details(db, int(target_doc_id))
             if details is None:
                 continue
+            resolved_doc_id = int(target_doc_id)
             details = redact_business_payload_for_scope(details, access_scope)
             summary = render_document_details(details)
             # If the vision model described the image, prepend that
@@ -429,8 +524,6 @@ def collect_context(
                 # number appears in text, entities, or filename even
                 # when no Budget row exists.
                 from app.services.exact_document_search import (
-                    ExactMatch,
-                    detect_identifiers,
                     search_exact_by_number,
                     select_best_exact_match,
                 )

@@ -18,7 +18,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -106,6 +106,32 @@ def _make_boundary_pattern(value: str) -> str:
     return f"%{escaped}%"
 
 
+def _contains_exact_number(text: str | None, normalized: str) -> bool:
+    """Return whether ``normalized`` occurs as a complete numeric identifier.
+
+    SQL ``ILIKE '%123%'`` is deliberately only a cheap pre-filter.  It must
+    not decide the match because it would turn ``250398`` into a hit for
+    ``12503980``.  Separators used in document numbers are accepted and
+    leading zeros remain equivalent to their unpadded form.
+    """
+    if not text or not normalized:
+        return False
+    separated_digits = r"[\s.\-/]*".join(re.escape(digit) for digit in normalized)
+    return re.search(rf"(?<!\d)0*{separated_digits}(?!\d)", text) is not None
+
+
+def _contains_exact_phrase(text: str | None, phrase: str) -> bool:
+    """Return whether a normalized literal phrase occurs in ``text``.
+
+    This is intentionally lexical, not fuzzy: a query for ``Hostal Anibal``
+    must never be satisfied by ``Hostal Anidac`` merely because semantic
+    retrieval considers both strings similar.
+    """
+    if not text or not phrase:
+        return False
+    return re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text, flags=re.IGNORECASE) is not None
+
+
 # ---------------------------------------------------------------------------
 # Search functions
 # ---------------------------------------------------------------------------
@@ -155,14 +181,6 @@ def search_exact_by_number(
     if access_scope is None:
         logger.warning("exact_search_without_access_scope kind=%s", kind)
         return []
-    from app.services.exact_document_search import (
-        _search_entities,
-        _search_filename,
-        _search_page_text,
-        _search_block_text,
-        _search_chunk_text,
-    )
-
     normalized = _normalize_number(number)
     matches: list[ExactMatch] = []
     seen_doc_ids: set[int] = set()
@@ -210,6 +228,108 @@ def search_exact_by_number(
     return matches[:limit]
 
 
+def search_exact_phrase(
+    db: Session,
+    *,
+    phrase: str,
+    limit: int = 10,
+    access_scope=None,
+) -> list[ExactMatch]:
+    """Search an explicitly named subject by literal phrase.
+
+    This is the companion to numeric exact search for names such as
+    ``Hostal Anibal``.  It searches filenames, source paths, extracted entity
+    values and OCR/chunk text, but only returns a document when the complete
+    literal phrase is present.  Access predicates are applied before content
+    is returned, matching :func:`search_exact_by_number`'s deny-by-default
+    contract.
+    """
+    phrase = " ".join((phrase or "").split())
+    if len(phrase) < 3:
+        return []
+    if access_scope is None:
+        logger.warning("exact_phrase_search_without_access_scope")
+        return []
+
+    escaped = phrase.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    candidates: list[tuple[str, object, int | None]] = []
+
+    entity_rows = db.execute(
+        _apply_exact_access_scope(
+            select(DocumentEntity, Document)
+            .join(Document, DocumentEntity.document_id == Document.id)
+            .where(Document.deleted_at.is_(None))
+            .where(DocumentEntity.entity_value.ilike(pattern))
+            .limit(limit * 3),
+            access_scope,
+        )
+    ).all()
+    for entity, document in entity_rows:
+        if _contains_exact_phrase(entity.entity_value, phrase):
+            candidates.append(("entity", document, entity.page_number))
+
+    document_rows = db.execute(
+        _apply_exact_access_scope(
+            select(Document)
+            .where(Document.deleted_at.is_(None))
+            .where(
+                or_(
+                    Document.original_filename.ilike(pattern),
+                    Document.source_path.ilike(pattern),
+                )
+            )
+            .limit(limit * 3),
+            access_scope,
+        )
+    ).scalars().all()
+    for document in document_rows:
+        if _contains_exact_phrase(document.original_filename, phrase) or _contains_exact_phrase(
+            document.source_path, phrase
+        ):
+            candidates.append(("filename", document, None))
+
+    for matched_in, model, column_name in (
+        ("page_text", DocumentPage, "text"),
+        ("block_text", DocumentBlock, "text"),
+        ("chunk_text", DocumentChunk, "chunk_text"),
+    ):
+        text_column = getattr(model, column_name)
+        rows = db.execute(
+            _apply_exact_access_scope(
+                select(model, Document)
+                .join(Document, model.document_id == Document.id)
+                .where(Document.deleted_at.is_(None))
+                .where(text_column.ilike(pattern))
+                .limit(limit * 3),
+                access_scope,
+            )
+        ).all()
+        for value, document in rows:
+            if _contains_exact_phrase(getattr(value, column_name), phrase):
+                candidates.append((matched_in, document, getattr(value, "page_number", None)))
+
+    results: list[ExactMatch] = []
+    seen_doc_ids: set[int] = set()
+    priority = {"entity": 0, "filename": 1, "page_text": 2, "block_text": 3, "chunk_text": 4}
+    for matched_in, document, page_number in sorted(candidates, key=lambda item: priority[item[0]]):
+        if document.id in seen_doc_ids:
+            continue
+        seen_doc_ids.add(document.id)
+        results.append(
+            ExactMatch(
+                document_id=document.id,
+                original_filename=document.original_filename,
+                document_type=document.document_type or "",
+                source_path=_visible_source_path(document, access_scope),
+                matched_in=matched_in,
+                matched_value=phrase,
+                page_number=page_number,
+            )
+        )
+    return results[:limit]
+
+
 def _search_entities(
     db: Session,
     *,
@@ -246,6 +366,8 @@ def _search_entities(
     rows = db.execute(_apply_exact_access_scope(stmt, access_scope)).all()
     results = []
     for entity, doc in rows:
+        if not _contains_exact_number(entity.entity_value, normalized):
+            continue
         results.append(
             ExactMatch(
                 document_id=doc.id,
@@ -282,9 +404,9 @@ def _search_page_text(
         if doc.id in seen:
             continue
         # Verify word boundary match in Python (SQLite ILIKE doesn't support \b)
-        text_content = (page.text or "").lower()
-        # Check if normalized appears as a standalone number
-        if re.search(rf"(?<!\d){re.escape(normalized)}(?!\d)", text_content):
+        # Check the candidate after the SQL pre-filter so a longer number
+        # (for example 12503980) never satisfies 250398.
+        if _contains_exact_number(page.text, normalized):
             seen.add(doc.id)
             results.append(
                 ExactMatch(
@@ -322,8 +444,7 @@ def _search_block_text(
     for block, doc in rows:
         if doc.id in seen:
             continue
-        text_content = (block.text or "").lower()
-        if re.search(rf"(?<!\d){re.escape(normalized)}(?!\d)", text_content):
+        if _contains_exact_number(block.text, normalized):
             seen.add(doc.id)
             results.append(
                 ExactMatch(
@@ -361,8 +482,7 @@ def _search_chunk_text(
     for chunk, doc in rows:
         if doc.id in seen:
             continue
-        text_content = (chunk.chunk_text or "").lower()
-        if re.search(rf"(?<!\d){re.escape(normalized)}(?!\d)", text_content):
+        if _contains_exact_number(chunk.chunk_text, normalized):
             seen.add(doc.id)
             results.append(
                 ExactMatch(
@@ -406,6 +526,11 @@ def _search_filename(
     docs = db.execute(_apply_exact_access_scope(stmt, access_scope)).scalars().all()
     results = []
     for doc in docs:
+        if not (
+            _contains_exact_number(doc.original_filename, normalized)
+            or _contains_exact_number(doc.source_path, normalized)
+        ):
+            continue
         results.append(
             ExactMatch(
                 document_id=doc.id,

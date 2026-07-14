@@ -103,7 +103,6 @@ async def ask(
     model_route = select_chat_model(payload.question)
     try:
         from app.ai.prompts import CHAT_PROMPT_VERSION
-        from app.core.config import settings as _settings
         from app.services.ai_cache import get_cached_answer_async as _get_cached
         from app.services.knowledge_version import current_knowledge_version
         from app.services.metrics.rag import track_chat_cache_lookup
@@ -214,7 +213,6 @@ async def _build_stream_response(
     cached: dict | None = None
     try:
         from app.ai.prompts import CHAT_PROMPT_VERSION
-        from app.core.config import settings as _settings
         from app.services.ai_cache import get_cached_answer_async as _get_cached
         from app.services.knowledge_version import current_knowledge_version
         from app.services.metrics.rag import (
@@ -310,7 +308,7 @@ async def _build_stream_response(
         load_active_context(db, user, session_id) if session_id else ActiveContext()
     )
     question, _reference_resolution = resolve_references(question, active_context)
-    tools = select_tools_for_question(question)
+    tools = select_tools_for_question(question, active_context=active_context)
     structured_tools = select_structured_tools(question, active_context=active_context)
     if structured_tools:
         tools = structured_tools + tools
@@ -578,7 +576,6 @@ async def _build_stream_response(
         # with the chat_stage histogram. The timer records the
         # commit + rollback path uniformly so an operator can see
         # how much of the wall-clock is spent flushing.
-        from time import perf_counter as _perf_counter
         from app.services.metrics.rag import track_chat_stage
 
         with track_chat_stage("persistence") as t:
