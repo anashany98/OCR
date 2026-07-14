@@ -64,7 +64,12 @@ def test_search_text_scales_to_100_docs():
     sess.close()
 
 
-def test_search_semantic_scales_to_1000_chunks():
+def test_search_semantic_scales_to_1000_chunks(monkeypatch):
+    # This benchmark intentionally models an unscoped local corpus.  Whole-
+    # document retrieval is scope-gated in production, so benchmark the chunk
+    # path here rather than granting the test an internal global-search
+    # capability that application callers never receive.
+    monkeypatch.setattr(settings, "search_use_document_embedding", False)
     engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     sess = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)()

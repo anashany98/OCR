@@ -452,7 +452,7 @@ def test_local_compose_splits_worker_queues():
     assert "worker-heavy:" in content
     assert "worker-maintenance:" in content
     assert "-Q ocr_heavy" in content
-    assert "OCR_WORKER_CONCURRENCY:-1" in content
+    assert "WORKER_HEAVY_CPU_CONCURRENCY:-1" in content
 
 
 def test_internal_ai_context_redacts_amounts_without_price_permission():

@@ -245,8 +245,15 @@ def test_search_documents_returns_doc_level_match_and_respects_filter():
         )
         db.commit()
 
+        # This is a low-level vector-store contract test.  The global marker
+        # represents a server-verified administrator capability; public
+        # search paths derive it from ``access_scope`` and never accept it
+        # from client filters.
         all_matches = PgvectorStore().search_documents(
-            db, query_embedding=query, limit=10, filters={}
+            db,
+            query_embedding=query,
+            limit=10,
+            filters={"_allow_global_semantic_search": True},
         )
         assert len(all_matches) == 2
         for m in all_matches:
@@ -254,7 +261,10 @@ def test_search_documents_returns_doc_level_match_and_respects_filter():
             assert m.page_number is None
 
         filtered = PgvectorStore().search_documents(
-            db, query_embedding=query, limit=10, filters={"document_type": "factura"}
+            db,
+            query_embedding=query,
+            limit=10,
+            filters={"document_type": "factura", "_allow_global_semantic_search": True},
         )
         assert len(filtered) == 1
         assert filtered[0].document_type == "factura"
@@ -303,7 +313,10 @@ def test_search_documents_excludes_low_similarity_documents():
         db.commit()
 
         matches = PgvectorStore().search_documents(
-            db, query_embedding=query, limit=10, filters={}
+            db,
+            query_embedding=query,
+            limit=10,
+            filters={"_allow_global_semantic_search": True},
         )
         assert len(matches) == 1
         assert matches[0].document_type == "factura"

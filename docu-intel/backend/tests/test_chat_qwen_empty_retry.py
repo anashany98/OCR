@@ -28,6 +28,9 @@ async def test_stream_retries_when_qwen_returns_empty(monkeypatch):
     calls = {"count": 0}
 
     class _FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
         async def chat_stream(self, messages, temperature=0.0, max_tokens=4000):
             calls["count"] += 1
             # First call (with /no_think) yields nothing — the Qwen3+LM Studio
@@ -77,6 +80,9 @@ async def test_stream_falls_back_when_retry_also_empty(monkeypatch):
     monkeypatch.setattr(settings, "ai_base_url", "http://fake")
 
     class _FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
         async def chat_stream(self, messages, temperature=0.0, max_tokens=4000):
             # Both attempts return nothing.
             return
@@ -117,7 +123,10 @@ async def test_one_shot_retries_when_qwen_returns_empty(monkeypatch):
     calls = {"count": 0}
 
     class _FakeClient:
-        async def chat(self, messages, temperature=0.0):
+        def __init__(self, **_kwargs):
+            pass
+
+        async def chat(self, messages, temperature=0.0, max_tokens=4000):
             calls["count"] += 1
             if calls["count"] == 1:
                 return ""
@@ -157,6 +166,9 @@ async def test_no_retry_for_non_qwen_model(monkeypatch):
     calls = {"count": 0}
 
     class _FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
         async def chat_stream(self, messages, temperature=0.0, max_tokens=4000):
             calls["count"] += 1
             return

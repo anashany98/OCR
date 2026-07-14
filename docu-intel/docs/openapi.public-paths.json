@@ -562,6 +562,11 @@
       "name": "history"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/ai/sessions/{id}/messages",
+      "name": "session_messages"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/auth/login",
       "name": "login"
@@ -690,6 +695,11 @@
       "method": "GET",
       "path": "/api/v1/documents/{id}/pages/{id}/image",
       "name": "get_document_page_image"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/preview",
+      "name": "get_document_preview"
     },
     {
       "method": "POST",

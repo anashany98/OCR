@@ -16,6 +16,17 @@ import pytest
 from starlette.requests import Request
 
 
+def _test_scope():
+    from app.services.tenant_access import AccessScope
+
+    return AccessScope(
+        principal_type="user",
+        principal_id="1",
+        can_view_prices=True,
+        can_search_budgets=True,
+    )
+
+
 @pytest.mark.asyncio
 async def test_stream_emits_one_delta_per_token(monkeypatch):
     from app.ai.active_context import ActiveContext
@@ -37,7 +48,7 @@ async def test_stream_emits_one_delta_per_token(monkeypatch):
         "enforce_budget_scope",
         lambda question, state, tools: SimpleNamespace(tools=tools, warnings=[]),
     )
-    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: None)
+    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: _test_scope())
     monkeypatch.setattr(
         route,
         "collect_context",
@@ -71,7 +82,7 @@ async def test_stream_emits_one_delta_per_token(monkeypatch):
 
     # The fake LLM streams the answer in 3 separate pieces. Each piece
     # must reach the client as its own ``delta`` event.
-    async def fake_stream(question, context_items, warnings):
+    async def fake_stream(question, context_items, warnings, **_kwargs):
         yield "El total "
         yield "es "
         yield "120 EUR."
@@ -100,7 +111,7 @@ async def test_stream_emits_one_delta_per_token(monkeypatch):
         }
     )
 
-    response = await route.ask_stream(
+    response = await route._build_stream_response(
         request=request,
         payload=AskRequest(question="Cual es el total?", mode="hybrid"),
         db=DB(),
@@ -142,7 +153,7 @@ async def test_stream_falls_back_when_validation_rejects(monkeypatch):
         "enforce_budget_scope",
         lambda question, state, tools: SimpleNamespace(tools=tools, warnings=[]),
     )
-    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: None)
+    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: _test_scope())
     monkeypatch.setattr(
         route,
         "collect_context",
@@ -175,7 +186,7 @@ async def test_stream_falls_back_when_validation_rejects(monkeypatch):
     monkeypatch.setattr(route, "_build_memory_block", lambda db, user, question: "")
     monkeypatch.setattr(route, "persist_context_after_answer", lambda *args, **kwargs: None)
 
-    async def fake_stream(question, context_items, warnings):
+    async def fake_stream(question, context_items, warnings, **_kwargs):
         yield "respuesta en otro idioma the total is"
         yield StreamOutcome(text="respuesta en otro idioma the total is", ok=False)
 
@@ -202,7 +213,7 @@ async def test_stream_falls_back_when_validation_rejects(monkeypatch):
         }
     )
 
-    response = await route.ask_stream(
+    response = await route._build_stream_response(
         request=request,
         payload=AskRequest(question="Cual es el total?", mode="hybrid"),
         db=DB(),

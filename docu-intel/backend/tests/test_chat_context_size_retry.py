@@ -58,6 +58,9 @@ async def test_stream_retries_with_smaller_budget_on_context_size_error(monkeypa
     sizes = {"prompts": []}
 
     class _FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
         async def chat_stream(self, messages, temperature=0.0, max_tokens=4000):
             sizes["prompts"].append(len(messages[1]["content"]))
             if len(sizes["prompts"]) == 1:
@@ -93,7 +96,10 @@ async def test_one_shot_retries_with_smaller_budget_on_context_size_error(monkey
     sizes = {"prompts": []}
 
     class _FakeClient:
-        async def chat(self, messages, temperature=0.0):
+        def __init__(self, **_kwargs):
+            pass
+
+        async def chat(self, messages, temperature=0.0, max_tokens=4000):
             sizes["prompts"].append(len(messages[1]["content"]))
             if len(sizes["prompts"]) == 1:
                 raise ContextSizeExceededError("too big")

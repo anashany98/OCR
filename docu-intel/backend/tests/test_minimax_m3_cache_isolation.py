@@ -339,6 +339,10 @@ def test_knowledge_version_bump_is_visible():
     _put_and_get(
         9400, "version del conocimiento", scope="scopeA", knowledge_version=1
     )
+    # The cache entry above is keyed with version 1.  Seed the Redis-only
+    # fallback to the same state so this test verifies an actual increment
+    # rather than depending on a counter left behind by another test run.
+    cache_service.client.set("ai:knowledge_version:fallback", 1)
     # Simulate a write that bumps the version.
     bumped = bump_knowledge_version(None, event="document_updated")  # type: ignore[arg-type]
     assert bumped >= 2

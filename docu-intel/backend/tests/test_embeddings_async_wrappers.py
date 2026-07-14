@@ -79,12 +79,24 @@ def test_get_cached_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPat
     value so the cache lookup semantics stay identical."""
     captured: dict[str, object] = {}
 
-    def fake_get(question, user_id, mode, scope_key, session_id=None):  # type: ignore[no-untyped-def]
+    def fake_get(  # type: ignore[no-untyped-def]
+        question,
+        user_id,
+        mode,
+        scope_key,
+        session_id=None,
+        model=None,
+        prompt_version=None,
+        knowledge_version=0,
+    ):
         captured["question"] = question
         captured["user_id"] = user_id
         captured["mode"] = mode
         captured["scope_key"] = scope_key
         captured["session_id"] = session_id
+        captured["model"] = model
+        captured["prompt_version"] = prompt_version
+        captured["knowledge_version"] = knowledge_version
         return {"answer": "cached!", "confidence": 0.9, "sources": []}
 
     monkeypatch.setattr(ai_cache, "get_cached_answer", fake_get)
@@ -105,6 +117,9 @@ def test_get_cached_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPat
         "mode": "default",
         "scope_key": "scope-x",
         "session_id": None,
+        "model": None,
+        "prompt_version": None,
+        "knowledge_version": 0,
     }
 
 
@@ -113,7 +128,18 @@ def test_cache_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPatch) -
     return its boolean result."""
     captured: dict[str, object] = {}
 
-    def fake_cache_answer(question, user_id, answer, mode, scope_key, session_id=None, ttl=None):  # type: ignore[no-untyped-def]
+    def fake_cache_answer(  # type: ignore[no-untyped-def]
+        question,
+        user_id,
+        answer,
+        mode,
+        scope_key,
+        session_id=None,
+        model=None,
+        prompt_version=None,
+        knowledge_version=0,
+        ttl=None,
+    ):
         captured["question"] = question
         captured["user_id"] = user_id
         captured["answer"] = answer
@@ -121,6 +147,9 @@ def test_cache_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPatch) -
         captured["scope_key"] = scope_key
         captured["ttl"] = ttl
         captured["session_id"] = session_id
+        captured["model"] = model
+        captured["prompt_version"] = prompt_version
+        captured["knowledge_version"] = knowledge_version
         return True
 
     monkeypatch.setattr(ai_cache, "cache_answer", fake_cache_answer)
@@ -141,11 +170,20 @@ def test_cache_answer_async_delegates_to_sync(monkeypatch: pytest.MonkeyPatch) -
     assert captured == {
         "question": "q",
         "user_id": 7,
-        "answer": payload,
+        "answer": {
+            **payload,
+            "_scope_key": "s",
+            "_prompt_version": None,
+            "_model": None,
+            "_knowledge_version": 0,
+        },
         "mode": "m",
         "scope_key": "s",
         "ttl": 123,
         "session_id": None,
+        "model": None,
+        "prompt_version": None,
+        "knowledge_version": 0,
     }
 
 

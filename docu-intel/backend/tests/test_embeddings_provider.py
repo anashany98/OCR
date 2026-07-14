@@ -86,6 +86,10 @@ def test_embed_many_uses_configured_local_openai_provider(monkeypatch):
     monkeypatch.setattr(settings, "embedding_model", "bge-m3")
     monkeypatch.setattr(settings, "embedding_api_key", "local-key")
     monkeypatch.setattr(settings, "embedding_dimensions", 4)
+    # This unit test exercises provider selection, not Redis persistence.
+    # A previous test run can legitimately have cached the same fixture text.
+    monkeypatch.setattr(embeddings.cache_service, "get", lambda _key: None)
+    monkeypatch.setattr(embeddings.cache_service, "set", lambda *_args, **_kwargs: True)
 
     assert embed_many(["uno", "dos"]) == [[0.25, 0.5, 0.75, 1.0], [0.25, 0.5, 0.75, 1.0]]
     assert calls == [("http://embedding.local:1234/v1", "bge-m3", "local-key", 4, ["uno", "dos"])]

@@ -123,6 +123,49 @@ function Get-ComposePostgresPassword {
     return ([string]$Value).Trim()
 }
 
+function Start-TemporaryRedis {
+    param([Parameter(Mandatory)][string]$Name)
+
+    # The host-side Python suite cannot resolve Compose's internal ``redis``
+    # hostname.  Run an isolated Redis on a Docker-assigned loopback port so
+    # cache-isolation tests exercise a real server without exposing or
+    # modifying the development Compose service.
+    Invoke-External "docker" @("run", "-d", "--rm", "--name", $Name, "-p", "127.0.0.1::6379", "redis:7-alpine") | Out-Null
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        $PreviousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $Mapping = [string](& docker port $Name "6379/tcp")
+            $InspectExitCode = $LASTEXITCODE
+            $Ping = (& docker exec $Name redis-cli ping).Trim()
+            $PingExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $PreviousErrorActionPreference
+        }
+        $PortMatch = [regex]::Match($Mapping, ':(\d+)\s*$')
+        $Port = if ($PortMatch.Success) { $PortMatch.Groups[1].Value } else { "" }
+        if ($InspectExitCode -eq 0 -and $PingExitCode -eq 0 -and $Port -match '^\d+$' -and $Ping -eq "PONG") {
+            return "redis://127.0.0.1:$Port/15"
+        }
+        Start-Sleep -Seconds 1
+    }
+    throw "Temporary Redis $Name did not become ready."
+}
+
+function Stop-TemporaryRedis {
+    param([string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return
+    }
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & docker rm -f $Name | Out-Null
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+}
+
 Invoke-CertificationStage "baseline" {
     Invoke-External "git" @("diff", "--check")
     Invoke-External "python" @("-m", "compileall", "-q", "backend/app")
@@ -143,13 +186,33 @@ Invoke-CertificationStage "tenant-isolation" {
     }
 }
 
-Invoke-CertificationStage "backend-suite" {
-    Push-Location backend
-    try {
-        Invoke-External "python" @("-m", "pytest", "-q", "tests")
-    } finally {
-        Pop-Location
+$TemporaryRedisName = ("$($State.run_id -replace '[^a-zA-Z0-9-]', '-')-cache").ToLowerInvariant()
+if ($TemporaryRedisName -notmatch '^terra-cert-[a-z0-9-]+-cache$') {
+    throw "Refusing to use unsafe temporary Redis container name: $TemporaryRedisName"
+}
+$TemporaryRedisUrl = $null
+try {
+    $TemporaryRedisUrl = Start-TemporaryRedis $TemporaryRedisName
+    Invoke-CertificationStage "backend-suite" {
+        $PreviousRedisUrl = $env:REDIS_URL
+        try {
+            $env:REDIS_URL = $TemporaryRedisUrl
+            Push-Location backend
+            try {
+                Invoke-External "python" @("-m", "pytest", "-q", "tests")
+            } finally {
+                Pop-Location
+            }
+        } finally {
+            if ($null -eq $PreviousRedisUrl) {
+                Remove-Item Env:REDIS_URL -ErrorAction SilentlyContinue
+            } else {
+                $env:REDIS_URL = $PreviousRedisUrl
+            }
+        }
     }
+} finally {
+    Stop-TemporaryRedis $TemporaryRedisName
 }
 
 if (-not $SkipFrontend) {

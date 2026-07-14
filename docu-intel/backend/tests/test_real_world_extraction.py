@@ -112,8 +112,12 @@ Empaque: Individual en polipropileno
 class TestMultiQueryRealData:
     """Test multi-query with real business queries."""
 
-    def test_expand_invoice_query(self):
+    def test_expand_invoice_query(self, monkeypatch):
         from app.ai.multi_query import generate_query_variations
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "search_multi_query_enabled", True)
+        monkeypatch.setattr(settings, "search_multi_query_max_variants", 3)
 
         variations = generate_query_variations("factura TEXTILES MALLORCA")
         texts = [v.text for v in variations]
@@ -125,8 +129,12 @@ class TestMultiQueryRealData:
         # Variations should be different from original
         assert any(t != "factura TEXTILES MALLORCA" for t in texts)
 
-    def test_expand_delivery_note_query(self):
+    def test_expand_delivery_note_query(self, monkeypatch):
         from app.ai.multi_query import generate_query_variations
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "search_multi_query_enabled", True)
+        monkeypatch.setattr(settings, "search_multi_query_max_variants", 3)
 
         variations = generate_query_variations("albarán entrega hotel")
         texts = [v.text for v in variations]
