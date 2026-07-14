@@ -1,8 +1,8 @@
+# syntax=docker/dockerfile:1.7
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=5
 
@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --default-timeout=120 --retries=5 --prefix=/install -r /app/requirements.txt \
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    python -m pip install --default-timeout=120 --retries=5 --prefix=/install -r /app/requirements.txt \
     && python -m pip install --no-deps --prefix=/install paddlepaddle==3.3.1 \
     && python -m pip install --default-timeout=120 --retries=5 --prefix=/install 'paddlex[ocr]==3.5.2'
 
