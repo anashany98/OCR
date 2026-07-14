@@ -7,6 +7,8 @@ bare document numbers were sent to semantic retrieval.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -72,6 +74,28 @@ def test_exact_phrase_never_conflates_similar_hostal_names(db_session, admin_sco
     assert matches[0].original_filename == "HOSTAL ANIBAL IBIZA.msg"
 
 
+def test_exact_phrase_is_general_and_rejects_a_longer_project_name(db_session, admin_scope):
+    costa_azul = _document(
+        db_session,
+        "PROYECTO COSTA AZUL.pdf",
+        "Memoria de obra del Proyecto Costa Azul.",
+    )
+    _document(
+        db_session,
+        "PROYECTO COSTA AZULES.pdf",
+        "Memoria de obra del Proyecto Costa Azules.",
+    )
+    db_session.commit()
+
+    matches = search_exact_phrase(
+        db_session,
+        phrase="Proyecto Costa Azul",
+        access_scope=admin_scope,
+    )
+
+    assert [match.document_id for match in matches] == [costa_azul.id]
+
+
 def test_context_collector_keeps_the_exact_hostal_as_active_document(db_session, admin_scope):
     anibal = _document(
         db_session,
@@ -129,6 +153,50 @@ def test_selector_searches_each_bare_identifier_exactly():
         ("find_document_by_exact_identifier", "250398"),
         ("find_document_by_exact_identifier", "252519"),
     ]
+
+
+def test_selector_grounds_tax_and_prefixed_identifiers_literally():
+    tax_tools = select_tools_for_question("Busca CIF B12345678")
+    invoice_tools = select_tools_for_question("Factura F-2025-001")
+
+    assert [(tool.name, tool.arguments) for tool in tax_tools] == [
+        ("find_documents_by_exact_phrase", {"phrase": "B12345678"})
+    ]
+    assert [(tool.name, tool.arguments) for tool in invoice_tools] == [
+        ("find_documents_by_exact_phrase", {"phrase": "F-2025-001"})
+    ]
+
+
+def test_selector_grounds_named_supplier_and_person_without_type_specific_rules():
+    supplier_tools = select_tools_for_question("Que sabes del proveedor ACME Iberia?")
+    person_tools = select_tools_for_question("Que sabes de Ana Perez?")
+
+    assert [(tool.name, tool.arguments) for tool in supplier_tools] == [
+        ("find_documents_by_exact_phrase", {"phrase": "proveedor ACME Iberia"})
+    ]
+    assert [(tool.name, tool.arguments) for tool in person_tools] == [
+        ("find_documents_by_exact_phrase", {"phrase": "Ana Perez"})
+    ]
+
+
+def test_semantic_results_without_the_named_subject_are_rejected():
+    from app.ai.context import _search_result_matches_exact_subject
+
+    anibal = SimpleNamespace(
+        original_filename="HOSTAL ANIBAL IBIZA.msg",
+        source_path=None,
+        excerpt="Oferta para el Hostal Anibal.",
+        full_text=None,
+    )
+    anidac = SimpleNamespace(
+        original_filename="HOSTAL ANIDAC IBIZA.msg",
+        source_path=None,
+        excerpt="Oferta para el Hostal Anidac.",
+        full_text=None,
+    )
+
+    assert _search_result_matches_exact_subject(anibal, ["Hostal Anibal"]) is True
+    assert _search_result_matches_exact_subject(anidac, ["Hostal Anibal"]) is False
 
 
 def test_active_document_budget_followup_stays_on_that_document():

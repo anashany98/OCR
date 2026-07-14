@@ -43,7 +43,13 @@ from app.services.tenant_access import (
 from app.tools import internal
 
 from .multi_query import build_query_plan
-from .tools import ToolCall, _extract_document_number, _extract_room_name, _normalize
+from .tools import (
+    ToolCall,
+    _extract_document_number,
+    _extract_room_name,
+    _normalize,
+    extract_exact_subject_phrases,
+)
 
 logger = logging.getLogger("app.ai.context")
 
@@ -111,6 +117,30 @@ LOW_OCR_CONFIDENCE_THRESHOLD = settings.low_ocr_confidence_threshold
 # confidence threshold. The LLM prompt is told to warn the user
 # when this tag is present.
 LOW_OCR_MARKER = "[OCR DUDOSO]"
+
+
+def _search_result_matches_exact_subject(result: Any, subjects: list[str]) -> bool:
+    """Verify that a semantic result contains a user-named literal subject.
+
+    Ranking may use vectors, but an answer about a specifically named person,
+    company or project must retain the literal anchor in its filename, path or
+    retrieved text.  This is a guardrail, not a ranking signal.
+    """
+    if not subjects:
+        return True
+    from app.services.exact_document_search import matches_exact_phrase
+
+    haystacks = (
+        getattr(result, "original_filename", None),
+        getattr(result, "source_path", None),
+        getattr(result, "excerpt", None),
+        getattr(result, "full_text", None),
+    )
+    return any(
+        matches_exact_phrase(haystack, subject)
+        for subject in subjects
+        for haystack in haystacks
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -735,6 +765,19 @@ def collect_context(
 
             if access_scope:
                 results = filter_search_results_for_scope(db, results, access_scope)
+            exact_subjects = extract_exact_subject_phrases(question)
+            if exact_subjects:
+                verified_results = [
+                    result
+                    for result in results
+                    if _search_result_matches_exact_subject(result, exact_subjects)
+                ]
+                if len(verified_results) != len(results):
+                    warnings.append(
+                        "He descartado resultados semanticos que no contienen el sujeto "
+                        "literal indicado en la consulta."
+                    )
+                results = verified_results
             # Merge results that come from the same document: concatenate
             # their excerpts so the LLM sees the full document body
             # rather than a single chunk. This is critical for short

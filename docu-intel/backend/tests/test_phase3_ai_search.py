@@ -1,6 +1,6 @@
 from app.ai.agent import build_grounded_response, select_tools_for_question
-from app.services.embeddings import cosine_similarity, embed_text
 from app.services import search_service
+from app.services.embeddings import cosine_similarity, embed_text
 from app.services.search_service import SearchResult, merge_hybrid_results
 
 
@@ -128,7 +128,10 @@ def test_ai_agent_selects_only_controlled_tools_for_common_intents():
         "get_accepted_budgets_without_order"
     )
     assert select_tools_for_question("Ensenyame las lineas del pedido 2026/154")[0].name == "get_order_by_number"
-    assert select_tools_for_question("Que documentos mencionan la referencia ABC123?")[0].name == "hybrid_search"
+    assert (
+        select_tools_for_question("Que documentos mencionan la referencia ABC123?")[0].name
+        == "find_documents_by_exact_phrase"
+    )
     assert select_tools_for_question("Cuanto mide el salon segun el plano?")[0].name == "search_plan_room_measurements"
 
 

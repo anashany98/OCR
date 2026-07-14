@@ -543,12 +543,8 @@ def select_tools_for_question(
     normalized = _normalize(routing_question)
     document_number = _extract_document_number(routing_question)
     document_numbers = _extract_document_numbers(routing_question)
-
-    # A named hotel/hostal is an explicit subject, not a semantic hint.  Route
-    # it through literal retrieval so similarly named entities (Anibal vs
-    # Anidac) cannot be silently conflated.
-    if named_property := _extract_named_property(routing_question):
-        return [ToolCall("find_documents_by_exact_phrase", {"phrase": named_property})]
+    literal_identifiers = _extract_literal_identifiers(routing_question)
+    exact_subjects = extract_exact_subject_phrases(routing_question)
 
     # ---- Plan measurements ----
     # "Cuanto mide el salon" contains an aggregation hint ("cuanto"),
@@ -583,7 +579,10 @@ def select_tools_for_question(
     # Keep this before generic aggregation so "importe del presupuesto
     # 260009" resolves the specific budget instead of returning a global
     # total over every budget.
-    if document_number and (
+    if document_number and not any(
+        document_number in identifier and len(identifier) > len(document_number)
+        for identifier in literal_identifiers
+    ) and (
         _contains_any(normalized, _BUDGET_HINTS)
         or _contains_any(normalized, _ORDER_HINTS)
         or _contains_any(normalized, _INVOICE_HINTS)
@@ -618,6 +617,25 @@ def select_tools_for_question(
         if not settings.search_exact_first_enabled:
             tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
         return tools
+
+    # References, tax ids and prefixed invoice/order codes are identifiers as
+    # well, even when they are not plain numbers.  Literal retrieval provides
+    # the same corpus-wide, non-fuzzy guarantee for these forms.
+    if literal_identifiers:
+        return [
+            ToolCall("find_documents_by_exact_phrase", {"phrase": identifier})
+            for identifier in literal_identifiers
+        ]
+
+    # Named subjects are not limited to one document type.  A person, client,
+    # supplier, project, property or a quoted label must be found by its
+    # literal spelling across the whole corpus before semantic similarity is
+    # allowed to answer.  This avoids conflating names that only look alike.
+    if exact_subjects:
+        return [
+            ToolCall("find_documents_by_exact_phrase", {"phrase": phrase})
+            for phrase in exact_subjects
+        ]
 
     # A document-scoped follow-up without an extracted budget number must not
     # degrade into a portfolio-wide aggregate.  Retrieve the active document
@@ -1161,7 +1179,29 @@ def _extract_document_numbers(text: str) -> list[str]:
     return found
 
 
-_PROPERTY_STOP_WORDS = frozenset(
+def _extract_literal_identifiers(text: str) -> list[str]:
+    """Return explicit non-numeric identifiers in user input order.
+
+    Covers common codes that cannot safely be inferred by a semantic model:
+    tax identifiers, alphanumeric references and multi-segment invoice/order
+    codes.  Plain numbers are deliberately excluded because
+    :func:`_extract_document_numbers` handles them first.
+    """
+    patterns = (
+        r"\b[A-Za-z]{1,8}-\d{2,}(?:[-/_]\d+)*\b",  # F-2025-001 / MAT-001
+        r"\b[A-Za-z]\d{7,8}[A-Za-z]?\b",  # B12345678
+        r"\b\d{7,8}[A-Za-z]\b",  # 12345678Z
+        r"\b[A-Za-z]{2,}\d{2,}[A-Za-z0-9-]*\b",  # REF123 / MAT-001
+    )
+    found: list[str] = []
+    for pattern in patterns:
+        for value in re.findall(pattern, text or ""):
+            if value not in found:
+                found.append(value)
+    return found
+
+
+_SUBJECT_STOP_WORDS = frozenset(
     {
         "de",
         "del",
@@ -1179,32 +1219,138 @@ _PROPERTY_STOP_WORDS = frozenset(
         "son",
         "tiene",
         "tienen",
+        "este",
+        "esta",
+        "ese",
+        "esa",
+        "presupuestos",
+        "pedidos",
+        "facturas",
+        "documento",
+        "documentos",
+        "archivo",
+        "archivos",
+        "informacion",
+        "datos",
+        "detalle",
+        "detalles",
+        "sabes",
+        "trata",
     }
 )
 
 
-def _extract_named_property(text: str) -> str | None:
-    """Extract a deliberate hotel/hostal subject for literal retrieval.
+_EXACT_SUBJECT_NOUNS = (
+    "hotel",
+    "hostal",
+    "cliente",
+    "proveedor",
+    "empresa",
+    "sociedad",
+    "compania",
+    "compañia",
+    "marca",
+    "cadena",
+    "proyecto",
+    "obra",
+    "edificio",
+    "residencia",
+    "restaurante",
+    "apartamento",
+    "villa",
+    "local",
+    "inmueble",
+    "contacto",
+    "persona",
+    "contratista",
+    "fabricante",
+    "promotor",
+)
 
-    The result is intentionally conservative: at most three non-stopword
-    tokens after the property noun are retained.  This keeps the phrase
-    specific enough to disambiguate names while avoiding the rest of a natural
-    language question.
-    """
-    match = re.search(r"\b(hotel|hostal)\s+([^?.!,;:\n]+)", text or "", flags=re.IGNORECASE)
-    if not match:
-        return None
+
+def _subject_tail(text: str, *, limit: int = 4) -> str | None:
+    """Return a bounded subject tail without question-language noise."""
     tokens: list[str] = []
-    for token in re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9'’-]+", match.group(2)):
+    for token in re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9'’-]+", text or ""):
         normalized = _normalize(token)
-        if normalized in _PROPERTY_STOP_WORDS:
+        if normalized in _SUBJECT_STOP_WORDS:
             break
         tokens.append(token)
-        if len(tokens) == 3:
+        if len(tokens) == limit:
             break
-    if not tokens:
-        return None
-    return f"{match.group(1)} {' '.join(tokens)}"
+    return " ".join(tokens) or None
+
+
+def extract_exact_subject_phrases(text: str) -> list[str]:
+    """Extract high-confidence literal subjects from a user question.
+
+    This intentionally covers *entity shapes*, not document types: quoted
+    labels, persons/organisations written with capitals, and names following
+    a generic business or project noun.  The output is deduplicated and is
+    safe to send to literal retrieval; unstructured prose is left to normal
+    hybrid search.
+    """
+    clean = _strip_context_prefix(text)
+    candidates: list[str] = []
+
+    # Quoted text is an explicit user selection irrespective of casing.
+    for match in re.finditer(r"[\"'«“]([^\"'»”]{3,80})[\"'»”]", clean):
+        candidates.append(" ".join(match.group(1).split()))
+
+    noun_pattern = "|".join(re.escape(noun) for noun in _EXACT_SUBJECT_NOUNS)
+    for match in re.finditer(
+        rf"\b(?P<noun>{noun_pattern})\s+(?P<tail>[^?.!,;:\n]+)",
+        clean,
+        flags=re.IGNORECASE,
+    ):
+        tail = _subject_tail(match.group("tail"))
+        if tail:
+            candidates.append(f"{match.group('noun')} {tail}")
+
+    # "Que sabes de Ana Perez" and equivalent queries often omit an entity
+    # noun.  A two-or-more-word capitalised sequence is still an explicit
+    # enough subject to require literal grounding.
+    for match in re.finditer(
+        r"(?<!\w)([A-ZÀ-ÖØ-Þ][\w'’-]+(?:\s+[A-ZÀ-ÖØ-Þ][\w'’-]+){1,3})(?!\w)",
+        clean,
+    ):
+        phrase = " ".join(match.group(1).split())
+        if _normalize(phrase.split()[0]) not in _SUBJECT_STOP_WORDS:
+            candidates.append(phrase)
+
+    # A one-word subject may legitimately be lower case (for example "que
+    # sabes de anibal").  Restrict this form to explicit knowledge questions
+    # so ordinary phrases such as "facturas de julio" stay semantic.
+    for match in re.finditer(
+        r"\b(?:que|qué)\s+sabes\s+(?:de|del|sobre)\s+([^?.!,;:\n]+)",
+        clean,
+        flags=re.IGNORECASE,
+    ):
+        subject = _subject_tail(match.group(1))
+        if subject and len(subject) >= 3:
+            candidates.append(subject)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = " ".join(candidate.split())
+        key = normalized.casefold()
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(normalized)
+
+    # Prefer the most specific phrase when a capitalised-name rule found a
+    # suffix of an already captured entity (``ACME Iberia`` inside
+    # ``proveedor ACME Iberia``).
+    return [
+        candidate
+        for candidate in unique
+        if not any(
+            candidate.casefold() != other.casefold()
+            and other.casefold().endswith(" " + candidate.casefold())
+            for other in unique
+        )
+    ]
 
 
 def _extract_reference(text: str) -> str | None:

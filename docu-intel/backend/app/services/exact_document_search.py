@@ -120,7 +120,7 @@ def _contains_exact_number(text: str | None, normalized: str) -> bool:
     return re.search(rf"(?<!\d)0*{separated_digits}(?!\d)", text) is not None
 
 
-def _contains_exact_phrase(text: str | None, phrase: str) -> bool:
+def matches_exact_phrase(text: str | None, phrase: str) -> bool:
     """Return whether a normalized literal phrase occurs in ``text``.
 
     This is intentionally lexical, not fuzzy: a query for ``Hostal Anibal``
@@ -266,7 +266,7 @@ def search_exact_phrase(
         )
     ).all()
     for entity, document in entity_rows:
-        if _contains_exact_phrase(entity.entity_value, phrase):
+        if matches_exact_phrase(entity.entity_value, phrase):
             candidates.append(("entity", document, entity.page_number))
 
     document_rows = db.execute(
@@ -284,7 +284,7 @@ def search_exact_phrase(
         )
     ).scalars().all()
     for document in document_rows:
-        if _contains_exact_phrase(document.original_filename, phrase) or _contains_exact_phrase(
+        if matches_exact_phrase(document.original_filename, phrase) or matches_exact_phrase(
             document.source_path, phrase
         ):
             candidates.append(("filename", document, None))
@@ -306,7 +306,7 @@ def search_exact_phrase(
             )
         ).all()
         for value, document in rows:
-            if _contains_exact_phrase(getattr(value, column_name), phrase):
+            if matches_exact_phrase(getattr(value, column_name), phrase):
                 candidates.append((matched_in, document, getattr(value, "page_number", None)))
 
     results: list[ExactMatch] = []
