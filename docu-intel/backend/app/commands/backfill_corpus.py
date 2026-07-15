@@ -28,7 +28,7 @@ from app.core.config import settings
 from app.database.session import SessionLocal
 from app.models.document import Document
 from app.models.project import DocumentOccurrence
-from app.services.document_registration_service import _create_occurrence
+from app.services.document_registration_service import _create_occurrence, _occurrence_source_root
 from app.services.file_storage import calculate_sha256
 from app.services.project_path_resolver import resolve_corpus_path
 
@@ -171,9 +171,10 @@ def run_backfill(
 
                 if db:
                     with db.begin_nested():
+                        occurrence_root = _occurrence_source_root(source_path)
                         existing_occurrence = db.scalar(
                             select(DocumentOccurrence).where(
-                                DocumentOccurrence.source_root == source_root,
+                                DocumentOccurrence.source_root == occurrence_root,
                                 DocumentOccurrence.source_path == source_path,
                             )
                         )

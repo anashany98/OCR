@@ -112,6 +112,38 @@ def test_admin_ocr_review_lists_pages_below_confidence_threshold():
     assert payload[0]["preview_url"] == f"/documents/{document.id}/pages/1/image"
 
 
+def test_admin_ocr_review_excludes_decorative_or_native_pages():
+    client, sessions = _test_client()
+    with sessions() as db:
+        token = _seed_admin(db)
+        document = _seed_document_with_pages(db)
+        db.add_all(
+            [
+                DocumentPage(
+                    document_id=document.id,
+                    page_number=3,
+                    text="Logotipo del proveedor",
+                    image_path="pages/logo.png",
+                    ocr_confidence=0.10,
+                    ocr_content_kind="decorative",
+                ),
+                DocumentPage(
+                    document_id=document.id,
+                    page_number=4,
+                    text="Texto de un PDF digital",
+                    ocr_confidence=0.10,
+                    ocr_content_kind="native_text",
+                ),
+            ]
+        )
+        db.commit()
+
+    response = client.get("/admin/ocr-review?max_confidence=0.70", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert [item["page_number"] for item in response.json()] == [1]
+
+
 def test_document_page_image_endpoint_serves_page_preview_from_files_dir(tmp_path: Path, monkeypatch):
     client, sessions = _test_client()
     monkeypatch.setattr(settings, "files_dir", tmp_path)

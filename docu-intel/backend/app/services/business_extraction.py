@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 
@@ -365,6 +365,7 @@ def persist_business_extraction(
                 needs_review=True,
                 review_reasons=["sin_extraccion"],
             )
+        extraction = _supplement_budget_number_from_context(db, document, extraction)
         budget = Budget(
             document_id=document.id,
             budget_number=extraction.budget_number,
@@ -782,6 +783,41 @@ def _find_related_order_id(db: Session, extraction: InvoiceExtraction) -> int | 
 def _budget_needs_review(extraction: BudgetExtraction) -> bool:
     return (
         extraction.confidence < 0.65 or not extraction.budget_number or not extraction.total_amount
+    )
+
+
+def _supplement_budget_number_from_context(
+    db: Session,
+    document: Document,
+    extraction: BudgetExtraction,
+) -> BudgetExtraction:
+    """Use verified folder identity only when the document has no number.
+
+    A budget folder is a separate, auditable source of evidence recorded on
+    ``DocumentOccurrence``.  It can safely fill a missing *contextual* budget
+    number, but never overrides a number extracted from the document body or a
+    conflicting association.
+    """
+    if extraction.budget_number:
+        return extraction
+    from app.models.project import DocumentOccurrence
+
+    budget_code = db.scalar(
+        select(DocumentOccurrence.resolved_budget_code)
+        .where(DocumentOccurrence.document_id == document.id)
+        .where(DocumentOccurrence.association_status.in_(("verified", "folder_only", "content_only")))
+        .where(DocumentOccurrence.resolved_budget_code.is_not(None))
+        .order_by(DocumentOccurrence.id)
+        .limit(1)
+    )
+    if not budget_code:
+        return extraction
+    # The folder is strong relationship evidence, but not an OCR assertion.
+    # Keep confidence conservative so missing totals/lines still surface.
+    return replace(
+        extraction,
+        budget_number=budget_code,
+        confidence=min(extraction.confidence, 0.75),
     )
 
 

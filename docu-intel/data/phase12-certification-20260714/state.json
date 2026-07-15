@@ -1,0 +1,26 @@
+﻿{
+    "updated_at":  "2026-07-14T06:42:20.1855335Z",
+    "run_id":  "terra-cert-20260714T064006Z",
+    "stages":  {
+                   "backend-suite":  {
+                                         "status":  "failed",
+                                         "error":  "python exited with 1",
+                                         "ended_at":  "2026-07-14T06:42:20.1855335Z",
+                                         "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\phase12-certification-20260714\\backend-suite.log",
+                                         "started_at":  "2026-07-14T06:40:54.5206225Z"
+                                     },
+                   "tenant-isolation":  {
+                                            "status":  "passed",
+                                            "ended_at":  "2026-07-14T06:40:54.1250683Z",
+                                            "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\phase12-certification-20260714\\tenant-isolation.log",
+                                            "started_at":  "2026-07-14T06:40:27.4967795Z"
+                                        },
+                   "baseline":  {
+                                    "status":  "passed",
+                                    "ended_at":  "2026-07-14T06:40:27.4947756Z",
+                                    "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\phase12-certification-20260714\\baseline.log",
+                                    "started_at":  "2026-07-14T06:40:06.5872295Z"
+                                }
+               },
+    "started_at":  "2026-07-14T06:40:06.5719841Z"
+}

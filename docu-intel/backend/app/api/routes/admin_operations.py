@@ -37,6 +37,7 @@ from app.schemas.admin import (
 from app.services.audit import write_audit
 from app.services.document_service import reprocess_document
 from app.services.maintenance import build_operations_overview, build_operations_status
+from app.services.ocr_page_roles import ocr_applicable_clause
 from app.services.production_readiness import storage_integrity
 from app.services.queue_control import (
     build_queue_control_status,
@@ -233,6 +234,7 @@ def work_inbox(
         select(DocumentPage, Document)
         .join(Document, Document.id == DocumentPage.document_id)
         .where(Document.deleted_at.is_(None))
+        .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
         .where(DocumentPage.ocr_confidence.is_not(None))
         .where(DocumentPage.ocr_confidence < max_ocr_confidence)
         .where(DocumentPage.review_status != "approved")
@@ -405,6 +407,7 @@ def _work_inbox_counts(
         select(DocumentPage.id, Document.id)
         .join(Document, Document.id == DocumentPage.document_id)
         .where(Document.deleted_at.is_(None))
+        .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
         .where(DocumentPage.ocr_confidence.is_not(None))
         .where(DocumentPage.ocr_confidence < max_ocr_confidence)
         .where(DocumentPage.review_status != "approved")
@@ -528,6 +531,7 @@ def work_inbox_action(
                 .join(Document, Document.id == DocumentPage.document_id)
                 .where(Document.deleted_at.is_(None))
                 .where(Document.status == "processed")
+                .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
                 .where(DocumentPage.ocr_confidence.is_not(None))
                 .where(DocumentPage.ocr_confidence >= payload.min_confidence)
                 .where(DocumentPage.review_status != "approved")

@@ -7,10 +7,7 @@ detection rules.
 """
 from __future__ import annotations
 
-import pytest
-
 from app.services.plan_extraction import extract_plan_phase
-
 
 # ---------------------------------------------------------------------------
 # Phase detection
@@ -70,6 +67,12 @@ def test_extract_plan_phase_handles_empty_text():
     phase, revision = extract_plan_phase("")
     assert phase is None
     assert revision is None
+
+
+def test_extract_plan_phase_does_not_turn_a_long_ocr_sentence_into_a_phase():
+    text = "DETALLE DEL CABEZAL CON MEDIDAS " + "DE 110 CM Y OTRAS CIFRAS " * 8
+    phase, _ = extract_plan_phase(text)
+    assert phase is None
 
 
 # ---------------------------------------------------------------------------

@@ -596,10 +596,14 @@ def classify_document(
     learned_rules: Iterable[LearnedRule] | None = None,
     content_route: str | None = None,  # --- NUEVO ---
 ) -> ClassificationResult:
-    normalized_filename = _normalize(filename)
+    # Uploads retain their source hierarchy in ``filename`` for provenance.
+    # A parent ``Presupuesto ...`` directory is context, not an explicit
+    # declaration that every JPG/XLSX inside it is itself a quote.
+    logical_filename = PurePosixPath(filename.replace("\\", "/")).name
+    normalized_filename = _normalize(logical_filename)
     normalized_path = _normalize(source_path or "")
     normalized_text = _normalize(text)
-    extension = PurePosixPath(filename.lower()).suffix
+    extension = PurePosixPath(logical_filename.lower()).suffix
     is_image = extension in IMAGE_EXTENSIONS
 
     scores: dict[str, float] = {}

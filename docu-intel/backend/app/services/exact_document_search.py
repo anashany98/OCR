@@ -284,10 +284,14 @@ def search_exact_phrase(
         )
     ).scalars().all()
     for document in document_rows:
-        if matches_exact_phrase(document.original_filename, phrase) or matches_exact_phrase(
-            document.source_path, phrase
-        ):
+        if matches_exact_phrase(document.original_filename, phrase):
             candidates.append(("filename", document, None))
+        elif matches_exact_phrase(document.source_path, phrase):
+            # A folder match is useful for project-wide questions, but it is
+            # weaker evidence than text in the document itself. Keep the
+            # provenance explicit so callers can rank it last and avoid
+            # answering from an arbitrary file in the folder.
+            candidates.append(("source_path", document, None))
 
     for matched_in, model, column_name in (
         ("page_text", DocumentPage, "text"),
@@ -311,7 +315,14 @@ def search_exact_phrase(
 
     results: list[ExactMatch] = []
     seen_doc_ids: set[int] = set()
-    priority = {"entity": 0, "filename": 1, "page_text": 2, "block_text": 3, "chunk_text": 4}
+    priority = {
+        "entity": 0,
+        "page_text": 1,
+        "block_text": 2,
+        "chunk_text": 3,
+        "filename": 4,
+        "source_path": 5,
+    }
     for matched_in, document, page_number in sorted(candidates, key=lambda item: priority[item[0]]):
         if document.id in seen_doc_ids:
             continue

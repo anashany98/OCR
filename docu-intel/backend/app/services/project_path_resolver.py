@@ -89,11 +89,19 @@ def resolve_corpus_path(path: str, source_root: str = "") -> PathResolution:
             except ValueError:
                 continue
 
-    if year_idx is None:
-        # No year found; try to find Presupuesto directly
-        remaining = segments
-    else:
-        remaining = segments[year_idx + 1:]
+    # No year means the hierarchy starts directly with the brand.
+    remaining = segments if year_idx is None else segments[year_idx + 1:]
+
+    # Uploaded folder trees are namespaced as ``upload/<user-id>/...``.
+    # They are not part of the immutable corpus, but the hierarchy is still
+    # explicit user-provided context after path sanitisation.  Remove only the
+    # transport namespace so ``upload/7/Marca/Hotel/Presupuesto 123`` resolves
+    # exactly like the corresponding corpus path.  A non-numeric second part
+    # is a brand, not a user id, and is therefore kept.
+    if remaining and remaining[0].lower() == "upload":
+        remaining = remaining[1:]
+        if remaining and remaining[0].isdigit():
+            remaining = remaining[1:]
 
     if not remaining:
         return PathResolution(

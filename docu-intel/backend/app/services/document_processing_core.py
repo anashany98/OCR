@@ -35,7 +35,12 @@ from app.services.metrics import (
     track_page_processed,
     track_stage_duration,
 )
-from app.services.ocr_decision import decide_ocr_result
+from app.services.ocr_decision import OCRDecision, decide_ocr_result, text_quality
+from app.services.ocr_page_roles import (
+    infer_ocr_content_kind,
+    is_ocr_applicable,
+    ocr_applicable_clause,
+)
 from app.services.plan_extraction import persist_plan_extraction
 from app.services.quality import evaluate_document_quality, update_document_quality
 from app.services.tenant_access import apply_folder_rules_to_document
@@ -112,21 +117,7 @@ class _LazyOCREngine:
 
     def _load(self):
         if self._engine is None:
-            engine_factory = _get_effective_ocr_engine_class()
-            # The public document_service facade deliberately exposes this
-            # hook for integration tests and controlled deployments. Honour
-            # an explicit override before taking the normal singleton path.
-            if engine_factory is not get_ocr_engine_class:
-                candidate = engine_factory()
-                self._engine = candidate() if isinstance(candidate, type) else candidate
-                return self._engine
-            # Use get_ocr_engine() which returns the singleton
-            # (already instantiated by preload_ocr_engine during worker boot).
-            # The old code called get_ocr_engine_class()() which broke
-            # for cascading mode because get_cascading_engine is a function,
-            # not a class.
-            from app.ocr.factory import get_ocr_engine
-            self._engine = get_ocr_engine()
+            self._engine = _instantiate_effective_ocr_engine()
             if self._current_language is not None:
                 with contextlib.suppress(Exception):
                     self._engine.current_language = self._current_language
@@ -154,6 +145,30 @@ def _get_effective_ocr_engine_class():
     if facade is not None:
         return getattr(facade, "get_ocr_engine_class", get_ocr_engine_class)
     return get_ocr_engine_class
+
+
+def _instantiate_effective_ocr_engine():
+    """Return an OCR object, never the factory function itself.
+
+    In cascading mode the legacy factory may return ``get_cascading_engine``
+    (a callable singleton provider) rather than an engine class.  Calling the
+    factory only once left that function in the page-reprocess path and caused
+    ``'function' object has no attribute 'extract'``.  Explicit test/deploy
+    overrides may return either an instance, a class, or a zero-argument
+    provider, so normalise all three forms at this boundary.
+    """
+    engine_factory = _get_effective_ocr_engine_class()
+    if engine_factory is get_ocr_engine_class:
+        from app.ocr.factory import get_ocr_engine
+
+        engine = get_ocr_engine()
+    else:
+        engine = engine_factory()
+        if isinstance(engine, type) or callable(engine) and not hasattr(engine, "extract"):
+            engine = engine()
+    if not hasattr(engine, "extract") or not callable(engine.extract):
+        raise TypeError("OCR factory did not return an engine implementing extract(path)")
+    return engine
 
 
 def _facade_attr(name: str, fallback):
@@ -292,7 +307,13 @@ def mode_requires_file_parse(mode_or_job_type: str | None) -> bool:
     return processing_mode_from_job_type(mode_or_job_type) in {"full", "ocr"}
 
 
-def _page_status_from_confidence(ocr_confidence: float | None) -> str:
+def _page_status_from_confidence(
+    ocr_confidence: float | None,
+    *,
+    ocr_content_kind: str | None = None,
+) -> str:
+    if not is_ocr_applicable(ocr_content_kind):
+        return "processed"
     if ocr_confidence is None:
         return "processed"
     if ocr_confidence < settings.low_ocr_confidence_threshold:
@@ -307,20 +328,27 @@ def _record_ocr_attempt(
     result: OCRResult,
     route: str | None,
     selected: bool = True,
-) -> None:
+    decision: OCRDecision | None = None,
+) -> OCRDecision:
     """Persist the selected candidate as durable OCR evidence.
 
     Parsers currently expose the winning result only.  Recording that result
     here still gives every old and new page a uniform audit trail; cascades can
     add their intermediate candidates later without changing this contract.
     """
-    decision = decide_ocr_result(result)
-    page.ocr_calibrated_confidence = decision.calibrated_confidence
-    page.ocr_decision = decision.decision
-    page.ocr_decision_reasons_json = decision.reasons
-    page.page_status = _page_status_from_confidence(decision.calibrated_confidence)
-    if decision.decision == "review_required":
-        page.review_status = "pending"
+    decision = decision or decide_ocr_result(result)
+    if selected:
+        page.ocr_calibrated_confidence = decision.calibrated_confidence
+        page.ocr_decision = decision.decision
+        page.ocr_decision_reasons_json = decision.reasons
+        page.page_status = _page_status_from_confidence(
+            decision.calibrated_confidence,
+            ocr_content_kind=page.ocr_content_kind,
+        )
+        if decision.decision == "review_required":
+            page.review_status = "pending"
+    attempt_decision = decision.decision if selected else "superseded"
+    attempt_reasons = decision.reasons if selected else [*decision.reasons, "preserved_better_existing"]
     db.add(
         OcrAttempt(
             page_id=page.id,
@@ -332,11 +360,45 @@ def _record_ocr_attempt(
             raw_confidence=result.confidence,
             calibrated_confidence=decision.calibrated_confidence,
             quality_score=decision.quality_score,
-            decision=decision.decision,
-            decision_reasons_json=decision.reasons,
+            decision=attempt_decision,
+            decision_reasons_json=attempt_reasons,
             selected=selected,
         )
     )
+    return decision
+
+
+def _mark_non_ocr_page(page: DocumentPage, *, content_kind: str) -> None:
+    """Persist searchable non-OCR content without assigning a fake score."""
+    page.ocr_content_kind = content_kind
+    page.ocr_confidence = None
+    page.ocr_calibrated_confidence = None
+    page.ocr_decision = "not_applicable"
+    page.ocr_decision_reasons_json = ["content_not_applicable", content_kind]
+    page.page_status = "processed"
+    for attempt in page.ocr_attempts:
+        attempt.selected = False
+
+
+def _should_select_ocr_candidate(
+    page: DocumentPage,
+    candidate: OCRResult,
+    decision: OCRDecision,
+) -> bool:
+    """Keep a previously selected result unless the new one is at least as good.
+
+    Reprocessing is an experiment, not permission to overwrite better text.
+    The comparison uses the calibrated confidence and deterministic text
+    quality, so raw scores from heterogeneous engines are never compared
+    directly.
+    """
+    if not is_ocr_applicable(page.ocr_content_kind):
+        return True
+    if page.ocr_calibrated_confidence is None or not (page.text or "").strip():
+        return True
+    current_score = float(page.ocr_calibrated_confidence) * 0.75 + text_quality(page.text) * 0.25
+    candidate_score = decision.calibrated_confidence * 0.75 + text_quality(candidate.text) * 0.25
+    return candidate_score >= current_score
 
 
 def _load_existing_page_texts(db: Session, document_id: int) -> list[tuple[int, str | None]]:
@@ -355,6 +417,7 @@ def _load_low_ocr_confidences(db: Session, document_id: int) -> list[float]:
             .join(Document, Document.id == DocumentPage.document_id)
             .where(DocumentPage.document_id == document_id)
             .where(Document.deleted_at.is_(None))
+            .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
             .where(DocumentPage.ocr_confidence.is_not(None))
             .where(DocumentPage.ocr_confidence < settings.low_ocr_confidence_threshold)
         ).all()
@@ -608,7 +671,6 @@ def _process_full_parse(db: Session, document: Document) -> bool:
 
     t_persist = time.perf_counter()
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
-    db.execute(delete(DocumentBlock).where(DocumentBlock.document_id == document.id))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document.id))
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     # Keep page rows stable across full reprocessing so their OCR attempt
@@ -628,19 +690,9 @@ def _process_full_parse(db: Session, document: Document) -> bool:
         if page is None:
             page = DocumentPage(document_id=document.id, page_number=extracted_page.page_number)
             db.add(page)
-        else:
-            for attempt in page.ocr_attempts:
-                attempt.selected = False
         page.width = extracted_page.width
         page.height = extracted_page.height
-        page.text = extracted_page.text
         page.image_path = _relative_to_files(extracted_page.image_path)
-        page.page_status = _page_status_from_confidence(extracted_page.ocr_confidence)
-        page.ocr_confidence = extracted_page.ocr_confidence
-        page.ocr_engine = extracted_page.ocr_engine
-        page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
-        page.ocr_engine_version = settings.current_ocr_engine_version
-        page.attempts = (page.attempts or 0) + 1
         # Per-page OCR timing. The PDF parser attaches this to the
         # ExtractedPage (set in _process_scanned_page); the image
         # parser and reprocess path also set it. Defaults to None
@@ -668,38 +720,81 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             attempts=1 if extracted_page.ocr_confidence is not None else 0,
         )
         db.flush()
-        _record_ocr_attempt(
-            db,
-            page=page,
-            result=OCRResult(
+        content_kind = infer_ocr_content_kind(
+            current_kind=extracted_page.ocr_content_kind,
+            ocr_engine=extracted_page.ocr_engine,
+            image_path=page.image_path,
+            text=extracted_page.text,
+            block_engines=(block.source_engine for block in extracted_page.blocks),
+        )
+        replaces_page_content = True
+        if not is_ocr_applicable(content_kind):
+            page.text = extracted_page.text
+            page.ocr_engine = extracted_page.ocr_engine
+            page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
+            _mark_non_ocr_page(page, content_kind=content_kind)
+        else:
+            candidate = OCRResult(
                 text=extracted_page.text,
                 confidence=extracted_page.ocr_confidence,
                 blocks=[],
                 engine=extracted_page.ocr_engine or "unknown",
-            ),
-            route=getattr(extracted, "route", None),
-        )
-        for extracted_block in extracted_page.blocks:
-            bbox = extracted_block.bbox or (None, None, None, None)
-            block = DocumentBlock(
-                document_id=document.id,
-                page_id=page.id,
-                page_number=extracted_block.page_number,
-                block_type=_normalise_document_block_type(extracted_block.block_type),
-                text=extracted_block.text,
-                bbox_x1=bbox[0],
-                bbox_y1=bbox[1],
-                bbox_x2=bbox[2],
-                bbox_y2=bbox[3],
-                confidence=extracted_block.confidence,
-                source_engine=extracted_block.source_engine,
+                content_kind=content_kind,
+                route=getattr(extracted, "route", None),
             )
-            db.add(block)
-            # P0.1: track per-page processing
-            track_page_processed(
-                route=getattr(extracted, "route", "unknown") or "unknown",
-                engine=extracted_block.source_engine or "none",
+            candidate_decision = decide_ocr_result(candidate)
+            replaces_page_content = _should_select_ocr_candidate(page, candidate, candidate_decision)
+            page.attempts = (page.attempts or 0) + 1
+            if replaces_page_content:
+                for attempt in page.ocr_attempts:
+                    attempt.selected = False
+                page.text = extracted_page.text
+                page.ocr_confidence = extracted_page.ocr_confidence
+                page.ocr_engine = extracted_page.ocr_engine
+                page.ocr_content_kind = content_kind
+                page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
+                page.ocr_engine_version = settings.current_ocr_engine_version
+            _record_ocr_attempt(
+                db,
+                page=page,
+                result=candidate,
+                route=getattr(extracted, "route", None),
+                selected=replaces_page_content,
+                decision=candidate_decision,
             )
+            if not replaces_page_content:
+                extracted_page.text = page.text or ""
+                extracted_page.ocr_confidence = page.ocr_confidence
+                extracted_page.ocr_engine = page.ocr_engine
+                extracted_page.ocr_content_kind = page.ocr_content_kind
+
+        if replaces_page_content:
+            db.execute(
+                delete(DocumentBlock)
+                .where(DocumentBlock.document_id == document.id)
+                .where(DocumentBlock.page_number == page.page_number)
+            )
+            for extracted_block in extracted_page.blocks:
+                bbox = extracted_block.bbox or (None, None, None, None)
+                db.add(
+                    DocumentBlock(
+                        document_id=document.id,
+                        page_id=page.id,
+                        page_number=extracted_block.page_number,
+                        block_type=_normalise_document_block_type(extracted_block.block_type),
+                        text=extracted_block.text,
+                        bbox_x1=bbox[0],
+                        bbox_y1=bbox[1],
+                        bbox_x2=bbox[2],
+                        bbox_y2=bbox[3],
+                        confidence=extracted_block.confidence,
+                        source_engine=extracted_block.source_engine,
+                    )
+                )
+                track_page_processed(
+                    route=getattr(extracted, "route", "unknown") or "unknown",
+                    engine=extracted_block.source_engine or "none",
+                )
     for page_number, page in existing_pages.items():
         if page_number not in seen_page_numbers:
             db.delete(page)
@@ -714,15 +809,28 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     db.commit()
     cache_service.invalidate_search_cache()
 
-    page_texts_list = [(page.page_number, page.text) for page in extracted.pages]
+    persisted_pages = list(
+        db.scalars(
+            select(DocumentPage)
+            .where(DocumentPage.document_id == document.id)
+            .order_by(DocumentPage.page_number)
+        ).all()
+    )
+    page_texts_list = [(page.page_number, page.text) for page in persisted_pages]
     t_classify = time.perf_counter()
     needs_review = _apply_classification_and_extraction(
         db,
         document,
-        text=extracted.text,
-        page_count=len(extracted.pages),
-        low_ocr_confidences=[page.ocr_confidence for page in extracted.pages if page.ocr_confidence is not None and page.ocr_confidence < settings.low_ocr_confidence_threshold],
-        pages=extracted.pages,
+        text=_full_text_from_page_texts(page_texts_list),
+        page_count=len(persisted_pages),
+        low_ocr_confidences=[
+            page.ocr_confidence
+            for page in persisted_pages
+            if is_ocr_applicable(page.ocr_content_kind)
+            and page.ocr_confidence is not None
+            and page.ocr_confidence < settings.low_ocr_confidence_threshold
+        ],
+        pages=persisted_pages,
     )
     track_stage_duration("classification", time.perf_counter() - t_classify)
 
@@ -821,9 +929,7 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
     db.flush()
     try:
         page_path = _resolve_files_dir_path(page.image_path)
-        engine_factory = _get_effective_ocr_engine_class()
-        candidate = engine_factory()
-        engine = candidate() if isinstance(candidate, type) else candidate
+        engine = _instantiate_effective_ocr_engine()
         ocr = engine.extract(page_path)
     except Exception as exc:
         page.page_status = "failed"
@@ -833,23 +939,47 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
         return _process_classification_only(db, document)
 
     actual_engine = ocr.engine or engine.name
-    page.text = sanitize_text_for_database(ocr.text)
-    page.ocr_confidence = ocr.confidence
-    page.ocr_engine = actual_engine
-    page.processing_time_ms = int((time.perf_counter() - started) * 1000)
-    page.review_status = "pending"
-    page.review_notes = None
-    page.reviewed_at = None
-    page.reviewed_by_id = None
-    _record_ocr_attempt(db, page=page, result=ocr, route="manual_reprocess")
-
-    db.execute(
-        delete(DocumentBlock)
-        .where(DocumentBlock.document_id == document.id)
-        .where(DocumentBlock.page_number == page_number)
+    ocr.text = sanitize_text_for_database(ocr.text)
+    ocr.engine = actual_engine
+    content_kind = infer_ocr_content_kind(
+        current_kind=ocr.content_kind,
+        ocr_engine=actual_engine,
+        image_path=page.image_path,
+        text=ocr.text,
+        block_engines=(),
     )
-    db.flush()
-    for block_payload in ocr.blocks:
+    candidate_decision = decide_ocr_result(ocr)
+    replaces_page_content = _should_select_ocr_candidate(page, ocr, candidate_decision)
+    if replaces_page_content:
+        for attempt in page.ocr_attempts:
+            attempt.selected = False
+        page.text = ocr.text
+        page.ocr_confidence = ocr.confidence
+        page.ocr_engine = actual_engine
+        page.ocr_content_kind = content_kind
+        page.processing_time_ms = int((time.perf_counter() - started) * 1000)
+        page.ocr_engine_version = settings.current_ocr_engine_version
+        page.review_status = "pending"
+        page.review_notes = None
+        page.reviewed_at = None
+        page.reviewed_by_id = None
+    _record_ocr_attempt(
+        db,
+        page=page,
+        result=ocr,
+        route="manual_reprocess",
+        selected=replaces_page_content,
+        decision=candidate_decision,
+    )
+
+    if replaces_page_content:
+        db.execute(
+            delete(DocumentBlock)
+            .where(DocumentBlock.document_id == document.id)
+            .where(DocumentBlock.page_number == page_number)
+        )
+        db.flush()
+    for block_payload in (ocr.blocks if replaces_page_content else []):
         bbox = block_payload.bbox or (None, None, None, None)
         db.add(
             DocumentBlock(
@@ -1047,7 +1177,15 @@ def _apply_classification_and_extraction(
     db.execute(delete(Plan).where(Plan.document_id == document.id))
     db.flush()
     plan_result = _get_effective_persist_plan_extraction()(db, document, text)
-    if document.document_type in {"plano", "memoria_descriptiva", "memoria_constructiva", "mediciones_obra"}:
+    if (
+        document.document_type.startswith("plano")
+        or document.document_type in {
+            "memoria_descriptiva",
+            "memoria_constructiva",
+            "medicion",
+            "mediciones_obra",
+        }
+    ):
         try:
             from app.services.technical_pipeline import process_technical_document
             technical_result = process_technical_document(

@@ -1,0 +1,22 @@
+﻿{
+    "stages":  {
+                   "backend-suite":  {
+                                         "status":  "passed",
+                                         "ended_at":  "2026-07-15T06:32:48.7912355Z",
+                                         "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-current\\backend-suite.log",
+                                         "started_at":  "2026-07-15T06:31:25.0584883Z"
+                                     },
+                   "tenant-isolation":  {
+                                            "status":  "passed",
+                                            "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-current\\tenant-isolation.log"
+                                        },
+                   "baseline":  {
+                                    "status":  "passed",
+                                    "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-current\\baseline.log"
+                                }
+               },
+    "updated_at":  "2026-07-15T06:32:49.3938680Z",
+    "started_at":  "2026-07-15T06:19:43.1777973Z",
+    "run_id":  "terra-cert-20260715T061943Z",
+    "completed_at":  "2026-07-15T06:32:49.3933435Z"
+}

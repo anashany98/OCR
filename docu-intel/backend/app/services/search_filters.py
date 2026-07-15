@@ -54,6 +54,7 @@ from sqlalchemy.sql import Select
 
 from app.core.config import settings
 from app.models import Document, DocumentChunk, DocumentPage
+from app.services.ocr_page_roles import ocr_meets_threshold_clause
 from app.models.project import DocumentOccurrence
 
 logger = logging.getLogger("app.services.search_filters")
@@ -296,8 +297,11 @@ def build_chunk_filter_clause(
             select(DocumentPage.document_id)
             .where(
                 DocumentPage.document_id == DocumentChunk.document_id,
-                DocumentPage.ocr_confidence.is_not(None),
-                DocumentPage.ocr_confidence >= threshold,
+                ocr_meets_threshold_clause(
+                    DocumentPage.ocr_content_kind,
+                    DocumentPage.ocr_confidence,
+                    threshold,
+                ),
             )
             .limit(1)
         )

@@ -294,3 +294,49 @@ frontend. No se ejecutó backfill real ni se modificó el corpus.
 
 Validación: 13 pruebas dirigidas, compilación backend, Ruff y build frontend.
 La base temporal se eliminó al terminar.
+
+### 2026-07-15 — reparación integral de datos, OCR y certificación
+
+- **OCR y extracción robustos:** `DocumentBlock` expone la geometría que
+  consume la extracción de tablas; el reintento OCR normaliza fábricas que
+  devuelven una función; las páginas PDF con texto nativo registran confianza
+  `1.0`; el cliente de visión reintenta terminaciones transitorias y aplica
+  circuito de protección.
+- **Identidad y datos de negocio:** las rutas `upload/<usuario>/...` se
+  resuelven con la misma identidad contextual que el corpus, sin confundir el
+  nombre temporal con el archivo lógico. Se repararon 32 occurrences de
+  documentos cargados y 6 presupuestos sin número con un código contextual
+  verificable. La clasificación ya no convierte una fotografía en presupuesto
+  solo por estar dentro de una carpeta con ese nombre; se revisaron 8 casos
+  heredados.
+- **Comunicaciones auditables:** la importación entiende encabezados y fechas
+  en español, adjuntos en lista y respuestas por `Message-ID`. Se
+  rematerializaron 8 correos fuente y se eliminaron 107 mensajes/hilos
+  heredados sin `document_id`, que no tenían adjuntos ni participantes y por
+  tanto no podían ser trazados a un documento.
+- **Planos, memorias y mediciones:** se persisten fase y revisión de plano;
+  `medicion` y `mediciones_obra` pasan por el mismo extractor idempotente de
+  capítulos/partidas. El backfill procesó 21 documentos técnicos; el detector
+  de fase ya no puede convertir una frase OCR extensa en un valor que haga
+  fallar la transacción.
+- **Recuperación y certificación:** los identificadores compuestos presentes
+  en rutas fuente dejan de ser rechazados como inventados. La certificación
+  usa Redis temporal sin contaminar `REDIS_URL`; las pruebas M3 ahora requieren
+  perfil y credenciales explícitos (`-RunLiveM3`) en vez de contraseñas
+  obsoletas embebidas.
+
+Validación: Ruff en los archivos modificados, `git diff --check`, 67 pruebas
+dirigidas de OCR, comunicaciones, reparadores, planos, medición, negocio y
+validación; certificación backend completa con baseline, aislamiento de tenant
+y suite backend en verde. Las pruebas M3 y las de OCR que requieren Tesseract se
+declaran omitidas cuando no existe su entorno explícito; no se consideran
+evidencia de un perfil GPU/M3.
+
+Actualización posterior: el selector de re-embedding ya no reintenta
+documentos sanos ni documentos OCR bajos cuando el presupuesto de re-OCR es
+cero. Se ejecutaron lotes acotados sobre el corpus real hasta dejar **0 chunks
+sin embedding** y **0 chunks marcados para re-embedding**; el único documento
+sin texto/chunks se cerró como `fully_processed`, no como pendiente eterno.
+Las 17 páginas de OCR bajo permanecen visibles para revisión o re-OCR explícito:
+el entorno tiene `REEMBED_REOCR_PER_TICK=0`, por lo que no se encoló OCR pesado
+de forma automática.

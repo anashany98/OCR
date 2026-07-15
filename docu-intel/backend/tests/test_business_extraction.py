@@ -497,6 +497,16 @@ def test_extract_lines_from_pages_falls_back_to_regex():
     assert lines[0].reference == "REF-001"
 
 
+def test_persisted_document_block_exposes_complete_bbox_only():
+    from app.models.document import DocumentBlock
+
+    complete = DocumentBlock(bbox_x1=1, bbox_y1=2, bbox_x2=3, bbox_y2=4)
+    incomplete = DocumentBlock(bbox_x1=1, bbox_y1=None, bbox_x2=3, bbox_y2=4)
+
+    assert complete.bbox == (1.0, 2.0, 3.0, 4.0)
+    assert incomplete.bbox is None
+
+
 def test_extract_lines_for_document_uses_layout_when_pages_passed():
     blocks = [
         ExtractedBlock("text", "REF", 1, bbox=(50, 100, 100, 120)),

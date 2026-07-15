@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.ocr.base import BaseOCREngine
 from app.parsers.image import parse_image
 from app.parsers.types import ExtractedDocument, ExtractedPage
+from app.services.ocr_page_roles import is_probably_decorative_embedded_media
 
 logger = logging.getLogger("app.parsers.embedded_images")
 
@@ -74,6 +75,16 @@ def extract_embedded_image_pages(
         page_number = first_page_number + len(extracted)
         page.page_number = page_number
         page.text = f"[Imagen incrustada: {image.filename}]\n{page.text}"
+        # Mail/Office files often carry logos, social icons and signatures as
+        # inline images.  Preserve their text for retrieval, but make their
+        # confidence non-applicable so they never become false low-OCR work.
+        if is_probably_decorative_embedded_media(
+            image_path=str(stored_image),
+            text=page.text,
+        ):
+            page.ocr_content_kind = "decorative"
+            page.ocr_confidence = None
+            page.ocr_engine = "decorative_media"
         for block in page.blocks:
             block.page_number = page_number
         extracted.append(page)

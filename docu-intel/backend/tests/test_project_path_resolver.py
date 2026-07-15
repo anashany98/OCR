@@ -71,6 +71,15 @@ class TestResolveCorpusPath:
         assert r.brand == "ACME"
         assert r.budget_code == "123"
 
+    def test_upload_namespace_does_not_become_brand_or_hotel(self):
+        r = resolve_corpus_path(
+            "upload/7/BLUEBAY-BELLEVUE(BELL)/BelleVue Club/Presupuesto 252621/PDF/f.pdf",
+            source_root="upload/7",
+        )
+        assert r.brand == "BLUEBAY-BELLEVUE(BELL)"
+        assert r.hotel == "BelleVue Club"
+        assert r.budget_code == "252621"
+
 
 class TestClassifyCategory:
     def test_excel_is_pedidos(self):

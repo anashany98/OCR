@@ -627,6 +627,48 @@ def select_tools_for_question(
             for identifier in literal_identifiers
         ]
 
+    # Visual follow-ups must stay inside the active document set and operate
+    # on image-backed pages, not on whichever OCR chunk mentions "imagen"
+    # first. With no active set, use the same visual-page route globally.
+    visual_hints = (
+        "imagen",
+        "imagenes",
+        "foto",
+        "fotos",
+        "visual",
+        "describe",
+        "describeme",
+        "que se ve",
+    )
+    if _contains_any(normalized, visual_hints):
+        last_document_ids = list(
+            getattr(active_context, "last_retrieved_document_ids", []) or []
+        )
+        if last_document_ids:
+            return [
+                ToolCall(
+                    "get_documents_by_ids",
+                    {
+                        "document_ids": last_document_ids[:12],
+                        "visual_only": True,
+                    },
+                )
+            ]
+        if exact_subjects:
+            return [
+                ToolCall(
+                    "find_documents_by_exact_phrase",
+                    {"phrase": phrase, "visual_only": True},
+                )
+                for phrase in exact_subjects
+            ]
+        return [
+            ToolCall(
+                "search_visual_documents",
+                {"query": routing_question, "limit": 12},
+            )
+        ]
+
     # Named subjects are not limited to one document type.  A person, client,
     # supplier, project, property or a quoted label must be found by its
     # literal spelling across the whole corpus before semantic similarity is
@@ -635,6 +677,58 @@ def select_tools_for_question(
         return [
             ToolCall("find_documents_by_exact_phrase", {"phrase": phrase})
             for phrase in exact_subjects
+        ]
+
+    # Conversation follow-up: when the previous turn retrieved several
+    # documents and the user now asks for a property (number, date, amount,
+    # supplier, invoice, details), search those documents directly before
+    # falling back to the whole corpus. This is what makes turns such as
+    # ``que presupuestos tiene ese hostal?`` -> ``necesito el numero`` stay
+    # on the same project instead of returning unrelated budgets.
+    last_document_ids = list(getattr(active_context, "last_retrieved_document_ids", []) or [])
+    followup_property_hints = (
+        "numero",
+        "nº",
+        "num",
+        "fecha",
+        "importe",
+        "precio",
+        "coste",
+        "total",
+        "detalle",
+        "detalles",
+        "presupuesto",
+        "pedido",
+        "factura",
+        "proveedor",
+        "cliente",
+        "pendiente",
+        "pagar",
+        "pago",
+        "linea",
+        "lineas",
+        "albaran",
+        "paga",
+        "pagado",
+        "factura que",
+        "que sabes",
+        "que mas",
+        "mas detalles",
+    )
+    global_followup_hints = ("todos", "global", "compara", "cada", "entre proyectos")
+    if (
+        last_document_ids
+        and _contains_any(normalized, followup_property_hints)
+        and not _contains_any(normalized, global_followup_hints)
+    ):
+        return [
+            ToolCall(
+                "get_documents_by_ids",
+                # Keep the bounded project set intact. Eight documents
+                # dropped the second Hostal Anibal budget folder from the
+                # follow-up state; twelve still keeps prompt growth bounded.
+                {"document_ids": last_document_ids[:12]},
+            )
         ]
 
     # A document-scoped follow-up without an extracted budget number must not

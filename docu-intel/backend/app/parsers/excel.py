@@ -147,6 +147,7 @@ def parse_excel(
             ExtractedPage(
                 page_number=index,
                 text=text,
+                ocr_content_kind="native_text",
                 blocks=[
                     ExtractedBlock(
                         block_type="table",

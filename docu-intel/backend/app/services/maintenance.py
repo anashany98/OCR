@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Document, DocumentPage, ExtractionJob, IngestionEvent, WatchedFile
+from app.services.ocr_page_roles import ocr_applicable_clause
 from app.services.queue_control import build_queue_control_status
 
 
@@ -80,6 +81,7 @@ def build_operations_overview(db: Session) -> dict:
             .select_from(DocumentPage)
             .join(Document, Document.id == DocumentPage.document_id)
             .where(Document.deleted_at.is_(None))
+            .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
             .where(DocumentPage.ocr_confidence.is_not(None))
             .where(DocumentPage.ocr_confidence < settings.low_ocr_confidence_threshold)
             .where(DocumentPage.review_status != "approved")

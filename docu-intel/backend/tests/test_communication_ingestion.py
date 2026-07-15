@@ -62,6 +62,94 @@ Hay un problema de instalación.
     assert len(db.scalars(select(CommunicationMessage)).all()) == 1
 
 
+def test_spanish_headers_join_replies_and_link_bulleted_attachments():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    brand = HotelChain(name="Marca")
+    db.add(brand)
+    db.flush()
+    project = Project(year=2026, brand_id=brand.id, name="Reforma")
+    attachment = Document(
+        original_filename="plano final.pdf",
+        file_hash="attachment-es",
+        source_path="/plano.pdf",
+    )
+    original = Document(
+        original_filename="mensaje-1.msg",
+        file_hash="email-es-1",
+        source_path="/mail-1.msg",
+        extension=".msg",
+    )
+    reply = Document(
+        original_filename="mensaje-2.msg",
+        file_hash="email-es-2",
+        source_path="/mail-2.msg",
+        extension=".msg",
+    )
+    db.add_all([project, attachment, original, reply])
+    db.flush()
+    for document in (attachment, original, reply):
+        db.add(
+            DocumentOccurrence(
+                document_id=document.id,
+                source_path=document.source_path,
+                source_root="/",
+                year=2026,
+                brand_id=brand.id,
+                project_id=project.id,
+                original_filename=document.original_filename,
+            )
+        )
+    db.flush()
+
+    materialize_communication(
+        db,
+        original,
+        text="""Asunto: Reforma cocina
+De: Ana <ana@example.test>
+Para: Obra <obra@example.test>
+Fecha: 13 de julio de 2026
+Message-ID: <mail-1@example.test>
+Adjuntos (1):
+- plano final.pdf
+
+Adjunto el plano.
+""",
+    )
+    materialize_communication(
+        db,
+        reply,
+        text="""Asunto: RE: Reforma cocina
+De: Obra <obra@example.test>
+Para: Ana <ana@example.test>
+Fecha: 14 de julio de 2026
+Message-ID: <mail-2@example.test>
+In-Reply-To: <mail-1@example.test>
+
+Recibido.
+""",
+    )
+    db.commit()
+
+    messages = list(
+        db.scalars(select(CommunicationMessage).order_by(CommunicationMessage.id)).all()
+    )
+    assert len(messages) == 2
+    assert {message.from_email for message in messages} == {
+        "ana@example.test",
+        "obra@example.test",
+    }
+    assert messages[0].sent_at is not None
+    assert messages[0].has_attachments is True
+    assert messages[0].thread_id == messages[1].thread_id
+    attachment_link = db.scalar(
+        select(AttachmentLink).where(AttachmentLink.message_id == messages[0].id)
+    )
+    assert attachment_link is not None
+    assert attachment_link.document_id == attachment.id
+
+
 def test_image_analysis_keeps_per_label_confidence(monkeypatch, tmp_path):
     from app.core.config import settings
     from app.services.image_analysis_service import analyze_image_document

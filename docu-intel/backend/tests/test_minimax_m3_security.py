@@ -50,8 +50,11 @@ def _backend_up() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    not _backend_up(),
-    reason="docu-intel backend not reachable; set M3_TEST_BASE_URL or start docker compose",
+    os.environ.get("M3_TEST_ENABLED", "").lower() not in {"1", "true", "yes"}
+    or not ADMIN_PASS
+    or not VIEWER_PASS
+    or not _backend_up(),
+    reason="M3 live profile is not enabled or lacks credentials/backend access",
 )
 
 

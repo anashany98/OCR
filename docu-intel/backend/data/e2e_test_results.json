@@ -1,0 +1,33 @@
+{
+  "tests": {
+    "path_resolution": {
+      "passed": 20,
+      "failed": 0,
+      "errors": []
+    },
+    "brand_hotel_detection": {
+      "passed": 4,
+      "failed": 0,
+      "errors": []
+    },
+    "sensitive_data_detection": {
+      "passed": 7,
+      "failed": 0,
+      "errors": []
+    },
+    "corpus_integrity": {
+      "passed": 0,
+      "failed": 1,
+      "errors": [
+        "Source corpus not found: \\app\\source\\2025"
+      ]
+    }
+  },
+  "total_passed": 31,
+  "total_failed": 2,
+  "total_errors": [
+    "database_entities: No module named 'psycopg'",
+    "Source corpus not found: \\app\\source\\2025"
+  ],
+  "duration_seconds": 0.03
+}

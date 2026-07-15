@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
@@ -29,6 +29,7 @@ from app.schemas.documents import DocumentRead
 from app.services.audit import write_audit
 from app.services.data_quality import quality_rules_payload, quality_summary, recalculate_quality
 from app.services.document_service import reprocess_document_page
+from app.services.ocr_page_roles import ocr_applicable_clause
 from app.services.quality import refresh_quality_from_existing_pages
 
 router = APIRouter(prefix="/admin")
@@ -118,8 +119,16 @@ def ocr_review(
         select(DocumentPage, Document)
         .join(Document, Document.id == DocumentPage.document_id)
         .where(Document.deleted_at.is_(None))
-        .where(DocumentPage.ocr_confidence.is_not(None))
-        .where(DocumentPage.ocr_confidence < max_confidence)
+        .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
+        .where(
+            or_(
+                and_(
+                    DocumentPage.ocr_confidence.is_not(None),
+                    DocumentPage.ocr_confidence < max_confidence,
+                ),
+                DocumentPage.ocr_decision == "review_required",
+            )
+        )
         .order_by(DocumentPage.ocr_confidence.asc(), Document.created_at.desc())
     )
     if review_status:

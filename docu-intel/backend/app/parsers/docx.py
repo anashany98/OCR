@@ -56,6 +56,7 @@ def parse_docx(
         ExtractedPage(
             page_number=1,
             text=text,
+            ocr_content_kind="native_text",
             blocks=[
                 ExtractedBlock(
                     block_type="text",

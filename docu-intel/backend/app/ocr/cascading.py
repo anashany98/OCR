@@ -368,7 +368,17 @@ class CascadingOCREngine:
         return None
 
     def _finalize(self, image_path: Path, tier: str, result: OCRResult) -> OCRResult:
-        if self.vlm_ocr is None or _quality(result) >= self.tier4_quality_threshold:
+        raw_confidence_is_low = (
+            result.confidence is not None
+            and result.confidence < settings.low_ocr_confidence_threshold
+        )
+        if (
+            self.vlm_ocr is None
+            or (
+                _quality(result) >= self.tier4_quality_threshold
+                and not raw_confidence_is_low
+            )
+        ):
             return self._record_winner(tier, result)
         # M1: Tier 4 was consulted because the best Tier 1-3 result
         # is below the configured quality threshold. Track this so the
@@ -395,7 +405,19 @@ class CascadingOCREngine:
             return self._try_tier4_fallback(image_path, best_prior, self.tier4_fallback)
         track_ocr_duration(time.perf_counter() - start)
 
-        if _quality(tier4_result) > _quality(best_prior) + TIER4_QUALITY_DELTA:
+        tier4_quality = _quality(tier4_result)
+        prior_quality = _quality(best_prior)
+        prior_raw_is_low = (
+            best_prior.confidence is not None
+            and best_prior.confidence < settings.low_ocr_confidence_threshold
+        )
+        # Engine confidences are not directly comparable.  For a weak
+        # classical pass (the usual handwriting case), a coherent vision
+        # transcript may replace it even without the normal large quality
+        # delta, but never if it is materially worse or empty.
+        if prior_raw_is_low and tier4_result.text and tier4_quality >= prior_quality - QUALITY_EPSILON:
+            return self._record_winner(self.vlm_ocr.name, tier4_result)
+        if tier4_quality > prior_quality + TIER4_QUALITY_DELTA:
             return self._record_winner(self.vlm_ocr.name, tier4_result)
         return None
 

@@ -116,3 +116,55 @@ def test_outside_corpus_root_never_creates_project_membership(tmp_path, monkeypa
     db.flush()
 
     assert _create_occurrence(db, doc, source, str(source)) is None
+
+
+def test_hierarchical_upload_creates_project_membership_without_fake_upload_brand(
+    tmp_path, monkeypatch
+):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    monkeypatch.setattr(settings, "source_corpus_dir", tmp_path / "2025")
+    staged = tmp_path / "temporary.pdf"
+    staged.write_bytes(b"test")
+    source_path = "upload/7/BLUEBAY/BelleVue Club/Presupuesto 252621/PDF/factura.pdf"
+    doc = Document(original_filename="factura.pdf", file_hash="upload-hash", source_path=source_path)
+    db.add(doc)
+    db.flush()
+
+    occurrence = _create_occurrence(db, doc, staged, source_path)
+
+    assert occurrence is not None
+    assert occurrence.year == 2025
+    assert occurrence.original_filename == "factura.pdf"
+    assert occurrence.project_id is not None
+    assert occurrence.brand.name == "BLUEBAY"
+    assert occurrence.hotel.name == "BelleVue Club"
+
+
+def test_upload_occurrence_repair_is_idempotent(tmp_path, monkeypatch):
+    from app.commands.repair_upload_occurrences import repair_upload_occurrences
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    monkeypatch.setattr(settings, "source_corpus_dir", tmp_path / "2025")
+    with sessions() as db:
+        db.add(
+            Document(
+                original_filename="factura.pdf",
+                file_hash="upload-repair",
+                source_path="upload/9/MARCA/Hotel/Presupuesto 252700/PDF/factura.pdf",
+            )
+        )
+        db.commit()
+
+    preview = repair_upload_occurrences(dry_run=True, session_factory=sessions)
+    first = repair_upload_occurrences(dry_run=False, session_factory=sessions)
+    second = repair_upload_occurrences(dry_run=False, session_factory=sessions)
+
+    with sessions() as db:
+        assert db.scalar(select(DocumentOccurrence.id)) is not None
+    assert preview["eligible"] == 1
+    assert first["created"] == 1
+    assert second["candidates"] == 0

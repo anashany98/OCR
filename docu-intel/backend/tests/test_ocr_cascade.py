@@ -211,6 +211,32 @@ def test_cascade_uses_tier4_vlm_when_prior_quality_is_low(tmp_path: Path):
     assert vlm.calls == 1
 
 
+def test_cascade_promotes_coherent_vision_text_when_classical_confidence_is_low(tmp_path: Path):
+    primary = _RecordingEngine(
+        "fake_primary",
+        _result("Texto manuscrito parcialmente legible " * 4, confidence=0.40, engine="tesseract"),
+    )
+    vision = _RecordingEngine(
+        "fake_vlm",
+        _result("Texto manuscrito transcrito con referencias y medidas claras " * 4, confidence=0.50, engine="dots_mocr"),
+    )
+    cascade = CascadingOCREngine(
+        primary=primary,
+        fallback=None,
+        min_chars=30,
+        min_confidence=0.70,
+        vlm_ocr=vision,
+        tier4_quality_threshold=0.62,
+    )
+    image = tmp_path / "manuscrito.png"
+    image.write_bytes(b"")
+
+    result = cascade.extract(image)
+
+    assert result.engine == "dots_mocr"
+    assert vision.calls == 1
+
+
 def test_quality_penalizes_long_symbol_noise():
     clean = _result("Factura 2026/154 total 123,45 euros", confidence=0.93, engine="tesseract")
     noisy = _result("%%%% !!!!! #### " * 80, confidence=0.41, engine="paddleocr")

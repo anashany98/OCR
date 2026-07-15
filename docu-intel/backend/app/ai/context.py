@@ -22,7 +22,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, replace
+from difflib import SequenceMatcher
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
@@ -141,6 +144,249 @@ def _search_result_matches_exact_subject(result: Any, subjects: list[str]) -> bo
         for subject in subjects
         for haystack in haystacks
     )
+
+
+def _search_result_matches_fuzzy_subject(result: Any, subjects: list[str]) -> bool:
+    """Match a named subject with a small, token-level typo tolerance.
+
+    This is only used after the literal route returned no hits. It requires
+    every meaningful subject token to be present exactly or within one small
+    edit-distance-like ratio, so ``hosal Anibal`` can recover ``HOSTAL
+    ANIBAL`` without turning ``Anidac`` into a false match.
+    """
+    haystacks = (
+        getattr(result, "original_filename", None),
+        getattr(result, "source_path", None),
+        getattr(result, "excerpt", None),
+        getattr(result, "full_text", None),
+    )
+    text = " ".join(str(value or "") for value in haystacks)
+    text_tokens = set(re.findall(r"[a-z0-9áéíóúüñ]+", _normalize(text)))
+    if not text_tokens:
+        return False
+    for subject in subjects:
+        subject_tokens = [
+            token
+            for token in re.findall(r"[a-z0-9áéíóúüñ]+", _normalize(subject))
+            if len(token) > 2
+        ]
+        if not subject_tokens:
+            continue
+        for token in subject_tokens:
+            if token in text_tokens:
+                continue
+            if not any(
+                abs(len(token) - len(candidate)) <= 1
+                and SequenceMatcher(None, token, candidate).ratio() >= 0.82
+                for candidate in text_tokens
+            ):
+                return False
+    return True
+
+
+def _find_fuzzy_subject_documents(
+    db: Session,
+    subjects: list[str],
+    *,
+    access_scope: AccessScope | None,
+    limit: int = 12,
+) -> list[tuple[Any, str | None, dict[str, Any]]]:
+    """Recover the corpus-wide subject set after a literal typo.
+
+    A semantic query is intentionally capped and can return only the two
+    most similar email chunks.  That is not enough for a follow-up such as
+    ``necesito el numero``: the budget email may be a lower-ranked document.
+    Use every exact subject token as a bounded lexical candidate source,
+    then apply the same token-level fuzzy guard to the complete document.
+    This keeps the typo tolerant without relaxing the ``Hostal Anibal`` vs
+    ``Hostal Anidac`` separation.
+    """
+    if not subjects or access_scope is None:
+        return []
+
+    from app.services.exact_document_search import search_exact_phrase
+
+    stop_words = {
+        "que", "sabes", "del", "de", "en", "para", "con", "este", "esta",
+        "ese", "esa", "presupuesto", "presupuestos", "documento", "documentos",
+    }
+    tokens: list[str] = []
+    for subject in subjects:
+        for token in re.findall(r"[a-z0-9áéíóúüñ]+", _normalize(subject)):
+            if len(token) > 2 and token not in stop_words and token not in tokens:
+                tokens.append(token)
+    if not tokens:
+        return []
+
+    priority = {
+        "entity": 0,
+        "page_text": 1,
+        "block_text": 2,
+        "chunk_text": 3,
+        "filename": 4,
+        "source_path": 5,
+    }
+    candidates: dict[int, Any] = {}
+    candidate_limit = max(limit * 3, 24)
+    for token in tokens:
+        for match in search_exact_phrase(
+            db,
+            phrase=token,
+            limit=candidate_limit,
+            access_scope=access_scope,
+        ):
+            previous = candidates.get(match.document_id)
+            if previous is None or priority.get(match.matched_in, 9) < priority.get(
+                previous.matched_in, 9
+            ):
+                candidates[match.document_id] = match
+
+    ordered = sorted(
+        candidates.values(),
+        key=lambda match: (priority.get(match.matched_in, 9), match.document_id),
+    )
+    recovered: list[tuple[Any, str | None, dict[str, Any]]] = []
+    for match in ordered:
+        details = internal.get_document_full_details(db, match.document_id)
+        if details is None:
+            continue
+        document_text = _fetch_full_document_text(db, match.document_id, None)
+        haystack = SimpleNamespace(
+            original_filename=match.original_filename,
+            source_path=match.source_path,
+            excerpt=(document_text or "") + "\n" + render_document_details(details),
+            full_text=document_text,
+        )
+        if not _search_result_matches_fuzzy_subject(haystack, subjects):
+            continue
+        recovered.append((match, document_text, details))
+        if len(recovered) >= limit:
+            break
+    return recovered
+
+
+def _collect_visual_context_items(
+    db: Session,
+    *,
+    document_ids: list[int] | None = None,
+    query: str = "",
+    access_scope: AccessScope | None,
+    limit: int = 12,
+) -> list[ContextItem]:
+    """Return image-backed pages, ranked for a visual question.
+
+    Searching the whole text index for ``imagenes`` is not enough: email
+    attachments contain several pages describing logos, payment receipts and
+    the actual furniture photographs.  The page's ``image_path`` and OCR
+    route are the authoritative visual signal, while the text is used only
+    for ranking and grounding.
+    """
+    from app.models import DocumentPage
+
+    stmt = (
+        select(DocumentPage, Document)
+        .join(Document, DocumentPage.document_id == Document.id)
+        .where(Document.deleted_at.is_(None))
+        .where(DocumentPage.image_path.is_not(None))
+        .order_by(DocumentPage.document_id.asc(), DocumentPage.page_number.asc())
+    )
+    requested_ids = list(dict.fromkeys(int(value) for value in (document_ids or [])))
+    if requested_ids:
+        stmt = stmt.where(DocumentPage.document_id.in_(requested_ids))
+    rows = db.execute(stmt.limit(max(limit * 12, 120))).all()
+    if access_scope:
+        allowed = filter_document_ids_for_scope(
+            db,
+            [document.id for _, document in rows],
+            access_scope,
+        )
+        rows = [(page, document) for page, document in rows if document.id in allowed]
+    if not rows:
+        return []
+
+    normalized_query = _normalize(query)
+    query_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9]+", normalized_query)
+        if len(token) > 2
+        and token
+        not in {
+            "describe", "describeme", "imagen", "imagenes", "foto", "fotos",
+            "visual", "que", "se", "ve", "las", "los", "del", "de", "la",
+            "el", "una", "uno", "hay", "puedes", "puedo", "dime",
+        }
+    }
+    visual_markers = (
+        "imagen muestra",
+        "descripcion visual",
+        "objetos detectados",
+        "cotas y medidas",
+        "imagen incrustada",
+        "cabecero",
+        "mueble",
+        "habitacion",
+        "albaran",
+        "presupuesto",
+    )
+    logo_markers = (
+        "logotipo de linkedin",
+        "logotipo de facebook",
+        "logotipo de instagram",
+        "logotipo oficial de linkedin",
+        "logotipo oficial de facebook",
+        "logotipo oficial de instagram",
+        "logotipo de la marca linkedin",
+        "logotipo de la marca facebook",
+        "logotipo de la marca instagram",
+        "logo de linkedin",
+        "logo de facebook",
+        "logo de instagram",
+    )
+    ranked: list[tuple[float, int, ContextItem]] = []
+    order_index = {document_id: index for index, document_id in enumerate(requested_ids)}
+    for page, document in rows:
+        text = (page.text or "").strip()
+        normalized_text = _normalize(text)
+        is_logo = any(marker in normalized_text for marker in logo_markers)
+        score = 0.68
+        if page.ocr_content_kind == "ocr":
+            score += 0.12
+        if page.ocr_engine == "vision":
+            score += 0.10
+        if any(marker in normalized_text for marker in visual_markers):
+            score += 0.08
+        if document.document_type in {"foto", "presupuesto", "medicion"}:
+            score += 0.05
+        if query_tokens:
+            haystack = f"{normalized_text} {_normalize(document.original_filename or '')} {_normalize(document.source_path or '')}"
+            overlap = len(query_tokens.intersection(set(re.findall(r"[a-z0-9]+", haystack))))
+            score += min(0.15, overlap * 0.05)
+        if is_logo:
+            score = 0.20
+        summary = text or "La página contiene una imagen, pero no hay texto OCR utilizable."
+        title = f"Imagen de la conversacion: {document.original_filename}, pagina {page.page_number}"
+        item = ContextItem(
+            title=title,
+            summary=clip_excerpt(summary, 2600),
+            document_id=document.id,
+            document_filename=document.original_filename,
+            page_number=page.page_number,
+            relevance_score=score,
+            excerpt=clip_excerpt(summary, 1200),
+            confidence=document.confidence,
+            ocr_confidence=page.ocr_confidence or page.ocr_calibrated_confidence,
+            source_path=(
+                document.source_path
+                if access_scope is not None and access_scope.is_admin
+                else None
+            ),
+        )
+        ranked.append((score, order_index.get(document.id, document.id), item))
+
+    ranked.sort(key=lambda entry: (-entry[0], entry[1], entry[2].page_number or 0))
+    non_logo = [entry for entry in ranked if entry[0] >= 0.4]
+    selected = non_logo if non_logo else ranked
+    return [entry[2] for entry in selected[:limit]]
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +599,7 @@ def collect_context(
                     search_exact_phrase(
                         db,
                         phrase=value,
-                        limit=5,
+                        limit=12,
                         access_scope=access_scope,
                     )
                     if value
@@ -363,6 +609,22 @@ def collect_context(
 
             if not matches:
                 warnings.append(f"No he encontrado documentos autorizados con {label}.")
+                # Preserve the exact-first selector contract while recovering
+                # common spelling mistakes. Appending the fallback here means
+                # existing callers/tests still see one deterministic exact
+                # tool, but the collector can continue with fuzzy evidence.
+                if tool.name == "find_documents_by_exact_phrase":
+                    tools.append(
+                        ToolCall(
+                            "hybrid_search",
+                            {
+                                "query": question,
+                                "filters": {"limit": 8},
+                                "fallback_if_exact_miss": True,
+                                "allow_fuzzy_subject": True,
+                            },
+                        )
+                    )
                 continue
 
             # ``search_exact_*`` returns one entry per document, sorted by
@@ -373,6 +635,21 @@ def collect_context(
                 if match.document_id not in seen_match_ids:
                     unique_matches.append(match)
                     seen_match_ids.add(match.document_id)
+
+            if tool.arguments.get("visual_only"):
+                visual_items = _collect_visual_context_items(
+                    db,
+                    document_ids=[match.document_id for match in unique_matches],
+                    query=question,
+                    access_scope=access_scope,
+                    limit=12,
+                )
+                context.extend(visual_items)
+                if not visual_items:
+                    warnings.append(
+                        "No he encontrado paginas con imagenes procesadas para la consulta."
+                    )
+                continue
 
             if len(unique_matches) > 1:
                 warnings.append(
@@ -390,6 +667,16 @@ def collect_context(
                     f"Coincidencia literal de {label} en {match.matched_in}.\n"
                     f"{rendered}"
                 )
+                # An ambiguous literal hit must still carry real evidence.
+                # Previously we rendered only the empty entity card, so the
+                # grounded answer selected the first arbitrary filename and
+                # claimed it had no information even when the email/page
+                # text contained the answer.
+                document_text = _fetch_full_document_text(db, match.document_id, match.page_number)
+                if document_text:
+                    summary += "\nTexto del documento:\n" + clip_excerpt(document_text, 2200)
+                if access_scope and access_scope.is_admin and match.source_path:
+                    summary += f"\nRuta de carga: {match.source_path}"
                 context.append(
                     ContextItem(
                         title=f"Documento encontrado por {label}: {match.original_filename}",
@@ -441,6 +728,76 @@ def collect_context(
             else:
                 warnings.append(
                     f"No he encontrado ningun documento cuyo nombre contenga '{query}'."
+                )
+        elif tool.name == "get_documents_by_ids":
+            # Rehydrate the last retrieved document set for a follow-up turn.
+            # This keeps the conversation scoped without pretending that one
+            # arbitrary hit represents the whole project.
+            requested_ids: list[int] = []
+            for raw_id in tool.arguments.get("document_ids") or []:
+                try:
+                    requested_ids.append(int(raw_id))
+                except (TypeError, ValueError):
+                    continue
+            requested_ids = list(dict.fromkeys(requested_ids))[:12]
+            if access_scope:
+                allowed_ids = filter_document_ids_for_scope(db, requested_ids, access_scope)
+                # The scope helper returns a set by design. Re-apply it to
+                # the original list so conversation evidence stays in the
+                # order in which it was retrieved.
+                requested_ids = [document_id for document_id in requested_ids if document_id in allowed_ids]
+            if tool.arguments.get("visual_only"):
+                visual_items = _collect_visual_context_items(
+                    db,
+                    document_ids=requested_ids,
+                    query=question,
+                    access_scope=access_scope,
+                    limit=12,
+                )
+                context.extend(visual_items)
+                if not visual_items and requested_ids:
+                    warnings.append(
+                        "No he encontrado páginas con imágenes procesadas en los documentos de la conversación."
+                    )
+                continue
+            for document_id in requested_ids:
+                details = internal.get_document_full_details(db, document_id)
+                if details is None:
+                    continue
+                details = redact_business_payload_for_scope(details, access_scope)
+                document_text = _fetch_full_document_text(db, document_id, None)
+                filename = details.get("filename") or f"documento {document_id}"
+                summary = render_document_details(details)
+                if document_text:
+                    summary += "\nTexto del documento:\n" + clip_excerpt(document_text, 1800)
+                if access_scope and access_scope.is_admin and details.get("source_path"):
+                    summary += f"\nRuta de carga: {details['source_path']}"
+                context.append(
+                    ContextItem(
+                        title=f"Documento de la conversacion: {filename}",
+                        summary=summary,
+                        document_id=document_id,
+                        document_filename=filename,
+                        page_number=None,
+                        relevance_score=0.96,
+                        excerpt=summary[:1200],
+                        confidence=details.get("confidence"),
+                        source_path=details.get("source_path"),
+                    )
+                )
+            if not context and requested_ids:
+                warnings.append("No he podido recuperar los documentos de la conversacion anterior.")
+        elif tool.name == "search_visual_documents":
+            visual_items = _collect_visual_context_items(
+                db,
+                query=str(tool.arguments.get("query") or question),
+                access_scope=access_scope,
+                limit=int(tool.arguments.get("limit") or 12),
+            )
+            context.extend(visual_items)
+            if not visual_items:
+                warnings.append(
+                    "No he encontrado páginas con imágenes procesadas que coincidan con la consulta."
                 )
         elif tool.name == "get_document_full_details":
             # The smart selector may directly address the active document on
@@ -681,6 +1038,15 @@ def collect_context(
                 )
             )
         elif tool.name == "hybrid_search":
+            # Exact subject lookup is authoritative when it found anything.
+            # This fallback exists only for misspellings such as
+            # ``hosal Anibal``; never mix a broad semantic list into an exact
+            # multi-document answer.
+            if tool.arguments.get("fallback_if_exact_miss") and any(
+                item.title.startswith("Documento encontrado por frase exacta")
+                for item in context
+            ):
+                continue
             query = tool.arguments.get("query") or question
             filters = tool.arguments.get("filters") or {"limit": 8}
             if access_scope:
@@ -766,18 +1132,42 @@ def collect_context(
             if access_scope:
                 results = filter_search_results_for_scope(db, results, access_scope)
             exact_subjects = extract_exact_subject_phrases(question)
+            allow_fuzzy_subject = bool(tool.arguments.get("allow_fuzzy_subject"))
             if exact_subjects:
+                matcher = (
+                    _search_result_matches_fuzzy_subject
+                    if allow_fuzzy_subject
+                    else _search_result_matches_exact_subject
+                )
                 verified_results = [
                     result
                     for result in results
-                    if _search_result_matches_exact_subject(result, exact_subjects)
+                    if matcher(result, exact_subjects)
                 ]
                 if len(verified_results) != len(results):
                     warnings.append(
-                        "He descartado resultados semanticos que no contienen el sujeto "
-                        "literal indicado en la consulta."
+                        "No hubo coincidencia literal; he usado una coincidencia "
+                        "aproximada para tolerar una posible errata."
+                        if allow_fuzzy_subject
+                        else "He descartado resultados semanticos que no contienen "
+                        "el sujeto literal indicado en la consulta."
                     )
                 results = verified_results
+                if allow_fuzzy_subject and results:
+                    warnings[:] = [
+                        warning
+                        for warning in warnings
+                        if not warning.startswith(
+                            "No he encontrado documentos autorizados con frase exacta"
+                        )
+                    ]
+                    warnings.append(
+                        "La consulta contenia una posible errata; he usado una "
+                        "coincidencia aproximada y he mantenido las fuentes encontradas."
+                    )
+                    fuzzy_document_ids = {result.document_id for result in results}
+                    if len(fuzzy_document_ids) == 1:
+                        resolved_doc_id = next(iter(fuzzy_document_ids))
             # Merge results that come from the same document: concatenate
             # their excerpts so the LLM sees the full document body
             # rather than a single chunk. This is critical for short
@@ -818,7 +1208,12 @@ def collect_context(
                     combined = combined[:4000] + "…"
                 context.append(
                     ContextItem(
-                        title=top.original_filename,
+                        title=(
+                            f"Documento encontrado por coincidencia aproximada: "
+                            f"{top.original_filename}"
+                            if allow_fuzzy_subject
+                            else top.original_filename
+                        ),
                         summary=combined,
                         document_id=top.document_id,
                         document_filename=top.original_filename,
@@ -831,6 +1226,75 @@ def collect_context(
                         source_path=top.source_path,
                     )
                 )
+            # A typo-tolerant semantic fallback is still only a bounded
+            # ranking. Recover lower-ranked documents lexically from the
+            # subject tokens so the next turn can see the budget/order/email
+            # evidence that was not in the first few chunks.
+            if allow_fuzzy_subject and exact_subjects:
+                existing_ids = {
+                    item.document_id for item in context if item.document_id is not None
+                }
+                recovered = _find_fuzzy_subject_documents(
+                    db,
+                    exact_subjects,
+                    access_scope=access_scope,
+                    limit=12,
+                )
+                if recovered:
+                    warnings[:] = [
+                        warning
+                        for warning in warnings
+                        if not warning.startswith(
+                            "No he encontrado documentos autorizados con frase exacta"
+                        )
+                    ]
+                    approximate_warning = (
+                        "La consulta contenia una posible errata; he usado una "
+                        "coincidencia aproximada y he mantenido las fuentes encontradas."
+                    )
+                    if approximate_warning not in warnings:
+                        warnings.append(approximate_warning)
+                for match, document_text, details in recovered:
+                    if match.document_id in existing_ids:
+                        continue
+                    details = redact_business_payload_for_scope(details, access_scope)
+                    summary = (
+                        f"Coincidencia aproximada del sujeto en {match.matched_in}.\n"
+                        f"{render_document_details(details)}"
+                    )
+                    if document_text:
+                        summary += "\nTexto del documento:\n" + clip_excerpt(
+                            document_text, 2200
+                        )
+                    if access_scope and access_scope.is_admin and match.source_path:
+                        summary += f"\nRuta de carga: {match.source_path}"
+                    context.append(
+                        ContextItem(
+                            title=(
+                                "Documento encontrado por coincidencia aproximada: "
+                                f"{match.original_filename}"
+                            ),
+                            summary=summary,
+                            document_id=match.document_id,
+                            document_filename=match.original_filename,
+                            page_number=match.page_number,
+                            relevance_score=0.90,
+                            excerpt=summary[:1200],
+                            confidence=details.get("confidence"),
+                            source_path=match.source_path,
+                        )
+                    )
+                    existing_ids.add(match.document_id)
+                fuzzy_ids = {
+                    item.document_id
+                    for item in context
+                    if item.title.startswith(
+                        "Documento encontrado por coincidencia aproximada"
+                    )
+                    and item.document_id is not None
+                }
+                if len(fuzzy_ids) == 1:
+                    resolved_doc_id = next(iter(fuzzy_ids))
         elif tool.name == "get_duplicate_documents":
             documents = internal.get_duplicate_documents(db)
             if access_scope:
@@ -1192,6 +1656,29 @@ def build_grounded_response(
     if friendly is not None:
         return friendly
 
+    # Exact project lookups and conversation follow-ups can legitimately
+    # produce several documents. A single-item fallback used to take the
+    # first filename and hide the actual evidence from every other hit. Give
+    # the user a compact, source-by-source synthesis until the LLM improves
+    # it, and keep the same grounding contract for both paths.
+    multi_source_items = [
+        item
+        for item in context_items
+        if item.document_id is not None
+        and (
+            item.title.startswith("Documento encontrado por frase exacta")
+            or item.title.startswith("Documento encontrado por coincidencia aproximada")
+            or item.title.startswith("Documento de la conversacion")
+            or item.title.startswith("Imagen de la conversacion")
+        )
+    ]
+    if len({item.document_id for item in multi_source_items}) >= 2:
+        return _build_multi_source_fallback(
+            multi_source_items,
+            question=question,
+            warnings=warnings,
+        )
+
     warnings = _warnings_with_low_ocr_notice(context_items, warnings)
     confidence = _average_confidence(context_items)
     top = context_items[0]
@@ -1264,6 +1751,75 @@ def build_grounded_response(
     return GroundedResponse(
         answer=lead,
         confidence=confidence,
+        model_name="backend_grounded_fallback",
+    )
+
+
+def _build_multi_source_fallback(
+    context_items: list[ContextItem],
+    *,
+    question: str = "",
+    warnings: list[str],
+) -> GroundedResponse:
+    """Render a concise answer when evidence spans several documents."""
+    visual_answer = any(
+        item.title.startswith("Imagen de la conversacion") for item in context_items
+    )
+    unit = "imagenes" if visual_answer else "documentos"
+    lines = [f"He encontrado {len(context_items)} {unit} relacionadas:"]
+    for item in context_items[:6]:
+        filename = item.document_filename or item.title
+        if visual_answer and item.page_number:
+            filename += f", pagina {item.page_number}"
+        summary = (item.summary or item.excerpt or "").strip()
+        # Strip the retrieval label; the filename and the actual text are the
+        # useful parts for a human and for a follow-up question.
+        summary = re.sub(r"^Coincidencia literal[^\n]*\n?", "", summary).strip()
+        summary = clip_excerpt(summary, 520)
+        if summary:
+            lines.append(f"- **{filename}**: {summary}")
+        else:
+            lines.append(f"- **{filename}**: no hay texto extraído suficiente.")
+    if len(context_items) > 6:
+        lines.append(f"- Hay {len(context_items) - 6} {unit} relacionadas adicionales.")
+
+    # Follow-ups asking for a budget number should not depend on the first
+    # six filenames chosen for the compact list. Extract only numbers that
+    # are explicitly labelled as budget/presupuesto references, ignoring
+    # dates, phone numbers and measurements in the OCR body.
+    normalized_question = _normalize(question)
+    if any(token in normalized_question for token in ("presupuesto", "presupuestos", "numero", "num")):
+        budget_numbers: dict[str, set[str]] = {}
+        budget_patterns = (
+            re.compile(r"(?:presupuesto|presupost|ppto|budget)\s*(?:n[Âºo]?\.?\s*)?([A-Z]?\d{3,7})", re.I),
+            re.compile(r"(?:numero|n[Âºo])\s*(?:de\s*)?(?:presupuesto|presupost)?\s*[:#-]?\s*([A-Z]?\d{3,7})", re.I),
+        )
+        # Use an ASCII-safe ordinal marker in the regular expressions. The
+        # first draft accepted ``no`` as an ordinal and could misread phone
+        # numbers after the phrase ``no:``.
+        budget_patterns = (
+            re.compile(r"(?:presupuesto|presupost|ppto|budget)\s*(?:(?:n\u00ba|n\.|num\.?)\s*)?([A-Z]?\d{3,7})", re.I),
+            re.compile(r"(?:numero|n\u00ba)\s*(?:de\s*)?(?:presupuesto|presupost)?\s*[:#-]?\s*([A-Z]?\d{3,7})", re.I),
+        )
+        for item in context_items:
+            body = f"{item.summary or ''}\n{item.excerpt or ''}"
+            filename = item.document_filename or "documento relacionado"
+            for pattern in budget_patterns:
+                for match in pattern.finditer(body):
+                    number = match.group(1).strip()
+                    budget_numbers.setdefault(number, set()).add(filename)
+        if budget_numbers:
+            rendered_numbers = "; ".join(
+                f"{number} ({', '.join(sorted(files))})"
+                for number, files in sorted(budget_numbers.items())
+            )
+            lines.append(f"\nNúmeros de presupuesto identificados: {rendered_numbers}.")
+    if warnings:
+        warning_phrase = "; ".join(warnings[:2]).strip().rstrip(".")
+        lines.append(f"\nNota: {warning_phrase}.")
+    return GroundedResponse(
+        answer="\n".join(lines),
+        confidence=_average_confidence(context_items),
         model_name="backend_grounded_fallback",
     )
 

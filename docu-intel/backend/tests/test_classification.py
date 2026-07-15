@@ -81,6 +81,17 @@ def test_scanned_ppto_is_quote_not_product_photo():
     assert result.document_type == "presupuesto"
 
 
+def test_budget_parent_folder_does_not_turn_uploaded_photo_into_quote():
+    result = classify_document(
+        filename="BLUEBAY/Presupuesto 252240/IMAGENES/DORMITORIO.jpeg",
+        source_path="upload/7/BLUEBAY/Presupuesto 252240/IMAGENES/DORMITORIO.jpeg",
+        text="",
+        content_route="interior_design",
+    )
+
+    assert result.document_type == "foto_producto"
+
+
 def test_image_with_fabric_keywords_is_muestra_tela():
     result = classify_document(
         filename="muestra.jpg",

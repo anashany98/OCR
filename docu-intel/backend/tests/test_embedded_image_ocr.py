@@ -70,6 +70,33 @@ def test_non_image_attachments_do_not_consume_the_image_limit(tmp_path: Path, mo
     assert "photo.png" in pages[0].text
 
 
+def test_embedded_logo_is_searchable_but_not_an_ocr_quality_page(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        "app.parsers.embedded_images.parse_image",
+        lambda path, output_dir, ocr_engine: ExtractedDocument(
+            pages=[
+                ExtractedPage(
+                    page_number=1,
+                    text="Decoraciones Egea",
+                    ocr_confidence=0.50,
+                    ocr_engine="vision",
+                )
+            ]
+        ),
+    )
+
+    pages = extract_embedded_image_pages(
+        [EmbeddedImage("image001.jpg", _png_bytes())],
+        output_dir=tmp_path,
+        ocr_engine=object(),
+        first_page_number=1,
+    )
+
+    assert pages[0].ocr_content_kind == "decorative"
+    assert pages[0].ocr_confidence is None
+    assert "Decoraciones Egea" in pages[0].text
+
+
 def test_docx_media_is_discovered_without_changing_the_document(tmp_path: Path):
     from app.parsers.docx import _embedded_images
 

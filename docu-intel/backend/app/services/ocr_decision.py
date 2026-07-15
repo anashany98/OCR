@@ -67,6 +67,10 @@ def decide_ocr_result(result: OCRResult, *, baseline: OCRResult | None = None) -
     baseline_quality = text_quality(baseline.text) if baseline else 0.0
     if not (result.text or "").strip():
         return OCRDecision(calibrated, quality, "review_required", reasons + ["empty_text"])
+    if raw is None and baseline is None:
+        # A vision engine without a native confidence may contribute useful
+        # text, but it cannot auto-approve itself purely from text length.
+        return OCRDecision(calibrated, quality, "review_required", reasons + ["missing_independent_evidence"])
     if calibrated < settings.ocr_auto_accept_confidence:
         return OCRDecision(calibrated, quality, "review_required", reasons + ["below_acceptance_threshold"])
     if baseline is not None and quality < baseline_quality + settings.ocr_auto_accept_improvement:

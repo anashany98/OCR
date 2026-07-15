@@ -26,7 +26,7 @@ async def try_local_ai_answer(
     model: str | None = None,
     context_tokens: int | None = None,
     max_output_tokens: int = 4000,
-    client_factory: Callable[[], Any] | None = None,
+    client_factory: Callable[..., Any] | None = None,
 ) -> str | None:
     """One-shot LLM call with the same context as the streaming
     path. Returns the model's answer, or ``fallback`` (and logs
@@ -37,6 +37,7 @@ async def try_local_ai_answer(
     from app.ai.prompts import build_ai_messages, build_context_text
     from app.ai.validation import (
         question_is_spanish,
+        response_covers_retrieved_sources,
         response_fabricates_documents,
         response_looks_spanish,
     )
@@ -48,7 +49,11 @@ async def try_local_ai_answer(
     context_text = build_context_text(context_items, max_tokens_override=context_tokens)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
     messages = build_ai_messages(question, context_text, warning_text)
-    client = client_factory() if client_factory else LocalOpenAICompatibleClient(model=selected_model)
+    client = (
+        client_factory(model=selected_model)
+        if client_factory
+        else LocalOpenAICompatibleClient(model=selected_model)
+    )
     try:
         answer = await client.chat(messages, temperature=0.0, max_tokens=max_output_tokens)
     except ContextSizeExceededError:
@@ -96,6 +101,12 @@ async def try_local_ai_answer(
         return fallback
     if response_fabricates_documents(answer, context_items):
         logger.warning("AI response mentions documents not in context: %s", answer[:200])
+        return fallback
+    if not response_covers_retrieved_sources(answer, context_items, question):
+        logger.warning(
+            "AI response does not cover enough retrieved sources for a broad question: %s",
+            question[:100],
+        )
         return fallback
     return _polish_answer_text(answer)
 

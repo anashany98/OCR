@@ -3,6 +3,7 @@ param(
     [switch]$Resume,
     [switch]$SkipFrontend,
     [switch]$SkipDocker,
+    [switch]$RunLiveM3,
     [switch]$RunSlowOcr,
     [switch]$KeepTemporaryDatabase,
     [string]$ArtifactsDirectory = "data/terra-certification"
@@ -123,6 +124,22 @@ function Get-ComposePostgresPassword {
     return ([string]$Value).Trim()
 }
 
+function Get-ComposeBackendEnvironmentValue {
+    param([Parameter(Mandatory)][string]$Name)
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $Value = & docker compose exec -T backend sh -lc "printenv $Name"
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($Value)) {
+        throw "Could not read backend environment variable $Name."
+    }
+    return ([string]$Value).Trim()
+}
+
 function Start-TemporaryRedis {
     param([Parameter(Mandatory)][string]$Name)
 
@@ -130,7 +147,22 @@ function Start-TemporaryRedis {
     # hostname.  Run an isolated Redis on a Docker-assigned loopback port so
     # cache-isolation tests exercise a real server without exposing or
     # modifying the development Compose service.
-    Invoke-External "docker" @("run", "-d", "--rm", "--name", $Name, "-p", "127.0.0.1::6379", "redis:7-alpine") | Out-Null
+    # Do not use ``Invoke-External`` here. Native stdout from ``docker run``
+    # is the container id and PowerShell can capture it together with the
+    # return value of this function, corrupting REDIS_URL as
+    # "<container-id> redis://...". Capture it explicitly and expose only the
+    # constructed URL below.
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $ContainerId = & docker run -d --rm --name $Name -p "127.0.0.1::6379" redis:7-alpine
+        $RunExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($RunExitCode -ne 0 -or [string]::IsNullOrWhiteSpace(([string]$ContainerId).Trim())) {
+        throw "Could not start temporary Redis container $Name."
+    }
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         $PreviousErrorActionPreference = $ErrorActionPreference
         try {
@@ -195,8 +227,21 @@ try {
     $TemporaryRedisUrl = Start-TemporaryRedis $TemporaryRedisName
     Invoke-CertificationStage "backend-suite" {
         $PreviousRedisUrl = $env:REDIS_URL
+        $PreviousM3Enabled = $env:M3_TEST_ENABLED
+        $PreviousM3AdminUser = $env:M3_TEST_ADMIN_USER
+        $PreviousM3AdminPass = $env:M3_TEST_ADMIN_PASS
         try {
             $env:REDIS_URL = $TemporaryRedisUrl
+            if ($RunLiveM3) {
+                if ([string]::IsNullOrWhiteSpace($env:M3_TEST_VIEWER_USER) -or [string]::IsNullOrWhiteSpace($env:M3_TEST_VIEWER_PASS)) {
+                    throw "-RunLiveM3 requires M3_TEST_VIEWER_USER and M3_TEST_VIEWER_PASS for a scoped non-admin account."
+                }
+                $env:M3_TEST_ENABLED = "1"
+                $env:M3_TEST_ADMIN_USER = Get-ComposeBackendEnvironmentValue "ADMIN_EMAIL"
+                $env:M3_TEST_ADMIN_PASS = Get-ComposeBackendEnvironmentValue "ADMIN_PASSWORD"
+            } else {
+                $env:M3_TEST_ENABLED = "0"
+            }
             Push-Location backend
             try {
                 Invoke-External "python" @("-m", "pytest", "-q", "tests")
@@ -208,6 +253,17 @@ try {
                 Remove-Item Env:REDIS_URL -ErrorAction SilentlyContinue
             } else {
                 $env:REDIS_URL = $PreviousRedisUrl
+            }
+            foreach ($entry in @(
+                @{ Name = "M3_TEST_ENABLED"; Value = $PreviousM3Enabled },
+                @{ Name = "M3_TEST_ADMIN_USER"; Value = $PreviousM3AdminUser },
+                @{ Name = "M3_TEST_ADMIN_PASS"; Value = $PreviousM3AdminPass }
+            )) {
+                if ($null -eq $entry.Value) {
+                    Remove-Item "Env:$($entry.Name)" -ErrorAction SilentlyContinue
+                } else {
+                    Set-Item "Env:$($entry.Name)" $entry.Value
+                }
             }
         }
     }
@@ -250,7 +306,7 @@ if (-not $SkipDocker) {
         Invoke-CertificationStage "postgres-e2e" {
             $mount = "${RepositoryRoot}/backend:/workspace:ro"
             $slow = if ($RunSlowOcr) { "RUN_SLOW_OCR_TESTS=1 " } else { "" }
-            Invoke-Docker @("compose", "run", "--rm", "--no-deps", "--entrypoint", "sh", "-v", $mount, "-w", "/workspace", "-e", "DATABASE_URL=$TemporaryDatabaseUrl", "backend", "-lc", "${slow}EMBEDDING_PROVIDER=local_hash EMBEDDING_DIMENSIONS=1024 python -m pytest -q tests/test_terra_project_lifecycle_e2e.py tests/test_ocr_cascade.py tests/test_ocr_engine_tracking.py tests/test_ocr_golden.py tests/test_ocr_init_warmup.py tests/test_ocr_language.py tests/test_ocr_paddle.py tests/test_ocr_postprocess.py tests/test_ocr_preprocess.py tests/test_ocr_review.py -p no:cacheprovider")
+            Invoke-Docker @("compose", "run", "--rm", "--no-deps", "--entrypoint", "sh", "-v", $mount, "-w", "/workspace", "-e", "DATABASE_URL=$TemporaryDatabaseUrl", "backend", "-lc", "${slow}EMBEDDING_PROVIDER=local_hash EMBEDDING_DIMENSIONS=768 python -m pytest -q tests/test_terra_project_lifecycle_e2e.py tests/test_ocr_cascade.py tests/test_ocr_engine_tracking.py tests/test_ocr_golden.py tests/test_ocr_init_warmup.py tests/test_ocr_language.py tests/test_ocr_paddle.py tests/test_ocr_postprocess.py tests/test_ocr_preprocess.py tests/test_ocr_review.py -p no:cacheprovider")
         }
         Invoke-CertificationStage "docker-health" { Invoke-Docker @("compose", "ps") }
     } finally {

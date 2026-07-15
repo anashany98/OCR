@@ -13,6 +13,22 @@ set -e
 APP_UID="${APP_UID:-10001}"
 APP_GID="${APP_GID:-10001}"
 
+# CR9: Write permission healthcheck — verify that the appuser can
+# actually write to the data directories before starting the worker.
+# This catches permission issues early instead of failing mid-OCR.
+_healthcheck_write() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        local testfile="${dir}/.healthcheck_$$"
+        if touch "$testfile" 2>/dev/null; then
+            rm -f "$testfile"
+        else
+            echo "entrypoint: WARNING — cannot write to $dir (fixing permissions)" >&2
+            chown -R "${APP_UID}:${APP_GID}" "$dir" 2>/dev/null || true
+        fi
+    fi
+}
+
 for d in /app/data/files /app/data/input /app/data/output; do
     # Skip if the directory does not exist (some images do not declare
     # all three; the worker-fast image, for example, does not mount
@@ -35,6 +51,11 @@ for d in /app/data/files /app/data/input /app/data/output; do
         chown -R --no-dereference "${APP_UID}:${APP_GID}" "$d" 2>/dev/null || true
         echo "entrypoint: chowned $d -> ${APP_UID}:${APP_GID}" >&2
     fi
+done
+
+# CR9: Verify write permissions after chown.
+for d in /app/data/files /app/data/input /app/data/output; do
+    _healthcheck_write "$d"
 done
 
 # Now exec the original CMD as the non-root appuser. ``gosu`` is a

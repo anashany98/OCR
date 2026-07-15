@@ -150,13 +150,15 @@ def parse_image(
         )
         for block in result.blocks
     ]
+    is_non_ocr_photo = actual_engine == "photo_skip"
     page = ExtractedPage(
         page_number=1,
         width=float(width),
         height=float(height),
         text=result.text,
         image_path=str(path),
-        ocr_confidence=result.confidence,
+        ocr_confidence=None if is_non_ocr_photo else result.confidence,
+        ocr_content_kind="photo" if is_non_ocr_photo else (result.content_kind or "ocr"),
         ocr_engine=actual_engine,
         blocks=blocks,
     )

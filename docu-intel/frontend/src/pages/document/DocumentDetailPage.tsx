@@ -46,6 +46,19 @@ import { ExcelViewer } from "./ExcelViewer"
 import { GraphView } from "./GraphView"
 import { useDocumentDetail } from "./useDocumentDetail"
 
+function pageOcrLabel(
+  page: Pick<DocumentPage, "ocr_content_kind" | "ocr_confidence" | "ocr_calibrated_confidence" | "ocr_decision">,
+) {
+  if (page.ocr_content_kind === "native_text") return "Texto nativo"
+  if (page.ocr_content_kind === "decorative") return "Recurso decorativo"
+  if (page.ocr_content_kind === "photo") return "Sin OCR requerido"
+  if (page.ocr_confidence == null && page.ocr_calibrated_confidence != null) {
+    const confidence = Math.round(page.ocr_calibrated_confidence * 100)
+    return `OCR estimado ${confidence}%${page.ocr_decision === "review_required" ? " · revisar" : ""}`
+  }
+  return `OCR ${page.ocr_confidence != null ? `${Math.round(page.ocr_confidence * 100)}%` : "—"}`
+}
+
 export function DocumentDetailPage() {
   const id = Number(useParams().id)
   const d = useDocumentDetail(id)
@@ -286,7 +299,7 @@ function OcrPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
           <section key={p.id} className="rounded-md border bg-[var(--bg-surface)] p-2.5">
             <div className="mb-1.5 flex justify-between text-[10px] text-[var(--text-muted)]">
               <button className="font-medium text-[var(--accent)] hover:underline" type="button" onClick={() => { d.setSelectedPageNumber(p.page_number); }}>Página {p.page_number}</button>
-              <span>OCR {p.ocr_confidence != null ? `${Math.round(p.ocr_confidence * 100)}%` : "—"}</span>
+              <span>{pageOcrLabel(p)}</span>
             </div>
             <pre className="whitespace-pre-wrap font-sans text-[12px] leading-5"><HighlightedText text={page?.text || "Sin texto extraído."} query={d.textQuery} /></pre>
           </section>

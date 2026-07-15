@@ -38,6 +38,19 @@ import {
   VisorCardHeader,
 } from "./components"
 import type { DocumentDetail } from "./useDocumentDetail"
+
+function pageOcrLabel(
+  page: Pick<DocumentPage, "ocr_content_kind" | "ocr_confidence" | "ocr_calibrated_confidence" | "ocr_decision">,
+) {
+  if (page.ocr_content_kind === "native_text") return "Texto nativo"
+  if (page.ocr_content_kind === "decorative") return "Recurso decorativo"
+  if (page.ocr_content_kind === "photo") return "Sin OCR requerido"
+  if (page.ocr_confidence == null && page.ocr_calibrated_confidence != null) {
+    const confidence = Math.round(page.ocr_calibrated_confidence * 100)
+    return `OCR estimado ${confidence}%${page.ocr_decision === "review_required" ? " · revisar" : ""}`
+  }
+  return `OCR ${page.ocr_confidence != null ? `${Math.round(page.ocr_confidence * 100)}%` : "—"}`
+}
 // ---------------------------------------------------------------------------
 // DocumentHeader
 // ---------------------------------------------------------------------------
@@ -308,7 +321,7 @@ function OcrPageSection({
           Página {page.page_number}
         </button>
         <span>
-          OCR {page.ocr_confidence != null ? `${Math.round(page.ocr_confidence * 100)}%` : "—"}
+          {pageOcrLabel(page)}
         </span>
       </div>
       <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6">

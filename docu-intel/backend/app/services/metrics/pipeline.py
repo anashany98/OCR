@@ -19,6 +19,8 @@ from ._registry import (
     DOCUMENTS_PROCESSED,
     JOBS_PENDING_BY_QUEUE,
     PARSER_FALLBACK_FAILURES,
+    REVIEW_AUTO_RESOLVED,
+    REVIEW_DOCUMENTS,
     WATCHER_ERRORS,
     WORKER_INIT_FAILURES,
 )
@@ -256,4 +258,28 @@ def track_page_processed(route: str = "unknown", engine: str = "unknown") -> Non
     _registry.PAGES_PROCESSED.labels(
         route=(route or "unknown").strip()[:30] or "unknown",
         engine=(engine or "unknown").strip()[:30] or "unknown",
+    ).inc()
+
+
+# ---------------------------------------------------------------------------
+# CR11 — Review pipeline metrics
+# ---------------------------------------------------------------------------
+
+
+def track_review_document(reason: str, severity: str = "warning") -> None:
+    """Record a document classified for human review.
+
+    ``reason`` is the quality flag that triggered the review.
+    ``severity`` is ``"blocking"`` or ``"warning"``.
+    """
+    REVIEW_DOCUMENTS.labels(
+        reason=(reason or "unknown").strip()[:30] or "unknown",
+        severity=(severity or "warning").strip()[:20] or "warning",
+    ).inc()
+
+
+def track_review_auto_resolved(reason: str) -> None:
+    """Record a review decision auto-resolved by the quality pipeline."""
+    REVIEW_AUTO_RESOLVED.labels(
+        reason=(reason or "unknown").strip()[:30] or "unknown",
     ).inc()

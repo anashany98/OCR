@@ -7,15 +7,15 @@ admin can try again.
 """
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import pytest
+
 # Importing document_service at module level so it lives in sys.modules
 # before the pipeline's ``_facade()`` looks it up. The facade is a
 # thin wrapper that does ``_sys.modules["app.services.document_service"]``,
 # so the module has to be importable for the patch to take.
 from app.services import document_service  # noqa: F401  (imported for side effect)
-from unittest.mock import patch
-
-import pytest
-
 from app.services.embeddings import EmbeddingProviderError
 
 
@@ -53,10 +53,10 @@ def _make_document_with_pages(db, *, page_text: str) -> int:
 def _n_chunks_for(db, document_id: int) -> int:
     """Count chunks the chunker would produce for the document's page
     text — used to build a matching mock embedding return value."""
-    from app.services.document_embedding_pipeline import prepare_document_chunks
+    from sqlalchemy import select
 
     from app.models import DocumentPage
-    from sqlalchemy import select
+    from app.services.document_embedding_pipeline import prepare_document_chunks
 
     page_texts = [
         (p.page_number, p.text)
@@ -163,6 +163,33 @@ def test_reembed_document_preserves_unembedded_chunks_when_provider_fails():
         assert document.pipeline_stage == "embedding_pending"
 
 
+def test_reembed_document_finishes_when_text_produces_no_chunks():
+    """Chunkless inputs are processed, not permanently embedding-pending."""
+    from app.database.base import Base
+    from app.models import Document
+    from app.services.document_embedding_pipeline import reembed_document
+
+    engine = _memory_engine()
+    Base.metadata.create_all(engine)
+    Session = _session_factory(engine)
+    with Session() as db:
+        document_id = _make_document_with_pages(db, page_text="")
+        document = db.get(Document, document_id)
+        assert document is not None
+        document.pipeline_stage = "embedding_pending"
+        document.needs_reembedding = True
+        db.commit()
+
+        result = reembed_document(db, document_id)
+
+        assert result["chunks_updated"] == 0
+        db.expire_all()
+        document = db.get(Document, document_id)
+        assert document.semantic_search_ready is False
+        assert document.needs_reembedding is False
+        assert document.pipeline_stage == "fully_processed"
+
+
 def test_reembed_document_raises_on_missing_document():
     """Calling reembed on a non-existent document raises a clear error
     so the admin UI can show a 404 / not-found message."""
@@ -172,9 +199,8 @@ def test_reembed_document_raises_on_missing_document():
     engine = _memory_engine()
     Base.metadata.create_all(engine)
     Session = _session_factory(engine)
-    with Session() as db:
-        with pytest.raises(ValueError, match="not found"):
-            reembed_document(db, 99999)
+    with Session() as db, pytest.raises(ValueError, match="not found"):
+        reembed_document(db, 99999)
 
 
 # ---------------------------------------------------------------------------

@@ -316,7 +316,7 @@ def persist_chunks_without_embeddings(
             )
 
     count = 0
-    for page_number, chunk_text, embedding_text, token_count, chunk_type in chunk_payloads:
+    for page_number, chunk_text, _embedding_text, token_count, chunk_type in chunk_payloads:
         chunk = DocumentChunk(
             document_id=document_id,
             page_number=page_number,
@@ -421,6 +421,13 @@ def reembed_document(db: Session, document_id: int) -> dict:
         document.pipeline_stage = "searchable"
     elif has_chunks:
         document.pipeline_stage = "embedding_pending"
+    else:
+        # Some valid inputs (for example an image with no extracted text)
+        # intentionally produce no chunks.  They have nothing to retry, so
+        # never leave them stranded in ``embedding_pending``.
+        document.needs_reembedding = False
+        document.semantic_search_ready = False
+        document.pipeline_stage = "fully_processed"
 
     db.commit()
 

@@ -55,6 +55,21 @@ def _looks_like_context_size_error(status_code: int, body: bytes) -> bool:
     return "context size" in text or "context length" in text or "maximum context" in text
 
 
+def _looks_like_transient_termination(status_code: int, body: bytes) -> bool:
+    """True when LM Studio reports a transient generation termination.
+
+    LM Studio can answer with HTTP 400 and ``{"error":"terminated"}``
+    while a local model is being loaded, unloaded, or recovering GPU
+    resources.  It is not a caller validation error: retrying the same
+    request is safe and avoids needlessly replacing a valid grounded answer
+    with the fallback path.
+    """
+    if status_code != 400:
+        return False
+    text = body.decode(errors="replace").lower()
+    return "terminated" in text
+
+
 @dataclass
 class _CircuitState:
     failures: int = 0
@@ -407,6 +422,8 @@ class LocalOpenAICompatibleClient:
 def _is_retryable_ai_error(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         status_code = exc.response.status_code
+        if status_code == 400:
+            return _looks_like_transient_termination(status_code, exc.response.content)
         return status_code == 429 or status_code >= 500
     return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
 
@@ -426,6 +443,12 @@ class LocalVisionClient:
         model: str | None = None,
         api_key: str | None = None,
         use_structured_model: bool = False,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+        max_retries: int | None = None,
+        retry_base_delay_seconds: float | None = None,
+        circuit_breaker_failures: int | None = None,
+        circuit_breaker_reset_seconds: float | None = None,
     ) -> None:
         self.base_url = (base_url or settings.vision_base_url or settings.ai_base_url).rstrip("/")
         # Some vision tasks (structured JSON output, plan room
@@ -441,8 +464,32 @@ class LocalVisionClient:
         self.api_key = (
             api_key if api_key is not None else (settings.vision_api_key or settings.ai_api_key)
         )
-        self.max_retries = max(0, getattr(settings, "vision_max_retries", 2))
-        self.retry_base_delay_seconds = 1.0
+        self.transport = transport
+        self.max_retries = max(
+            0,
+            getattr(settings, "vision_max_retries", 2)
+            if max_retries is None
+            else max_retries,
+        )
+        self.retry_base_delay_seconds = max(
+            0.0,
+            1.0 if retry_base_delay_seconds is None else retry_base_delay_seconds,
+        )
+        # Vision and text requests compete for the same local GPU. Use the
+        # common breaker settings, while keeping their state independent by
+        # model/base URL, so a failing vision model cannot block text chat.
+        self.circuit_breaker_failures = max(
+            1,
+            settings.ai_circuit_breaker_failures
+            if circuit_breaker_failures is None
+            else circuit_breaker_failures,
+        )
+        self.circuit_breaker_reset_seconds = max(
+            0.0,
+            settings.ai_circuit_breaker_reset_seconds
+            if circuit_breaker_reset_seconds is None
+            else circuit_breaker_reset_seconds,
+        )
 
     def is_configured(self) -> bool:
         return bool(self.base_url and self.model)
@@ -518,6 +565,7 @@ class LocalVisionClient:
         async with _get_llm_semaphore():
             last_exc: Exception | None = None
             for attempt in range(self.max_retries + 1):
+                self._raise_if_circuit_open()
                 try:
                     async with httpx.AsyncClient(
                         timeout=httpx.Timeout(
@@ -526,21 +574,13 @@ class LocalVisionClient:
                             write=5.0,
                             pool=10.0,
                         ),
+                        transport=self.transport,
                     ) as client:
                         response = await client.post(
                             f"{self.base_url}/chat/completions",
                             headers=headers,
                             json=payload,
                         )
-                        if response.status_code == 429 or response.status_code >= 500:
-                            last_exc = httpx.HTTPStatusError(
-                                f"Vision model returned {response.status_code}",
-                                request=response.request,
-                                response=response,
-                            )
-                            if attempt < self.max_retries:
-                                await asyncio.sleep(self.retry_base_delay_seconds * (2 ** attempt))
-                                continue
                         response.raise_for_status()
                         data = response.json()
                         msg = data["choices"][0]["message"]
@@ -551,18 +591,54 @@ class LocalVisionClient:
                         answer = msg.get("content") or ""
                         if not answer.strip():
                             answer = msg.get("reasoning_content") or ""
+                        self._record_success()
                         return answer
-                except httpx.HTTPStatusError:
-                    raise
                 except Exception as exc:
                     last_exc = exc
-                    if attempt < self.max_retries:
-                        await asyncio.sleep(self.retry_base_delay_seconds * (2 ** attempt))
-                        continue
-                    raise
+                    if attempt >= self.max_retries or not _is_retryable_ai_error(exc):
+                        self._record_failure()
+                        raise
+                    await self._sleep_before_retry(attempt)
             if last_exc is not None:
+                self._record_failure()
                 raise last_exc
             raise RuntimeError("Vision model request failed without an exception")
+
+    async def _sleep_before_retry(self, attempt: int) -> None:
+        delay = self.retry_base_delay_seconds * (2**attempt)
+        if delay <= 0:
+            return
+        await asyncio.sleep(delay + random.uniform(0.0, delay * 0.25))
+
+    @property
+    def _circuit_key(self) -> tuple[str, str]:
+        return (self.base_url, self.model)
+
+    def _state(self) -> _CircuitState:
+        return _LOCAL_AI_CIRCUITS.setdefault(self._circuit_key, _CircuitState())
+
+    def _raise_if_circuit_open(self) -> None:
+        state = self._state()
+        now = time.monotonic()
+        if state.opened_until > now:
+            raise LocalAICircuitOpen(
+                f"Local AI temporarily unavailable for {self.model}; "
+                f"circuit resets in {state.opened_until - now:.1f}s"
+            )
+        if state.opened_until and state.opened_until <= now:
+            state.failures = 0
+            state.opened_until = 0.0
+
+    def _record_success(self) -> None:
+        state = self._state()
+        state.failures = 0
+        state.opened_until = 0.0
+
+    def _record_failure(self) -> None:
+        state = self._state()
+        state.failures += 1
+        if state.failures >= self.circuit_breaker_failures:
+            state.opened_until = time.monotonic() + self.circuit_breaker_reset_seconds
 
     async def transcribe_table(
         self,

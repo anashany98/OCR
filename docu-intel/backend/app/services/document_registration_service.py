@@ -342,14 +342,16 @@ def _create_occurrence(
     Phase 4: every file registration creates an occurrence linking the
     document to its source path, brand, hotel, budget, and category.
     """
-    source_root = str(settings.source_corpus_dir)
-    if not _is_path_within_root(source_path, source_root):
-        # Upload/inbox paths remain valid Documents but are not silently
-        # treated as corpus hierarchy.  Only the explicit corpus root can
-        # create project membership.
+    source_root = _occurrence_source_root(source_path)
+    if source_root is None:
+        # Arbitrary inbox paths remain standalone until assigned manually.
+        # Hierarchical upload paths are handled separately below because their
+        # ``upload/<namespace>/...`` prefix is a safe, explicit context.
         return None
     resolution = resolve_corpus_path(source_path, source_root)
-    category = classify_category(source.name, resolution.category)
+    source_name = _logical_source_filename(document, source_path, source)
+    category = classify_category(source_name, resolution.category)
+    year = resolution.year or _default_occurrence_year(document, source_root)
 
     # Find or create brand
     from app.models.tenant import HotelChain
@@ -417,14 +419,14 @@ def _create_occurrence(
     if budget_code_for_context:
         budget_scope = get_or_create_budget_scope(
             db,
-            resolution.year or 2025,
+            year,
             brand.id,
             hotel.id if hotel else None,
             budget_code_for_context,
         )
         project = get_or_create_project_for_budget(
             db,
-            resolution.year or 2025,
+            year,
             brand.id,
             hotel.id if hotel else None,
             budget_scope.id,
@@ -445,13 +447,13 @@ def _create_occurrence(
         # Document and its audit events remain intact; the live occurrence now
         # points to the latest physical version.
         existing_occ.document_id = document.id
-        existing_occ.year = resolution.year or 2025
+        existing_occ.year = year
         existing_occ.brand_id = brand.id
         existing_occ.hotel_id = hotel.id if hotel else None
         existing_occ.budget_scope_id = budget_scope.id if budget_scope else None
         existing_occ.project_id = project.id if project else None
         existing_occ.category = category
-        existing_occ.original_filename = source.name
+        existing_occ.original_filename = source_name
         existing_occ.folder_budget_code = folder_budget_code
         existing_occ.document_budget_code = document_budget_code
         existing_occ.resolved_budget_code = resolved_budget_code
@@ -473,13 +475,13 @@ def _create_occurrence(
         document_id=document.id,
         source_path=source_path,
         source_root=source_root,
-        year=resolution.year or 2025,
+        year=year,
         brand_id=brand.id,
         hotel_id=hotel.id if hotel else None,
         budget_scope_id=budget_scope.id if budget_scope else None,
         project_id=project.id if project else None,
         category=category,
-        original_filename=source.name,
+        original_filename=source_name,
         folder_budget_code=folder_budget_code,
         document_budget_code=document_budget_code,
         resolved_budget_code=resolved_budget_code,
@@ -505,6 +507,46 @@ def _is_path_within_root(source_path: str, source_root: str) -> bool:
     normalized_path = source_path.replace("\\", "/").rstrip("/")
     normalized_root = source_root.replace("\\", "/").rstrip("/")
     return normalized_path == normalized_root or normalized_path.startswith(f"{normalized_root}/")
+
+
+def _occurrence_source_root(source_path: str) -> str | None:
+    """Return the trusted identity root for corpus or hierarchical uploads.
+
+    Upload membership is intentionally opt-in: only paths under ``upload/``
+    with a recognisable folder hierarchy reach this resolver.  Other input
+    directories retain the deny-by-default behaviour tested for the corpus.
+    """
+    normalized = source_path.replace("\\", "/").strip().strip("/")
+    corpus_root = str(settings.source_corpus_dir).replace("\\", "/").rstrip("/")
+    if _is_path_within_root(source_path, corpus_root):
+        return corpus_root
+    parts = [part for part in normalized.split("/") if part]
+    if not parts or parts[0].lower() != "upload":
+        return None
+    if len(parts) >= 2 and parts[1].isdigit():
+        return f"upload/{parts[1]}"
+    return "upload"
+
+
+def _default_occurrence_year(document: Document, source_root: str) -> int:
+    """Derive a stable project year without the old hard-coded 2025 value."""
+    for candidate in (source_root, str(settings.source_corpus_dir), document.source_path or ""):
+        for segment in candidate.replace("\\", "/").split("/"):
+            if re.fullmatch(r"\d{4}", segment):
+                return int(segment)
+    created_at = getattr(document, "created_at", None)
+    if created_at is not None:
+        return int(created_at.year)
+    return datetime.now(UTC).year
+
+
+def _logical_source_filename(document: Document, source_path: str, source: Path) -> str:
+    """Use the logical upload name, never a temporary staging filename."""
+    from_path = source_path.replace("\\", "/").rstrip("/").split("/")[-1]
+    if from_path:
+        return from_path
+    from_document = (document.original_filename or "").replace("\\", "/").split("/")[-1]
+    return from_document or source.name
 
 
 def _document_budget_code(db: Session, document_id: int) -> str | None:

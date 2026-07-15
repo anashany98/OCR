@@ -94,7 +94,7 @@ from .prompts import (
     build_context_text,
 )
 from .prompts import (
-    _build_user_prompt as _build_user_prompt_unused,  # noqa: F401  (kept for tests)
+    _build_user_prompt as _build_user_prompt_unused,  # noqa: F401 (kept for tests)
 )
 from .tools import (
     ToolCall,
@@ -115,6 +115,7 @@ from .validation import (
     has_required_sections,
     looks_like_followup,
     question_is_spanish,
+    response_covers_retrieved_sources,
     response_fabricates_documents,
     response_looks_spanish,
     suggest_followups,
@@ -134,12 +135,10 @@ def _format_gate_blocked_answer(gate_eval, active_context) -> str:
 
     return format_gate_blocked_answer(gate_eval, active_context)
 
-
 # ``DetectorFactory.seed = 0`` is set inside validation.py at
 # import time. We re-import the module to make the dependency
 # explicit (so a test that imports agent.py also imports the
 # validation module, which has the langdetect setup).
-
 
 # ---------------------------------------------------------------------------
 # Backward-compatibility aliases
@@ -188,7 +187,6 @@ def has_answer_context(context_items: list[ContextItem]) -> bool:
 # ---------------------------------------------------------------------------
 # Public orchestrator
 # ---------------------------------------------------------------------------
-
 
 async def answer_question(
     db: Session,
@@ -567,7 +565,7 @@ async def _try_local_ai_answer(
     )
 
 
-from app.ai.local_answer import _polish_answer_text  # noqa: F401 — used in streaming path
+from app.ai.local_answer import _polish_answer_text  # noqa: E402,F401 — used in streaming path
 
 
 @dataclass
@@ -717,12 +715,13 @@ async def _stream_local_ai_answer(
         logger.warning("Streamed AI response not in Spanish")
         yield StreamOutcome(text=full, ok=False)
         return
-    if response_fabricates_documents(full, context_items):
-        logger.warning("Streamed AI response mentions documents not in context")
+    if response_fabricates_documents(full, context_items) or not response_covers_retrieved_sources(
+        full, context_items, question
+    ):
+        logger.warning("Streamed AI response failed document/source validation")
         yield StreamOutcome(text=full, ok=False)
         return
     yield StreamOutcome(text=_polish_answer_text(full), ok=True)
-
 
 # ---------------------------------------------------------------------------
 # Public re-exports

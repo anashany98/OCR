@@ -272,6 +272,21 @@ class DocumentBlock(Base):
         v = (value or "text").strip().lower()
         return v if v in self._ALLOWED_BLOCK_TYPES else "text"
 
+    @property
+    def bbox(self) -> tuple[float, float, float, float] | None:
+        """Expose persisted geometry through the parser-block contract.
+
+        Extraction services accept both transient parser blocks and persisted
+        ``DocumentBlock`` rows.  The parser object already has ``bbox`` while
+        this model stores the coordinates in separate columns.  Incomplete
+        geometry must be reported as absent: a partial tuple would reach the
+        layout clustering code and fail during arithmetic.
+        """
+        coordinates = (self.bbox_x1, self.bbox_y1, self.bbox_x2, self.bbox_y2)
+        if any(value is None for value in coordinates):
+            return None
+        return tuple(float(value) for value in coordinates)
+
 
 class DocumentEntity(Base):
     __tablename__ = "document_entities"

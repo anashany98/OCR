@@ -199,6 +199,229 @@ def test_semantic_results_without_the_named_subject_are_rejected():
     assert _search_result_matches_exact_subject(anidac, ["Hostal Anibal"]) is False
 
 
+def test_fuzzy_subject_tolerates_one_typo_without_matching_similar_name():
+    from app.ai.context import _search_result_matches_fuzzy_subject
+
+    anibal = SimpleNamespace(
+        original_filename="HOSTAL ANIBAL IBIZA.msg",
+        source_path="upload/HOSTAL ANIBAL/Presupuesto 250398/IBIZA.msg",
+        excerpt="Oferta para Hostal Anibal.",
+        full_text=None,
+    )
+    anidac = SimpleNamespace(
+        original_filename="HOSTAL ANIDAC IBIZA.msg",
+        source_path="upload/HOSTAL ANIDAC/Presupuesto 252519/IBIZA.msg",
+        excerpt="Oferta para Hostal Anidac.",
+        full_text=None,
+    )
+
+    assert _search_result_matches_fuzzy_subject(anibal, ["hosal Anibal"]) is True
+    assert _search_result_matches_fuzzy_subject(anidac, ["hosal Anibal"]) is False
+
+
+def test_selector_reuses_all_bounded_documents_for_budget_followup():
+    state = ActiveContext(last_retrieved_document_ids=list(range(1, 21)))
+
+    tools = select_tools_for_question(
+        "necesito el numero de presupuesto",
+        active_context=state,
+    )
+
+    assert tools[0].name == "get_documents_by_ids"
+    assert tools[0].arguments["document_ids"] == list(range(1, 13))
+
+
+def test_selector_routes_visual_followup_to_image_backed_pages():
+    state = ActiveContext(last_retrieved_document_ids=[10, 11, 12])
+
+    tools = select_tools_for_question(
+        "describeme las imagenes",
+        active_context=state,
+    )
+
+    assert tools == [
+        ToolCall(
+            "get_documents_by_ids",
+            {"document_ids": [10, 11, 12], "visual_only": True},
+        )
+    ]
+
+
+def test_visual_subject_query_keeps_exact_subject_scope():
+    tools = select_tools_for_question(
+        "describeme las imagenes de hostal anibal",
+        active_context=ActiveContext(),
+    )
+
+    assert tools == [
+        ToolCall(
+            "find_documents_by_exact_phrase",
+            {"phrase": "hostal anibal", "visual_only": True},
+        )
+    ]
+
+
+def test_grounded_followup_lists_budget_numbers_from_all_sources():
+    from app.ai.context import ContextItem, build_grounded_response
+
+    ordinal = chr(0xBA)
+    context = [
+        ContextItem(
+            title="Documento de la conversacion: fase.msg",
+            document_id=1,
+            document_filename="fase.msg",
+            summary="Ruta de carga: upload/Presupuesto 250398/fase.msg",
+        ),
+        ContextItem(
+            title="Documento de la conversacion: correo.msg",
+            document_id=2,
+            document_filename="correo.msg",
+            summary=f"Se mantiene el presupuesto {ordinal} 2649.",
+        ),
+        ContextItem(
+            title="Documento de la conversacion: pedido.pdf",
+            document_id=3,
+            document_filename="pedido.pdf",
+            summary="Ruta de carga: upload/Presupuesto 252519/pedido.pdf",
+        ),
+    ]
+
+    response = build_grounded_response(
+        question="necesito el numero de presupuesto",
+        context_items=context,
+        warnings=[],
+    )
+
+    assert "250398" in response.answer
+    assert "252519" in response.answer
+    assert "2649" in response.answer
+
+
+def test_broad_model_answer_must_cite_three_retrieved_sources():
+    from app.ai.context import ContextItem
+    from app.ai.validation import response_covers_retrieved_sources
+
+    items = [
+        ContextItem(title=name, document_id=index, document_filename=name, summary="texto")
+        for index, name in enumerate(("uno.msg", "dos.msg", "tres.msg"), start=1)
+    ]
+
+    assert response_covers_retrieved_sources(
+        "Segun uno.msg y dos.msg hay informacion.", items, "Que sabes del proyecto?"
+    ) is False
+    assert response_covers_retrieved_sources(
+        "Segun uno.msg, dos.msg y tres.msg hay informacion.", items, "Que sabes del proyecto?"
+    ) is True
+    # Narrow questions may legitimately answer from one of several sources.
+    assert response_covers_retrieved_sources(
+        "El total aparece en uno.msg.", items, "Cual es el total?"
+    ) is True
+
+
+def test_broad_model_answer_must_cover_multiple_sources_in_large_sets():
+    from app.ai.context import ContextItem
+    from app.ai.validation import response_covers_retrieved_sources
+
+    items = [
+        ContextItem(
+            title=name,
+            document_id=index,
+            document_filename=name,
+            summary="texto",
+        )
+        for index, name in enumerate((f"doc-{index}.msg" for index in range(1, 11)), start=1)
+    ]
+
+    two_sources = " ".join(f"doc-{index}.msg" for index in range(1, 3))
+    three_sources = " ".join(f"doc-{index}.msg" for index in range(1, 4))
+    assert response_covers_retrieved_sources(two_sources, items, "que mas me puedes decir") is False
+    assert response_covers_retrieved_sources(three_sources, items, "que mas me puedes decir") is True
+
+
+def test_validator_accepts_reference_number_from_attachment_label():
+    from app.ai.context import ContextItem
+    from app.ai.validation import response_fabricates_documents
+
+    items = [
+        ContextItem(
+            title="Documento encontrado: RE_ Presupuesto Para hostal anibal.msg",
+            document_id=1,
+            document_filename="RE_ Presupuesto Para hostal anibal.msg",
+            summary="Adjunto: 2649 PRESUPUESTO DECORACIONES EGEA HOSTAL ANIBAL.pdf",
+        )
+    ]
+
+    assert response_fabricates_documents(
+        "El presupuesto 2649 aparece en el correo.", items
+    ) is False
+
+
+def test_one_shot_uses_the_routed_model_injected_by_agent(monkeypatch):
+    import asyncio
+
+    from app.ai import agent
+    from app.ai.context import ContextItem
+
+    seen: dict[str, str] = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            seen.update({key: str(value) for key, value in kwargs.items()})
+
+        async def chat(self, messages, temperature=0.0, max_tokens=4000):
+            return "Es un documento de prueba."
+
+    monkeypatch.setattr(agent.settings, "ai_base_url", "http://fake")
+    monkeypatch.setattr(agent, "LocalOpenAICompatibleClient", FakeClient)
+    answer = asyncio.run(
+        agent._try_local_ai_answer(
+            "Que es esto?",
+            [
+                ContextItem(
+                    title="Documento de prueba",
+                    document_id=1,
+                    document_filename="prueba.pdf",
+                    summary="Documento de prueba.",
+                )
+            ],
+            [],
+            fallback="fallback",
+            model="qwen3-8b",
+        )
+    )
+
+    assert answer == "Es un documento de prueba."
+    assert seen["model"] == "qwen3-8b"
+
+
+def test_visual_grounded_fallback_labels_pages_as_images():
+    from app.ai.context import ContextItem, build_grounded_response
+
+    items = [
+        ContextItem(
+            title=f"Imagen de la conversacion: {filename}, pagina {page}",
+            document_id=index,
+            document_filename=filename,
+            page_number=page,
+            summary="Descripcion visual de la pagina.",
+        )
+        for index, (filename, page) in enumerate(
+            (("correo.msg", 2), ("fotos.pdf", 1), ("albaran.pdf", 1)),
+            start=1,
+        )
+    ]
+
+    response = build_grounded_response(
+        question="describeme las imagenes",
+        context_items=items,
+        warnings=[],
+    )
+
+    assert "imagenes relacionadas" in response.answer
+    assert "correo.msg, pagina 2" in response.answer
+    assert "documentos relacionados" not in response.answer
+
+
 def test_active_document_budget_followup_stays_on_that_document():
     state = ActiveContext(current_document_id=123456)
     question = "[Contexto: documento activo id=123456] por cuanto esta presupuestado"

@@ -423,7 +423,7 @@ export function useChat() {
 
       history.refetch()
       if (usedFallback) {
-        notify.info("Usando fallback estructurado", "El LLM no respondio.")
+        notify.info("Respuesta fundamentada", "Se ha usado el contexto recuperado de tus documentos.")
       } else if (confidence != null && confidence < 0.5) {
         notify.warning("Respuesta con baja confianza", "Verifica las fuentes.")
       }
