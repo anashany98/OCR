@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     admin_access,
     admin_dashboard,
+    admin_graph_review,
     admin_integrations,
     admin_jobs,
     admin_learning,
@@ -20,3 +21,4 @@ router.include_router(admin_integrations.router)
 router.include_router(admin_access.router)
 router.include_router(admin_learning.router)
 router.include_router(admin_dashboard.router)
+router.include_router(admin_graph_review.router)

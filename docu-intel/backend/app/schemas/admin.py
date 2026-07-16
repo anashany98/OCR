@@ -377,3 +377,51 @@ class ApiClientBudgetScopeRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Graph RAG review queue
+# ---------------------------------------------------------------------------
+
+
+class GraphReviewItemRead(BaseModel):
+    """One pending row from ``graph_review_queue`` enriched with a summary.
+
+    The view layer renders ``summary`` as a short human-readable
+    label (e.g. ``"Doc 1234 — Doc 1235 (shared_reference)"``). The
+    raw ``target_*`` columns stay exposed for the review surface so
+    admins can deep-link back to the source/evidence.
+    """
+
+    id: int
+    target_type: Literal["entity", "relation"]
+    target_id: int
+    status: Literal["pending", "approved", "rejected", "escalated"]
+    confidence: float | None
+    rationale: str | None
+    created_at: datetime
+    submitted_by_job_id: int | None
+    summary: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class GraphReviewQueueResponse(BaseModel):
+    items: list[GraphReviewItemRead]
+    total_pending: int
+    total_escalated: int
+
+
+class GraphReviewDecisionRequest(BaseModel):
+    decision: Literal["approved", "rejected", "escalated"]
+    rationale: str | None = Field(default=None, max_length=2000)
+
+
+class GraphReviewDecisionResponse(BaseModel):
+    id: int
+    status: Literal["pending", "approved", "rejected", "escalated"]
+    decided_by_user_id: int | None
+    decided_at: datetime
+    rationale: str | None
+
+    model_config = {"from_attributes": True}
