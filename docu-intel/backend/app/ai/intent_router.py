@@ -76,12 +76,45 @@ ALL_INTENTS: tuple[str, ...] = (
 )
 
 
+# GRAPH-ROUTING-1: retrieval strategy hints surfaced on
+# ``IntentClassification.retrieval_strategy``. The agent uses the hint
+# to decide which retrieval pipeline to invoke. ``hybrid`` is the
+# default and points at the text + vector + BM25 RRF pipeline;
+# ``graph`` routes to the relational graph traversal (entity
+# catalogue + relations + evidence); ``both`` means the question
+# benefits from fusing the two.
+RETRIEVAL_STRATEGY_HYBRID = "hybrid"
+RETRIEVAL_STRATEGY_GRAPH = "graph"
+RETRIEVAL_STRATEGY_BOTH = "both"
+
+# Intents that imply graph traversal. Kept as a frozenset so the
+# router can compute the strategy in O(1) per classification and tests
+# can assert membership without re-parsing strings.
+_GRAPH_ROUTED_INTENTS: frozenset[str] = frozenset(
+    {
+        INTENT_RELATED_DOCUMENTS,
+    }
+)
+
+
 @dataclass(frozen=True)
 class IntentClassification:
     intent: str
     confidence: float
     reason: str
     needs_state: bool = False
+    # GRAPH-ROUTING-1: which retrieval strategy the agent should
+    # prefer for this question. ``hybrid`` is the default and points
+    # at the existing text + vector + BM25 RRF pipeline.
+    # ``graph`` routes to the relational graph traversal
+    # (``graph_relations`` + ``graph_relation_evidence``) — the
+    # question implies walking the entity/relation catalogue instead
+    # of, or in addition to, doing a similarity search.
+    # ``both`` means the question benefits from both pipelines and
+    # the agent should fuse the two. The field is exposed via
+    # ``as_dict`` so downstream callers (agent, tools) can branch
+    # on it without re-parsing the intent string.
+    retrieval_strategy: str = "hybrid"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -89,6 +122,7 @@ class IntentClassification:
             "confidence": self.confidence,
             "reason": self.reason,
             "needs_state": self.needs_state,
+            "retrieval_strategy": self.retrieval_strategy,
         }
 
 
@@ -278,6 +312,33 @@ _PATTERN_BANK: tuple[tuple[str, re.Pattern[str], float, str], ...] = (
         0.8,
         "que hay en la misma carpeta",
     ),
+    # --- graph-routed variants ---
+    # The patterns below resolve to ``INTENT_RELATED_DOCUMENTS`` so the
+    # rest of the agent sees a single intent, but the
+    # ``retrieval_strategy`` flips to ``"graph"`` because the question
+    # implies walking the entity/relation catalogue rather than (or
+    # in addition to) a similarity search. They are listed last so the
+    # earlier, more specific patterns win.
+    (
+        INTENT_RELATED_DOCUMENTS,
+        re.compile(
+            r"\b(documentos?)\s+(vinculad[oa]s?|conectad[oa]s?|asociad[oa]s?)\s+(a|al|con)\b"
+        ),
+        0.85,
+        "documentos vinculados a",
+    ),
+    (
+        INTENT_RELATED_DOCUMENTS,
+        re.compile(r"\bque\s+relaciones?\s+tiene\s+(el|este|ese)\s+documento\b"),
+        0.85,
+        "que relaciones tiene el documento",
+    ),
+    (
+        INTENT_RELATED_DOCUMENTS,
+        re.compile(r"\b(relacionado|relacionados)\s+con\s+(el\s+)?(presupuesto|pedido|factura|albaran|documento)\b"),
+        0.8,
+        "relacionado con presupuesto/pedido/factura",
+    ),
 )
 
 
@@ -348,13 +409,31 @@ def classify_intent(
             )
 
     return IntentClassification(
-        intent=INTENT_GENERIC, confidence=0.5, reason="no specific pattern matched"
+        intent=INTENT_GENERIC,
+        confidence=0.5,
+        reason="no specific pattern matched",
+        retrieval_strategy=RETRIEVAL_STRATEGY_HYBRID,
     )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _retrieval_strategy_for(intent: str) -> str:
+    """Map an intent to the recommended retrieval strategy.
+
+    The mapping is intentionally tiny: a single intent
+    (``related_documents``) routes to the graph traversal because
+    the question implies walking the entity/relation catalogue.
+    New graph-routed intents must be added to
+    ``_GRAPH_ROUTED_INTENTS``; the helper is the single source of
+    truth so callers do not duplicate the decision.
+    """
+    if intent in _GRAPH_ROUTED_INTENTS:
+        return RETRIEVAL_STRATEGY_GRAPH
+    return RETRIEVAL_STRATEGY_HYBRID
 
 
 def _finalize(
@@ -364,18 +443,21 @@ def _finalize(
     reason: str,
     state: ActiveContext | None,
 ) -> IntentClassification:
+    strategy = _retrieval_strategy_for(intent)
     if state is None or not _has_state_for(intent, state):
         return IntentClassification(
             intent=intent,
             confidence=confidence,
             reason=reason,
             needs_state=intent in _STATE_ONLY_INTENTS,
+            retrieval_strategy=strategy,
         )
     return IntentClassification(
         intent=intent,
         confidence=confidence,
         reason=reason,
         needs_state=False,
+        retrieval_strategy=strategy,
     )
 
 
