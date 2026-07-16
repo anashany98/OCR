@@ -84,6 +84,51 @@ class DocumentEntityRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ---------------------------------------------------------------------------
+# Graph RAG relations and evidence
+# ---------------------------------------------------------------------------
+
+
+class GraphRelationEvidenceRead(BaseModel):
+    """A verbatim quote that backs a graph relation.
+
+    The chat agent and the document-detail view render
+    ``quote`` as a citation. ``extractor_version`` lets reviewers
+    trace the relation back to the extractor that produced it.
+    """
+
+    evidence_id: int
+    relation_id: int
+    document_id: int
+    page_number: int | None
+    quote: str
+    confidence: float | None
+    extractor_version: str | None
+    created_at: datetime
+
+
+class GraphRelationRead(BaseModel):
+    """One relation in the relational graph, with its evidence chain."""
+
+    relation_id: int
+    relation_type: str
+    polarity: str
+    confidence: float | None
+    status: str
+    source_entity_id: int
+    source_entity_type: str
+    source_entity_value: str
+    target_entity_id: int
+    target_entity_type: str
+    target_entity_value: str
+    evidence: list[GraphRelationEvidenceRead]
+
+
+class DocumentGraphRelationsResponse(BaseModel):
+    document_id: int
+    relations: list[GraphRelationRead]
+
+
 class UploadResponse(BaseModel):
     document: DocumentRead
     job_id: int | None
