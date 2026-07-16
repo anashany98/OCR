@@ -65,9 +65,15 @@ RULES: dict[str, list[str]] = {
     # MiniMax M3 (FASE 2) — explicit "medicion" type, evaluated
     # BEFORE ``croquis_medida`` so a filename or text that
     # contains the word "medición" wins over the croquis pattern.
-    # ``medición 2 armarios.docx`` and similar measurement
-    # documents now report as ``medicion`` instead of
-    # ``croquis_medida``.
+    # The keyword list used to include generic dimensional words
+    # (``ancho``, ``alto``, ``largo``, ``cantidad``, ``armario``)
+    # which produced false positives: any quote or order whose body
+    # mentioned dimensions outscored ``presupuesto`` / ``pedido`` and
+    # the document was reported as ``medicion``.  We now keep only
+    # the explicit measurement vocabulary; a real measurement sheet
+    # almost always contains ``medición`` / ``medida`` / ``medidas``
+    # in either the filename or the body, so the signal is still
+    # strong and the false positives disappear.
     "medicion": [
         "medicion",
         "medición",
@@ -77,12 +83,9 @@ RULES: dict[str, list[str]] = {
         "hoja de medición",
         "cuadro de mediciones",
         "estado de mediciones",
-        "ancho",
-        "alto",
-        "largo",
-        "cantidad",
-        "armario",
-        "armarios",
+        "toma de medidas",
+        "relación de medidas",
+        "relacion de medidas",
     ],
     # MiniMax M3 (FASE 2) — new business types the manifest audits.
     "informe": [
@@ -617,18 +620,22 @@ def classify_document(
         return ClassificationResult("email_exportado", 0.98, [f"extension:{extension}"])
 
     # A spreadsheet may list furniture, quantities and dimensions, but it is
-    # still a spreadsheet.  The visual content route is not meaningful for
-    # this medium and must not turn it into a photo or a measurement sheet.
-    if extension in {".xls", ".xlsx", ".xlsm", ".csv", ".tsv"} and content_route in {
-        "interior_design",
-        "fabric_description",
-    }:
+    # still a spreadsheet.  This is unconditional: the file extension
+    # identifies the medium regardless of what the cells contain. Without
+    # this short-circuit, ``PL_FRA PLANTILLA_solo FILIAL R.D y MX.xlsx``
+    # (whose body mentions ``Pol. Son Castello`` and standard header
+    # vocabulary) used to lose to the ``medicion`` rule.
+    if extension in {".xls", ".xlsx", ".xlsm", ".csv", ".tsv"}:
         return ClassificationResult("excel", 0.98, [f"extension:{extension}"])
 
-    # Same principle for a scanned quote: the filename is an explicit
-    # business declaration, whereas computer-vision sees the furniture listed
-    # inside it and would otherwise label the scan as a product photo.
-    if is_image and ("ppto" in normalized_filename or "presupuesto" in normalized_filename):
+    # The leaf filename declaring ``presupuesto`` / ``ppto`` is an explicit
+    # business statement (the file is *the* quote, not a document about a
+    # quote).  This used to be image-only; PDFs went through the keyword
+    # path and lost to ``medicion`` whenever the body mentioned
+    # ``ancho``/``largo``.  Applied to *any* extension now so the
+    # ``Presupuesto 1-250258 MELIA HOTELS INTERNATIONAL S.A.pdf`` family
+    # reports the correct type.
+    if "ppto" in normalized_filename or "presupuesto" in normalized_filename:
         return ClassificationResult("presupuesto", 0.98, ["filename:presupuesto_abbrev"])
 
     # A filename explicitly declaring an incident or measurement is

@@ -107,6 +107,78 @@ def _type_from_extension(extension: str) -> str:
     return "desconocido"
 
 
+# Quick filename-only type hint applied at registration time so a PDF
+# whose name clearly says ``Presupuesto`` does not sit as
+# ``desconocido`` until the heavy pipeline (Celery worker) reclassifies
+# it.  The check is *additive*: a PDF that does not match any keyword
+# still gets ``desconocido`` and the worker reclassifies it later.
+#
+# Kept in sync with the ``RULES`` short-circuits in
+# ``app.services.classification`` (Phase 0).  If you add a new
+# business-declaring filename token there, add it here too.
+#
+# The trailing ``(?:es|s)?`` is the Spanish-plural suffix used by
+# ``classification._match_keyword``.  A bare ``s?`` would only match
+# ``albaran``/``albarans`` (not ``albaranes``) so we mirror the
+# library pattern.
+_FILENAME_TYPE_HINTS: tuple[tuple[str, str], ...] = (
+    (r"\bpresupuestos?\b", "presupuesto"),
+    (r"\bpresupuest[oa]s?\b", "presupuesto"),
+    (r"\bpptos?\b", "presupuesto"),
+    (r"\bfacturas?\b", "factura"),
+    (r"\binvoices?\b", "factura"),
+    (r"\balbaran(?:es)?\b", "albaran"),
+    (r"\balbaran(?:es)?\s+de\s+(entrega|recogida)\b", "albaran"),
+    (r"\bpedidos?\b", "pedido"),
+    (r"\borders?\b", "pedido"),
+    (r"\bconfirmaciones?\b", "confirmacion"),
+    (r"\bplanos?\b", "plano"),
+    (r"\bhojas?\s+de\s+confeccion\b", "hoja_confeccion"),
+    (r"\bhojas?\s+de\s+confecci[oó]n\b", "hoja_confeccion"),
+    (r"\bmediciones?\b", "medicion"),
+    (r"\bmedici[oó]n(?:es)?\b", "medicion"),
+    (r"\bmedidas?\b", "medicion"),
+    (r"\bmedid[ao]s?\b", "medicion"),
+    (r"\bincidencias?\b", "incidencia"),
+    (r"\bpagos?\b", "pago"),
+    (r"\bcontratos?\b", "contrato"),
+)
+
+
+def _type_from_filename(filename: str) -> str | None:
+    """Return a strong filename-declared type or ``None``.
+
+    The check is intentionally conservative: it only returns a type
+    when the leaf filename contains a *business-declaring* token.
+    Folder hints, dimensional vocabulary and image filenames are
+    left to the heavier pipeline so we do not race the worker.
+
+    The leaf is normalised (lower-cased, ``_`` / ``-`` collapsed to
+    spaces) so the same word-boundary rules used by the heavy
+    classifier's ``_normalize`` apply. Without this, ``pedido_250102.pdf``
+    fails to match ``\\bpedidos?\\b`` because the underscore is a
+    regex word character and breaks the boundary.
+    """
+    leaf = PurePosixPath(filename.replace("\\", "/")).name.lower()
+    leaf = " ".join(leaf.replace("_", " ").replace("-", " ").split())
+    # Strip Spanish accents so ``albarán`` and ``albaran`` both match
+    # the same pattern. The heavy classifier does the same
+    # normalisation in ``_normalize``.
+    leaf = (
+        leaf.replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .replace("ü", "u")
+        .replace("ñ", "n")
+    )
+    for pattern, doc_type in _FILENAME_TYPE_HINTS:
+        if re.search(pattern, leaf):
+            return doc_type
+    return None
+
+
 def register_upload(
     db: Session,
     *,
@@ -216,7 +288,8 @@ def register_existing_file(
         mime_type=mime_type,
         extension=extension,
         file_size=source.stat().st_size,
-        document_type=_type_from_extension(extension),
+        document_type=_type_from_filename(original_filename or source.name)
+        or _type_from_extension(extension),
         status=status,
         quality_status="needs_human_review"
         if status == "needs_review"
