@@ -479,6 +479,65 @@ def _contains_any(normalized: str, words: Iterable[str]) -> bool:
     return any(_contains_word(normalized, word) for word in words)
 
 
+_CAD_QUESTION_PROPERTIES: frozenset[str] = frozenset(
+    {
+        "medida",
+        "medidas",
+        "cota",
+        "cotas",
+        "dimension",
+        "dimensiones",
+        "entidad",
+        "entidades",
+        "elemento",
+        "elementos",
+        "capa",
+        "capas",
+        "unidad",
+        "unidades",
+        "aparece",
+        "aparecen",
+        "donde",
+        "ubicacion",
+        "dudosa",
+        "dudoso",
+    }
+)
+_CAD_IDENTIFIER_QUESTION_RE = re.compile(
+    r"\b[A-Z]{1,8}\d+(?:\s*-\s*[A-Z]{1,8}\d+)*\b", re.IGNORECASE
+)
+
+
+def _looks_like_cad_question(normalized: str, mentioned_filenames: list[str]) -> bool:
+    """Detect CAD intent without requiring the literal word ``plano``.
+
+    Labels such as ``M1``/``M4`` and questions about drawing units are
+    common after the user already opened a plan, so routing them through
+    hybrid search loses the structured native evidence.
+    """
+    has_property = _contains_any(normalized, _CAD_QUESTION_PROPERTIES)
+    if not has_property:
+        return False
+    has_cad_filename = any(name.lower().endswith((".dxf", ".dwg")) for name in mentioned_filenames)
+    has_plan_hint = (
+        _contains_any(normalized, _PLAN_HINTS) or "dxf" in normalized or "dwg" in normalized
+    )
+    has_identifier = _CAD_IDENTIFIER_QUESTION_RE.search(normalized) is not None
+    has_drawing_hint = _contains_any(
+        normalized, ("dibujo", "esquema", "drawing", "zeichnung", "disegno")
+    )
+    has_native_dimension_signal = _contains_any(normalized, ("cota", "cotas")) and _contains_any(
+        normalized, ("unidad", "unidades", "dudosa", "dudoso")
+    )
+    return (
+        has_cad_filename
+        or has_plan_hint
+        or has_identifier
+        or has_drawing_hint
+        or has_native_dimension_signal
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public dataclass
 # ---------------------------------------------------------------------------
@@ -545,6 +604,22 @@ def select_tools_for_question(
     document_numbers = _extract_document_numbers(routing_question)
     literal_identifiers = _extract_literal_identifiers(routing_question)
     exact_subjects = extract_exact_subject_phrases(routing_question)
+    mentioned_filenames = _extract_filenames(routing_question)
+
+    # A CAD filename is authoritative.  Drawing filenames often contain
+    # words such as "medidas" or "salon"; if the room-measurement branch
+    # sees those first it mistakes the filename for a room question and
+    # discards the native CAD evidence entirely.
+    if (
+        settings.cad_chat_tools_enabled
+        and mentioned_filenames
+        and any(name.casefold().endswith((".dxf", ".dwg")) for name in mentioned_filenames)
+    ):
+        return [
+            ToolCall("find_document_by_filename", {"query": mentioned_filenames[0]}),
+            ToolCall("get_document_full_details", {"document_id": 0}),
+            ToolCall("get_plan_cad_context", {"query": mentioned_filenames[0]}),
+        ]
 
     # ---- Plan measurements ----
     # "Cuanto mide el salon" contains an aggregation hint ("cuanto"),
@@ -575,20 +650,39 @@ def select_tools_for_question(
     ) and (room_name := _extract_room_name(normalized)):
         return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
 
+    # Native CAD context has priority for generic plan questions. It exposes
+    # DIMENSION entities, layers, inserts and provenance instead of relying on
+    # OCR chunks that often flatten a drawing into an ungrounded summary.
+    if settings.cad_chat_tools_enabled and _looks_like_cad_question(
+        normalized,
+        mentioned_filenames,
+    ):
+        if mentioned_filenames:
+            return [
+                ToolCall("find_document_by_filename", {"query": mentioned_filenames[0]}),
+                ToolCall("get_document_full_details", {"document_id": 0}),
+                ToolCall("get_plan_cad_context", {"query": mentioned_filenames[0]}),
+            ]
+        return [ToolCall("get_plan_cad_context", {"query": routing_question})]
+
     # ---- Presupuesto / pedido / factura by number ----
     # Keep this before generic aggregation so "importe del presupuesto
     # 260009" resolves the specific budget instead of returning a global
     # total over every budget.
-    if document_number and not any(
-        document_number in identifier and len(identifier) > len(document_number)
-        for identifier in literal_identifiers
-    ) and (
-        _contains_any(normalized, _BUDGET_HINTS)
-        or _contains_any(normalized, _ORDER_HINTS)
-        or _contains_any(normalized, _INVOICE_HINTS)
-        or "documento" in normalized
-        or "document" in normalized
-        or "commande" in normalized
+    if (
+        document_number
+        and not any(
+            document_number in identifier and len(identifier) > len(document_number)
+            for identifier in literal_identifiers
+        )
+        and (
+            _contains_any(normalized, _BUDGET_HINTS)
+            or _contains_any(normalized, _ORDER_HINTS)
+            or _contains_any(normalized, _INVOICE_HINTS)
+            or "documento" in normalized
+            or "document" in normalized
+            or "commande" in normalized
+        )
     ):
         if _contains_any(normalized, _BUDGET_HINTS):
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
@@ -641,9 +735,7 @@ def select_tools_for_question(
         "que se ve",
     )
     if _contains_any(normalized, visual_hints):
-        last_document_ids = list(
-            getattr(active_context, "last_retrieved_document_ids", []) or []
-        )
+        last_document_ids = list(getattr(active_context, "last_retrieved_document_ids", []) or [])
         if last_document_ids:
             return [
                 ToolCall(
@@ -781,7 +873,6 @@ def select_tools_for_question(
     # If the user mentions a filename (with extension) we use the lookup path
     # so the LLM gets the document's entities and its connections to the
     # rest of the project, not just text snippets.
-    mentioned_filenames = _extract_filenames(question)
     if mentioned_filenames:
         tools = [
             ToolCall("find_document_by_filename", {"query": mentioned_filenames[0]}),
@@ -893,6 +984,11 @@ def select_tools_for_question(
         ),
     ) and (room_name := _extract_room_name(normalized)):
         return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
+    if settings.cad_chat_tools_enabled and _looks_like_cad_question(
+        normalized,
+        _extract_filenames(routing_question),
+    ):
+        return [ToolCall("get_plan_cad_context", {"query": routing_question})]
     if _contains_any(normalized, _PLAN_HINTS) or _contains_any(
         normalized,
         (
@@ -1455,9 +1551,10 @@ def _extract_reference(text: str) -> str | None:
 
 
 _FILENAME_HINT = re.compile(
-    r"\b[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|xls|xlsm|csv|tsv|png|jpe?g|tiff?|bmp|webp|eml|txt)\b",
+    r"\b[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|xls|xlsm|csv|tsv|png|jpe?g|tiff?|bmp|webp|eml|txt|dxf|dwg)\b",
     flags=re.IGNORECASE,
 )
+_CAD_FILENAME_HINT = re.compile(r"([^?;,\n]*?\.(?:dxf|dwg))\b", flags=re.IGNORECASE)
 _VERBAL_FILENAME_HINT = re.compile(
     r"\b(?:pdf|documento|archivo)\s+de\s+(.+?)(?=\s+(?:si|con|cuando)\b|[?.;,]|$)",
     flags=re.IGNORECASE,
@@ -1468,7 +1565,19 @@ def _extract_filenames(text: str) -> list[str]:
     """Find filename-like tokens in the user's question. Stops common
     false positives like URLs by requiring a document extension at
     the end."""
-    return _FILENAME_HINT.findall(text or "")
+    matches = _FILENAME_HINT.findall(text or "")
+    if matches:
+        return matches
+    cad_matches = []
+    for match in _CAD_FILENAME_HINT.findall(text or ""):
+        candidate = match.strip(" \t\n.¿¡")
+        # Keep the filename tail when the sentence contains a leading
+        # question phrase ("qué medidas aparecen en ...dwg").
+        if " en " in candidate.lower():
+            candidate = re.split(r"\ben\b", candidate, maxsplit=1, flags=re.IGNORECASE)[-1].strip()
+        if candidate:
+            cad_matches.append(candidate)
+    return cad_matches
 
 
 def _extract_verbal_filename(text: str) -> str | None:
@@ -1516,5 +1625,40 @@ def _extract_room_name(normalized_question: str) -> str | None:
         normalized_question,
     )
     if match:
-        return match.group(1).strip()
+        candidate = match.group(1).strip()
+        generic = {
+            "aparecen",
+            "aparece",
+            "hay",
+            "tiene",
+            "tienen",
+            "del",
+            "de",
+            "el",
+            "la",
+            "este",
+            "esta",
+            "estos",
+            "estas",
+            "plano",
+            "planos",
+            "documento",
+            "archivo",
+            "aqui",
+            "ahi",
+            "en",
+            "se",
+            "son",
+        }
+        tokens = candidate.split()
+        if (
+            candidate in generic
+            or (tokens and (tokens[0] in generic or tokens[-1] in generic))
+            or any(
+                candidate.endswith(ext) or f"{ext} " in candidate
+                for ext in (".dxf", ".dwg", ".pdf")
+            )
+        ):
+            return None
+        return candidate
     return None

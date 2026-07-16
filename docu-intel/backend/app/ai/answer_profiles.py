@@ -1,4 +1,5 @@
 """Bounded context and output budgets for chat intent classes."""
+
 from __future__ import annotations
 
 import re

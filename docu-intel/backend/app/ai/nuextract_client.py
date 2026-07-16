@@ -68,12 +68,12 @@ class NuExtractClient:
         timeout_seconds: float | None = None,
         api_key: str | None = None,
     ) -> None:
-        self.base_url = (base_url if base_url is not None else settings.nuextract_base_url).rstrip("/")
+        self.base_url = (base_url if base_url is not None else settings.nuextract_base_url).rstrip(
+            "/"
+        )
         self.model = model if model is not None else settings.nuextract_model
         self.timeout_seconds = float(
-            timeout_seconds
-            if timeout_seconds is not None
-            else settings.nuextract_timeout_seconds
+            timeout_seconds if timeout_seconds is not None else settings.nuextract_timeout_seconds
         )
         self.api_key = api_key
 

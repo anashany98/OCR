@@ -37,12 +37,11 @@ from .context import (
 # Constants
 # ---------------------------------------------------------------------------
 
-# Cap the number of context items that reach the LLM. We compute the
-# list of items once in collect_context() and slice it before passing
-# to the prompt; this number is what the LLM actually sees.
-# Keep the model view aligned with the bounded conversation retrieval set.
+# Cap the number of evidence items that reach the LLM. Conversation memory,
+# when present, is intentionally outside this cap: it is routing state, not a
+# source, and must not silently evict the twelfth document from the answer.
 # Long summaries are compacted per item below so twelve sources still fit in
-# the configured context window instead of silently hiding the last four.
+# the configured context window.
 MAX_CONTEXT_ITEMS_FOR_LLM = 12
 
 # Cap on the excerpt length inside the context line. The LLM has a
@@ -150,10 +149,11 @@ def build_context_text(
         max_tokens = getattr(settings, "ai_max_context_tokens", 0) or 0
     budget = max_tokens - _PROMPT_OVERHEAD_TOKENS if max_tokens > 0 else 0
 
+    ordered_items = _prioritize_context_items(context_items)
     lines: list[str] = []
     used_tokens = 0
-    compact_many = len(context_items) > 8
-    for index, item in enumerate(context_items[:MAX_CONTEXT_ITEMS_FOR_LLM], start=1):
+    compact_many = len(ordered_items) > 8
+    for index, item in enumerate(ordered_items, start=1):
         line = _context_line_for_ai(
             index,
             item,
@@ -165,6 +165,54 @@ def build_context_text(
         lines.append(line)
         used_tokens += line_tokens
     return "\n".join(lines)
+
+
+def _prioritize_context_items(context_items: list[ContextItem]) -> list[ContextItem]:
+    """Pack evidence for the prompt by strength, not collector order.
+
+    Tool chains append structured data, exact matches and semantic hits in
+    different orders. A plain slice could therefore discard the best page of
+    a document. Keep a small amount of conversation state, then select up to
+    twelve evidence items with an exact/structured preference and one source
+    per document before admitting additional chunks from the same document.
+    """
+    memory = [item for item in context_items if item.title == "Memoria de la conversacion"][:1]
+    evidence = [item for item in context_items if item.title != "Memoria de la conversacion"]
+
+    def strength(index_and_item: tuple[int, ContextItem]) -> tuple[float, int]:
+        index, item = index_and_item
+        title = (item.title or "").casefold()
+        score = min(max(float(item.relevance_score or 0.0), 0.0), 1.0)
+        if title.startswith("[estructurado]"):
+            score += 2.0
+        if "coincidencia literal" in title or "numero exacto" in title or "frase exacta" in title:
+            score += 1.5
+        if title.startswith("cad de "):
+            score += 1.0
+        quality = item.ocr_confidence if item.ocr_confidence is not None else item.confidence
+        if quality is not None:
+            score += min(max(float(quality), 0.0), 1.0) * 0.25
+        if len((item.summary or item.excerpt or "").strip()) >= 80:
+            score += 0.1
+        # Earlier collector order is only a deterministic tie-breaker.
+        return (score, -index)
+
+    ranked = [item for _, item in sorted(enumerate(evidence), key=strength, reverse=True)]
+    selected: list[ContextItem] = []
+    seen_documents: set[int] = set()
+    deferred: list[ContextItem] = []
+    for item in ranked:
+        if item.document_id is None or item.document_id not in seen_documents:
+            selected.append(item)
+            if item.document_id is not None:
+                seen_documents.add(item.document_id)
+        else:
+            deferred.append(item)
+        if len(selected) >= MAX_CONTEXT_ITEMS_FOR_LLM:
+            break
+    if len(selected) < MAX_CONTEXT_ITEMS_FOR_LLM:
+        selected.extend(deferred[: MAX_CONTEXT_ITEMS_FOR_LLM - len(selected)])
+    return memory + selected
 
 
 def _context_line_for_ai(
@@ -235,8 +283,10 @@ def _build_user_prompt(
     # active, finishing with ``finish_reason='stop'`` and 0 tokens. The
     # streaming path detects that empty-response case and retries with
     # ``enable_thinking=True`` (i.e. without ``/no_think``).
-    no_think = "" if enable_thinking else (
-        "\n/no_think" if "qwen" in (settings.ai_model or "").lower() else ""
+    no_think = (
+        ""
+        if enable_thinking
+        else ("\n/no_think" if "qwen" in (settings.ai_model or "").lower() else "")
     )
     if context_text.strip():
         context_block = (
