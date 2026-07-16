@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # operator-installed executable on the Windows host instead.
     dwg_converter_bridge_url: str = ""
     dwg_converter_bridge_token: str = ""
+    cad_structured_extraction_enabled: bool = False
+    cad_persist_preview_enabled: bool = False
+    cad_chat_tools_enabled: bool = False
     file_storage_strategy: Literal["copy", "hardlink", "auto"] = "auto"
     watcher_enabled: bool = True
     watcher_backend: Literal["native", "polling"] = "native"
@@ -221,6 +224,75 @@ class Settings(BaseSettings):
     nuextract_extraction_temperature: float = 0.2
     nuextract_tier4_enabled: bool = False
     nuextract_hyperextract_enabled: bool = False
+    # OvisOCR2 is an optional page-level document-parsing service.  It remains
+    # disabled by default so merely deploying its Compose profile cannot alter
+    # the existing OCR cascade.  The revision is deliberately a full immutable
+    # Hugging Face commit, verified on 2026-07-15; operators update it only via
+    # the golden-corpus procedure in docs/runbooks/ovisocr2.md.
+    ovisocr2_enabled: bool = False
+    ovisocr2_endpoint: str = "http://ovisocr2:8000"
+    ovisocr2_model: str = "ATH-MaaS/OvisOCR2"
+    ovisocr2_model_revision: str = "77bfe9462d1e6f8965ee6698f08ea8ede580912c"
+    ovisocr2_timeout_seconds: float = 180.0
+    ovisocr2_connect_timeout_seconds: float = 5.0
+    # Budget for the complete Tier 4 attempt (OvisOCR2 plus independent
+    # fallbacks).  It is intentionally not coupled to one HTTP request.
+    ovisocr2_chain_timeout_seconds: float = 450.0
+    ovisocr2_max_concurrency: int = 1
+    ovisocr2_max_tokens: int = 16384
+    # vLLM otherwise inherits the model's 262k-token context and cannot
+    # reserve a KV cache on the validation RTX 4070.
+    ovisocr2_max_model_len: int = 32768
+    ovisocr2_min_pixels: int = 200704
+    ovisocr2_max_pixels: int = 8294400
+    ovisocr2_gpu_device: int = 0
+    ovisocr2_gpu_memory_utilization: float = 0.50
+    # When false, OvisOCR2 only participates after the deterministic
+    # eligibility predicate (or its stable canary) says it may help.
+    ovisocr2_tier4_primary: bool = False
+    ovisocr2_canary_percent: int = 0
+    ovisocr2_circuit_failures: int = 3
+    ovisocr2_circuit_reset_seconds: float = 120.0
+    ovisocr2_max_response_bytes: int = 16_777_216
+    ovisocr2_keep_visual_regions: bool = True
+    ovisocr2_api_key: str = ""
+
+    @model_validator(mode="after")
+    def _validate_ovisocr2_settings(self) -> "Settings":
+        """Reject unsafe Ovis settings before a worker sends a page.
+
+        Validation applies even while the feature is off.  This prevents a
+        later feature-flag flip from converting a typo into unbounded input or
+        an endpoint outside the intended internal HTTP contract.
+        """
+        if not self.ovisocr2_endpoint.startswith(("http://", "https://")):
+            raise ValueError("OVISOCR2_ENDPOINT must be an http(s) URL")
+        if not self.ovisocr2_model_revision or len(self.ovisocr2_model_revision) < 12:
+            raise ValueError("OVISOCR2_MODEL_REVISION must be a pinned model revision")
+        if (
+            self.ovisocr2_connect_timeout_seconds <= 0
+            or self.ovisocr2_timeout_seconds <= 0
+            or self.ovisocr2_chain_timeout_seconds <= 0
+        ):
+            raise ValueError("OVISOCR2 timeouts must be positive")
+        if (
+            self.ovisocr2_max_concurrency < 1
+            or self.ovisocr2_max_tokens < 1
+            or self.ovisocr2_max_model_len < self.ovisocr2_max_tokens
+        ):
+            raise ValueError("OVISOCR2 concurrency and token limit must be positive")
+        if self.ovisocr2_min_pixels < 1 or self.ovisocr2_max_pixels < self.ovisocr2_min_pixels:
+            raise ValueError("OVISOCR2 pixel limits are invalid")
+        if not 0.0 < self.ovisocr2_gpu_memory_utilization <= 0.95:
+            raise ValueError("OVISOCR2_GPU_MEMORY_UTILIZATION must be in (0, 0.95]")
+        if not 0 <= self.ovisocr2_canary_percent <= 100:
+            raise ValueError("OVISOCR2_CANARY_PERCENT must be between 0 and 100")
+        if self.ovisocr2_circuit_failures < 1 or self.ovisocr2_circuit_reset_seconds <= 0:
+            raise ValueError("OVISOCR2 circuit-breaker settings are invalid")
+        if self.ovisocr2_max_response_bytes < 1024:
+            raise ValueError("OVISOCR2_MAX_RESPONSE_BYTES must be at least 1024")
+        return self
+
     # Tesseract 5 settings (used as primary in the cascade and as the
     # only engine when ocr_engine == "tesseract").
     tesseract_lang: str = "spa+eng"
@@ -388,6 +460,14 @@ class Settings(BaseSettings):
     # Exact document references already have authoritative structured
     # context; semantic search is a fallback, not a compulsory second step.
     search_exact_first_enabled: bool = True
+    # PG-HNSW-01: ``hnsw.ef_search`` per-transaction override for
+    # pgvector cosine scans. The default (40) is a PostgreSQL
+    # server-side default; raising it improves recall at the cost
+    # of latency, lowering it does the opposite. ``PgvectorStore``
+    # applies this via ``SET LOCAL hnsw.ef_search`` inside the
+    # search transaction so it never leaks to other sessions.
+    # Validated range: 20..200 (see benchmark §2.6).
+    search_hnsw_ef_search: int = 40
     # R2 — Prompt-injection defence knobs. ``sensitivity``
     # controls how aggressive the regex detector is
     # (``low`` catches only obvious patterns, ``high`` is very
@@ -755,6 +835,7 @@ class Settings(BaseSettings):
     def _warn_coercion(cls, value: bool) -> bool:
         if value:
             import warnings
+
             warnings.warn(
                 "EMBEDDING_ALLOW_DIMENSION_COERCION activo: vectores pueden "
                 "corromperse. Solo para migración.",
@@ -769,9 +850,7 @@ class Settings(BaseSettings):
         if environment in {"local", "development", "test"}:
             return value
         if not value:
-            raise ValueError(
-                f"METRICS_TOKEN must be set explicitly in '{environment}' environment"
-            )
+            raise ValueError(f"METRICS_TOKEN must be set explicitly in '{environment}' environment")
         return value
 
     @field_validator("embedding_model", mode="after")
