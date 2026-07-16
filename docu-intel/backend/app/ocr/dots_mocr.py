@@ -145,6 +145,7 @@ class DotsMOCREngine:
             # Clean up temporary file if it was created
             if processed_path != image_path:
                 import contextlib
+
                 with contextlib.suppress(OSError):
                     processed_path.unlink(missing_ok=True)
         model = self.config.model or settings.vision_model
@@ -285,8 +286,13 @@ def _encode_image_for_vlm(path: Path) -> tuple[bytes, str]:
         logger.debug("VLM image normalization skipped for %s: %s", path, exc)
         suffix = path.suffix.lower().lstrip(".") or "png"
         mime = {
-            "jpg": "jpeg", "jpeg": "jpeg", "png": "png", "tif": "tiff",
-            "tiff": "tiff", "bmp": "bmp", "webp": "webp",
+            "jpg": "jpeg",
+            "jpeg": "jpeg",
+            "png": "png",
+            "tif": "tiff",
+            "tiff": "tiff",
+            "bmp": "bmp",
+            "webp": "webp",
         }.get(suffix, "png")
         return path.read_bytes(), mime
 

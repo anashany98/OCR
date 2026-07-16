@@ -55,14 +55,17 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
 
     if engine == "tesseract":
         from app.ocr.tesseract import TesseractOCREngine
+
         _engine_class_singleton = TesseractOCREngine
 
     elif engine == "paddleocr":
         from app.ocr.paddle import PaddleOCREngine
+
         _engine_class_singleton = PaddleOCREngine
 
     elif engine == "pp_structure":
         from app.ocr.pp_structure import PPStructureEngine
+
         _engine_class_singleton = PPStructureEngine
 
     elif engine == "cascading":
@@ -236,6 +239,36 @@ def _build_cascading_engine() -> BaseOCREngine:
                 kwargs["tier4_fallback"] = kwargs["vlm_ocr"]
             kwargs["vlm_ocr"] = nuextract
             kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
+
+    # OvisOCR2 is opt-in and wrapped only when enabled. Keeping this block
+    # after the legacy Dots/NuExtract wiring preserves the exact old object
+    # topology when OVISOCR2_ENABLED=false, which makes rollback a flag flip.
+    if settings.ovisocr2_enabled:
+        try:
+            from app.ocr.ovisocr2 import OvisOCR2Engine
+            from app.ocr.tier4_chain import Tier4EngineChain
+
+            legacy_primary = kwargs.pop("vlm_ocr", None)
+            legacy_fallback = kwargs.pop("tier4_fallback", None)
+            engines = [OvisOCR2Engine()]
+            if legacy_primary is not None:
+                engines.append(legacy_primary)  # Ovis -> NuExtract or Dots
+            if legacy_fallback is not None and legacy_fallback is not legacy_primary:
+                engines.append(legacy_fallback)  # normally Ovis -> NuExtract -> Dots
+            kwargs["vlm_ocr"] = Tier4EngineChain(
+                engines, max_total_seconds=settings.ovisocr2_chain_timeout_seconds
+            )
+            kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
+        except Exception as exc:  # noqa: BLE001 - existing cascade stays available
+            logger.warning(
+                "OvisOCR2 Tier 4 chain disabled at runtime: %s. "
+                "The legacy Tier 4 topology remains active.",
+                exc,
+            )
+            if "legacy_primary" in locals() and legacy_primary is not None:
+                kwargs["vlm_ocr"] = legacy_primary
+            if "legacy_fallback" in locals() and legacy_fallback is not None:
+                kwargs["tier4_fallback"] = legacy_fallback
     return CascadingOCREngine(**kwargs)  # type: ignore[arg-type]
 
 
@@ -274,8 +307,7 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
             future.result(timeout=warmup_timeout)
     except FuturesTimeout:
         logger.error(
-            "OCR engine warmup timed out after %ds. "
-            "Marking affected engine(s) as unavailable.",
+            "OCR engine warmup timed out after %ds. Marking affected engine(s) as unavailable.",
             warmup_timeout,
         )
         _mark_warmup_failed(engine)
@@ -460,4 +492,10 @@ def _exercise(engine: BaseOCREngine) -> None:
             image_path.unlink(missing_ok=True)
 
 
-__all__ = ["get_ocr_engine_class", "get_ocr_engine", "get_cascading_engine", "preload_ocr_engine", "clear_ocr_engine_cache"]
+__all__ = [
+    "get_ocr_engine_class",
+    "get_ocr_engine",
+    "get_cascading_engine",
+    "preload_ocr_engine",
+    "clear_ocr_engine_cache",
+]

@@ -36,6 +36,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.ocr.base import BaseOCREngine, OCRResult
+from app.ocr.ovisocr2 import OvisOCR2InputTooLarge
 from app.ocr.preprocess import clear_preprocess_cache
 from app.services.metrics import (
     track_ocr_cascade_fallback,
@@ -172,6 +173,8 @@ class CascadingOCREngine:
         self._tls = threading.local()
         self._tls.language: str | None = None
         self._tls.content_route: str | None = None
+        self._tls.document_id: int | str | None = None
+        self._tls.page_number: int | None = None
         # ``name`` is the engine identity of the last result; default to
         # the primary so a query before any call still has a sensible
         # value. Stored in thread-local to avoid race conditions when
@@ -198,6 +201,22 @@ class CascadingOCREngine:
     def current_content_route(self, value: str | None) -> None:
         self._tls.content_route = value
 
+    @property
+    def current_document_id(self) -> int | str | None:
+        return getattr(self._tls, "document_id", None)
+
+    @current_document_id.setter
+    def current_document_id(self, value: int | str | None) -> None:
+        self._tls.document_id = value
+
+    @property
+    def current_page_number(self) -> int | None:
+        return getattr(self._tls, "page_number", None)
+
+    @current_page_number.setter
+    def current_page_number(self, value: int | None) -> None:
+        self._tls.page_number = value
+
     def extract(self, image_path: Path) -> OCRResult:
         # O1: clear the preprocessing cache so each page starts fresh.
         clear_preprocess_cache()
@@ -222,10 +241,7 @@ class CascadingOCREngine:
             from app.parsers.clip_classifier import classify_image
 
             clip_result = classify_image(image_path)
-            if (
-                clip_result["category"] == "product_photo"
-                and clip_result["confidence"] > 0.75
-            ):
+            if clip_result["category"] == "product_photo" and clip_result["confidence"] > 0.75:
                 is_photo = True
                 logger.info("Photo detected, will try OCR then vision: %s", image_path.name)
         except Exception:
@@ -262,7 +278,9 @@ class CascadingOCREngine:
         if is_photo and self.vlm_ocr is not None:
             primary_text = (primary_result.text or "").strip()
             if len(primary_text) < 50:  # OCR produced very little text
-                logger.info("Photo OCR insufficient (%d chars), trying vision LLM", len(primary_text))
+                logger.info(
+                    "Photo OCR insufficient (%d chars), trying vision LLM", len(primary_text)
+                )
                 try:
                     vision_result = self.vlm_ocr.extract(image_path)
                     if _quality(vision_result) > _quality(primary_result) + QUALITY_EPSILON:
@@ -271,6 +289,13 @@ class CascadingOCREngine:
                     logger.warning("Vision LLM failed for photo: %s", exc)
 
         if self._is_acceptable(primary_result):
+            # The canary is stable per document/page and intentionally bypasses
+            # the quality gate so operators can compare an unbiased sample.
+            if self._should_force_tier4(image_path, primary_result):
+                track_ocr_tier4_invoked("canary")
+                tier4_result = self._try_tier4(image_path, primary_result)
+                if tier4_result is not None:
+                    return tier4_result
             return self._finalize(image_path, self.primary.name, primary_result)
 
         # Escalate to the fallback. Any failure here is best-effort:
@@ -296,7 +321,11 @@ class CascadingOCREngine:
         if should_replace:
             # Tier 2 won — try Tier 3 only if it's wired in AND Tier 2
             # is still weak (below thresholds). Otherwise return Tier 2.
-            if self.pp_structure is not None and not skip_tier3 and not self._is_acceptable(fallback_result):
+            if (
+                self.pp_structure is not None
+                and not skip_tier3
+                and not self._is_acceptable(fallback_result)
+            ):
                 tier3 = self._try_tier3(image_path, primary_result, fallback_result)
                 if tier3 is not None:
                     return self._finalize(
@@ -372,12 +401,8 @@ class CascadingOCREngine:
             result.confidence is not None
             and result.confidence < settings.low_ocr_confidence_threshold
         )
-        if (
-            self.vlm_ocr is None
-            or (
-                _quality(result) >= self.tier4_quality_threshold
-                and not raw_confidence_is_low
-            )
+        if self.vlm_ocr is None or (
+            _quality(result) >= self.tier4_quality_threshold and not raw_confidence_is_low
         ):
             return self._record_winner(tier, result)
         # M1: Tier 4 was consulted because the best Tier 1-3 result
@@ -393,10 +418,27 @@ class CascadingOCREngine:
     def _try_tier4(self, image_path: Path, best_prior: OCRResult) -> OCRResult | None:
         if self.vlm_ocr is None:  # caller-guaranteed (see __init__)
             raise RuntimeError("VLM OCR engine not initialised")
+        context_setter = getattr(self.vlm_ocr, "set_context", None)
+        if callable(context_setter):
+            context_setter(
+                document_id=self.current_document_id,
+                page_number=self.current_page_number,
+                content_route=self.current_content_route,
+                baseline=best_prior,
+            )
         start = time.perf_counter()
         try:
-            logger.info("OCR Tier 4 sending page to %s: image=%s", self.vlm_ocr.name, image_path.name)
+            logger.info(
+                "OCR Tier 4 sending page to %s: image=%s", self.vlm_ocr.name, image_path.name
+            )
             tier4_result = self.vlm_ocr.extract(image_path)
+        except OvisOCR2InputTooLarge:
+            # The Ovis adapter has already verified that this high-DPI render
+            # is outside the shared Tier 4 input budget. Returning the best
+            # classical result is safer than invoking the legacy VLM fallback
+            # with the same oversized page.
+            track_ocr_duration(time.perf_counter() - start)
+            return None
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
             self._track_fallback_failure(self.vlm_ocr.name, exc)
@@ -404,6 +446,19 @@ class CascadingOCREngine:
                 return None
             return self._try_tier4_fallback(image_path, best_prior, self.tier4_fallback)
         track_ocr_duration(time.perf_counter() - start)
+
+        # Tier 4 can improve reading order while still altering a material
+        # identifier. Preserve its candidate, but carry the independent
+        # conflict forward so persistence sends the page to review instead of
+        # auto-approving a plausible-looking generated transcript.
+        from app.services.ocr_decision import decide_ocr_result
+
+        tier4_decision = decide_ocr_result(tier4_result, baseline=best_prior)
+        for warning in {"numeric_conflict", "table_structure_conflict"} & set(
+            tier4_decision.reasons
+        ):
+            if warning not in tier4_result.warnings:
+                tier4_result.warnings.append(warning)
 
         tier4_quality = _quality(tier4_result)
         prior_quality = _quality(best_prior)
@@ -415,11 +470,29 @@ class CascadingOCREngine:
         # classical pass (the usual handwriting case), a coherent vision
         # transcript may replace it even without the normal large quality
         # delta, but never if it is materially worse or empty.
-        if prior_raw_is_low and tier4_result.text and tier4_quality >= prior_quality - QUALITY_EPSILON:
-            return self._record_winner(self.vlm_ocr.name, tier4_result)
+        if (
+            prior_raw_is_low
+            and tier4_result.text
+            and tier4_quality >= prior_quality - QUALITY_EPSILON
+        ):
+            return self._record_winner(tier4_result.engine or self.vlm_ocr.name, tier4_result)
         if tier4_quality > prior_quality + TIER4_QUALITY_DELTA:
-            return self._record_winner(self.vlm_ocr.name, tier4_result)
+            return self._record_winner(tier4_result.engine or self.vlm_ocr.name, tier4_result)
         return None
+
+    def _should_force_tier4(self, image_path: Path, baseline: OCRResult) -> bool:
+        if self.vlm_ocr is None:
+            return False
+        context_setter = getattr(self.vlm_ocr, "set_context", None)
+        if callable(context_setter):
+            context_setter(
+                document_id=self.current_document_id,
+                page_number=self.current_page_number,
+                content_route=self.current_content_route,
+                baseline=baseline,
+            )
+        predicate = getattr(self.vlm_ocr, "should_force_tier4", None)
+        return bool(callable(predicate) and predicate(image_path))
 
     def _try_tier4_fallback(
         self,
@@ -429,7 +502,9 @@ class CascadingOCREngine:
     ) -> OCRResult | None:
         start = time.perf_counter()
         try:
-            logger.info("OCR Tier 4 fallback sending page to %s: image=%s", engine.name, image_path.name)
+            logger.info(
+                "OCR Tier 4 fallback sending page to %s: image=%s", engine.name, image_path.name
+            )
             tier4_result = engine.extract(image_path)
         except Exception as exc:
             track_ocr_duration(time.perf_counter() - start)
@@ -437,7 +512,9 @@ class CascadingOCREngine:
             return None
         track_ocr_duration(time.perf_counter() - start)
         if _quality(tier4_result) > _quality(best_prior) + TIER4_QUALITY_DELTA:
-            logger.info("OCR Tier 4 fallback used: engine=%s image=%s", engine.name, image_path.name)
+            logger.info(
+                "OCR Tier 4 fallback used: engine=%s image=%s", engine.name, image_path.name
+            )
             return self._record_winner(engine.name, tier4_result)
         return None
 
@@ -488,9 +565,7 @@ class CascadingOCREngine:
         """
         return _quality(candidate) > _quality(baseline) + QUALITY_EPSILON
 
-    def extract_batch(
-        self, image_paths: list[Path], max_workers: int = 4
-    ) -> list[OCRResult]:
+    def extract_batch(self, image_paths: list[Path], max_workers: int = 4) -> list[OCRResult]:
         """Process multiple pages in parallel using ThreadPoolExecutor.
 
         Tesseract is stateless per page, so parallel processing is safe.
@@ -519,9 +594,7 @@ class CascadingOCREngine:
         )
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_path = {
-                executor.submit(self.extract, path): path for path in image_paths
-            }
+            future_to_path = {executor.submit(self.extract, path): path for path in image_paths}
             for future in as_completed(future_to_path):
                 path = future_to_path[future]
                 idx = path_to_idx[path]
@@ -529,9 +602,7 @@ class CascadingOCREngine:
                     results[idx] = future.result()
                 except Exception as exc:
                     logger.error("OCR batch: page %s failed: %s", path.name, exc)
-                    results[idx] = OCRResult(
-                        text="", confidence=None, blocks=[], engine=self.name
-                    )
+                    results[idx] = OCRResult(text="", confidence=None, blocks=[], engine=self.name)
 
         return results  # type: ignore[return-value]
 

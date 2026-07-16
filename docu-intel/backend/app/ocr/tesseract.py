@@ -98,9 +98,7 @@ class TesseractOCREngine:
             if ocr_path != image_path:
                 ocr_path.unlink(missing_ok=True)
 
-    def _group_tokens_into_lines(
-        self, tokens: list[dict]
-    ) -> tuple[str, list[OCRBlock]]:
+    def _group_tokens_into_lines(self, tokens: list[dict]) -> tuple[str, list[OCRBlock]]:
         """Group word-level tokens into lines by Y coordinate."""
         if not tokens:
             return "", []
@@ -140,11 +138,13 @@ class TesseractOCREngine:
             x2 = max(t["x"] + t["w"] for t in line_tokens)
             y2 = max(t["y"] + t["h"] for t in line_tokens)
             avg_conf = sum(t["conf"] for t in line_tokens) / len(line_tokens)
-            blocks.append(OCRBlock(
-                text=line_text,
-                confidence=avg_conf,
-                bbox=(x1, y1, x2, y2),
-            ))
+            blocks.append(
+                OCRBlock(
+                    text=line_text,
+                    confidence=avg_conf,
+                    bbox=(x1, y1, x2, y2),
+                )
+            )
 
         return "\n".join(text_parts), blocks
 

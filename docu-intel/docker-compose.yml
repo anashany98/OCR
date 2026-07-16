@@ -145,6 +145,9 @@ services:
       - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - ovisocr2_internal
     # M-5: instead of a ``pgrep`` (which passes even when the worker
     # cannot reach the broker), ask Celery for the registered task
     # names. The worker must be up, registered with Redis, and
@@ -222,6 +225,9 @@ services:
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
+    networks:
+      - default
+      - ovisocr2_internal
     runtime: nvidia
     deploy:
       resources:
@@ -269,6 +275,9 @@ services:
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
+    networks:
+      - default
+      - ovisocr2_internal
     runtime: nvidia
     deploy:
       resources:
@@ -413,6 +422,51 @@ services:
       backend:
         condition: service_healthy
 
+  # The model never publishes a host port. Only OCR workers join this
+  # internal network, so a misconfigured frontend/backend cannot call it.
+  ovisocr2:
+    profiles: ["ovisocr2"]
+    build:
+      context: ./services/ovisocr2
+    image: docu-intel-ovisocr2:latest
+    env_file: .env
+    restart: unless-stopped
+    mem_limit: ${OVISOCR2_MEM_LIMIT:-12g}
+    shm_size: ${OVISOCR2_SHM_SIZE:-4g}
+    environment:
+      - HF_HOME=/models/huggingface
+      - OVISOCR2_MODEL=${OVISOCR2_MODEL:-ATH-MaaS/OvisOCR2}
+      - OVISOCR2_MODEL_REVISION=${OVISOCR2_MODEL_REVISION:-77bfe9462d1e6f8965ee6698f08ea8ede580912c}
+      - OVISOCR2_MAX_CONCURRENCY=${OVISOCR2_MAX_CONCURRENCY:-1}
+      - OVISOCR2_MAX_TOKENS=${OVISOCR2_MAX_TOKENS:-16384}
+      - OVISOCR2_MAX_MODEL_LEN=${OVISOCR2_MAX_MODEL_LEN:-32768}
+      - OVISOCR2_MIN_PIXELS=${OVISOCR2_MIN_PIXELS:-200704}
+      - OVISOCR2_MAX_PIXELS=${OVISOCR2_MAX_PIXELS:-8294400}
+      - OVISOCR2_MAX_IMAGE_BYTES=${OVISOCR2_MAX_IMAGE_BYTES:-33554432}
+      - OVISOCR2_GPU_MEMORY_UTILIZATION=${OVISOCR2_GPU_MEMORY_UTILIZATION:-0.50}
+      - OVISOCR2_API_KEY=${OVISOCR2_API_KEY:-}
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${OVISOCR2_GPU_DEVICE:-0}"]
+              capabilities: [gpu]
+    volumes:
+      - ovisocr2_model_cache:/models/huggingface
+    networks:
+      - ovisocr2_internal
+      # This bridge has no other attached service. It permits the initial
+      # Hugging Face model download without exposing the inference API.
+      - ovisocr2_egress
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/readyz'); exit(0 if r.status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
   pgadmin:
     image: dpage/pgadmin4:8
     environment:
@@ -479,3 +533,10 @@ services:
 volumes:
   postgres_data:
   glitchtip_data:
+  ovisocr2_model_cache:
+
+networks:
+  ovisocr2_internal:
+    internal: true
+  ovisocr2_egress:
+    internal: false

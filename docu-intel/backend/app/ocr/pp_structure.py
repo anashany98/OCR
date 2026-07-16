@@ -100,9 +100,7 @@ class PPStructureEngine:
     def _pipeline(self):
         """Lazily build the PaddleX pipeline on first use with timeout protection."""
         if _is_pp_init_failed() or getattr(self, "_init_failed", False):
-            raise RuntimeError(
-                "PP-Structure engine is unavailable: previous init attempt failed"
-            )
+            raise RuntimeError("PP-Structure engine is unavailable: previous init attempt failed")
         if not hasattr(self, "_pipeline_instance"):
             self._init_pipeline_with_timeout()
         return self._pipeline_instance
@@ -139,7 +137,9 @@ class PPStructureEngine:
                 logger.error(
                     "PP-Structure init timed out after %.0fs (device=%s, lang=%s). "
                     "Process marked — all future PP-Structure inits will skip.",
-                    _PP_INIT_TIMEOUT_SECONDS, self.device, self.lang,
+                    _PP_INIT_TIMEOUT_SECONDS,
+                    self.device,
+                    self.lang,
                 )
                 raise RuntimeError(
                     f"PP-Structure model init timed out after {_PP_INIT_TIMEOUT_SECONDS}s"
@@ -152,6 +152,7 @@ class PPStructureEngine:
         start = time.perf_counter()
         # Use preprocess_adaptive to benefit from caching across tiers
         from app.ocr.preprocess import preprocess_adaptive
+
         ocr_path = preprocess_adaptive(image_path, engine=self.name)
         try:
             # PP-Structure predict() has no built-in timeout. Use a

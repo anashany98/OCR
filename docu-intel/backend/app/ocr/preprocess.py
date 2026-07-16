@@ -57,6 +57,7 @@ def _track_preprocess_path(path_type: str) -> None:
     """Track which preprocessing path was chosen."""
     try:
         from app.services.metrics import track_preprocess_path_chosen
+
         track_preprocess_path_chosen(path_type)
     except Exception:
         pass  # Don't fail on metric errors
@@ -137,9 +138,7 @@ def _looks_like_scan(gray) -> bool:
     color_var = float(gray.std())
     if extreme_ratio > 0.55 and color_var < 70:
         return True
-    if laplacian < 50 and color_var < 60:
-        return True
-    return False
+    return bool(laplacian < 50 and color_var < 60)
 
 
 def preprocess_adaptive(path: Path, *, engine: str) -> Path:
@@ -172,7 +171,11 @@ def preprocess_adaptive(path: Path, *, engine: str) -> Path:
         is_scan = _looks_like_scan(gray)
 
         if is_scan:
-            engine_path = preprocess_for_tesseract(path) if engine == "tesseract" else preprocess_for_paddle(path)
+            engine_path = (
+                preprocess_for_tesseract(path)
+                if engine == "tesseract"
+                else preprocess_for_paddle(path)
+            )
             _track_preprocess_path("scan")
         else:
             engine_path = preprocess_for_manuscript(path)
@@ -236,9 +239,7 @@ def _detect_osd_rotation(image) -> int:
     # only serialises the sampled region.
     flat = image.reshape(-1)
     sample = flat[:2048]
-    fingerprint = hashlib.md5(
-        b"%dx%d|" % (image.shape[0], image.shape[1])
-    )
+    fingerprint = hashlib.md5(b"%dx%d|" % (image.shape[0], image.shape[1]))
     fingerprint.update(sample.tobytes())
     cache_key = fingerprint.hexdigest()
     cache = _osd_cache()
@@ -337,10 +338,10 @@ def _enhance_contrast_color(image):
     import cv2
 
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
+    lightness, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l = clahe.apply(l)
-    return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+    lightness = clahe.apply(lightness)
+    return cv2.cvtColor(cv2.merge([lightness, a, b]), cv2.COLOR_LAB2BGR)
 
 
 def _sharpen_if_blurry(gray):
@@ -379,10 +380,10 @@ def preprocess_for_manuscript(path: Path) -> Path:
 
         # Enhance contrast on the L channel (makes handwriting pop)
         lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        lightness, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-        enhanced = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+        lightness = clahe.apply(lightness)
+        enhanced = cv2.cvtColor(cv2.merge([lightness, a, b]), cv2.COLOR_LAB2BGR)
 
         # Upscale phone photos — VLM works better on larger images
         height, width = enhanced.shape[:2]
