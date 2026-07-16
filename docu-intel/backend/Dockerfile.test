@@ -1,0 +1,9 @@
+FROM docu-intel-backend:latest
+
+USER root
+COPY backend/requirements-dev.txt /tmp/requirements-dev.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements-dev.txt
+
+WORKDIR /workspace/backend
+ENTRYPOINT []
+CMD ["python", "-m", "pytest", "-q"]

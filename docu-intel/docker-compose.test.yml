@@ -1,0 +1,27 @@
+services:
+  backend-tests:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.test
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://app:app@postgres:5432/docuintel
+      REDIS_URL: redis://redis:6379/15
+      ENVIRONMENT: local
+      UVICORN_FORWARDED_ALLOW_IPS: 127.0.0.1
+      OVISOCR2_ENABLED: "false"
+      REEMBED_REOCR_PER_TICK: "1"
+      PADDLE_USE_FP16: "false"
+      DWG_CONVERTER_BRIDGE_URL: ""
+      DWG_CONVERTER_BRIDGE_TOKEN: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/workspace
+    working_dir: /workspace/backend
+    networks:
+      - default
+      - ovisocr2_internal
