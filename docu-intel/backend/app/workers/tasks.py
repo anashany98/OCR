@@ -127,15 +127,26 @@ def scan_input_folders_task() -> dict:
 
 @celery_app.task(name="app.workers.tasks.sweep_stale_jobs_task")
 def sweep_stale_jobs_task() -> dict:
-    """Reset extraction jobs stuck in 'processing' for >30 minutes.
+    """Reset extraction jobs (and their documents) stuck in 'processing'
+    for >30 minutes.
 
     A worker killed mid-processing (between Celery ack and db.commit)
-    leaves the job in 'processing' permanently. This beat task sweeps
+    leaves the job in 'processing' permanently.  This beat task sweeps
     them every 5 minutes so the document can be re-queued.
+
+    Before 2026-07-16 the sweeper only reset the *job* to ``failed``,
+    which left the document row stuck in ``processing`` because the
+    worker dispatcher filters on ``documents.status = 'pending'``.
+    The fix resets the document back to ``pending`` and clears the
+    job's error message so the next dispatch picks the document up
+    cleanly.  The job itself is left in ``failed`` so its audit
+    trail (who started it, when, the killer pid) stays intact.
     """
     from datetime import timedelta
 
     from sqlalchemy import and_
+
+    from app.models import Document
 
     db = SessionLocal()
     try:
@@ -149,21 +160,38 @@ def sweep_stale_jobs_task() -> dict:
             )
         ).all()
         reset_count = 0
+        documents_reset = 0
         for job in stale:
+            document = db.get(Document, job.document_id) if job.document_id else None
+            if document is not None and document.status == "processing":
+                # SWEEP-1: reset the document back to pending so the
+                # next dispatcher tick re-queues it. Preserve the
+                # quality_status / quality_score so the user does
+                # not lose partial evaluation.
+                document.status = "pending"
+                document.error_message = None
+                documents_reset += 1
+            # Mark the original job as failed-but-recoverable. Keep
+            # started_at / finished_at so operators can see how
+            # long the worker was stuck.
             job.status = "failed"
             job.error_message = "Worker died mid-processing (sweeper timeout)"
             job.finished_at = datetime.now(UTC)
             reset_count += 1
         if reset_count:
             db.commit()
-            logger.warning("Sweeper reset %d stale processing jobs", reset_count)
+            logger.warning(
+                "Sweeper reset %d stale processing jobs (%d documents re-queued)",
+                reset_count,
+                documents_reset,
+            )
             from app.services.metrics.pipeline import track_stale_jobs_reset
 
             track_stale_jobs_reset(reset_count)
-        return {"stale_reset": reset_count}
+        return {"stale_reset": reset_count, "documents_reset": documents_reset}
     except Exception as exc:
         db.rollback()
         logger.error("Stale job sweeper failed: %s", exc)
-        return {"stale_reset": 0, "error": str(exc)}
+        return {"stale_reset": 0, "documents_reset": 0, "error": str(exc)}
     finally:
         db.close()

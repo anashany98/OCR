@@ -590,6 +590,15 @@ def process_document(
         db.commit()
         _enqueue_hyperextract_after_commit(document.id)
         _emit_document_webhooks(document, job)
+        # GRAPH-RAG-1: best-effort population of the relational graph
+        # after a successful processing run. The extractor is
+        # idempotent (re-runs on the same document are no-ops via
+        # the unique key on ``graph_relations``), so calling it on
+        # every processed document is safe even if the Celery
+        # task retries. Failures are logged but never break the
+        # main pipeline: graph extraction is a downstream product,
+        # not a gate for document status.
+        _run_graph_extraction_after_commit(document_id, job_id)
     except Exception as exc:
         _handle_process_failure(
             db, document_id=document_id, job_id=job_id, error=exc, final_failure=final_failure
@@ -1551,3 +1560,79 @@ def _first_page_image_path(document: Document) -> str | None:
         if page.image_path:
             return page.image_path
     return None
+
+
+def _run_graph_extraction_after_commit(document_id: int, job_id: int) -> None:
+    """Best-effort Graph RAG population after a successful document run.
+
+    The function is invoked from inside ``process_document`` *after*
+    the main transaction commits, so a graph-extraction error can
+    never roll back the document's own status update. It opens a
+    fresh ``SessionLocal`` to keep the call isolated from the worker's
+    session lifetime, and swallows any exception with a warning log.
+
+    Tenant resolution:
+      * Graph entities are scoped to ``hotel_chains.id`` when a chain
+        exists. The chain is resolved through ``Document → BudgetScope
+        → chain_id``.
+      * When no chain exists (greenfield deployment, admin upload
+        without a budget scope) ``tenant_id`` is left ``NULL`` —
+        see migration 0065 which made the column nullable. The
+        catalogue then stores unassociated rows and the per-tenant
+        filter on read paths becomes a no-op.
+    """
+    import logging
+    from sqlalchemy import select
+
+    logger = logging.getLogger(__name__)
+
+    from app.database.session import SessionLocal
+    from app.models import BudgetScope, HotelChain
+    from app.services.graph_extraction import (
+        SharedReferenceExtractor,
+        run_extraction,
+    )
+
+    db = SessionLocal()
+    try:
+        document = db.get(__import__("app.models", fromlist=["Document"]).Document, document_id)
+        if document is None:
+            return
+        tenant_id: int | None = None
+        if document.budget_scope_id is not None:
+            scope = db.get(BudgetScope, document.budget_scope_id)
+            tenant_id = scope.chain_id if scope else None
+        if tenant_id is None:
+            # Fall back to the first available chain so the row
+            # is not orphaned. The fallback is only used when the
+            # deployment has at least one chain. In greenfield
+            # deployments we keep ``tenant_id = None`` and let the
+            # catalogue store unassociated rows.
+            chain = db.scalar(select(HotelChain).order_by(HotelChain.id.asc()).limit(1))
+            tenant_id = int(chain.id) if chain is not None else None
+
+        run_extraction(
+            db,
+            document_id=document_id,
+            extractor=SharedReferenceExtractor(min_shared=1, quote_max_chars=160),
+            tenant_id=tenant_id,
+        )
+        db.commit()
+        logger.info(
+            "Graph extraction OK for document %s (tenant=%s)",
+            document_id,
+            tenant_id,
+        )
+    except Exception as exc:  # noqa: BLE001 - documented best-effort
+        logger.warning(
+            "Graph extraction failed for document %s (job %s): %s",
+            document_id,
+            job_id,
+            exc,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()

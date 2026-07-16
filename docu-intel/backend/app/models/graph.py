@@ -58,8 +58,13 @@ class GraphEntity(Base):
     __tablename__ = "graph_entities"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    tenant_id: Mapped[int] = mapped_column(
-        ForeignKey("hotel_chains.id", ondelete="CASCADE"), nullable=False, index=True
+    # ``tenant_id`` is nullable as of migration 0065. A NULL value
+    # means "no tenant association" — single-tenant installs, admin
+    # uploads without a budget scope, or pre-isolation legacy data.
+    # The column still indexes when set, so per-tenant lookups stay
+    # fast when chains exist.
+    tenant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hotel_chains.id", ondelete="CASCADE"), nullable=True, index=True
     )
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
     entity_value: Mapped[str] = mapped_column(Text, nullable=False)

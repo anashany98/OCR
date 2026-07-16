@@ -252,7 +252,7 @@ class SharedReferenceExtractor:
 def _resolve_entity(
     db: Session,
     *,
-    tenant_id: int,
+    tenant_id: int | None,
     entity_type: str,
     entity_value: str,
     normalized_value: str | None,
@@ -260,9 +260,14 @@ def _resolve_entity(
     """Return the catalogue id for the given entity, upserting if needed.
 
     The unique key is ``(tenant_id, normalized_value, entity_type)``
-    (with ``normalized_value`` nullable). We use PostgreSQL's
-    ``ON CONFLICT DO NOTHING`` so concurrent extraction jobs
-    cannot create duplicate catalogue rows.
+    (with both columns nullable, partial unique index). We use
+    PostgreSQL's ``ON CONFLICT DO NOTHING`` so concurrent extraction
+    jobs cannot create duplicate catalogue rows.
+
+    ``tenant_id`` is ``None`` for single-tenant installs and admin
+    uploads without a budget scope (see migration 0065). The lookup
+    gracefully matches ``NULL`` tenants against ``NULL`` tenants in
+    the table.
     """
     if normalized_value:
         stmt = pg_insert(GraphEntity).values(
@@ -282,7 +287,7 @@ def _resolve_entity(
         db.flush()
         row = db.scalar(
             select(GraphEntity.id)
-            .where(GraphEntity.tenant_id == tenant_id)
+            .where(GraphEntity.tenant_id.is_(None) if tenant_id is None else GraphEntity.tenant_id == tenant_id)
             .where(GraphEntity.entity_type == entity_type)
             .where(GraphEntity.normalized_value == normalized_value)
         )
@@ -292,7 +297,7 @@ def _resolve_entity(
     # entities that could not be normalized.
     existing = db.scalar(
         select(GraphEntity).where(
-            GraphEntity.tenant_id == tenant_id,
+            GraphEntity.tenant_id.is_(None) if tenant_id is None else GraphEntity.tenant_id == tenant_id,
             GraphEntity.entity_type == entity_type,
             GraphEntity.entity_value == entity_value,
         )
@@ -356,7 +361,13 @@ def _upsert_relation(
     except IntegrityError:
         db.rollback()
         return None
-    inserted_id = result.scalarone_or_none()
+    # ``db.execute(insert_stmt)`` with a ``.returning(...)`` clause
+    # yields a ``ChunkedIteratorResult`` whose first element is the
+    # row tuple(s). ``scalar()`` collapses that to the single
+    # ``RETURNING`` column we asked for (the new ``id``); using
+    # ``scalarone_or_none`` here would raise ``AttributeError``
+    # because the chunked result does not implement it.
+    inserted_id = result.scalar()
     if inserted_id is None:
         # Duplicate: re-fetch the existing row.
         existing = db.scalar(
@@ -424,7 +435,7 @@ def run_extraction(
     document_id: int,
     extractor: RelationExtractor,
     scope_key: str | None = None,
-    tenant_id: int,
+    tenant_id: int | None = None,
 ) -> int:
     """Run ``extractor`` on ``document_id`` and persist the result.
 
@@ -433,6 +444,13 @@ def run_extraction(
     ``(document_id, extractor.version, scope_key)`` reuses the
     job row and re-applies the relations (the per-relation
     unique constraint skips the duplicates).
+
+    ``tenant_id`` is optional as of migration 0065. A ``None``
+    value means "no tenant association" — single-tenant installs,
+    admin uploads without a budget scope, or pre-isolation legacy
+    data. The catalogue then stores ``tenant_id = NULL`` on every
+    row and the per-tenant filtering on read paths becomes a
+    no-op.
     """
     final_scope_key = scope_key or uuid.uuid4().hex
     job = db.scalar(
