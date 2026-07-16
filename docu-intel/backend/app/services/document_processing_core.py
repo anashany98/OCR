@@ -1574,7 +1574,8 @@ def _run_graph_extraction_after_commit(document_id: int, job_id: int) -> None:
     Tenant resolution:
       * Graph entities are scoped to ``hotel_chains.id`` when a chain
         exists. The chain is resolved through ``Document → BudgetScope
-        → chain_id``.
+        → brand_id`` (the field is named ``brand_id`` in this schema
+        but the column points at ``hotel_chains.id``).
       * When no chain exists (greenfield deployment, admin upload
         without a budget scope) ``tenant_id`` is left ``NULL`` —
         see migration 0065 which made the column nullable. The
@@ -1601,7 +1602,12 @@ def _run_graph_extraction_after_commit(document_id: int, job_id: int) -> None:
         tenant_id: int | None = None
         if document.budget_scope_id is not None:
             scope = db.get(BudgetScope, document.budget_scope_id)
-            tenant_id = scope.chain_id if scope else None
+            # ``brand_id`` is the FK to ``hotel_chains.id``. An older
+            # version of this helper used ``scope.chain_id`` which
+            # does not exist on the SQLAlchemy model — that was a
+            # regression introduced when the project moved from
+            # ``chain_id`` to ``brand_id``. Use the right attribute.
+            tenant_id = scope.brand_id if scope else None
         if tenant_id is None:
             # Fall back to the first available chain so the row
             # is not orphaned. The fallback is only used when the
