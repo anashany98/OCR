@@ -97,6 +97,33 @@ _PLAN_KEYWORDS = {
 _PLAN_FILENAME_KEYWORDS = ("plano", "alzado", "seccion")
 _INTERIOR_FILENAME_KEYWORDS = ("croquis", "medida")
 _FABRIC_FILENAME_KEYWORDS = ("tela", "fabric", "muestra", "sample")
+# Filename tokens that almost always mean "handwritten document".
+# These types (hoja de confección, orden de trabajo, croquis with
+# measurements, etc.) defeat Tesseract and PaddleOCR. The VLM tier
+# (OvisOCR2) reads them reliably. Routing them through the standard
+# cascade wastes a tier 1-3 round trip and produces empty or
+# corrupted text that then breaks downstream classification.
+#
+# The list is intentionally restrictive: a filename that merely
+# happens to contain ``parte`` should not force a VLM round trip.
+# Patterns are word-boundary aware.
+_HANDWRITTEN_FILENAME_KEYWORDS: tuple[tuple[str, ...], ...] = (
+    ("hoja", "de", "confeccion"),
+    ("hoja", "de", "confecci", "on"),  # with accent; _normalise strips it
+    ("hojas", "de", "confeccion"),
+    ("orden", "de", "trabajo"),
+    ("parte", "de", "trabajo"),
+    ("medicion",),
+    ("medici", "on"),  # medición
+    ("medida",),
+    ("medidas",),
+    ("incidencia",),
+    ("incidencias",),
+    ("croquis",),
+    # Common abbreviation: ``OT 250102 cliente hotel.pdf`` →
+    # "ot 250102 cliente hotel" after _normalise.
+    ("ot",),
+)
 _PLAN_FOLDERS = {"planos", "plans", "blueprints"}
 _INTERIOR_FOLDERS = {"imagenes", "images", "fotos", "furniture", "muebles"}
 _FABRIC_FOLDERS = {"telas", "fabrics", "muestras"}
@@ -159,7 +186,11 @@ def _is_likely_plan(text: str) -> tuple[bool, float, str]:
     if plan_hits >= 3:
         return True, min(0.82, 0.5 + plan_hits * 0.06), f"plan_keywords={plan_hits}"
     if plan_hits >= 2 and dimension_count >= 3:
-        return True, min(0.78, 0.5 + dimension_count * 0.04), f"plan_keywords={plan_hits},dimensions={dimension_count}"
+        return (
+            True,
+            min(0.78, 0.5 + dimension_count * 0.04),
+            f"plan_keywords={plan_hits},dimensions={dimension_count}",
+        )
     if dimension_count >= 6:
         return True, min(0.72, 0.38 + dimension_count * 0.035), f"many_dimensions={dimension_count}"
     if coord_count >= 3:
@@ -179,6 +210,27 @@ def _is_likely_interior_design(text: str) -> tuple[bool, float, str]:
 
 def _plan_filename_match(filename: str) -> bool:
     return any(re.search(rf"\b{keyword}\b", filename) for keyword in _PLAN_FILENAME_KEYWORDS)
+
+
+def _handwritten_filename_match(normalized_filename: str) -> bool:
+    """True when the leaf filename declares a handwritten document type.
+
+    The check matches *all* tokens of a multi-word entry in order so
+    ``hoja de confección`` does not spuriously match a file called
+    ``hoja.pdf`` that just happens to live next to a file called
+    ``de.pdf``. Single-word entries (``croquis``, ``medida``,
+    ``incidencia``) are matched as plain substrings after the
+    filename has been normalised to lower-case / accent-stripped
+    by ``_normalise``.
+    """
+    for tokens in _HANDWRITTEN_FILENAME_KEYWORDS:
+        # ``tokens`` is a tuple of normalised words.  We need every
+        # token to appear in the filename (in any order, with the
+        # tokens not necessarily adjacent).  ``re.escape`` keeps any
+        # regex metachars in the token literal.
+        if all(re.search(rf"\b{re.escape(token)}\b", normalized_filename) for token in tokens):
+            return True
+    return False
 
 
 def _image_is_too_small(path: Path, *, min_side: int = 64) -> bool:
@@ -213,7 +265,26 @@ def classify_content(
         return ContentClassification(ContentRoute.TEXT_ONLY, 1.0, f"extension={ext}")
 
     if ext in _DXF_EXTENSIONS:
-        return ContentClassification(ContentRoute.STANDARD_OCR, 1.0, f"extension={ext}, using plan parser")
+        return ContentClassification(
+            ContentRoute.STANDARD_OCR, 1.0, f"extension={ext}, using plan parser"
+        )
+
+    # Handwritten document detection: a filename declaring
+    # ``hoja de confección`` / ``orden de trabajo`` / ``medición`` /
+    # ``croquis`` / ``incidencia`` strongly implies content the
+    # Tesseract/Paddle cascade cannot read. Route straight to the
+    # VLM tier (OvisOCR2) so the standard cascade is not wasted on
+    # pages where it will only emit garbage text. The check is
+    # run BEFORE the interior/plan heuristics so a file like
+    # ``croquis medidas cocina.pdf`` is not misrouted to
+    # ``INTERIOR_DESIGN`` (which skips OCR entirely and returns an
+    # empty body, breaking downstream RAG and entity extraction).
+    if _handwritten_filename_match(filename):
+        return ContentClassification(
+            ContentRoute.VLM_OCR,
+            0.85,
+            "filename_declares_handwritten_type",
+        )
 
     if folder in _INTERIOR_FOLDERS:
         return ContentClassification(
@@ -294,6 +365,7 @@ def classify_content(
         if ext in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
             try:
                 from app.parsers.clip_classifier import classify_image
+
                 clip_result = classify_image(path)
                 if clip_result["confidence"] > 0.75:
                     category = clip_result["category"]
@@ -327,7 +399,9 @@ def classify_content(
             # sniff, not because they're photos; route them to OCR instead
             # so a valid small document isn't silently skipped.
             if _image_is_too_small(path):
-                return ContentClassification(ContentRoute.STANDARD_OCR, 0.5, "tiny_image_default_ocr")
+                return ContentClassification(
+                    ContentRoute.STANDARD_OCR, 0.5, "tiny_image_default_ocr"
+                )
             return ContentClassification(
                 ContentRoute.INTERIOR_DESIGN,
                 0.5,
