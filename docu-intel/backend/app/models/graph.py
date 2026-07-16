@@ -59,7 +59,7 @@ class GraphEntity(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("hotel_chains.id", ondelete="CASCADE"), nullable=False, index=True
     )
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
     entity_value: Mapped[str] = mapped_column(Text, nullable=False)

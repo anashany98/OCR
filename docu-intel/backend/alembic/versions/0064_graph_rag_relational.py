@@ -73,7 +73,7 @@ def upgrade() -> None:
     op.create_table(
         "graph_entities",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("tenant_id", sa.Integer(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("tenant_id", sa.Integer(), sa.ForeignKey("hotel_chains.id", ondelete="CASCADE"), nullable=False),
         sa.Column("entity_type", sa.String(length=80), nullable=False),
         sa.Column("entity_value", sa.Text(), nullable=False),
         sa.Column("normalized_value", sa.Text(), nullable=True),
