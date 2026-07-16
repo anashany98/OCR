@@ -15,7 +15,14 @@
  * heavy lifting (rendering SVG bboxes over the page image) is left
  * to the dedicated editor — the detail page only needs the *existence*
  * of the overlays to be discoverable.
+ *
+ * Plan resolution: the caller passes only ``documentId``. The component
+ * resolves the associated ``plan_id`` itself via ``usePlanForDocument``
+ * (which lists plans and filters by ``document_id``, the same pattern
+ * used by ``usePlanAnnotation``). A ``planId`` prop is accepted only as
+ * an escape hatch for callers/tests that already hold the resolved id.
  */
+import { usePlanForDocument } from "@/pages/plano/usePlanForDocument"
 import { usePlanOverlays } from "@/pages/plano/usePlanOverlays"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,7 +31,12 @@ import { MapPin } from "lucide-react"
 
 type Props = {
   documentId: number
-  planId: number | null
+  /**
+   * Optional pre-resolved plan id. When omitted (the normal case from
+   * ``DocumentDetailPage``) the component resolves it from
+   * ``documentId`` via ``usePlanForDocument``.
+   */
+  planId?: number | null
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -35,11 +47,13 @@ const KIND_LABELS: Record<string, string> = {
 }
 
 export function PlanOverlayPreview({ documentId, planId }: Props) {
-  // The hook is keyed on the plan id; we pass the document id only
-  // for parity with the PlanoAnnotationPage composition. A null plan
-  // id means "no plan resolved yet" and the hook returns empty
-  // arrays, which is exactly what we want for the empty state.
-  const overlays = usePlanOverlays(planId, documentId)
+  // Resolve the plan id from the document when the caller did not
+  // supply one. We always call the hook (rules of hooks): if
+  // ``planId`` is provided, the hook result is simply ignored.
+  const resolved = usePlanForDocument(planId == null ? documentId : null)
+  const effectivePlanId = planId ?? resolved.planId
+
+  const overlays = usePlanOverlays(effectivePlanId, documentId)
 
   // Derive a coarse summary from the per-kind arrays. The counts
   // are an approximation: a cajetin / legend is identified by

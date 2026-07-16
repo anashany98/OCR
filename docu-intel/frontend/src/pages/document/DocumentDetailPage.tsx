@@ -376,7 +376,7 @@ function InfoPanel({ d }: { d: ReturnType<typeof useDocumentDetail> }) {
         </CardContent>
       </Card>
       {doc?.document_type === "plano" && doc.id != null && (
-        <PlanOverlayPreview documentId={doc.id} planId={null} />
+        <PlanOverlayPreview documentId={doc.id} />
       )}
       {d.keyEnts.length > 0 && (
         <Card>
