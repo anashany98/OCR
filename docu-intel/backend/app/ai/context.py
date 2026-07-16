@@ -34,7 +34,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Budget, Document, Order, OrderLine
 from app.services.business_redaction import redact_business_payload_for_scope
-from app.services.redaction import redact_sensitive_text
+from app.services.redaction import (
+    redact_for_llm,
+    redact_pii,
+    redact_sensitive_text,
+)
 from app.services.tenant_access import (
     AccessScope,
     access_scope_cache_key,
@@ -428,19 +432,33 @@ def redact_context_items_for_scope(
     items: list[ContextItem],
     access_scope: AccessScope,
 ) -> list[ContextItem]:
-    """Apply price/amount redaction to context items when the user
-    is not authorised to see them.
+    """Apply price/amount redaction (gated by ``can_view_prices``) and
+    PII redaction (universal) to context items before they are
+    injected into the LLM prompt.
 
     Items are returned as new dataclass instances (the original
-    list is untouched — ContextItem is frozen).
+    list is untouched — ContextItem is frozen). PII redaction is
+    applied unconditionally because we never want a Spanish ID,
+    IBAN, email or phone number to leak into a prompt sent to the
+    local model — even an admin/operator looking at the same
+    document never needs the model to memorise a customer's
+    personal details.
     """
     if access_scope.can_view_prices:
-        return items
+        # PII is still redacted even when amounts are visible.
+        return [
+            replace(
+                item,
+                summary=redact_pii(item.summary),
+                excerpt=redact_pii(item.excerpt) if item.excerpt is not None else None,
+            )
+            for item in items
+        ]
     return [
         replace(
             item,
-            summary=redact_sensitive_text(item.summary),
-            excerpt=redact_sensitive_text(item.excerpt) if item.excerpt is not None else None,
+            summary=redact_for_llm(item.summary),
+            excerpt=redact_for_llm(item.excerpt) if item.excerpt is not None else None,
         )
         for item in items
     ]
