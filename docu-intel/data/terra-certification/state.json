@@ -1,0 +1,24 @@
+﻿{
+    "updated_at":  "2026-07-12T23:34:53.6332093Z",
+    "run_id":  "terra-cert-20260712T233352Z",
+    "stages":  {
+                   "backend-suite":  {
+                                         "status":  "failed",
+                                         "error":  "El proceso no puede obtener acceso al archivo \u0027C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification\\backend-suite.log\u0027 porque está siendo utilizado en otro proceso.",
+                                         "ended_at":  "2026-07-12T23:34:53.6332093Z",
+                                         "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification\\backend-suite.log",
+                                         "started_at":  "2026-07-12T23:34:45.9131898Z"
+                                     },
+                   "tenant-isolation":  {
+                                            "status":  "passed",
+                                            "ended_at":  "2026-07-12T23:34:45.9131898Z",
+                                            "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification\\tenant-isolation.log",
+                                            "started_at":  "2026-07-12T23:34:16.9002585Z"
+                                        },
+                   "baseline":  {
+                                    "status":  "passed",
+                                    "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification\\baseline.log"
+                                }
+               },
+    "started_at":  "2026-07-12T23:33:52.4294198Z"
+}

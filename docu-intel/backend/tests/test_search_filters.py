@@ -45,6 +45,11 @@ def test_normalise_filters_coerces_budget_scope_id_to_int():
     assert normalise_filters({"budget_scope_id": "not-a-number"}) == {}
 
 
+def test_normalise_filters_coerces_project_id_to_int():
+    assert normalise_filters({"project_id": "42"}) == {"project_id": 42}
+    assert normalise_filters({"project_id": "not-a-number"}) == {}
+
+
 def test_normalise_filters_coerces_extension_with_leading_dot():
     out = normalise_filters({"extension": "pdf"})
     assert out["extension"] == ".pdf"
@@ -135,6 +140,13 @@ def test_apply_document_filters_legacy_filters_still_work():
         },
     )
     assert _count_wheres(out) == 5
+
+
+def test_apply_document_filters_scopes_documents_through_occurrences():
+    stmt = select(1)
+    out = apply_document_filters(stmt, {"project_id": 7})
+    assert _count_wheres(out) == 1
+    assert "document_occurrences" in str(out)
 
 
 def test_apply_document_filters_adds_created_from_to_clauses():

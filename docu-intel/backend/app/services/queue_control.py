@@ -126,16 +126,16 @@ def _should_restore_document_after_cancel(
 def _set_flag(value: bool) -> None:
     try:
         if value:
-            cache_service.client.set(INGESTION_PAUSED_KEY, "1")
+            cache_service.set(INGESTION_PAUSED_KEY, True, ttl_seconds=86400)
         else:
-            cache_service.client.delete(INGESTION_PAUSED_KEY)
+            cache_service.delete(INGESTION_PAUSED_KEY)
     except Exception:
         _memory_flags[INGESTION_PAUSED_KEY] = value
 
 
 def _get_flag() -> bool:
     try:
-        return bool(cache_service.client.get(INGESTION_PAUSED_KEY))
+        return bool(cache_service.get(INGESTION_PAUSED_KEY))
     except Exception:
         return bool(_memory_flags.get(INGESTION_PAUSED_KEY))
 

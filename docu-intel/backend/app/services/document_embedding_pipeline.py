@@ -47,6 +47,14 @@ def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, b
     """
     if not texts:
         return []
+    # Keep the public ``document_service`` facade patchable for callers and
+    # tests without reintroducing an import cycle.  When it exposes an
+    # explicit replacement, delegate once; the identity guard prevents the
+    # normal re-export from recursing back into this function.
+    facade = sys.modules.get("app.services.document_service")
+    override = getattr(facade, "embed_many_with_metadata", None) if facade else None
+    if override is not None and override is not embed_many_with_metadata:
+        return override(texts)
     try:
         embeddings = embed_many(texts)
     except EmbeddingProviderError as exc:
@@ -67,8 +75,10 @@ def embed_many_with_metadata(texts: list[str]) -> list[tuple[list[float], str, b
         return [(None, "failed", True) for _ in texts]
 
     provider = settings.embedding_provider.lower().strip() or "local_hash"
-    fallback = provider in {"local", "local_hash"}
-    return [(embedding, provider, fallback) for embedding in embeddings]
+    # ``local_hash`` is an explicit configured provider, not an emergency
+    # fallback. A successfully generated vector must therefore clear the
+    # re-embed queue; only an actual provider error above marks it pending.
+    return [(embedding, provider, False) for embedding in embeddings]
 
 
 def _truncate_to_token_budget(text: str, max_tokens: int) -> str:
@@ -306,7 +316,7 @@ def persist_chunks_without_embeddings(
             )
 
     count = 0
-    for page_number, chunk_text, embedding_text, token_count, chunk_type in chunk_payloads:
+    for page_number, chunk_text, _embedding_text, token_count, chunk_type in chunk_payloads:
         chunk = DocumentChunk(
             document_id=document_id,
             page_number=page_number,
@@ -393,6 +403,32 @@ def reembed_document(db: Session, document_id: int) -> dict:
         db.delete(stale)
 
     document_embedding = apply_document_embedding(db, document_id, page_texts)
+
+    # Keep the document-level retrieval state in sync with the chunks we have
+    # just rebuilt.  The normal asynchronous embedding task does this after a
+    # successful run, but this admin re-embed path used to leave every document
+    # marked ``semantic_search_ready=False`` even when all of its chunks had
+    # vectors.  That made successful manual recovery invisible to semantic
+    # retrieval.
+    has_chunks = bool(new_chunks)
+    chunks_ready = has_chunks and all(
+        chunk.embedding is not None and not chunk.needs_reembedding
+        for chunk in new_chunks
+    )
+    document.needs_reembedding = has_chunks and not chunks_ready
+    document.semantic_search_ready = chunks_ready
+    if chunks_ready:
+        document.pipeline_stage = "searchable"
+    elif has_chunks:
+        document.pipeline_stage = "embedding_pending"
+    else:
+        # Some valid inputs (for example an image with no extracted text)
+        # intentionally produce no chunks.  They have nothing to retry, so
+        # never leave them stranded in ``embedding_pending``.
+        document.needs_reembedding = False
+        document.semantic_search_ready = False
+        document.pipeline_stage = "fully_processed"
+
     db.commit()
 
     provider = settings.embedding_provider

@@ -6,6 +6,7 @@ from app.models.business import (
     BudgetLine,
     DeliveryNote,
     DeliveryNoteLine,
+    InvoiceLine,
     Order,
     OrderLine,
     Plan,
@@ -14,19 +15,34 @@ from app.models.business import (
     PlanSymbol,
 )
 from app.models.chat_session import ChatMessage, ChatSession
+from app.models.communication import (
+    AttachmentLink,
+    CommunicationMessage,
+    CommunicationParticipant,
+    CommunicationThread,
+    Contact,
+    Organization,
+    ProjectEvent,
+    ProjectIssue,
+    ProjectParticipant,
+)
+from app.models.project import DocumentBudgetLink, DocumentOccurrence, Project
 from app.models.document import (
     Document,
     DocumentBlock,
     DocumentChunk,
     DocumentEntity,
     DocumentPage,
+    OcrAttempt,
     ExtractionJob,
+    ImageAnalysis,
 )
 from app.models.hyperextract import DocumentExtraction
 from app.models.integration import AccessPolicy, IntegrationClient, TechnicianAccessProfile
 from app.models.learning import ClassificationSuggestion, LearnedPattern
 from app.models.operations import IngestionEvent, WatchedFile
 from app.models.professional import (
+    ConstructionWorkItem,
     DocumentTimelineEvent,
     Invoice,
     NotificationRule,
@@ -35,7 +51,9 @@ from app.models.professional import (
     ReconciliationIssue,
     SavedSearch,
     SavedView,
+    WorkChapter,
     WorkItem,
+    WorkItemBreakdown,
     WorkItemComment,
 )
 from app.models.tenant import (
@@ -70,18 +88,23 @@ __all__ = [
     "DeliveryNoteLine",
     "Document",
     "DocumentAccessMetadata",
+    "DocumentBudgetLink",
+    "DocumentOccurrence",
     "DocumentBlock",
     "DocumentChunk",
     "DocumentEntity",
     "DocumentExtraction",
     "DocumentPage",
+    "OcrAttempt",
     "DocumentTimelineEvent",
     "ExtractionJob",
     "FolderAssignmentRule",
+    "ImageAnalysis",
     "Hotel",
     "HotelChain",
     "IntegrationClient",
     "IngestionEvent",
+    "InvoiceLine",
     "LearnedPattern",
     "Invoice",
     "NotificationRule",
@@ -92,6 +115,7 @@ __all__ = [
     "PlanDimension",
     "PlanMeasurement",
     "PlanRoom",
+    "Project",
     "PlanSymbol",
     "ReconciliationIssue",
     "SavedSearch",
@@ -101,6 +125,9 @@ __all__ = [
     "User",
     "WatchedFile",
     "WebhookOutbox",
+    "WorkChapter",
     "WorkItem",
+    "WorkItemBreakdown",
     "WorkItemComment",
+    "ConstructionWorkItem",
 ]

@@ -28,6 +28,10 @@ export const queryKeys = {
     detail: (id: string) => ["plans", "detail", id] as const,
     rooms: (id: string) => ["plans", "detail", id, "rooms"] as const,
     dimensions: (id: string) => ["plans", "detail", id, "dimensions"] as const,
+    // PM7 overlay keys
+    overlays: (id: number) => ["plans", id, "overlays"] as const,
+    chatFacts: (id: number) => ["plans", id, "chat-facts"] as const,
+    revisions: (id: number) => ["plans", id, "revisions"] as const,
   },
   search: {
     all: ["search"] as const,

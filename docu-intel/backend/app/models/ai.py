@@ -32,6 +32,11 @@ class AIAnswer(Base):
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
     model_name: Mapped[str | None] = mapped_column(String(255))
+    # MiniMax M3 (FASE 5) — versioned prompt profile used to
+    # produce this answer. Combined with the cache key in
+    # ai_cache._cache_key the value invalidates the cache whenever
+    # the prompt contract changes.
+    prompt_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
     # JSON snapshot of the document the agent resolved (entities + relations).
     # Only filled when the user mentions a specific file in the question.
     resolved_document_json: Mapped[str | None] = mapped_column(Text, nullable=True)

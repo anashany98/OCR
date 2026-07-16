@@ -28,6 +28,28 @@ from app.ai.tools import (
 )
 
 
+def test_delivery_note_amount_is_not_misrouted_to_global_aggregation() -> None:
+    selected = select_tools_for_question("Cual es el importe del albarán?")
+
+    assert [tool.name for tool in selected] == ["hybrid_search"]
+    assert selected[0].arguments["filters"]["document_type"] == "albaran"
+    assert selected[0].arguments["query"] == "albaran"
+
+
+def test_low_ocr_question_keeps_document_specific_retrieval() -> None:
+    selected = select_tools_for_question(
+        "Que informacion fiable se puede extraer del PDF de incidencia de sillas si la confianza OCR es baja?"
+    )
+
+    assert [tool.name for tool in selected] == [
+        "find_document_by_filename",
+        "get_document_full_details",
+        "get_related_documents",
+        "get_ocr_review_documents",
+    ]
+    assert selected[0].arguments["query"] == "incidencia sillas"
+
+
 # ---------------------------------------------------------------------------
 # Aggregation intent (SQL over structured tables) — 6 languages
 # ---------------------------------------------------------------------------

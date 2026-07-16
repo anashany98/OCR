@@ -21,6 +21,9 @@ class ExtractedPage:
     height: float | None = None
     image_path: str | None = None
     ocr_confidence: float | None = None
+    # ``native_text`` and ``decorative`` pages remain searchable, but do not
+    # participate in OCR quality metrics or the OCR-review queue.
+    ocr_content_kind: str | None = None
     # Which engine produced this page's text. One of: pymupdf, paddleocr, empty.
     # The ``empty`` label marks pages routed to OCR that still produced no
     # usable text — useful for spotting low-quality scans.

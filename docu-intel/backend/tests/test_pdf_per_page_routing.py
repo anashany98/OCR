@@ -86,8 +86,9 @@ def test_scanned_pages_go_through_ocr(tmp_path: Path):
         assert page.ocr_confidence == 0.7
         assert page.text == "OCR TEXT"
 
-    # OCR must have been called once per page.
-    assert eng.extract.call_count == 3
+    # Short mocked OCR text is intentionally below the DPI usability floor,
+    # so each scanned page receives the 300 and 400 DPI attempts.
+    assert eng.extract.call_count == 6
 
 
 def test_mixed_pdf_routes_per_page(tmp_path: Path):
@@ -128,8 +129,8 @@ def test_mixed_pdf_routes_per_page(tmp_path: Path):
     # Page 4: scanned → tesseract
     assert doc.pages[3].ocr_engine == "tesseract"
 
-    # OCR called exactly twice (only for the 2 scanned pages), not 4.
-    assert eng.extract.call_count == 2, f"expected 2 OCR calls, got {eng.extract.call_count}"
+    # Each of the 2 scanned pages uses two DPI attempts; digital pages use none.
+    assert eng.extract.call_count == 4, f"expected 4 OCR calls, got {eng.extract.call_count}"
 
 
 def test_very_short_text_still_routes_to_ocr(tmp_path: Path):
@@ -145,7 +146,7 @@ def test_very_short_text_still_routes_to_ocr(tmp_path: Path):
 
     doc = parse_pdf(pdf, out_dir, eng)
     assert doc.pages[0].ocr_engine == "tesseract"
-    assert eng.extract.call_count == 1
+    assert eng.extract.call_count == 2
 
 
 def test_scanned_pdf_pages_render_at_300_dpi_by_default(tmp_path: Path):

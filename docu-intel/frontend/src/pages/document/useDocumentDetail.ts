@@ -78,10 +78,13 @@ export function shortHash(hash: string | null | undefined): string {
   return `${hash.slice(0, 10)}...${hash.slice(-6)}`
 }
 
-/** Supported image extensions for thumbnail fallback. */
+/** Formats with an on-demand visual thumbnail in the document viewer. */
 export function hasThumbnailExt(extension: string | null | undefined): boolean {
   if (!extension) return false
-  return [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"].includes(
+  return [
+    ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
+    ".msg", ".eml", ".doc", ".docx", ".odt", ".rtf", ".dxf", ".dwg",
+  ].includes(
     extension.toLowerCase(),
   )
 }

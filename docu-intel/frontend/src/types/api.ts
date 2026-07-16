@@ -38,6 +38,10 @@ export type DocumentPage = {
   text: string | null
   image_path: string | null
   ocr_confidence: number | null
+  ocr_calibrated_confidence?: number | null
+  ocr_content_kind?: string | null
+  ocr_decision?: string | null
+  ocr_decision_reasons_json?: string[]
   created_at: string
 }
 
@@ -50,6 +54,10 @@ export type OcrReviewPage = {
   page_id: number
   page_number: number
   ocr_confidence: number | null
+  ocr_calibrated_confidence?: number | null
+  ocr_content_kind?: string | null
+  ocr_decision?: string | null
+  ocr_decision_reasons_json?: string[]
   review_status: "pending" | "approved" | "rejected" | string
   review_notes: string | null
   reviewed_at: string | null
@@ -69,6 +77,22 @@ export type OcrReviewPage = {
     bbox_y2: number | null
     confidence: number | null
     source_engine: string | null
+  }[]
+  attempts?: {
+    id: number
+    attempt_index: number
+    engine: string
+    route: string | null
+    text: string | null
+    raw_confidence: number | null
+    calibrated_confidence: number | null
+    quality_score: number | null
+    latency_ms: number | null
+    decision: string | null
+    decision_reasons_json: string[]
+    selected: boolean
+    error_message: string | null
+    created_at: string
   }[]
   preview_url: string | null
   created_at: string

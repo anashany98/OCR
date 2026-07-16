@@ -59,7 +59,17 @@ def _select_reembed_candidates(db: Session, limit: int) -> list[Document]:
             or_(
                 stats_subq.c.chunks_needing > 0,
                 stats_subq.c.version_mismatch > 0,
-                Document.confidence.is_not(None),
+                # Do not select every scored document.  That made the
+                # bounded sweep repeatedly revisit recent healthy documents
+                # and starve chunks explicitly marked for re-embedding.
+                # A low-confidence document belongs to this sweep only when
+                # re-OCR is enabled.  When its per-tick cap is explicitly
+                # zero, re-embedding it again cannot improve OCR and would
+                # starve chunks that are actually pending.
+                (
+                    Document.confidence < settings.reembed_low_confidence_threshold
+                )
+                & (settings.reembed_reocr_per_tick > 0),
                 Document.needs_reembedding.is_(True),
             )
         )
@@ -254,10 +264,10 @@ def _embed_document_sync(db: Session, document_id: int) -> dict:
     chunks at once. Batches are committed incrementally so a failure
     mid-document doesn't lose already-embedded chunks.
     """
+    import time as _time
+
     from app.services.document_embedding_pipeline import embed_many_with_metadata
     from app.services.metrics import track_stage_duration
-
-    import time as _time
 
     t_start = _time.perf_counter()
     document = db.get(Document, document_id)

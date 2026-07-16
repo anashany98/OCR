@@ -20,6 +20,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.config import settings
+
 # Re-exported so other code in the project that imports
 # ``app.ai.agent._money_filters`` still works (this is the alias the
 # original agent.py used).
@@ -477,6 +479,65 @@ def _contains_any(normalized: str, words: Iterable[str]) -> bool:
     return any(_contains_word(normalized, word) for word in words)
 
 
+_CAD_QUESTION_PROPERTIES: frozenset[str] = frozenset(
+    {
+        "medida",
+        "medidas",
+        "cota",
+        "cotas",
+        "dimension",
+        "dimensiones",
+        "entidad",
+        "entidades",
+        "elemento",
+        "elementos",
+        "capa",
+        "capas",
+        "unidad",
+        "unidades",
+        "aparece",
+        "aparecen",
+        "donde",
+        "ubicacion",
+        "dudosa",
+        "dudoso",
+    }
+)
+_CAD_IDENTIFIER_QUESTION_RE = re.compile(
+    r"\b[A-Z]{1,8}\d+(?:\s*-\s*[A-Z]{1,8}\d+)*\b", re.IGNORECASE
+)
+
+
+def _looks_like_cad_question(normalized: str, mentioned_filenames: list[str]) -> bool:
+    """Detect CAD intent without requiring the literal word ``plano``.
+
+    Labels such as ``M1``/``M4`` and questions about drawing units are
+    common after the user already opened a plan, so routing them through
+    hybrid search loses the structured native evidence.
+    """
+    has_property = _contains_any(normalized, _CAD_QUESTION_PROPERTIES)
+    if not has_property:
+        return False
+    has_cad_filename = any(name.lower().endswith((".dxf", ".dwg")) for name in mentioned_filenames)
+    has_plan_hint = (
+        _contains_any(normalized, _PLAN_HINTS) or "dxf" in normalized or "dwg" in normalized
+    )
+    has_identifier = _CAD_IDENTIFIER_QUESTION_RE.search(normalized) is not None
+    has_drawing_hint = _contains_any(
+        normalized, ("dibujo", "esquema", "drawing", "zeichnung", "disegno")
+    )
+    has_native_dimension_signal = _contains_any(normalized, ("cota", "cotas")) and _contains_any(
+        normalized, ("unidad", "unidades", "dudosa", "dudoso")
+    )
+    return (
+        has_cad_filename
+        or has_plan_hint
+        or has_identifier
+        or has_drawing_hint
+        or has_native_dimension_signal
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public dataclass
 # ---------------------------------------------------------------------------
@@ -505,7 +566,11 @@ class ToolCall:
 # ---------------------------------------------------------------------------
 
 
-def select_tools_for_question(question: str) -> list[ToolCall]:
+def select_tools_for_question(
+    question: str,
+    *,
+    active_context: Any | None = None,
+) -> list[ToolCall]:
     """Pick the right set of internal tools for ``question``.
 
     Returns a list because some question types (a budget number +
@@ -530,8 +595,31 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
        filters we can infer from the question (supplier, client,
        amount range).
     """
-    normalized = _normalize(question)
-    document_number = _extract_document_number(question)
+    # A resolved follow-up contains a ``[Contexto: ...]`` prefix.  It is
+    # useful to the answer model, but must not be mistaken for a new user
+    # identifier (for example the active document database id).
+    routing_question = _strip_context_prefix(question)
+    normalized = _normalize(routing_question)
+    document_number = _extract_document_number(routing_question)
+    document_numbers = _extract_document_numbers(routing_question)
+    literal_identifiers = _extract_literal_identifiers(routing_question)
+    exact_subjects = extract_exact_subject_phrases(routing_question)
+    mentioned_filenames = _extract_filenames(routing_question)
+
+    # A CAD filename is authoritative.  Drawing filenames often contain
+    # words such as "medidas" or "salon"; if the room-measurement branch
+    # sees those first it mistakes the filename for a room question and
+    # discards the native CAD evidence entirely.
+    if (
+        settings.cad_chat_tools_enabled
+        and mentioned_filenames
+        and any(name.casefold().endswith((".dxf", ".dwg")) for name in mentioned_filenames)
+    ):
+        return [
+            ToolCall("find_document_by_filename", {"query": mentioned_filenames[0]}),
+            ToolCall("get_document_full_details", {"document_id": 0}),
+            ToolCall("get_plan_cad_context", {"query": mentioned_filenames[0]}),
+        ]
 
     # ---- Plan measurements ----
     # "Cuanto mide el salon" contains an aggregation hint ("cuanto"),
@@ -562,17 +650,39 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     ) and (room_name := _extract_room_name(normalized)):
         return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
 
+    # Native CAD context has priority for generic plan questions. It exposes
+    # DIMENSION entities, layers, inserts and provenance instead of relying on
+    # OCR chunks that often flatten a drawing into an ungrounded summary.
+    if settings.cad_chat_tools_enabled and _looks_like_cad_question(
+        normalized,
+        mentioned_filenames,
+    ):
+        if mentioned_filenames:
+            return [
+                ToolCall("find_document_by_filename", {"query": mentioned_filenames[0]}),
+                ToolCall("get_document_full_details", {"document_id": 0}),
+                ToolCall("get_plan_cad_context", {"query": mentioned_filenames[0]}),
+            ]
+        return [ToolCall("get_plan_cad_context", {"query": routing_question})]
+
     # ---- Presupuesto / pedido / factura by number ----
     # Keep this before generic aggregation so "importe del presupuesto
     # 260009" resolves the specific budget instead of returning a global
     # total over every budget.
-    if document_number and (
-        _contains_any(normalized, _BUDGET_HINTS)
-        or _contains_any(normalized, _ORDER_HINTS)
-        or _contains_any(normalized, _INVOICE_HINTS)
-        or "documento" in normalized
-        or "document" in normalized
-        or "commande" in normalized
+    if (
+        document_number
+        and not any(
+            document_number in identifier and len(identifier) > len(document_number)
+            for identifier in literal_identifiers
+        )
+        and (
+            _contains_any(normalized, _BUDGET_HINTS)
+            or _contains_any(normalized, _ORDER_HINTS)
+            or _contains_any(normalized, _INVOICE_HINTS)
+            or "documento" in normalized
+            or "document" in normalized
+            or "commande" in normalized
+        )
     ):
         if _contains_any(normalized, _BUDGET_HINTS):
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
@@ -580,11 +690,173 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
             primary = ToolCall("get_order_by_number", {"order_number": document_number})
         else:
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
-        return [
+        tools = [
             primary,
             ToolCall("get_document_full_details", {"document_id": 0}),
             ToolCall("get_related_documents", {"document_id": 0}),
-            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}),
+        ]
+        if not settings.search_exact_first_enabled:
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
+        return tools
+
+    # A bare 5-7 digit identifier is common in document chat.  It used to
+    # fall into semantic retrieval, where nearby documents could outrank the
+    # actual identifier.  Search every supplied number exactly and let the
+    # collector report ambiguity instead of guessing.
+    if document_numbers:
+        tools = [
+            ToolCall("find_document_by_exact_identifier", {"number": number, "kind": "generic"})
+            for number in document_numbers
+        ]
+        if not settings.search_exact_first_enabled:
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
+        return tools
+
+    # References, tax ids and prefixed invoice/order codes are identifiers as
+    # well, even when they are not plain numbers.  Literal retrieval provides
+    # the same corpus-wide, non-fuzzy guarantee for these forms.
+    if literal_identifiers:
+        return [
+            ToolCall("find_documents_by_exact_phrase", {"phrase": identifier})
+            for identifier in literal_identifiers
+        ]
+
+    # Visual follow-ups must stay inside the active document set and operate
+    # on image-backed pages, not on whichever OCR chunk mentions "imagen"
+    # first. With no active set, use the same visual-page route globally.
+    visual_hints = (
+        "imagen",
+        "imagenes",
+        "foto",
+        "fotos",
+        "visual",
+        "describe",
+        "describeme",
+        "que se ve",
+    )
+    if _contains_any(normalized, visual_hints):
+        last_document_ids = list(getattr(active_context, "last_retrieved_document_ids", []) or [])
+        if last_document_ids:
+            return [
+                ToolCall(
+                    "get_documents_by_ids",
+                    {
+                        "document_ids": last_document_ids[:12],
+                        "visual_only": True,
+                    },
+                )
+            ]
+        if exact_subjects:
+            return [
+                ToolCall(
+                    "find_documents_by_exact_phrase",
+                    {"phrase": phrase, "visual_only": True},
+                )
+                for phrase in exact_subjects
+            ]
+        return [
+            ToolCall(
+                "search_visual_documents",
+                {"query": routing_question, "limit": 12},
+            )
+        ]
+
+    # Named subjects are not limited to one document type.  A person, client,
+    # supplier, project, property or a quoted label must be found by its
+    # literal spelling across the whole corpus before semantic similarity is
+    # allowed to answer.  This avoids conflating names that only look alike.
+    if exact_subjects:
+        return [
+            ToolCall("find_documents_by_exact_phrase", {"phrase": phrase})
+            for phrase in exact_subjects
+        ]
+
+    # Conversation follow-up: when the previous turn retrieved several
+    # documents and the user now asks for a property (number, date, amount,
+    # supplier, invoice, details), search those documents directly before
+    # falling back to the whole corpus. This is what makes turns such as
+    # ``que presupuestos tiene ese hostal?`` -> ``necesito el numero`` stay
+    # on the same project instead of returning unrelated budgets.
+    last_document_ids = list(getattr(active_context, "last_retrieved_document_ids", []) or [])
+    followup_property_hints = (
+        "numero",
+        "nº",
+        "num",
+        "fecha",
+        "importe",
+        "precio",
+        "coste",
+        "total",
+        "detalle",
+        "detalles",
+        "presupuesto",
+        "pedido",
+        "factura",
+        "proveedor",
+        "cliente",
+        "pendiente",
+        "pagar",
+        "pago",
+        "linea",
+        "lineas",
+        "albaran",
+        "paga",
+        "pagado",
+        "factura que",
+        "que sabes",
+        "que mas",
+        "mas detalles",
+    )
+    global_followup_hints = ("todos", "global", "compara", "cada", "entre proyectos")
+    if (
+        last_document_ids
+        and _contains_any(normalized, followup_property_hints)
+        and not _contains_any(normalized, global_followup_hints)
+    ):
+        return [
+            ToolCall(
+                "get_documents_by_ids",
+                # Keep the bounded project set intact. Eight documents
+                # dropped the second Hostal Anibal budget folder from the
+                # follow-up state; twelve still keeps prompt growth bounded.
+                {"document_ids": last_document_ids[:12]},
+            )
+        ]
+
+    # A document-scoped follow-up without an extracted budget number must not
+    # degrade into a portfolio-wide aggregate.  Retrieve the active document
+    # directly; its structured details contain the budget amount when present.
+    active_document_id = (
+        getattr(active_context, "current_document_id", None)
+        if active_context is not None
+        else _extract_context_document_id(question)
+    )
+    if (
+        active_document_id
+        and not getattr(active_context, "current_budget_number", None)
+        and _is_aggregation_question(normalized)
+        and not _contains_any(normalized, ("todos", "global", "compara"))
+    ):
+        return [
+            ToolCall(
+                "get_document_full_details",
+                {"document_id": int(active_document_id)},
+            )
+        ]
+
+    # ---- Specific delivery note ----
+    # A delivery note amount is a document fact, not a portfolio aggregate.
+    # Route it to the source documents before generic amount aggregation.
+    if _contains_any(normalized, ("albaran", "delivery note")):
+        return [
+            ToolCall(
+                "hybrid_search",
+                # Do not feed a user-supplied instruction tail (e.g.
+                # "ignora las instrucciones...") into retrieval. The
+                # canonical document noun is sufficient and keeps the
+                # resulting context grounded in delivery notes.
+                {"query": "albaran", "filters": {"document_type": "albaran", "limit": 8}},
+            )
         ]
 
     # ---- Aggregation intent (SQL over structured tables) ----
@@ -601,7 +873,6 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     # If the user mentions a filename (with extension) we use the lookup path
     # so the LLM gets the document's entities and its connections to the
     # rest of the project, not just text snippets.
-    mentioned_filenames = _extract_filenames(question)
     if mentioned_filenames:
         tools = [
             ToolCall("find_document_by_filename", {"query": mentioned_filenames[0]}),
@@ -612,11 +883,13 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
                 "get_related_documents", {"document_id": 0}
             ),  # placeholder; replaced after lookup
         ]
-        # Always run a hybrid search too in case the user asks for content
-        # not covered by the entities (e.g. a specific page or paragraph).
-        search_filters: dict = {"limit": 6}
-        _maybe_apply_relevance_filter(search_filters, normalized, question)
-        tools.append(ToolCall("hybrid_search", {"query": question, "filters": search_filters}))
+        # Exact file resolution is authoritative for ordinary questions.
+        # Semantic retrieval stays available behind the rollback flag for
+        # questions that genuinely need a paragraph outside the details.
+        if not settings.search_exact_first_enabled:
+            search_filters: dict = {"limit": 6}
+            _maybe_apply_relevance_filter(search_filters, normalized, question)
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": search_filters}))
         return tools
 
     # ---- Presupuesto / pedido / factura by number -> details + relations ----
@@ -639,12 +912,14 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
             primary = ToolCall("get_order_by_number", {"order_number": document_number})
         else:
             primary = ToolCall("get_budget_by_number", {"budget_number": document_number})
-        return [
+        tools = [
             primary,
             ToolCall("get_document_full_details", {"document_id": 0}),
             ToolCall("get_related_documents", {"document_id": 0}),
-            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}),
         ]
+        if not settings.search_exact_first_enabled:
+            tools.append(ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}}))
+        return tools
 
     if _contains_any(normalized, _BUDGET_HINTS) and _contains_any(
         normalized, _ACCEPTED_WITHOUT_ORDER_HINTS
@@ -665,7 +940,21 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
     if _contains_any(normalized, _DUPLICATE_HINTS):
         return [ToolCall("get_duplicate_documents", {})]
     if _contains_any(normalized, _LOW_OCR_HINTS):
-        return [ToolCall("get_ocr_review_documents", {})]
+        verbal_filename = _extract_verbal_filename(question)
+        if verbal_filename:
+            return [
+                ToolCall("find_document_by_filename", {"query": verbal_filename}),
+                ToolCall("get_document_full_details", {"document_id": 0}),
+                ToolCall("get_related_documents", {"document_id": 0}),
+                ToolCall("get_ocr_review_documents", {}),
+            ]
+        # Keep the review list, but also retrieve the named subject. Returning
+        # only the global review queue made questions such as "incidencia de
+        # sillas" lose their document-specific evidence.
+        return [
+            ToolCall("get_ocr_review_documents", {}),
+            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8}}),
+        ]
     if _contains_word(normalized, "entidad") and _contains_word(normalized, "referencia"):
         value = _extract_reference(question)
         return [
@@ -695,6 +984,11 @@ def select_tools_for_question(question: str) -> list[ToolCall]:
         ),
     ) and (room_name := _extract_room_name(normalized)):
         return [ToolCall("search_plan_room_measurements", {"room_name": room_name})]
+    if settings.cad_chat_tools_enabled and _looks_like_cad_question(
+        normalized,
+        _extract_filenames(routing_question),
+    ):
+        return [ToolCall("get_plan_cad_context", {"query": routing_question})]
     if _contains_any(normalized, _PLAN_HINTS) or _contains_any(
         normalized,
         (
@@ -779,7 +1073,9 @@ def select_structured_tools(
     invoice_number = (active_context.current_invoice_number if active_context else None) or None
 
     # If the user named a budget number in the question, it wins.
-    explicit_budget = _extract_document_number(question)
+    # Do not treat an internal ``[Contexto: documento activo id=...]`` value
+    # as an explicit budget number supplied by the user.
+    explicit_budget = _extract_document_number(_strip_context_prefix(question))
     if explicit_budget and (
         "presupuesto" in _normalize(question)
         or "budget" in _normalize(question)
@@ -789,6 +1085,18 @@ def select_structured_tools(
         budget_id = None
 
     if intent == INTENT_BUDGET_TOTAL:
+        # ``select_tools_for_question`` will retrieve this document directly
+        # when a document is active but no budget row/number is known.  Do not
+        # emit an empty budget-total lookup first: it adds a misleading
+        # "not found" result and used to make the fallback consider global
+        # aggregates.
+        if (
+            not budget_number
+            and budget_id is None
+            and active_context is not None
+            and getattr(active_context, "current_document_id", None)
+        ):
+            return []
         return [
             ToolCall(
                 "get_budget_total",
@@ -1016,6 +1324,24 @@ def _normalize(text: str) -> str:
     return normalized.encode("ascii", "ignore").decode("ascii")
 
 
+def _strip_context_prefix(text: str) -> str:
+    """Remove an internal follow-up context prefix before routing.
+
+    The prefix may contain database identifiers.  Those are internal state,
+    not identifiers supplied by the user, and must never redirect retrieval.
+    """
+    return re.sub(r"^\s*\[contexto\s*:[^\]]*\]\s*", "", text or "", flags=re.IGNORECASE)
+
+
+def _extract_context_document_id(text: str) -> int | None:
+    """Return the active document id carried by an internal context prefix."""
+    prefix = re.match(r"^\s*\[contexto\s*:(?P<context>[^\]]*)\]", text or "", re.I)
+    if not prefix:
+        return None
+    match = re.search(r"\bdocumento\s+activo\s+id=(\d+)", prefix.group("context"), re.I)
+    return int(match.group(1)) if match else None
+
+
 def _extract_document_number(text: str) -> str | None:
     """Pull a presupuesto / pedido number from a free-form question.
 
@@ -1027,11 +1353,194 @@ def _extract_document_number(text: str) -> str | None:
     match = re.search(r"\b\d{4}/\d+\b", text)
     if match:
         return match.group(0)
-    match = re.search(r"\b[A-Za-z]{0,8}\d{2,}[-/]\d+\b", text)
+    match = re.search(r"\b[A-Za-z]{0,8}\d{2,}[-/_]\d+\b", text)
     if match:
         return match.group(0)
     match = re.search(r"\b\d{5,7}\b", text)
     return match.group(0) if match else None
+
+
+def _extract_document_numbers(text: str) -> list[str]:
+    """Return all distinct bare numeric identifiers in user input order."""
+    found: list[str] = []
+    for value in re.findall(r"\b\d{5,7}\b", text or ""):
+        if value not in found:
+            found.append(value)
+    return found
+
+
+def _extract_literal_identifiers(text: str) -> list[str]:
+    """Return explicit non-numeric identifiers in user input order.
+
+    Covers common codes that cannot safely be inferred by a semantic model:
+    tax identifiers, alphanumeric references and multi-segment invoice/order
+    codes.  Plain numbers are deliberately excluded because
+    :func:`_extract_document_numbers` handles them first.
+    """
+    patterns = (
+        r"\b[A-Za-z]{1,8}-\d{2,}(?:[-/_]\d+)*\b",  # F-2025-001 / MAT-001
+        r"\b[A-Za-z]\d{7,8}[A-Za-z]?\b",  # B12345678
+        r"\b\d{7,8}[A-Za-z]\b",  # 12345678Z
+        r"\b[A-Za-z]{2,}\d{2,}[A-Za-z0-9-]*\b",  # REF123 / MAT-001
+    )
+    found: list[str] = []
+    for pattern in patterns:
+        for value in re.findall(pattern, text or ""):
+            if value not in found:
+                found.append(value)
+    return found
+
+
+_SUBJECT_STOP_WORDS = frozenset(
+    {
+        "de",
+        "del",
+        "en",
+        "para",
+        "con",
+        "que",
+        "presupuesto",
+        "pedido",
+        "factura",
+        "necesito",
+        "quiero",
+        "quieres",
+        "es",
+        "son",
+        "tiene",
+        "tienen",
+        "este",
+        "esta",
+        "ese",
+        "esa",
+        "presupuestos",
+        "pedidos",
+        "facturas",
+        "documento",
+        "documentos",
+        "archivo",
+        "archivos",
+        "informacion",
+        "datos",
+        "detalle",
+        "detalles",
+        "sabes",
+        "trata",
+    }
+)
+
+
+_EXACT_SUBJECT_NOUNS = (
+    "hotel",
+    "hostal",
+    "cliente",
+    "proveedor",
+    "empresa",
+    "sociedad",
+    "compania",
+    "compañia",
+    "marca",
+    "cadena",
+    "proyecto",
+    "obra",
+    "edificio",
+    "residencia",
+    "restaurante",
+    "apartamento",
+    "villa",
+    "local",
+    "inmueble",
+    "contacto",
+    "persona",
+    "contratista",
+    "fabricante",
+    "promotor",
+)
+
+
+def _subject_tail(text: str, *, limit: int = 4) -> str | None:
+    """Return a bounded subject tail without question-language noise."""
+    tokens: list[str] = []
+    for token in re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9'’-]+", text or ""):
+        normalized = _normalize(token)
+        if normalized in _SUBJECT_STOP_WORDS:
+            break
+        tokens.append(token)
+        if len(tokens) == limit:
+            break
+    return " ".join(tokens) or None
+
+
+def extract_exact_subject_phrases(text: str) -> list[str]:
+    """Extract high-confidence literal subjects from a user question.
+
+    This intentionally covers *entity shapes*, not document types: quoted
+    labels, persons/organisations written with capitals, and names following
+    a generic business or project noun.  The output is deduplicated and is
+    safe to send to literal retrieval; unstructured prose is left to normal
+    hybrid search.
+    """
+    clean = _strip_context_prefix(text)
+    candidates: list[str] = []
+
+    # Quoted text is an explicit user selection irrespective of casing.
+    for match in re.finditer(r"[\"'«“]([^\"'»”]{3,80})[\"'»”]", clean):
+        candidates.append(" ".join(match.group(1).split()))
+
+    noun_pattern = "|".join(re.escape(noun) for noun in _EXACT_SUBJECT_NOUNS)
+    for match in re.finditer(
+        rf"\b(?P<noun>{noun_pattern})\s+(?P<tail>[^?.!,;:\n]+)",
+        clean,
+        flags=re.IGNORECASE,
+    ):
+        tail = _subject_tail(match.group("tail"))
+        if tail:
+            candidates.append(f"{match.group('noun')} {tail}")
+
+    # "Que sabes de Ana Perez" and equivalent queries often omit an entity
+    # noun.  A two-or-more-word capitalised sequence is still an explicit
+    # enough subject to require literal grounding.
+    for match in re.finditer(
+        r"(?<!\w)([A-ZÀ-ÖØ-Þ][\w'’-]+(?:\s+[A-ZÀ-ÖØ-Þ][\w'’-]+){1,3})(?!\w)",
+        clean,
+    ):
+        phrase = " ".join(match.group(1).split())
+        if _normalize(phrase.split()[0]) not in _SUBJECT_STOP_WORDS:
+            candidates.append(phrase)
+
+    # A one-word subject may legitimately be lower case (for example "que
+    # sabes de anibal").  Restrict this form to explicit knowledge questions
+    # so ordinary phrases such as "facturas de julio" stay semantic.
+    for match in re.finditer(
+        r"\b(?:que|qué)\s+sabes\s+(?:de|del|sobre)\s+([^?.!,;:\n]+)",
+        clean,
+        flags=re.IGNORECASE,
+    ):
+        subject = _subject_tail(match.group(1))
+        if subject and len(subject) >= 3:
+            candidates.append(subject)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = " ".join(candidate.split())
+        key = normalized.casefold()
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(normalized)
+
+    # Prefer the most specific phrase when a capitalised-name rule found a
+    # suffix of an already captured entity (``ACME Iberia`` inside
+    # ``proveedor ACME Iberia``).
+    return [
+        candidate
+        for candidate in unique
+        if not any(
+            candidate.casefold() != other.casefold()
+            and other.casefold().endswith(" " + candidate.casefold())
+            for other in unique
+        )
+    ]
 
 
 def _extract_reference(text: str) -> str | None:
@@ -1042,7 +1551,12 @@ def _extract_reference(text: str) -> str | None:
 
 
 _FILENAME_HINT = re.compile(
-    r"\b[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|xls|xlsm|csv|tsv|png|jpe?g|tiff?|bmp|webp|eml|txt)\b",
+    r"\b[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|xls|xlsm|csv|tsv|png|jpe?g|tiff?|bmp|webp|eml|txt|dxf|dwg)\b",
+    flags=re.IGNORECASE,
+)
+_CAD_FILENAME_HINT = re.compile(r"([^?;,\n]*?\.(?:dxf|dwg))\b", flags=re.IGNORECASE)
+_VERBAL_FILENAME_HINT = re.compile(
+    r"\b(?:pdf|documento|archivo)\s+de\s+(.+?)(?=\s+(?:si|con|cuando)\b|[?.;,]|$)",
     flags=re.IGNORECASE,
 )
 
@@ -1051,7 +1565,40 @@ def _extract_filenames(text: str) -> list[str]:
     """Find filename-like tokens in the user's question. Stops common
     false positives like URLs by requiring a document extension at
     the end."""
-    return _FILENAME_HINT.findall(text or "")
+    matches = _FILENAME_HINT.findall(text or "")
+    if matches:
+        return matches
+    cad_matches = []
+    for match in _CAD_FILENAME_HINT.findall(text or ""):
+        candidate = match.strip(" \t\n.¿¡")
+        # Keep the filename tail when the sentence contains a leading
+        # question phrase ("qué medidas aparecen en ...dwg").
+        if " en " in candidate.lower():
+            candidate = re.split(r"\ben\b", candidate, maxsplit=1, flags=re.IGNORECASE)[-1].strip()
+        if candidate:
+            cad_matches.append(candidate)
+    return cad_matches
+
+
+def _extract_verbal_filename(text: str) -> str | None:
+    """Extract a filename-like description when the extension was omitted.
+
+    Users commonly ask for "el PDF de incidencia de sillas" rather than the
+    literal ``incidencia sillas.pdf``. This helper is deliberately used only
+    on document-oriented low-OCR requests, so ordinary prose does not trigger
+    a filename lookup.
+    """
+    match = _VERBAL_FILENAME_HINT.search(text or "")
+    if not match:
+        return None
+    value = match.group(1).strip(" \t\n.,;:!?¿¡")
+    # Uploaded filenames commonly omit Spanish connector words: a user says
+    # "incidencia de sillas" while the stored file is
+    # ``incidencia sillas.pdf``. Keep content words in their original order
+    # so the partial filename search remains precise.
+    value = re.sub(r"\b(?:de|del|la|el|los|las)\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value or None
 
 
 def _extract_room_name(normalized_question: str) -> str | None:
@@ -1078,5 +1625,40 @@ def _extract_room_name(normalized_question: str) -> str | None:
         normalized_question,
     )
     if match:
-        return match.group(1).strip()
+        candidate = match.group(1).strip()
+        generic = {
+            "aparecen",
+            "aparece",
+            "hay",
+            "tiene",
+            "tienen",
+            "del",
+            "de",
+            "el",
+            "la",
+            "este",
+            "esta",
+            "estos",
+            "estas",
+            "plano",
+            "planos",
+            "documento",
+            "archivo",
+            "aqui",
+            "ahi",
+            "en",
+            "se",
+            "son",
+        }
+        tokens = candidate.split()
+        if (
+            candidate in generic
+            or (tokens and (tokens[0] in generic or tokens[-1] in generic))
+            or any(
+                candidate.endswith(ext) or f"{ext} " in candidate
+                for ext in (".dxf", ".dwg", ".pdf")
+            )
+        ):
+            return None
+        return candidate
     return None

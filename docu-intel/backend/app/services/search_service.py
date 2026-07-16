@@ -241,6 +241,8 @@ def _use_multi_query_strategy() -> bool:
     should run. Gated by the same flag as HyDE so an operator can
     turn both on/off together.
     """
+    if not settings.search_allow_nested_expansion:
+        return False
     if not settings.search_use_query_transformer:
         return False
     return settings.search_query_transform_strategy in ("multi_query", "auto")
@@ -363,6 +365,12 @@ def _run_semantic_search(
     for document, chunk in rows:
         embedding = _coerce_embedding(chunk.embedding)
         if embedding:
+            # Existing corpora can contain vectors produced before an
+            # embedding-model migration.  They cannot be compared safely to
+            # the current query vector; omit only that stale candidate rather
+            # than failing the entire search (or silently truncating it).
+            if len(embedding) != len(query_embedding):
+                continue
             score = cosine_similarity(query_embedding, embedding)
         else:
             score = _lexical_overlap_score(normalized_query, chunk.chunk_text)
@@ -410,11 +418,15 @@ def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -
     """
     # Cross-encoder rerank: needs a larger pool than the final limit to
     # actually re-order anything meaningful.
-    if len(results) > limit:
+    if settings.search_reranker_enabled and len(results) > limit:
         try:
             from app.services.reranker import rerank_sync
 
-            results = rerank_sync(query.strip(), results, top_k=limit)
+            results = rerank_sync(
+                query.strip(),
+                results[: settings.search_reranker_max_candidates],
+                top_k=limit,
+            )
         except Exception as exc:  # noqa: BLE001 - reranker is best-effort
             logger.warning("semantic rerank failed: %s", exc)
             from app.services.metrics.search import track_rerank_failure
@@ -439,8 +451,31 @@ def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -
     return results
 
 
+def _semantic_filters_for_access(filters: dict | None, access_scope=None) -> dict:
+    """Return filters safe for pgvector retrieval.
+
+    A concrete budget scope remains mandatory for ordinary callers.  Admins
+    are the sole break-glass role and may search unassigned uploads as well;
+    this private marker is only derived from the resolved server-side access
+    scope, never trusted from a client payload.
+    """
+    effective = {
+        key: value
+        for key, value in (filters or {}).items()
+        if key != "_allow_global_semantic_search"
+    }
+    if effective.get("budget_scope_id") is None and access_scope is not None and access_scope.is_admin:
+        effective["_allow_global_semantic_search"] = True
+    return effective
+
+
 def search_semantic(
-    db: Session, query: str, limit: int = 10, filters: dict | None = None
+    db: Session,
+    query: str,
+    limit: int = 10,
+    filters: dict | None = None,
+    *,
+    access_scope=None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     try:
@@ -448,7 +483,8 @@ def search_semantic(
         if not normalized:
             return []
 
-        cache_key = _make_search_cache_key(normalized, limit, filters, "semantic")
+        effective_filters = _semantic_filters_for_access(filters, access_scope)
+        cache_key = _make_search_cache_key(normalized, limit, effective_filters, "semantic")
         cached = cache_service.get(cache_key)
         if cached is not None:
             return [_dict_to_search_result(r) for r in cached]
@@ -488,7 +524,7 @@ def search_semantic(
                         query_embedding=embedding,
                         normalized_query=normalized,
                         limit=per_pass_limit,
-                        filters=filters,
+                        filters=effective_filters,
                     )
                 )
             if not per_pass:
@@ -499,7 +535,7 @@ def search_semantic(
                     query_embedding=query_embedding,
                     normalized_query=normalized,
                     limit=rerank_pool_size,
-                    filters=filters,
+                    filters=effective_filters,
                 )
             else:
                 results_sorted = _merge_reformulation_results(per_pass, limit=rerank_pool_size)
@@ -509,7 +545,7 @@ def search_semantic(
                 query_embedding=query_embedding,
                 normalized_query=normalized,
                 limit=rerank_pool_size,
-                filters=filters,
+                filters=effective_filters,
             )
 
         # Apply cross-encoder rerank + MMR, same as the hybrid path, so
@@ -527,11 +563,17 @@ def search_semantic(
 
 
 def search_hybrid(
-    db: Session, query: str, limit: int = 10, filters: dict | None = None
+    db: Session,
+    query: str,
+    limit: int = 10,
+    filters: dict | None = None,
+    *,
+    access_scope=None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     try:
-        cache_key = _make_search_cache_key(query.strip(), limit, filters, "hybrid")
+        effective_filters = _semantic_filters_for_access(filters, access_scope)
+        cache_key = _make_search_cache_key(query.strip(), limit, effective_filters, "hybrid")
         cached = cache_service.get(cache_key)
         if cached is not None:
             return [_dict_to_search_result(r) for r in cached]
@@ -541,6 +583,35 @@ def search_hybrid(
 
         effective_limit = max(limit, 10)
 
+        text_results: list[SearchResult] = []
+        semantic_results: list[SearchResult] = []
+        bm25_results: list[SearchResult] = []
+
+        # SQLite ``:memory:`` databases are connection-local. A new session
+        # in a worker thread would therefore query an empty database rather
+        # than the caller's transaction. Keep that development/test path
+        # sequential; production PostgreSQL retains the parallel strategy.
+        if not _is_postgres(db):
+            strategies = [("text", search_text), ("semantic", search_semantic)]
+            if settings.search_use_bm25:
+                strategies.append(("bm25", search_bm25))
+            for name, strategy in strategies:
+                try:
+                    if name == "semantic":
+                        result = strategy(
+                            db, query, effective_limit, effective_filters, access_scope=access_scope
+                        )
+                    else:
+                        result = strategy(db, query, effective_limit, effective_filters)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("%s search failed: %s", name, exc)
+                    continue
+                if name == "text":
+                    text_results = result
+                elif name == "semantic":
+                    semantic_results = result
+                else:
+                    bm25_results = result
         # Run text, semantic, and BM25 searches in parallel for
         # lower latency. Each strategy is independent and hits a
         # different code path (ILIKE, pgvector, tsvector).
@@ -549,41 +620,48 @@ def search_hybrid(
         # SQLAlchemy sessions are NOT thread-safe. Sharing the
         # same session across ThreadPoolExecutor threads causes
         # data corruption and InvalidRequestError under load.
-        _thread_factory = sessionmaker(bind=get_engine())
-        futures = {}
-        text_results: list[SearchResult] = []
-        semantic_results: list[SearchResult] = []
-        bm25_results: list[SearchResult] = []
+        else:
+            _thread_factory = sessionmaker(bind=get_engine())
+            futures = {}
 
-        def _run_with_session(fn, *args, **kwargs):
-            sess = _thread_factory()
-            try:
-                return fn(sess, *args, **kwargs)
-            finally:
-                sess.close()
+            def _run_with_session(fn, *args, **kwargs):
+                sess = _thread_factory()
+                try:
+                    return fn(sess, *args, **kwargs)
+                finally:
+                    sess.close()
 
-        futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, filters)] = "text"
-        futures[
-            _search_pool.submit(_run_with_session, search_semantic, query, effective_limit, filters)
-        ] = "semantic"
-        if settings.search_use_bm25:
+            futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, effective_filters)] = "text"
             futures[
-                _search_pool.submit(_run_with_session, search_bm25, query, effective_limit, filters)
-            ] = "bm25"
+                _search_pool.submit(
+                    _run_with_session,
+                    search_semantic,
+                    query,
+                    effective_limit,
+                    effective_filters,
+                    access_scope=access_scope,
+                )
+            ] = "semantic"
+            if settings.search_use_bm25:
+                futures[
+                    _search_pool.submit(
+                        _run_with_session, search_bm25, query, effective_limit, effective_filters
+                    )
+                ] = "bm25"
 
-        for future in as_completed(futures):
-            name = futures[future]
-            try:
-                result = future.result()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("%s search failed: %s", name, exc)
-                continue
-            if name == "text":
-                text_results = result
-            elif name == "semantic":
-                semantic_results = result
-            elif name == "bm25":
-                bm25_results = result
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    result = future.result()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("%s search failed: %s", name, exc)
+                    continue
+                if name == "text":
+                    text_results = result
+                elif name == "semantic":
+                    semantic_results = result
+                elif name == "bm25":
+                    bm25_results = result
 
         track_search_strategy_used("hybrid", "executed")
 
@@ -601,11 +679,15 @@ def search_hybrid(
         )
 
         # Apply cross-encoder reranker for better precision
-        if len(merged) > limit:
+        if settings.search_reranker_enabled and len(merged) > limit:
             try:
                 from app.services.reranker import rerank_sync
 
-                merged = rerank_sync(query.strip(), merged, top_k=limit)
+                merged = rerank_sync(
+                    query.strip(),
+                    merged[: settings.search_reranker_max_candidates],
+                    top_k=limit,
+                )
             except Exception as exc:  # noqa: BLE001 - reranker is best-effort
                 logger.warning("hybrid rerank failed: %s", exc)
                 from app.services.metrics.search import track_rerank_failure

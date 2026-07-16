@@ -46,15 +46,18 @@ from .labels import escape_label, metric_key
 # ``app.services.metrics`` (the package) so no caller has to
 # change anything.
 from .ocr import (
+    set_ocr_tier_available,
     track_ocr_cascade_fallback,
     track_ocr_dpi_escalation,
     track_ocr_duration,
     track_ocr_language_detected,
     track_ocr_language_threshold_used,
     track_ocr_postprocess,
+    track_ocr_render_permission_failure,
     track_ocr_skip_tier2,
     track_ocr_tier4_invoked,
     track_ocr_tier_used,
+    track_preprocess_path_chosen,
 )
 from .pipeline import (
     document_status_counts,
@@ -63,6 +66,8 @@ from .pipeline import (
     track_document_processed,
     track_page_processed,
     track_parser_fallback_failure,
+    track_review_auto_resolved,
+    track_review_document,
     track_stage_duration,
     track_stage_failure,
     track_watcher_error,
@@ -70,8 +75,12 @@ from .pipeline import (
     update_queue_status_snapshot,
 )
 from .rag import (
+    track_ai_source_stale_block,
+    track_ai_stream_persist_failure,
+    track_answer_without_source,
     track_chunk_weight_adjustment,
     track_feedback_vote,
+    track_followup_resolution,
     track_mmr,
     track_prompt_injection_attempts,
     track_query_transform,
@@ -127,6 +136,8 @@ __all__ = [
     "track_ocr_language_detected",
     "track_ocr_language_threshold_used",
     "track_preprocess_path_chosen",
+    "track_ocr_render_permission_failure",
+    "set_ocr_tier_available",
     # Embedding
     "track_embedding_latency",
     "track_embedding_duration",
@@ -149,12 +160,18 @@ __all__ = [
     "update_queue_status_snapshot",
     "document_status_counts",
     "refresh_documents_by_status_gauge",
+    "track_review_document",
+    "track_review_auto_resolved",
     # RAG
     "track_query_transform",
     "track_mmr",
     "track_prompt_injection_attempts",
     "track_feedback_vote",
     "track_chunk_weight_adjustment",
+    "track_ai_source_stale_block",
+    "track_ai_stream_persist_failure",
+    "track_followup_resolution",
+    "track_answer_without_source",
     # Endpoint
     "render_metrics",
     "get_metrics",
@@ -169,6 +186,7 @@ __all__ = [
     "_track_ocr_postprocess",
     "_track_ocr_tier_used",
     "_track_ocr_skip_tier2",
+    "_track_ocr_tier4_invoked",
     "_track_ocr_language_detected",
     "_track_ocr_language_threshold_used",
     "_track_embedding_latency",

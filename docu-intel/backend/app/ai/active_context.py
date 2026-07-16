@@ -63,6 +63,7 @@ class ActiveContext:
 
     current_budget_number: str | None = None
     current_budget_id: int | None = None
+    current_budget_scope_id: int | None = None
     current_client_name: str | None = None
     current_folder_path: str | None = None
     current_document_id: int | None = None
@@ -71,6 +72,13 @@ class ActiveContext:
     current_invoice_number: str | None = None
     current_order_number: str | None = None
     current_delivery_note_number: str | None = None
+    # Phase 3 / Phase 9: project-level context
+    current_project_id: int | None = None
+    current_project_name: str | None = None
+    current_brand_id: int | None = None
+    current_brand_name: str | None = None
+    current_hotel_id: int | None = None
+    current_hotel_name: str | None = None
     last_user_intent: str | None = None
     last_retrieved_document_ids: list[int] = field(default_factory=list)
 
@@ -104,12 +112,18 @@ class ActiveContext:
         documents that were ingested before the ``budget_scope`` row
         was created.
         """
-        if not self.has_budget_scope:
-            return {}
         out: dict[str, Any] = {}
-        if self.current_budget_id is not None:
-            out["budget_scope_id"] = int(self.current_budget_id)
-        if self.current_budget_number:
+        # A resolved project is the strongest scope and prevents a previous
+        # document/budget from leaking into the next project turn.
+        if self.current_project_id is not None:
+            out["project_id"] = int(self.current_project_id)
+        if self.current_budget_scope_id is not None:
+            out["budget_scope_id"] = int(self.current_budget_scope_id)
+        elif self.current_budget_id is not None:
+            # ``current_budget_id`` is a structured Budget row, not a scope;
+            # retain it only for legacy sessions that do not yet store scope.
+            out["budget_id"] = int(self.current_budget_id)
+        if self.current_budget_number and "budget_scope_id" not in out:
             # Match by folder: most projects put the budget number in
             # the folder name (e.g. "Presupuesto 260009/"). Use a
             # LIKE on the relative source path; the column is indexed
@@ -207,6 +221,7 @@ def update_after_answer(
     resolved_budget: dict | None = None,
     resolved_order: dict | None = None,
     resolved_invoice: dict | None = None,
+    resolved_project: dict | None = None,
     retrieved_document_ids: Iterable[int] | None = None,
 ) -> ActiveContext:
     """Mutate the context in place from the result of a turn.
@@ -249,6 +264,32 @@ def update_after_answer(
         number = resolved_invoice.get("number")
         if number:
             ctx.current_invoice_number = str(number)
+    if resolved_project:
+        new_project_id = resolved_project.get("id")
+        if new_project_id is not None and int(new_project_id) != ctx.current_project_id:
+            # Project changes invalidate document-specific follow-up state.
+            ctx.current_document_id = None
+            ctx.current_document_path = None
+            ctx.current_document_type = None
+            ctx.current_invoice_number = None
+            ctx.current_order_number = None
+            ctx.current_delivery_note_number = None
+            ctx.current_budget_number = None
+            ctx.current_budget_id = None
+            ctx.current_budget_scope_id = None
+            ctx.current_client_name = None
+            ctx.current_folder_path = None
+        if new_project_id is not None:
+            ctx.current_project_id = int(new_project_id)
+        for key, attr in (
+            ("name", "current_project_name"),
+            ("brand_id", "current_brand_id"),
+            ("hotel_id", "current_hotel_id"),
+            ("budget_scope_id", "current_budget_scope_id"),
+        ):
+            value = resolved_project.get(key)
+            if value is not None:
+                setattr(ctx, attr, value)
     if retrieved_document_ids:
         # Dedupe + keep the most recent 20 ids so the JSON column does
         # not grow unbounded across long sessions.
@@ -345,6 +386,30 @@ def persist_context_after_answer(
             from app.tools import internal
 
             resolved_doc_payload = internal.get_document_full_details(db, resolved_doc_id)
+        resolved_project: dict | None = None
+        if resolved_doc_id is not None:
+            from app.models.project import DocumentOccurrence, Project
+
+            occurrences = list(
+                db.scalars(
+                    select(DocumentOccurrence)
+                    .where(DocumentOccurrence.document_id == resolved_doc_id)
+                    .where(DocumentOccurrence.project_id.is_not(None))
+                    .order_by(DocumentOccurrence.id)
+                ).all()
+            )
+            # A document shared by several projects is intentionally
+            # ambiguous: never select one silently for a follow-up.
+            if len(occurrences) == 1:
+                project = db.get(Project, occurrences[0].project_id)
+                if project:
+                    resolved_project = {
+                        "id": project.id,
+                        "name": project.name,
+                        "brand_id": project.brand_id,
+                        "hotel_id": project.hotel_id,
+                        "budget_scope_id": occurrences[0].budget_scope_id,
+                    }
         update_after_answer(
             ctx,
             intent=intent,
@@ -364,6 +429,7 @@ def persist_context_after_answer(
                 if resolved_doc_payload
                 else None
             ),
+            resolved_project=resolved_project,
             retrieved_document_ids=[getattr(src, "document_id", None) for src in context_items],
         )
         save_active_context(db, user, session_id, ctx)

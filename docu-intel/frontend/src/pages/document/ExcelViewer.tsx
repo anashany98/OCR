@@ -58,15 +58,9 @@ export function ExcelViewer({ text }: { text: string }) {
   const [sortAsc, setSortAsc] = useState(true)
 
   const sheet = sheets[activeSheet]
-  if (!sheet || sheet.rows.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-10 text-sm text-[var(--text-muted)]">
-        Sin datos para mostrar
-      </div>
-    )
-  }
+  const rows = sheet?.rows ?? []
 
-  const filteredRows = sheet.rows.filter((row) => {
+  const filteredRows = rows.filter((row) => {
     if (!search) return true
     const q = search.toLowerCase()
     return row.some((cell) => cell.toLowerCase().includes(q))
@@ -83,6 +77,14 @@ export function ExcelViewer({ text }: { text: string }) {
       return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
     })
   }, [filteredRows, sortCol, sortAsc])
+
+  if (!sheet || rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-10 text-sm text-[var(--text-muted)]">
+        Sin datos para mostrar
+      </div>
+    )
+  }
 
   const toggleSort = (col: number) => {
     if (sortCol === col) {

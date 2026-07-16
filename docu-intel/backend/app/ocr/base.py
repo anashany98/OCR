@@ -14,7 +14,7 @@ Why an abstraction:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -48,6 +48,16 @@ class OCRResult:
     confidence: float | None
     blocks: list[OCRBlock]
     engine: str = ""
+    content_kind: str | None = None
+    route: str | None = None
+    # Optional, backwards-compatible provenance for remote/versioned engines.
+    # A model-backed engine must never overload ``engine`` with a revision:
+    # callers use the stable engine name for routing and this field for audit.
+    engine_version: str | None = None
+    # Non-fatal evidence such as an output cut at the token limit.  Consumers
+    # must use it to require review rather than treating a well-formed but
+    # incomplete transcript as an automatic success.
+    warnings: list[str] = field(default_factory=list)
 
 
 class BaseOCREngine(Protocol):

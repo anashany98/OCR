@@ -7,6 +7,8 @@ from app.models import Budget, BudgetLine, Invoice, Order, OrderLine, Reconcilia
 from app.services.tenant_access import AccessScope
 
 PRICE_FIELD_NAMES = {
+    "taxable_base",
+    "vat_amount",
     "total_amount",
     "unit_price",
     "total_price",
@@ -110,10 +112,14 @@ def invoice_read_payload(invoice: Invoice, scope: AccessScope | None) -> dict[st
             "document_id": invoice.document_id,
             "invoice_number": invoice.invoice_number,
             "supplier_name": invoice.supplier_name,
+            "supplier_tax_id": invoice.supplier_tax_id,
             "client_name": invoice.client_name,
             "date": invoice.date,
+            "taxable_base": invoice.taxable_base,
+            "vat_amount": invoice.vat_amount,
             "total_amount": invoice.total_amount,
             "currency": invoice.currency,
+            "related_order_number": invoice.related_order_number,
             "related_order_id": invoice.related_order_id,
             "confidence": invoice.confidence,
             "created_at": invoice.created_at,

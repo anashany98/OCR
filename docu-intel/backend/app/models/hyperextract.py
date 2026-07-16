@@ -51,6 +51,16 @@ class DocumentExtraction(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     confidence: Mapped[float | None] = mapped_column(Float)
+    # MiniMax M3 (FASE 3) — the idempotence fingerprint captured
+    # at the moment the row was written. The pipeline MUST compare
+    # the freshly computed fingerprint against the value stored
+    # on a prior ``success`` row before reusing it; a row whose
+    # fingerprint is NULL (legacy runs) is treated as "no match"
+    # so we never serve an old payload that was computed against
+    # a different text or a different model.
+    extraction_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )

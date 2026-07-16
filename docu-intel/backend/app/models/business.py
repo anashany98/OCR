@@ -1,7 +1,19 @@
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -24,7 +36,9 @@ class Budget(Base):
         String(120), index=True, nullable=True
     )
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
-    date: Mapped[date | None] = mapped_column(Date)
+    # Partial scans can lack a date. Persist the recoverable facts and send
+    # the document to review instead of failing the entire extraction.
+    date: Mapped[date | None] = mapped_column(Date, nullable=True)
     total_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(12))
     status: Mapped[str | None] = mapped_column(String(50), index=True)
@@ -72,7 +86,7 @@ class Order(Base):
     )
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
-    date: Mapped[date | None] = mapped_column(Date)
+    date: Mapped[date | None] = mapped_column(Date, nullable=True)
     total_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(12))
     related_budget_id: Mapped[int | None] = mapped_column(
@@ -114,7 +128,7 @@ class DeliveryNote(Base):
     delivery_number: Mapped[str | None] = mapped_column(String(120), index=True)
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     client_name: Mapped[str | None] = mapped_column(String(255), index=True)
-    date: Mapped[date | None] = mapped_column(Date)
+    date: Mapped[date | None] = mapped_column(Date, nullable=True)
     total_amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str | None] = mapped_column(String(12))
     confidence: Mapped[float | None] = mapped_column(Float)
@@ -247,3 +261,26 @@ class PlanSymbol(Base):
     )
 
     plan = relationship("Plan", back_populates="symbols")
+
+
+class InvoiceLine(Base):
+    """A single line item from an invoice extraction (Phase 6)."""
+    __tablename__ = "invoice_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True, nullable=False,
+    )
+    reference: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(20))
+    unit_price: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    total_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str | None] = mapped_column(String(12))
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+    )
+
+    invoice = relationship("Invoice", back_populates="lines")

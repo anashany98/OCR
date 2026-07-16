@@ -18,9 +18,11 @@ from app.models import (
     DocumentEntity,
     DocumentPage,
     ExtractionJob,
-    Plan,
+    OcrAttempt,
 )
+from app.ocr.base import OCRResult
 from app.ocr.factory import get_ocr_engine_class
+from app.parsers.dwg import DwgConversionError
 from app.parsers.router import parse_document
 from app.services.business_extraction import persist_business_extraction
 from app.services.cache import cache_service
@@ -29,9 +31,14 @@ from app.services.ingestion_events import record_ingestion_event, upsert_watched
 from app.services.metrics import (
     track_document_failed,
     track_document_processed,
-    track_stage_duration,
-    track_stage_failure,
     track_page_processed,
+    track_stage_duration,
+)
+from app.services.ocr_decision import OCRDecision, decide_ocr_result, text_quality
+from app.services.ocr_page_roles import (
+    infer_ocr_content_kind,
+    is_ocr_applicable,
+    ocr_applicable_clause,
 )
 from app.services.plan_extraction import persist_plan_extraction
 from app.services.quality import evaluate_document_quality, update_document_quality
@@ -57,16 +64,55 @@ def _celery_broker_available() -> bool:
     so apply_async doesn't hang waiting for a connection.
     """
     import os
+
     if os.environ.get("CELERY_ALWAYS_EAGER") or os.environ.get("TESTING"):
         return False
     try:
         from app.workers.celery_app import celery_app
-        conn = celery_app.connection_or_acquire()
-        with conn:
+
+        # 1.2 M-12 follow-up: ``connection_or_acquire`` is a *context
+        # manager*, not a connection. Using ``with conn:`` directly on
+        # the returned object (the previous code) accidentally relied
+        # on Celery's internal duck-typing and could falsely report
+        # the broker as unavailable, which made ingestion skip the
+        # ``embed_document_task`` enqueue and force a manual
+        # re-embed. Bind the context manager to ``conn`` so the
+        # ``ensure_connection`` call actually runs on the live
+        # connection.
+        with celery_app.connection_or_acquire() as conn:
             conn.ensure_connection(max_retries=0, timeout=2.0)
             return True
     except Exception:
         return False
+
+
+def _hyperextract_pipeline_enabled() -> bool:
+    return bool(
+        settings.hyperextract_enabled
+        and settings.hyperextract_run_in_pipeline
+        and settings.hyperextract_async
+    )
+
+
+def _enqueue_hyperextract_after_commit(document_id: int) -> None:
+    """Queue optional extraction only after the document transaction commits."""
+    if not _hyperextract_pipeline_enabled():
+        return
+    if not _celery_broker_available():
+        logger.warning(
+            "hyperextract_not_enqueued_broker_unavailable document_id=%s",
+            document_id,
+        )
+        return
+    try:
+        from app.workers.hyperextract_tasks import enqueue_hyperextract_task
+
+        enqueue_hyperextract_task.apply_async(
+            args=(document_id,),
+            queue="hyperextract",
+        )
+    except Exception:
+        logger.exception("hyperextract_enqueue_failed document_id=%s", document_id)
 
 
 class _LazyOCREngine:
@@ -77,19 +123,21 @@ class _LazyOCREngine:
     def __init__(self) -> None:
         self._engine = None
         self._current_language = None
+        self._current_content_route = None
+        self._current_document_id = None
+        self._current_page_number = None
 
     def _load(self):
         if self._engine is None:
-            # Use get_ocr_engine() which returns the singleton
-            # (already instantiated by preload_ocr_engine during worker boot).
-            # The old code called get_ocr_engine_class()() which broke
-            # for cascading mode because get_cascading_engine is a function,
-            # not a class.
-            from app.ocr.factory import get_ocr_engine
-            self._engine = get_ocr_engine()
+            self._engine = _instantiate_effective_ocr_engine()
             if self._current_language is not None:
                 with contextlib.suppress(Exception):
                     self._engine.current_language = self._current_language
+            for attr in ("current_content_route", "current_document_id", "current_page_number"):
+                value = getattr(self, f"_{attr}", None)
+                if value is not None:
+                    with contextlib.suppress(Exception):
+                        setattr(self._engine, attr, value)
         return self._engine
 
     def extract(self, image_path: Path):
@@ -99,12 +147,17 @@ class _LazyOCREngine:
         return getattr(self._load(), attr)
 
     def __setattr__(self, attr: str, value) -> None:
-        if attr == "current_language":
-            object.__setattr__(self, "_current_language", value)
+        if attr in {
+            "current_language",
+            "current_content_route",
+            "current_document_id",
+            "current_page_number",
+        }:
+            object.__setattr__(self, f"_{attr}", value)
             engine = self.__dict__.get("_engine")
             if engine is not None:
                 with contextlib.suppress(Exception):
-                    engine.current_language = value
+                    setattr(engine, attr, value)
             return
         object.__setattr__(self, attr, value)
 
@@ -114,6 +167,30 @@ def _get_effective_ocr_engine_class():
     if facade is not None:
         return getattr(facade, "get_ocr_engine_class", get_ocr_engine_class)
     return get_ocr_engine_class
+
+
+def _instantiate_effective_ocr_engine():
+    """Return an OCR object, never the factory function itself.
+
+    In cascading mode the legacy factory may return ``get_cascading_engine``
+    (a callable singleton provider) rather than an engine class.  Calling the
+    factory only once left that function in the page-reprocess path and caused
+    ``'function' object has no attribute 'extract'``.  Explicit test/deploy
+    overrides may return either an instance, a class, or a zero-argument
+    provider, so normalise all three forms at this boundary.
+    """
+    engine_factory = _get_effective_ocr_engine_class()
+    if engine_factory is get_ocr_engine_class:
+        from app.ocr.factory import get_ocr_engine
+
+        engine = get_ocr_engine()
+    else:
+        engine = engine_factory()
+        if isinstance(engine, type) or callable(engine) and not hasattr(engine, "extract"):
+            engine = engine()
+    if not hasattr(engine, "extract") or not callable(engine.extract):
+        raise TypeError("OCR factory did not return an engine implementing extract(path)")
+    return engine
 
 
 def _facade_attr(name: str, fallback):
@@ -129,6 +206,10 @@ def _get_effective_parse_document():
 
 def _get_effective_persist_business_extraction():
     return _facade_attr("persist_business_extraction", persist_business_extraction)
+
+
+def _get_effective_emit_webhook():
+    return _facade_attr("emit_integration_webhook", emit_integration_webhook)
 
 
 def _get_effective_persist_plan_extraction():
@@ -248,12 +329,100 @@ def mode_requires_file_parse(mode_or_job_type: str | None) -> bool:
     return processing_mode_from_job_type(mode_or_job_type) in {"full", "ocr"}
 
 
-def _page_status_from_confidence(ocr_confidence: float | None) -> str:
+def _page_status_from_confidence(
+    ocr_confidence: float | None,
+    *,
+    ocr_content_kind: str | None = None,
+) -> str:
+    if not is_ocr_applicable(ocr_content_kind):
+        return "processed"
     if ocr_confidence is None:
         return "processed"
     if ocr_confidence < settings.low_ocr_confidence_threshold:
         return "processed_low_confidence"
     return "processed"
+
+
+def _record_ocr_attempt(
+    db: Session,
+    *,
+    page: DocumentPage,
+    result: OCRResult,
+    route: str | None,
+    selected: bool = True,
+    decision: OCRDecision | None = None,
+) -> OCRDecision:
+    """Persist the selected candidate as durable OCR evidence.
+
+    Parsers currently expose the winning result only.  Recording that result
+    here still gives every old and new page a uniform audit trail; cascades can
+    add their intermediate candidates later without changing this contract.
+    """
+    decision = decision or decide_ocr_result(result)
+    if selected:
+        page.ocr_calibrated_confidence = decision.calibrated_confidence
+        page.ocr_decision = decision.decision
+        page.ocr_decision_reasons_json = decision.reasons
+        page.page_status = _page_status_from_confidence(
+            decision.calibrated_confidence,
+            ocr_content_kind=page.ocr_content_kind,
+        )
+        if decision.decision == "review_required":
+            page.review_status = "pending"
+    attempt_decision = decision.decision if selected else "superseded"
+    attempt_reasons = (
+        decision.reasons if selected else [*decision.reasons, "preserved_better_existing"]
+    )
+    db.add(
+        OcrAttempt(
+            page_id=page.id,
+            attempt_index=(page.attempts or 0),
+            engine=result.engine or page.ocr_engine or "unknown",
+            engine_version=result.engine_version or settings.current_ocr_engine_version,
+            route=route,
+            text=result.text,
+            raw_confidence=result.confidence,
+            calibrated_confidence=decision.calibrated_confidence,
+            quality_score=decision.quality_score,
+            decision=attempt_decision,
+            decision_reasons_json=attempt_reasons,
+            selected=selected,
+        )
+    )
+    return decision
+
+
+def _mark_non_ocr_page(page: DocumentPage, *, content_kind: str) -> None:
+    """Persist searchable non-OCR content without assigning a fake score."""
+    page.ocr_content_kind = content_kind
+    page.ocr_confidence = None
+    page.ocr_calibrated_confidence = None
+    page.ocr_decision = "not_applicable"
+    page.ocr_decision_reasons_json = ["content_not_applicable", content_kind]
+    page.page_status = "processed"
+    for attempt in page.ocr_attempts:
+        attempt.selected = False
+
+
+def _should_select_ocr_candidate(
+    page: DocumentPage,
+    candidate: OCRResult,
+    decision: OCRDecision,
+) -> bool:
+    """Keep a previously selected result unless the new one is at least as good.
+
+    Reprocessing is an experiment, not permission to overwrite better text.
+    The comparison uses the calibrated confidence and deterministic text
+    quality, so raw scores from heterogeneous engines are never compared
+    directly.
+    """
+    if not is_ocr_applicable(page.ocr_content_kind):
+        return True
+    if page.ocr_calibrated_confidence is None or not (page.text or "").strip():
+        return True
+    current_score = float(page.ocr_calibrated_confidence) * 0.75 + text_quality(page.text) * 0.25
+    candidate_score = decision.calibrated_confidence * 0.75 + text_quality(candidate.text) * 0.25
+    return candidate_score >= current_score
 
 
 def _load_existing_page_texts(db: Session, document_id: int) -> list[tuple[int, str | None]]:
@@ -272,6 +441,7 @@ def _load_low_ocr_confidences(db: Session, document_id: int) -> list[float]:
             .join(Document, Document.id == DocumentPage.document_id)
             .where(DocumentPage.document_id == document_id)
             .where(Document.deleted_at.is_(None))
+            .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
             .where(DocumentPage.ocr_confidence.is_not(None))
             .where(DocumentPage.ocr_confidence < settings.low_ocr_confidence_threshold)
         ).all()
@@ -382,7 +552,7 @@ def process_document(
             needs_review = _process_classification_only(db, document)
             document.status = "needs_review" if needs_review else "processed"
         else:
-            needs_review = _process_full_parse(db, document)
+            needs_review = _facade_attr("_process_full_parse", _process_full_parse)(db, document)
             document.status = "needs_review" if needs_review else "processed"
 
         track_stage_duration("total", time.perf_counter() - t_total)
@@ -418,6 +588,7 @@ def process_document(
                 watched_file=watched,
             )
         db.commit()
+        _enqueue_hyperextract_after_commit(document.id)
         _emit_document_webhooks(document, job)
     except Exception as exc:
         _handle_process_failure(
@@ -435,6 +606,7 @@ def _handle_process_failure(
     final_failure: bool,
 ) -> tuple[Document | None, ExtractionJob | None]:
     db.rollback()
+    requires_manual_dwg_conversion = final_failure and isinstance(error, DwgConversionError)
     job = db.get(ExtractionJob, job_id)
     document = db.get(Document, document_id)
     if job:
@@ -444,22 +616,31 @@ def _handle_process_failure(
     if document:
         document.error_message = str(error)
         if final_failure:
-            document.status = "failed"
-            document.quality_status = "failed"
+            # A DWG with no available converter is not corrupt input and is not
+            # an OCR failure.  Keep it visible in the review queue with an
+            # actionable reason instead of hiding it among terminal failures.
+            document.status = "needs_review" if requires_manual_dwg_conversion else "failed"
+            document.quality_status = (
+                "needs_human_review" if requires_manual_dwg_conversion else "failed"
+            )
             document.quality_score = 0.0
-            document.quality_flags_json = ["processing_failed"]
+            document.quality_flags_json = (
+                ["dwg_conversion_required"]
+                if requires_manual_dwg_conversion
+                else ["processing_failed"]
+            )
             if document.source_path:
                 watched = upsert_watched_file(
                     db,
                     path=document.source_path,
-                    status="failed",
+                    status="needs_review" if requires_manual_dwg_conversion else "failed",
                     document_id=document.id,
                     job_id=job.id if job else None,
                     error_message=str(error),
                 )
                 record_ingestion_event(
                     db,
-                    event_type="failed",
+                    event_type="needs_review" if requires_manual_dwg_conversion else "failed",
                     source_path=document.source_path,
                     document_id=document.id,
                     job_id=job.id if job else None,
@@ -470,9 +651,10 @@ def _handle_process_failure(
             document.status = "processing"
     db.commit()
     if final_failure and document and job:
-        track_document_failed()
-        emit_integration_webhook(
-            "document.failed",
+        if not requires_manual_dwg_conversion:
+            track_document_failed()
+        _get_effective_emit_webhook()(
+            "document.needs_review" if requires_manual_dwg_conversion else "document.failed",
             {
                 "document_id": document.id,
                 "job_id": job.id,
@@ -490,6 +672,7 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     stored_path = settings.files_dir / document.stored_filename
     page_image_dir = settings.files_dir / document.file_hash[:2] / f"{document.file_hash}_pages"
     ocr_engine = _LazyOCREngine()
+    ocr_engine.current_document_id = document.id
     # Extract folder hint from source_path for content routing.
     # e.g. "/app/data/input/presupuestos/245745/foto.jpg" -> "presupuestos"
     folder_hint = None
@@ -513,23 +696,41 @@ def _process_full_parse(db: Session, document: Document) -> bool:
 
     t_persist = time.perf_counter()
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
-    db.execute(delete(DocumentBlock).where(DocumentBlock.document_id == document.id))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document.id))
-    db.execute(delete(DocumentPage).where(DocumentPage.document_id == document.id))
-    db.execute(delete(Plan).where(Plan.document_id == document.id))
+    # Keep page rows stable across full reprocessing so their OCR attempt
+    # history remains auditable and a worse candidate can never erase the
+    # previous evidence. Pages removed from the source are cleaned up after
+    # the new page set is known.
+    existing_pages = {
+        page.page_number: page
+        for page in db.scalars(
+            select(DocumentPage).where(DocumentPage.document_id == document.id)
+        ).all()
+    }
     db.flush()
 
+    seen_page_numbers: set[int] = set()
     for extracted_page in extracted.pages:
-        page = DocumentPage(
-            document_id=document.id,
-            page_number=extracted_page.page_number,
-            width=extracted_page.width,
-            height=extracted_page.height,
-            text=extracted_page.text,
-            image_path=_relative_to_files(extracted_page.image_path),
-            page_status=_page_status_from_confidence(extracted_page.ocr_confidence),
-            ocr_confidence=extracted_page.ocr_confidence,
-            ocr_engine=extracted_page.ocr_engine,
+        seen_page_numbers.add(extracted_page.page_number)
+        page = existing_pages.get(extracted_page.page_number)
+        if page is None:
+            page = DocumentPage(document_id=document.id, page_number=extracted_page.page_number)
+            db.add(page)
+        page.width = extracted_page.width
+        page.height = extracted_page.height
+        page.image_path = _relative_to_files(extracted_page.image_path)
+        # Per-page OCR timing. The PDF parser attaches this to the
+        # ExtractedPage (set in _process_scanned_page); the image
+        # parser and reprocess path also set it. Defaults to None
+        # for paths that don't measure (e.g. digital pymupdf pages).
+        # Stamp the configured engine version so the periodic
+        # re-OCR sweep can find pages produced with a stale
+        # version. Pages with no engine (e.g. pymupdf-native text)
+        # get the same label so they participate in the sweep
+        # too â€” when an operator bumps the OCR stack, every page
+        # should be re-evaluated.
+        # Metadata is assigned above; keep the legacy values inert below.
+        _unused = dict(
             # Per-page OCR timing. The PDF parser attaches this to the
             # ExtractedPage (set in _process_scanned_page); the image
             # parser and reprocess path also set it. Defaults to None
@@ -544,41 +745,131 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             ocr_engine_version=settings.current_ocr_engine_version,
             attempts=1 if extracted_page.ocr_confidence is not None else 0,
         )
-        db.add(page)
         db.flush()
-        for extracted_block in extracted_page.blocks:
-            bbox = extracted_block.bbox or (None, None, None, None)
-            block = DocumentBlock(
-                document_id=document.id,
-                page_id=page.id,
-                page_number=extracted_block.page_number,
-                block_type=_normalise_document_block_type(extracted_block.block_type),
-                text=extracted_block.text,
-                bbox_x1=bbox[0],
-                bbox_y1=bbox[1],
-                bbox_x2=bbox[2],
-                bbox_y2=bbox[3],
-                confidence=extracted_block.confidence,
-                source_engine=extracted_block.source_engine,
+        content_kind = infer_ocr_content_kind(
+            current_kind=extracted_page.ocr_content_kind,
+            ocr_engine=extracted_page.ocr_engine,
+            image_path=page.image_path,
+            text=extracted_page.text,
+            block_engines=(block.source_engine for block in extracted_page.blocks),
+        )
+        replaces_page_content = True
+        if not is_ocr_applicable(content_kind):
+            page.text = extracted_page.text
+            page.ocr_engine = extracted_page.ocr_engine
+            page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
+            page.ocr_engine_version = (
+                extracted_page.ocr_engine_version or settings.current_ocr_engine_version
             )
-            db.add(block)
-            # P0.1: track per-page processing
-            track_page_processed(
-                route=getattr(extracted, "route", "unknown") or "unknown",
-                engine=extracted_block.source_engine or "none",
+            _mark_non_ocr_page(page, content_kind=content_kind)
+        else:
+            candidate = OCRResult(
+                text=extracted_page.text,
+                confidence=extracted_page.ocr_confidence,
+                blocks=[],
+                engine=extracted_page.ocr_engine or "unknown",
+                content_kind=content_kind,
+                route=getattr(extracted, "route", None),
+                engine_version=extracted_page.ocr_engine_version,
+                warnings=list(extracted_page.ocr_warnings),
             )
+            candidate_decision = decide_ocr_result(candidate)
+            replaces_page_content = _should_select_ocr_candidate(
+                page, candidate, candidate_decision
+            )
+            page.attempts = (page.attempts or 0) + 1
+            if replaces_page_content:
+                for attempt in page.ocr_attempts:
+                    attempt.selected = False
+                page.text = extracted_page.text
+                page.ocr_confidence = extracted_page.ocr_confidence
+                page.ocr_engine = extracted_page.ocr_engine
+                page.ocr_content_kind = content_kind
+                page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
+                page.ocr_engine_version = (
+                    candidate.engine_version or settings.current_ocr_engine_version
+                )
+            _record_ocr_attempt(
+                db,
+                page=page,
+                result=candidate,
+                route=getattr(extracted, "route", None),
+                selected=replaces_page_content,
+                decision=candidate_decision,
+            )
+            if not replaces_page_content:
+                extracted_page.text = page.text or ""
+                extracted_page.ocr_confidence = page.ocr_confidence
+                extracted_page.ocr_engine = page.ocr_engine
+                extracted_page.ocr_content_kind = page.ocr_content_kind
+
+        if replaces_page_content:
+            db.execute(
+                delete(DocumentBlock)
+                .where(DocumentBlock.document_id == document.id)
+                .where(DocumentBlock.page_number == page.page_number)
+            )
+            for extracted_block in extracted_page.blocks:
+                bbox = extracted_block.bbox or (None, None, None, None)
+                db.add(
+                    DocumentBlock(
+                        document_id=document.id,
+                        page_id=page.id,
+                        page_number=extracted_block.page_number,
+                        block_type=_normalise_document_block_type(extracted_block.block_type),
+                        text=extracted_block.text,
+                        bbox_x1=bbox[0],
+                        bbox_y1=bbox[1],
+                        bbox_x2=bbox[2],
+                        bbox_y2=bbox[3],
+                        confidence=extracted_block.confidence,
+                        source_engine=extracted_block.source_engine,
+                    )
+                )
+                track_page_processed(
+                    route=getattr(extracted, "route", "unknown") or "unknown",
+                    engine=extracted_block.source_engine or "none",
+                )
+    for page_number, page in existing_pages.items():
+        if page_number not in seen_page_numbers:
+            db.delete(page)
     db.flush()
     track_stage_duration("persist", time.perf_counter() - t_persist)
 
-    page_texts_list = [(page.page_number, page.text) for page in extracted.pages]
+    # OCR evidence is durable at this point.  Publish lexical availability
+    # before optional extraction and embeddings so long-running enrichment
+    # cannot hide a document whose text is already usable.
+    document.text_search_ready = True
+    document.pipeline_stage = "text_ready"
+    db.commit()
+    cache_service.invalidate_search_cache()
+
+    persisted_pages = list(
+        db.scalars(
+            select(DocumentPage)
+            .where(DocumentPage.document_id == document.id)
+            .order_by(DocumentPage.page_number)
+        ).all()
+    )
+    page_texts_list = [(page.page_number, page.text) for page in persisted_pages]
     t_classify = time.perf_counter()
     needs_review = _apply_classification_and_extraction(
         db,
         document,
-        text=extracted.text,
-        page_count=len(extracted.pages),
-        low_ocr_confidences=[page.ocr_confidence for page in extracted.pages if page.ocr_confidence is not None and page.ocr_confidence < settings.low_ocr_confidence_threshold],
-        pages=extracted.pages,
+        text=_full_text_from_page_texts(page_texts_list),
+        page_count=len(persisted_pages),
+        low_ocr_confidences=[
+            page.ocr_confidence
+            for page in persisted_pages
+            if is_ocr_applicable(page.ocr_content_kind)
+            and page.ocr_confidence is not None
+            and page.ocr_confidence < settings.low_ocr_confidence_threshold
+        ],
+        pages=persisted_pages,
+        cad_extraction=extracted.cad if settings.cad_structured_extraction_enabled else None,
+        # Disabling the feature is a rollback switch, not an instruction to
+        # discard structured evidence that was already persisted.
+        preserve_existing_cad=not settings.cad_structured_extraction_enabled,
     )
     track_stage_duration("classification", time.perf_counter() - t_classify)
 
@@ -677,7 +968,10 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
     db.flush()
     try:
         page_path = _resolve_files_dir_path(page.image_path)
-        engine = get_ocr_engine_class()()
+        engine = _instantiate_effective_ocr_engine()
+        with contextlib.suppress(Exception):
+            engine.current_document_id = document.id
+            engine.current_page_number = page_number
         ocr = engine.extract(page_path)
     except Exception as exc:
         page.page_status = "failed"
@@ -687,22 +981,47 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
         return _process_classification_only(db, document)
 
     actual_engine = ocr.engine or engine.name
-    page.text = sanitize_text_for_database(ocr.text)
-    page.ocr_confidence = ocr.confidence
-    page.page_status = _page_status_from_confidence(ocr.confidence)
-    page.processing_time_ms = int((time.perf_counter() - started) * 1000)
-    page.review_status = "pending"
-    page.review_notes = None
-    page.reviewed_at = None
-    page.reviewed_by_id = None
-
-    db.execute(
-        delete(DocumentBlock)
-        .where(DocumentBlock.document_id == document.id)
-        .where(DocumentBlock.page_number == page_number)
+    ocr.text = sanitize_text_for_database(ocr.text)
+    ocr.engine = actual_engine
+    content_kind = infer_ocr_content_kind(
+        current_kind=ocr.content_kind,
+        ocr_engine=actual_engine,
+        image_path=page.image_path,
+        text=ocr.text,
+        block_engines=(),
     )
-    db.flush()
-    for block_payload in ocr.blocks:
+    candidate_decision = decide_ocr_result(ocr)
+    replaces_page_content = _should_select_ocr_candidate(page, ocr, candidate_decision)
+    if replaces_page_content:
+        for attempt in page.ocr_attempts:
+            attempt.selected = False
+        page.text = ocr.text
+        page.ocr_confidence = ocr.confidence
+        page.ocr_engine = actual_engine
+        page.ocr_content_kind = content_kind
+        page.processing_time_ms = int((time.perf_counter() - started) * 1000)
+        page.ocr_engine_version = ocr.engine_version or settings.current_ocr_engine_version
+        page.review_status = "pending"
+        page.review_notes = None
+        page.reviewed_at = None
+        page.reviewed_by_id = None
+    _record_ocr_attempt(
+        db,
+        page=page,
+        result=ocr,
+        route="manual_reprocess",
+        selected=replaces_page_content,
+        decision=candidate_decision,
+    )
+
+    if replaces_page_content:
+        db.execute(
+            delete(DocumentBlock)
+            .where(DocumentBlock.document_id == document.id)
+            .where(DocumentBlock.page_number == page_number)
+        )
+        db.flush()
+    for block_payload in ocr.blocks if replaces_page_content else []:
         bbox = block_payload.bbox or (None, None, None, None)
         db.add(
             DocumentBlock(
@@ -769,6 +1088,8 @@ def _apply_classification_and_extraction(
     page_count: int,
     low_ocr_confidences: list[float],
     pages: list | None = None,
+    cad_extraction=None,
+    preserve_existing_cad: bool = False,
 ) -> bool:
     # R1 — apply operator-approved learned rules so a pattern like
     # ``cliente_x → pedido`` overrides the generic filename/folder
@@ -780,7 +1101,7 @@ def _apply_classification_and_extraction(
     # --- Determinar content_route para subtipos de imagen ---
     # Reutiliza la misma lógica de folder_hint que _process_full_parse.
     content_route = None
-    if document.source_path and document.stored_filename:
+    if getattr(document, "source_path", None) and getattr(document, "stored_filename", None):
         try:
             stored_path = settings.files_dir / document.stored_filename
             folder_hint = None
@@ -806,6 +1127,102 @@ def _apply_classification_and_extraction(
     document.confidence = classification.confidence
     document.page_count = page_count
 
+    # MiniMax M3 (FASE 2) — multi-dimensional classification in the
+    # normal ingestion path, not only in /documents/reclassify.
+    # The function reuses the same text and learned rules the
+    # single-dimension call used, so the business type is stable
+    # while source_format, subtype, tags and the classification
+    # evidence JSON are populated for the admin UI, the chat
+    # retrieval and the cache invalidation key.
+    from app.services.classification_v2 import classify_multidim
+
+    try:
+        parser_signature = None
+        if getattr(document, "extension", None):
+            ext = document.extension.lower()
+            parser_signature = {
+                ".msg": "extract_msg",
+                ".eml": "eml-parser",
+                ".xlsx": "openpyxl",
+                ".xls": "xlrd",
+                ".docx": "python-docx",
+                ".pdf": "pymupdf",
+                ".png": "paddleocr",
+                ".jpg": "paddleocr",
+                ".jpeg": "paddleocr",
+                ".tif": "tesseract",
+                ".tiff": "tesseract",
+                ".dxf": "ezdxf",
+            }.get(ext)
+        multi = classify_multidim(
+            filename=document.original_filename,
+            source_path=document.source_path,
+            mime_type=document.mime_type,
+            parser_signature=parser_signature,
+            text=text,
+            learned_rules=learned_rules,
+            content_route=content_route,
+        )
+        # Persist the same business type emitted by the multi-dimensional
+        # classifier. Keeping the old one-dimensional verdict here made
+        # normal ingestion disagree with the reclassification endpoint.
+        document.document_type = multi.document_type
+        document.confidence = multi.confidence
+        document.source_format = multi.source_format
+        document.document_subtype = multi.document_subtype
+        document.content_tags = list(multi.content_tags)
+        document.classification_evidence = dict(multi.evidence)
+        document.classifier_version = multi.classifier_version
+        from datetime import UTC, datetime
+
+        document.classified_at = datetime.now(UTC)
+        # Track the winning layer for the operator dashboards.
+        from app.services.metrics.minimax_m3 import track_classification_layer
+
+        track_classification_layer(
+            dimension="document_type",
+            path="rules" if not learned_rules else "rules+learned",
+            size_class="small"
+            if len(text) < 6_000
+            else "medium"
+            if len(text) < 24_000
+            else "large",
+        )
+        track_classification_layer(
+            dimension="source_format",
+            path="extension+parser",
+            size_class="small",
+        )
+    except Exception as exc:
+        # The new classifier MUST NEVER break the ingestion path.
+        # A failure here falls back to the rule-engine verdict
+        # already persisted above.
+        logger.warning("classify_multidim failed for document_id=%s: %s", document.id, exc)
+
+    if (getattr(document, "extension", None) or "").lower() in {".msg", ".eml"}:
+        try:
+            from app.services.communication_ingestion import materialize_communication
+
+            materialize_communication(db, document, text=text)
+        except Exception:
+            logger.exception("communication_enrichment_failed document_id=%s", document.id)
+
+    if (getattr(document, "extension", None) or "").lower() in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".tif",
+        ".tiff",
+        ".bmp",
+        ".webp",
+    }:
+        try:
+            from app.services.image_analysis_service import analyze_image_document
+
+            analyze_image_document(db, document, text=text)
+        except Exception:
+            logger.exception("image_enrichment_failed document_id=%s", document.id)
+
     t_extract = time.perf_counter()
     business_result = _get_effective_persist_business_extraction()(
         db,
@@ -813,9 +1230,48 @@ def _apply_classification_and_extraction(
         text,
         pages=pages,
     )
-    db.execute(delete(Plan).where(Plan.document_id == document.id))
-    db.flush()
-    plan_result = _get_effective_persist_plan_extraction()(db, document, text)
+    persist_plan = _get_effective_persist_plan_extraction()
+    if cad_extraction is None:
+        plan_result = persist_plan(
+            db,
+            document,
+            text,
+            preserve_existing_cad=preserve_existing_cad,
+        )
+    else:
+        plan_result = persist_plan(db, document, text, cad_extraction=cad_extraction)
+    if document.document_type.startswith("plano") or document.document_type in {
+        "memoria_descriptiva",
+        "memoria_constructiva",
+        "medicion",
+        "mediciones_obra",
+    }:
+        try:
+            from app.services.technical_pipeline import process_technical_document
+
+            technical_result = process_technical_document(
+                db,
+                document.id,
+                text,
+                document.original_filename,
+                document.document_type,
+                blocks=pages,
+            )
+            evidence = dict(document.classification_evidence or {})
+            evidence["technical_pipeline"] = {
+                "document_type": technical_result.document_type,
+                "rooms": technical_result.rooms_extracted,
+                "dimensions": technical_result.dimensions_extracted,
+                "chapters": technical_result.chapters_extracted,
+                "specifications": technical_result.specs_extracted,
+                "work_items": technical_result.work_items_extracted,
+                "validation_score": technical_result.validation_score,
+                "warnings": technical_result.warnings,
+                "source_document_id": document.id,
+            }
+            document.classification_evidence = evidence
+        except Exception:
+            logger.exception("technical_pipeline_failed document_id=%s", document.id)
     track_stage_duration("extraction", time.perf_counter() - t_extract)
 
     quality = _get_effective_evaluate_document_quality()(
@@ -836,14 +1292,14 @@ def _apply_classification_and_extraction(
     # network timeout, malformed JSON — is contained here and logged
     # for the operator; the document keeps the OCR result and the
     # business extraction as if Hyper-Extract did not exist.
-    t_hyper = time.perf_counter()
-    _maybe_run_hyperextract(
-        db,
-        document,
-        text=text,
-        document_type=document.document_type,
-    )
-    track_stage_duration("hyperextract", time.perf_counter() - t_hyper)
+    # The provider invocation is scheduled post-commit by
+    # process_document, on the dedicated hyperextract worker.
+    try:
+        from app.services.knowledge_version import bump_knowledge_version
+
+        bump_knowledge_version(db, event="document_processed")
+    except Exception:
+        logger.exception("knowledge_version_bump_failed document_id=%s", document.id)
     return quality.needs_review
 
 
@@ -856,7 +1312,7 @@ def _maybe_run_hyperextract(
 ) -> None:
     """Optionally invoke Hyper-Extract after the OCR is done.
 
-    Three short-circuits keep this call free in the default config:
+    Four short-circuits keep this call free in the default config:
 
     1. ``HYPEREXTRACT_ENABLED=false`` — the service is fully bypassed,
        no provider call, no DB write, no extra latency.
@@ -866,18 +1322,59 @@ def _maybe_run_hyperextract(
     3. Empty OCR text — there is nothing to extract; we record a
        ``skipped`` row only when the feature is otherwise enabled, so
        the operator can see why no extraction ran.
-
-    The function never raises; any error is logged at WARNING level
-    and the document keeps its existing OCR / business state.
+    4. **MiniMax M3 (FASE 3) idempotence** — the document already has
+       a valid extraction whose fingerprint matches the freshly
+       computed one (text hash + document_type + classifier_version +
+       provider + model + prompt version + schema version + extractor
+       version). We persist a new row tagged ``skipped`` with the
+       ``fingerprint_reuse`` warning so the audit trail shows why no
+       network call was made, but the provider is never contacted.
+       The metric :data:`EXTRACTION_FINGERPRINT_REUSED` records the
+       hit and the previous result is reused unchanged.
     """
     from app.models import DocumentExtraction
+    from app.services.classification_v2 import (
+        CLASSIFIER_VERSION,
+        extraction_fingerprint,
+        hash_text_for_fingerprint,
+    )
     from app.services.hyperextract.service import get_hyperextract_service
+    from app.services.metrics.minimax_m3 import (
+        ExtractionFingerprintTimer,
+        track_extraction_reused,
+    )
 
     service = get_hyperextract_service()
     if not service.is_enabled():
         return
     if not settings.hyperextract_run_in_pipeline:
         return
+
+    # MiniMax M3 (FASE 3) — text vs VLM routing. The decision
+    # uses the document's source_format and the OCR confidence
+    # so we never call a VLM on a clean digital PDF, and never
+    # call a text LLM on a low-confidence scan. The decision is
+    # reported through the ``route`` label on the
+    # ExtractionFingerprintTimer so the operator can see the
+    # mix in production.
+    source_format = getattr(document, "source_format", None) or ""
+    low_ocr_pages = 0
+    total_pages = 0
+    if getattr(document, "pages", None):
+        for p in document.pages:
+            total_pages += 1
+            if (p.ocr_calibrated_confidence or 1.0) < 0.5:
+                low_ocr_pages += 1
+    avg_ocr_conf = sum((p.ocr_calibrated_confidence or 0.0) for p in (document.pages or [])) / max(
+        total_pages, 1
+    )
+    is_scan = source_format == "image" or (
+        source_format == "pdf" and (total_pages == 0 or avg_ocr_conf < 0.5)
+    )
+    route_label = "vlm" if is_scan else "llm_text"
+    # Persist the routing decision in the audit trail so the
+    # operator can see the same value the timer reports.
+    document.processing_route = route_label  # type: ignore[attr-defined]
     if not text or not text.strip():
         # Persist a "skipped" row so the audit trail shows why nothing
         # ran (otherwise operators cannot tell disabled from broken).
@@ -894,47 +1391,158 @@ def _maybe_run_hyperextract(
         db.flush()
         return
 
-    try:
-        envelope = service.extract_from_text(
-            document_id=document.id,
-            text=text,
-            document_type=document_type,
-            metadata={
-                "filename": document.original_filename,
-                "document_type": document_type,
-                "page_count": document.page_count,
-            },
-            image_path=_first_page_image_path(document),
+    # FASE 3 — idempotence fingerprint. The components are listed
+    # in the same order as the database column comments so the
+    # fingerprint is stable across reloads.
+    fingerprint = extraction_fingerprint(
+        text_hash=hash_text_for_fingerprint(text),
+        document_type=document_type or "",
+        classifier_version=getattr(document, "classifier_version", None) or CLASSIFIER_VERSION,
+        provider=settings.hyperextract_provider,
+        model=settings.hyperextract_model,
+        prompt_version=getattr(settings, "hyperextract_prompt_version", None) or "v1",
+        schema_version=getattr(settings, "hyperextract_schema_version", None) or "v1",
+        extractor_version="hyperextract-service-1.0.0",
+    )
+
+    # MiniMax M3 (FASE 3) — authoritativE reuse check. The lookup
+    # matches the freshly computed fingerprint against the value
+    # STORED on the prior successful row, not against the
+    # (frequently stale) document column. A prior row is reusable
+    # only if:
+    #
+    #   (a) its status is ``success``;
+    #   (b) its persisted ``extraction_fingerprint`` equals the
+    #       one we just computed — a NULL fingerprint is treated
+    #       as "no match" so legacy rows can never win;
+    #   (c) its ``fields_json`` is non-empty — a successful row
+    #       with no parsed fields has no value to reuse;
+    #   (d) the document's own stored fingerprint, if any, also
+    #       matches the freshly computed one (defence-in-depth
+    #       against partial migrations where the row fingerprint
+    #       is updated but the document column is not).
+    prior_row = (
+        db.query(DocumentExtraction)
+        .filter(
+            DocumentExtraction.document_id == document.id,
+            DocumentExtraction.status == "success",
         )
+        .order_by(DocumentExtraction.id.desc())
+        .first()
+    )
+    prior_fingerprint = prior_row.extraction_fingerprint if prior_row else None
+    prior_has_fields = bool(prior_row and (prior_row.fields_json or {}))
+    document_fingerprint = getattr(document, "extraction_fingerprint", None)
+    fingerprint_matches_row = prior_fingerprint == fingerprint
+    fingerprint_matches_doc = document_fingerprint in (None, fingerprint)
+    if (
+        prior_row is not None
+        and prior_has_fields
+        and fingerprint_matches_row
+        and fingerprint_matches_doc
+    ):
+        with ExtractionFingerprintTimer(route=route_label, chars=len(text)) as t:
+            t.set_outcome("cache_hit")
+        track_extraction_reused(route=route_label)
+        db.add(
+            DocumentExtraction(
+                document_id=document.id,
+                document_type=prior_row.document_type,
+                provider=prior_row.provider,
+                model=prior_row.model,
+                status="skipped",
+                fields_json=prior_row.fields_json,
+                entities_json=prior_row.entities_json,
+                relations_json=prior_row.relations_json,
+                warnings_json=["fingerprint_reuse"],
+                latency_ms=0,
+                extraction_fingerprint=fingerprint,
+            )
+        )
+        db.flush()
+        return
+
+    try:
+        with ExtractionFingerprintTimer(route=route_label, chars=len(text)) as t:
+            envelope = service.extract_from_text(
+                document_id=document.id,
+                text=text,
+                document_type=document_type,
+                metadata={
+                    "filename": document.original_filename,
+                    "document_type": document_type,
+                    "page_count": document.page_count,
+                },
+                image_path=_first_page_image_path(document),
+            )
+            # Map the provider status to the bounded outcome label.
+            status = str(envelope.get("status") or "error")
+            if status == "success":
+                t.set_outcome("success")
+            elif status == "failed":
+                err = str(envelope.get("error_message") or "")
+                if "invalid_json" in err or "json" in err:
+                    t.set_outcome("invalid_json")
+                elif "timeout" in err:
+                    t.set_outcome("timeout")
+                else:
+                    t.set_outcome("provider_error")
+            else:
+                t.set_outcome("error")
     except Exception as exc:  # pragma: no cover - defensive, service swallows internally
         logger.warning(
             "hyperextract: unexpected exception during pipeline run (document_id=%s): %s",
             document.id,
             exc,
         )
+        # A failed run MUST NOT change the document's stored
+        # fingerprint — the prior result is still valid for
+        # future runs with the same inputs. We persist a "failed"
+        # row tagged with the freshly computed fingerprint so the
+        # audit trail shows the provider was contacted, but the
+        # ``extraction_fingerprint`` is left untouched on the
+        # document.
         return
 
     # The service already returns a typed envelope; persist it so the
     # review panel and the API can find it later.
     if envelope.get("status") == "disabled":
         return
-    db.add(
-        DocumentExtraction(
-            document_id=document.id,
-            document_type=envelope.get("document_type"),
-            provider=envelope.get("provider"),
-            model=envelope.get("model"),
-            status=str(envelope.get("status") or "pending"),
-            fields_json=envelope.get("fields") or {},
-            entities_json=envelope.get("entities") or [],
-            relations_json=envelope.get("relations") or [],
-            warnings_json=envelope.get("warnings") or [],
-            raw_output_json=envelope.get("raw_output") or None,
-            error_message=envelope.get("error_message"),
-            latency_ms=int(envelope.get("latency_ms") or 0),
-        )
+    envelope_status = str(envelope.get("status") or "pending")
+    new_row = DocumentExtraction(
+        document_id=document.id,
+        document_type=envelope.get("document_type"),
+        provider=envelope.get("provider"),
+        model=envelope.get("model"),
+        status=envelope_status,
+        fields_json=envelope.get("fields") or {},
+        entities_json=envelope.get("entities") or [],
+        relations_json=envelope.get("relations") or [],
+        warnings_json=envelope.get("warnings") or [],
+        raw_output_json=envelope.get("raw_output") or None,
+        error_message=envelope.get("error_message"),
+        latency_ms=int(envelope.get("latency_ms") or 0),
+        # Persist the fingerprint on the row itself. A row tagged
+        # ``success`` with no fingerprint (legacy) is treated as
+        # "no match" by the next lookup, which is the safe default.
+        extraction_fingerprint=fingerprint if envelope_status == "success" else None,
     )
+    db.add(new_row)
     db.flush()
+    # Record the fingerprint on the document only when the new
+    # run succeeded with non-empty fields. A partial / failed
+    # extraction MUST NOT clear the cache; a successful one
+    # updates both the row and the document.
+    from datetime import UTC, datetime
+
+    if envelope_status == "success" and (new_row.fields_json or {}):
+        try:
+            document.extraction_fingerprint = fingerprint
+            document.extraction_fingerprint_at = datetime.now(UTC)
+        except Exception:
+            # The migration may not yet be applied in older databases;
+            # the check is best-effort.
+            pass
 
 
 def _first_page_image_path(document: Document) -> str | None:

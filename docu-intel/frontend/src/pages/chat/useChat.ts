@@ -61,7 +61,11 @@ function loadConversations(): Conversation[] {
     const raw = localStorage.getItem(CONVERSATIONS_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed
+      if (Array.isArray(parsed)) {
+        // Local storage deliberately holds metadata only. Rehydrate a safe
+        // empty message array until server-side history is requested.
+        return parsed.map((conversation) => ({ ...conversation, messages: [] }))
+      }
     }
   } catch { /* ignore */ }
   return []
@@ -98,6 +102,14 @@ export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  // MiniMax M3 (FASE 6) — the streaming status the chat UI
+  // shows next to the in-progress bubble. Updated by the
+  // ``event: status`` frames the server emits before the first
+  // ``delta`` so the user can see "comprobando caché…" /
+  // "buscando coincidencias…" / "reuniendo contexto…" /
+  // "generando respuesta…" within the first 300 ms even on a
+  // cold path.
+  const [streamStatus, setStreamStatus] = useState<string | null>(null)
   const streamControllerRef = useRef<AbortController | null>(null)
   const isComposingRef = useRef(false)
 
@@ -128,6 +140,34 @@ export function useChat() {
   useEffect(() => {
     if (activeConvId) localStorage.setItem(ACTIVE_CONV_KEY, activeConvId)
   }, [activeConvId])
+
+  // Message bodies are never kept in localStorage. Rehydrate the selected
+  // conversation from the owner-bound server session instead, so a reload or
+  // a second tab keeps its own project context without mixing histories.
+  useEffect(() => {
+    if (!hydrated || !activeConvId) return
+    let cancelled = false
+    api.chatSessionMessages(activeConvId)
+      .then((serverMessages) => {
+        if (cancelled) return
+        setConversations((prev) => prev.map((conversation) => {
+          if (conversation.id !== activeConvId) return conversation
+          return {
+            ...conversation,
+            messages: serverMessages.map((message) => ({
+              id: message.id,
+              role: message.role,
+              content: message.content,
+              createdAt: message.created_at,
+            })),
+          }
+        }))
+      })
+      // A browser can hold a locally-created conversation before its first
+      // request. A 404 is expected in that state and should leave it empty.
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [activeConvId, hydrated])
 
   // Active conversation.
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null
@@ -288,10 +328,23 @@ export function useChat() {
         for await (const ev of api.askAIStream(
           composeQuestion(trimmed, { supplier, documentType }),
           mode,
-          getActiveSessionId(),
+          convId,
           controller.signal,
         )) {
-          if (ev.type === "thinking") {
+          if (ev.type === "status") {
+            // FASE 6 — the server announces the stage it is
+            // about to enter. We translate the enum to a short
+            // Spanish label so the UI can show progress even
+            // when no delta has arrived yet.
+            const labels: Record<string, string> = {
+              cache: "comprobando caché…",
+              exact_search: "buscando coincidencias exactas…",
+              retrieval: "recuperando contexto…",
+              context: "reuniendo contexto…",
+              generation: "generando respuesta…",
+            }
+            setStreamStatus(labels[ev.state] ?? ev.state)
+          } else if (ev.type === "thinking") {
             thinkingPieces += 1
             if (thinkingPieces === 1) {
               updateConvMessages(convId, (prev) => {
@@ -320,6 +373,7 @@ export function useChat() {
             sources = ev.sources
             usedFallback = ev.fallback
             dbId = (ev as { answer_id?: number }).answer_id ?? null
+            setStreamStatus(null)
           }
         }
       } catch (err) {
@@ -369,7 +423,7 @@ export function useChat() {
 
       history.refetch()
       if (usedFallback) {
-        notify.info("Usando fallback estructurado", "El LLM no respondio.")
+        notify.info("Respuesta fundamentada", "Se ha usado el contexto recuperado de tus documentos.")
       } else if (confidence != null && confidence < 0.5) {
         notify.warning("Respuesta con baja confianza", "Verifica las fuentes.")
       }
@@ -551,6 +605,9 @@ export function useChat() {
     setDocumentType,
     markedIncorrect,
     isStreaming,
+    // MiniMax M3 (FASE 6) — the streaming status the UI can
+    // render next to the in-progress bubble.
+    streamStatus,
     // sidebar
     sidebarOpen,
     setSidebarOpen,

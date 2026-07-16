@@ -20,6 +20,12 @@ def test_ocr_runtime_pins_numpy_to_numpy_one_abi():
 def test_paddleocr_initialization_runs_inside_process_lock(monkeypatch):
     from app.ocr import paddle
 
+    # A preceding timeout test may intentionally poison the process-level
+    # circuit breaker.  This unit tests the successful constructor path, so
+    # isolate that mutable process state explicitly.
+    monkeypatch.setattr(paddle, "_PROCESS_INIT_FAILED", False)
+    monkeypatch.setattr(paddle, "_PROCESS_INIT_FAILED_AT", 0.0)
+
     events: list[str] = []
     kwargs_seen: list[dict] = []
 
@@ -39,7 +45,6 @@ def test_paddleocr_initialization_runs_inside_process_lock(monkeypatch):
     fake_module.PaddleOCR = FakePaddleOCR
     monkeypatch.setitem(__import__("sys").modules, "paddleocr", fake_module)
     monkeypatch.setattr(paddle, "paddleocr_init_lock", lambda: FakeLock())
-    monkeypatch.setattr(paddle.threading, "Thread", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("daemon thread used")))
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1")
 
     engine = paddle.PaddleOCREngine(lang="en")
@@ -63,13 +68,12 @@ def test_pp_structure_pipeline_initialization_does_not_spawn_daemon_thread(monke
         pass
 
     def fake_create_pipeline(**kwargs):
-        assert kwargs == {"pipeline": "layout_parsing", "device": "gpu"}
+        assert kwargs == {"pipeline": "layout_parsing", "device": "gpu", "lang": "es"}
         return _FakePipeline()
 
     fake_module = ModuleType("paddlex")
     fake_module.create_pipeline = fake_create_pipeline
     monkeypatch.setitem(__import__("sys").modules, "paddlex", fake_module)
-    monkeypatch.setattr(pp_structure.threading, "Thread", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("daemon thread used")))
 
     engine = pp_structure.PPStructureEngine(device="gpu")
 

@@ -54,6 +54,8 @@ from sqlalchemy.sql import Select
 
 from app.core.config import settings
 from app.models import Document, DocumentChunk, DocumentPage
+from app.services.ocr_page_roles import ocr_meets_threshold_clause
+from app.models.project import DocumentOccurrence
 
 logger = logging.getLogger("app.services.search_filters")
 
@@ -123,6 +125,14 @@ def normalise_filters(filters: dict[str, Any] | None) -> dict[str, Any]:
     if "budget_scope_id" in filters:
         with contextlib.suppress(TypeError, ValueError):
             out["budget_scope_id"] = int(filters["budget_scope_id"])
+    # A project is represented by document occurrences rather than by a
+    # foreign key on ``documents``: a SHA-backed document can belong to more
+    # than one project. Keep the filter at the occurrence layer so a chat
+    # session never broadens its retrieval merely because it has project
+    # context instead of a budget identifier.
+    if "project_id" in filters:
+        with contextlib.suppress(TypeError, ValueError):
+            out["project_id"] = int(filters["project_id"])
     if filters.get("document_type"):
         out["document_type"] = str(filters["document_type"])
     if filters.get("status"):
@@ -209,6 +219,13 @@ def apply_document_filters(
 
     if f.get("budget_scope_id"):
         stmt = stmt.where(Document.budget_scope_id == f["budget_scope_id"])
+    if f.get("project_id"):
+        stmt = stmt.where(
+            select(DocumentOccurrence.id)
+            .where(DocumentOccurrence.document_id == Document.id)
+            .where(DocumentOccurrence.project_id == f["project_id"])
+            .exists()
+        )
     if f.get("document_type"):
         stmt = stmt.where(Document.document_type == f["document_type"])
     if f.get("status"):
@@ -280,8 +297,11 @@ def build_chunk_filter_clause(
             select(DocumentPage.document_id)
             .where(
                 DocumentPage.document_id == DocumentChunk.document_id,
-                DocumentPage.ocr_confidence.is_not(None),
-                DocumentPage.ocr_confidence >= threshold,
+                ocr_meets_threshold_clause(
+                    DocumentPage.ocr_content_kind,
+                    DocumentPage.ocr_confidence,
+                    threshold,
+                ),
             )
             .limit(1)
         )

@@ -112,6 +112,38 @@ def test_admin_ocr_review_lists_pages_below_confidence_threshold():
     assert payload[0]["preview_url"] == f"/documents/{document.id}/pages/1/image"
 
 
+def test_admin_ocr_review_excludes_decorative_or_native_pages():
+    client, sessions = _test_client()
+    with sessions() as db:
+        token = _seed_admin(db)
+        document = _seed_document_with_pages(db)
+        db.add_all(
+            [
+                DocumentPage(
+                    document_id=document.id,
+                    page_number=3,
+                    text="Logotipo del proveedor",
+                    image_path="pages/logo.png",
+                    ocr_confidence=0.10,
+                    ocr_content_kind="decorative",
+                ),
+                DocumentPage(
+                    document_id=document.id,
+                    page_number=4,
+                    text="Texto de un PDF digital",
+                    ocr_confidence=0.10,
+                    ocr_content_kind="native_text",
+                ),
+            ]
+        )
+        db.commit()
+
+    response = client.get("/admin/ocr-review?max_confidence=0.70", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert [item["page_number"] for item in response.json()] == [1]
+
+
 def test_document_page_image_endpoint_serves_page_preview_from_files_dir(tmp_path: Path, monkeypatch):
     client, sessions = _test_client()
     monkeypatch.setattr(settings, "files_dir", tmp_path)
@@ -264,6 +296,7 @@ def test_admin_page_reprocess_enqueues_page_specific_ocr_job(monkeypatch):
 def test_process_page_specific_ocr_job_replaces_only_selected_page(monkeypatch, tmp_path: Path):
     from app.ocr.paddle import OCRBlock, OCRResult
     from app.services import document_service
+    from app.services import document_processing_core
 
     client, sessions = _test_client()
     monkeypatch.setattr(settings, "files_dir", tmp_path)
@@ -283,6 +316,7 @@ def test_process_page_specific_ocr_job_replaces_only_selected_page(monkeypatch, 
             )
 
     monkeypatch.setattr(document_service, "get_ocr_engine_class", lambda: FakeOcrEngine)
+    monkeypatch.setattr(document_processing_core, "_get_effective_ocr_engine_class", lambda: FakeOcrEngine)
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: False)
 
     with sessions() as db:
@@ -334,6 +368,7 @@ def test_page_specific_ocr_job_routes_to_heavy_queue(monkeypatch):
 
 def test_page_specific_ocr_missing_image_path_does_not_call_full_parse(monkeypatch):
     from app.services import document_service
+    from app.services import document_processing_core
 
     client, sessions = _test_client()
     monkeypatch.setattr(document_service, "_process_full_parse", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("full parse should not run")))
@@ -387,6 +422,7 @@ def test_page_specific_ocr_outside_files_dir_fails_without_full_parse(monkeypatc
 
 def test_failed_page_specific_ocr_marks_page_failed_without_failing_document(monkeypatch, tmp_path: Path):
     from app.services import document_service
+    from app.services import document_processing_core
 
     client, sessions = _test_client()
     monkeypatch.setattr(settings, "files_dir", tmp_path)
@@ -399,6 +435,7 @@ def test_failed_page_specific_ocr_marks_page_failed_without_failing_document(mon
             raise RuntimeError("ocr timeout")
 
     monkeypatch.setattr(document_service, "get_ocr_engine_class", lambda: FailingOcrEngine)
+    monkeypatch.setattr(document_processing_core, "_get_effective_ocr_engine_class", lambda: FailingOcrEngine)
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: False)
 
     with sessions() as db:
@@ -413,7 +450,7 @@ def test_failed_page_specific_ocr_marks_page_failed_without_failing_document(mon
         refreshed_job = db.get(ExtractionJob, job.id)
 
     assert refreshed_document.status == "needs_review"
-    assert refreshed_document.quality_status == "needs_human_review"
+    assert refreshed_document.quality_status == "technical_failure"
     assert refreshed_page.page_status == "failed"
     assert refreshed_page.error_message == "ocr timeout"
     assert refreshed_page.attempts == 1

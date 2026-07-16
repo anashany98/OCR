@@ -55,14 +55,17 @@ def get_ocr_engine_class() -> type[BaseOCREngine]:
 
     if engine == "tesseract":
         from app.ocr.tesseract import TesseractOCREngine
+
         _engine_class_singleton = TesseractOCREngine
 
     elif engine == "paddleocr":
         from app.ocr.paddle import PaddleOCREngine
+
         _engine_class_singleton = PaddleOCREngine
 
     elif engine == "pp_structure":
         from app.ocr.pp_structure import PPStructureEngine
+
         _engine_class_singleton = PPStructureEngine
 
     elif engine == "cascading":
@@ -141,7 +144,7 @@ def _get_or_create_engine(factory) -> BaseOCREngine:
 
 def _build_cascading_engine() -> BaseOCREngine:
     from app.ocr.cascading import CascadingOCREngine
-    from app.ocr.paddle import PaddleOCREngine, _get_gpu_device
+    from app.ocr.paddle import PaddleOCREngine, _get_gpu_device, gpu_has_headroom
     from app.ocr.tesseract import TesseractOCREngine
 
     kwargs: dict[str, object] = dict(
@@ -160,15 +163,17 @@ def _build_cascading_engine() -> BaseOCREngine:
     # the server recognition model). When paddleocr_gpu_only is set (default)
     # we wire it in only when a GPU is visible to this process, and otherwise
     # the cascade degrades to Tier 1 (Tesseract) + Tier 4 (vision LLM).
-    paddle_gpu_ok = (not settings.paddleocr_gpu_only) or (_get_gpu_device() is not None)
+    paddle_gpu_ok = (not settings.paddleocr_gpu_only) or (
+        _get_gpu_device() is not None and gpu_has_headroom()
+    )
     if paddle_gpu_ok:
         kwargs["fallback"] = PaddleOCREngine(lang=settings.paddle_lang)
     else:
         logger.warning(
-            "PaddleOCR (Tier 2) disabled: no GPU visible and "
+            "PaddleOCR (Tier 2) disabled: no usable GPU headroom and "
             "paddleocr_gpu_only=true. Cascade runs Tier 1 + Tier 4 only."
         )
-    if settings.ocr_cascading_use_pp_structure:
+    if settings.ocr_cascading_use_pp_structure and paddle_gpu_ok:
         from app.ocr.pp_structure import PPStructureEngine
 
         # A2: a worker CPU booted with the GPU-only Tier 3 flag on
@@ -234,6 +239,36 @@ def _build_cascading_engine() -> BaseOCREngine:
                 kwargs["tier4_fallback"] = kwargs["vlm_ocr"]
             kwargs["vlm_ocr"] = nuextract
             kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
+
+    # OvisOCR2 is opt-in and wrapped only when enabled. Keeping this block
+    # after the legacy Dots/NuExtract wiring preserves the exact old object
+    # topology when OVISOCR2_ENABLED=false, which makes rollback a flag flip.
+    if settings.ovisocr2_enabled:
+        try:
+            from app.ocr.ovisocr2 import OvisOCR2Engine
+            from app.ocr.tier4_chain import Tier4EngineChain
+
+            legacy_primary = kwargs.pop("vlm_ocr", None)
+            legacy_fallback = kwargs.pop("tier4_fallback", None)
+            engines = [OvisOCR2Engine()]
+            if legacy_primary is not None:
+                engines.append(legacy_primary)  # Ovis -> NuExtract or Dots
+            if legacy_fallback is not None and legacy_fallback is not legacy_primary:
+                engines.append(legacy_fallback)  # normally Ovis -> NuExtract -> Dots
+            kwargs["vlm_ocr"] = Tier4EngineChain(
+                engines, max_total_seconds=settings.ovisocr2_chain_timeout_seconds
+            )
+            kwargs["tier4_quality_threshold"] = settings.dots_mocr_quality_threshold
+        except Exception as exc:  # noqa: BLE001 - existing cascade stays available
+            logger.warning(
+                "OvisOCR2 Tier 4 chain disabled at runtime: %s. "
+                "The legacy Tier 4 topology remains active.",
+                exc,
+            )
+            if "legacy_primary" in locals() and legacy_primary is not None:
+                kwargs["vlm_ocr"] = legacy_primary
+            if "legacy_fallback" in locals() and legacy_fallback is not None:
+                kwargs["tier4_fallback"] = legacy_fallback
     return CascadingOCREngine(**kwargs)  # type: ignore[arg-type]
 
 
@@ -272,14 +307,44 @@ def _warm_ocr_engine(engine: BaseOCREngine) -> None:
             future.result(timeout=warmup_timeout)
     except FuturesTimeout:
         logger.error(
-            "OCR engine warmup timed out after %ds. "
-            "Marking affected engine(s) as unavailable.",
+            "OCR engine warmup timed out after %ds. Marking affected engine(s) as unavailable.",
             warmup_timeout,
         )
         _mark_warmup_failed(engine)
     except Exception:
         logger.error("OCR engine warmup failed (best-effort)", exc_info=True)
         _mark_warmup_failed(engine)
+
+    # CR10: Track which OCR tiers are available after warmup.
+    from app.services.metrics.ocr import set_ocr_tier_available
+
+    # Check primary engine (always available if warmup succeeded)
+    primary_ok = not getattr(engine, "_init_failed", False)
+    set_ocr_tier_available("tesseract", primary_ok)
+
+    # Check fallback (PaddleOCR)
+    fallback = getattr(engine, "fallback", None)
+    if fallback is not None:
+        fallback_ok = not getattr(fallback, "_init_failed", False)
+        set_ocr_tier_available("paddleocr", fallback_ok)
+    else:
+        set_ocr_tier_available("paddleocr", False)
+
+    # Check PP-Structure
+    pp = getattr(engine, "pp_structure", None)
+    if pp is not None:
+        pp_ok = not getattr(pp, "_init_failed", False)
+        set_ocr_tier_available("pp_structure", pp_ok)
+    else:
+        set_ocr_tier_available("pp_structure", False)
+
+    # Check VLM OCR
+    vlm = getattr(engine, "vlm_ocr", None)
+    if vlm is not None:
+        vlm_ok = not getattr(vlm, "_init_failed", False)
+        set_ocr_tier_available("vlm", vlm_ok)
+    else:
+        set_ocr_tier_available("vlm", False)
 
 
 def _mark_warmup_failed(engine: BaseOCREngine) -> None:
@@ -412,8 +477,12 @@ def _exercise(engine: BaseOCREngine) -> None:
         cv2.imwrite(str(image_path), img)
         # Exercise only the OCR tiers (1-3), skip Tier 4 (VLM)
         # to avoid blocking the worker boot.
-        if getattr(engine, "primary", None) is not None:
-            engine.primary.extract(image_path)
+        primary = getattr(engine, "primary", None)
+        if primary is not None:
+            primary.extract(image_path)
+        else:
+            # Standalone configured engines do not expose cascade tiers.
+            engine.extract(image_path)
         if getattr(engine, "fallback", None) is not None:
             engine.fallback.extract(image_path)
     except Exception as exc:
@@ -423,4 +492,10 @@ def _exercise(engine: BaseOCREngine) -> None:
             image_path.unlink(missing_ok=True)
 
 
-__all__ = ["get_ocr_engine_class", "get_ocr_engine", "get_cascading_engine", "preload_ocr_engine", "clear_ocr_engine_cache"]
+__all__ = [
+    "get_ocr_engine_class",
+    "get_ocr_engine",
+    "get_cascading_engine",
+    "preload_ocr_engine",
+    "clear_ocr_engine_cache",
+]

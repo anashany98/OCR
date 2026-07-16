@@ -96,13 +96,17 @@ class OpenAICompatibleEmbeddingClient:
     timeout_seconds: float = 30.0
     transport: httpx.BaseTransport | None = None
     breaker: CircuitBreaker | None = None  # injectable for tests
-    max_retries: int = 3  # F2-04: retry count for transient failures
+    # Keep a breaker failure aligned with one caller-visible request.  Callers
+    # that need transport retries can opt in explicitly, but the default must
+    # not hide repeated provider failures from the circuit breaker.
+    max_retries: int = 1
 
     def _do_request(self, client: httpx.Client, headers: dict, payload: dict) -> dict:
         """Execute request with exponential backoff retries for transient errors."""
         import random
+        attempts = max(1, self.max_retries)
         last_exc = None
-        for attempt in range(self.max_retries):
+        for attempt in range(attempts):
             try:
                 response = client.post(
                     _embedding_endpoint(self.base_url),
@@ -116,24 +120,22 @@ class OpenAICompatibleEmbeddingClient:
                         wait = float(retry_after)
                     else:
                         wait = min(2 ** attempt + random.uniform(0, 1), 10)
-                    if attempt < self.max_retries - 1:
+                    if attempt < attempts - 1:
                         time.sleep(wait)
                         continue
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPStatusError:
-                raise
             except httpx.HTTPError as exc:
                 last_exc = exc
-                if attempt < self.max_retries - 1:
+                if attempt < attempts - 1:
                     wait = min(2 ** attempt + random.uniform(0, 1), 10)
                     time.sleep(wait)
                     continue
                 raise EmbeddingProviderError(
-                    f"Embedding endpoint request failed after {self.max_retries} attempts: {exc}"
+                    f"Embedding endpoint request failed after {attempts} attempts: {exc}"
                 ) from exc
         raise EmbeddingProviderError(
-            f"Embedding endpoint request failed after {self.max_retries} attempts: {last_exc}"
+            f"Embedding endpoint request failed after {attempts} attempts: {last_exc}"
         )
 
     def _parse_payload(self, payload: dict, texts: list[str]) -> list[list[float]]:
@@ -747,7 +749,7 @@ def coerce_embedding_dimensions(raw_embedding: object, dimensions: int) -> list[
     vector = [float(value) for value in raw_embedding]
     if len(vector) != dimensions and not settings.embedding_allow_dimension_coercion:
         raise EmbeddingProviderError(
-            f"Embedding dimension mismatch: got {len(vector)}, expected {dimensions}. "
+                f"embedding dimension mismatch: got {len(vector)}, expected {dimensions}. "
             "Check EMBEDDING_MODEL/EMBEDDING_DIMENSIONS or enable "
             "EMBEDDING_ALLOW_DIMENSION_COERCION only during a controlled migration."
         )

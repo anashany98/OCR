@@ -33,6 +33,20 @@ class PgvectorStore:
         filters: dict[str, Any] | None,
     ) -> list[VectorSearchMatch]:
         effective_filters = filters or {}
+        # Vector retrieval is a low-level primitive and must never turn an
+        # omitted tenant/budget filter into a corpus-wide nearest-neighbour
+        # query.  Callers must establish the concrete budget scope before
+        # they reach this adapter.
+        has_budget_scope = effective_filters.get("budget_scope_id") is not None
+        has_project_scope = effective_filters.get("project_id") is not None
+        # ``_allow_global_semantic_search`` is an internal-only capability
+        # injected by search_service after it has resolved an administrator
+        # access scope.  It is deliberately not a public API filter: ordinary
+        # callers must still provide a concrete budget scope, preventing a
+        # tenant-wide nearest-neighbour query by accident.
+        allow_verified_admin_global = effective_filters.get("_allow_global_semantic_search") is True
+        if not has_budget_scope and not has_project_scope and not allow_verified_admin_global:
+            raise ValueError("PgvectorStore.search requires budget_scope_id or project_id filter")
         if _is_postgres(db):
             return self._search_postgres(
                 db, query_embedding=query_embedding, limit=limit, filters=effective_filters
@@ -57,6 +71,12 @@ class PgvectorStore:
         if filters.get("budget_scope_id"):
             clauses.append("d.budget_scope_id = :budget_scope_id")
             params["budget_scope_id"] = int(filters["budget_scope_id"])
+        if filters.get("project_id"):
+            clauses.append(
+                "EXISTS (SELECT 1 FROM document_occurrences o "
+                "WHERE o.document_id = d.id AND o.project_id = :project_id)"
+            )
+            params["project_id"] = int(filters["project_id"])
         if filters.get("document_type"):
             clauses.append("d.document_type = :document_type")
             params["document_type"] = filters["document_type"]
@@ -112,6 +132,15 @@ class PgvectorStore:
         )
         if filters.get("budget_scope_id"):
             stmt = stmt.where(Document.budget_scope_id == int(filters["budget_scope_id"]))
+        if filters.get("project_id"):
+            from app.models.project import DocumentOccurrence
+
+            stmt = stmt.where(
+                select(DocumentOccurrence.id)
+                .where(DocumentOccurrence.document_id == Document.id)
+                .where(DocumentOccurrence.project_id == int(filters["project_id"]))
+                .exists()
+            )
         if filters.get("document_type"):
             stmt = stmt.where(Document.document_type == filters["document_type"])
         if filters.get("status"):
@@ -156,6 +185,11 @@ class PgvectorStore:
         fused downstream via RRF (see ``search_service``).
         """
         effective_filters = filters or {}
+        has_budget_scope = effective_filters.get("budget_scope_id") is not None
+        has_project_scope = effective_filters.get("project_id") is not None
+        allow_verified_admin_global = effective_filters.get("_allow_global_semantic_search") is True
+        if not has_budget_scope and not has_project_scope and not allow_verified_admin_global:
+            raise ValueError("PgvectorStore.search_documents requires budget_scope_id or project_id filter")
         if _is_postgres(db):
             return self._search_documents_postgres(
                 db, query_embedding=query_embedding, limit=limit, filters=effective_filters
@@ -180,6 +214,12 @@ class PgvectorStore:
         if filters.get("budget_scope_id"):
             clauses.append("d.budget_scope_id = :budget_scope_id")
             params["budget_scope_id"] = int(filters["budget_scope_id"])
+        if filters.get("project_id"):
+            clauses.append(
+                "EXISTS (SELECT 1 FROM document_occurrences o "
+                "WHERE o.document_id = d.id AND o.project_id = :project_id)"
+            )
+            params["project_id"] = int(filters["project_id"])
         if filters.get("document_type"):
             clauses.append("d.document_type = :document_type")
             params["document_type"] = filters["document_type"]
@@ -235,6 +275,15 @@ class PgvectorStore:
         )
         if filters.get("budget_scope_id"):
             stmt = stmt.where(Document.budget_scope_id == int(filters["budget_scope_id"]))
+        if filters.get("project_id"):
+            from app.models.project import DocumentOccurrence
+
+            stmt = stmt.where(
+                select(DocumentOccurrence.id)
+                .where(DocumentOccurrence.document_id == Document.id)
+                .where(DocumentOccurrence.project_id == int(filters["project_id"]))
+                .exists()
+            )
         if filters.get("document_type"):
             stmt = stmt.where(Document.document_type == filters["document_type"])
         if filters.get("status"):

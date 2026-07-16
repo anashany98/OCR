@@ -106,7 +106,9 @@ def test_prepare_document_chunks_can_rebuild_from_existing_page_text(monkeypatch
         return [[0.1] * 1024 for _ in texts]
 
     monkeypatch.setattr(document_service, "should_create_embeddings", lambda: True)
-    monkeypatch.setattr(document_service, "embed_many", fake_embed_many)
+    monkeypatch.setattr(
+        "app.services.document_embedding_pipeline.embed_many", fake_embed_many
+    )
 
     chunks = prepare_document_chunks(
         document_id=42,
@@ -122,7 +124,7 @@ def test_prepare_document_chunks_can_rebuild_from_existing_page_text(monkeypatch
     assert calls and "ABC123" in calls[0][0]
 
 
-def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
+def test_worker_notifies_immediately_for_permanent_failures(monkeypatch):
     from app.workers import tasks as worker_tasks
 
     notifications: list[tuple[int, int, str]] = []
@@ -130,7 +132,16 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
 
     class FakeDb:
         def get(self, model, item_id):
-            return object()
+            return type("Row", (), {"status": "processing"})()
+
+        def expire_all(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def add(self, item):
+            pass
 
         def close(self):
             pass
@@ -142,29 +153,29 @@ def test_worker_notifies_only_when_retries_are_exhausted(monkeypatch):
     monkeypatch.setattr(worker_tasks, "SessionLocal", lambda: FakeDb())
     monkeypatch.setattr(worker_tasks, "process_document", fail_processing)
     monkeypatch.setattr(
-        worker_tasks.notification_service,
-        "notify_job_failed",
-        lambda job_id, document_id, message: notifications.append((job_id, document_id, message)),
+        worker_tasks,
+        "notify_failed",
+        lambda *, job_id, document_id, exc: notifications.append((job_id, document_id, str(exc))),
     )
 
     worker_tasks.process_document_task.request.retries = 1
     try:
         worker_tasks.process_document_task.run(12, 34)
-    except RuntimeError:
-        pass
+    except Exception as exc:
+        assert exc.__class__.__name__ == "Reject"
     else:
         raise AssertionError("task should re-raise processing failures")
 
     worker_tasks.process_document_task.request.retries = worker_tasks.process_document_task.max_retries
     try:
         worker_tasks.process_document_task.run(12, 34)
-    except RuntimeError:
-        pass
+    except Exception as exc:
+        assert exc.__class__.__name__ == "Reject"
     else:
         raise AssertionError("task should re-raise processing failures")
 
     assert calls == [False, True]
-    assert notifications == [(34, 12, "boom")]
+    assert notifications == [(34, 12, "boom"), (34, 12, "boom")]
 
 
 def test_process_document_intermediate_retry_does_not_mark_final_failure_or_emit_webhook(monkeypatch):
@@ -221,11 +232,50 @@ def test_process_document_final_retry_marks_failed_and_emits_one_webhook(monkeyp
         assert webhooks == ["document.failed"]
 
 
+def test_dwg_converter_unavailable_is_sent_to_review_not_terminal_failure(monkeypatch):
+    from app.parsers.dwg import DwgConversionError
+
+    sessions = _session_factory()
+    webhooks: list[str] = []
+
+    monkeypatch.setattr(
+        document_service,
+        "_process_full_parse",
+        lambda db, document: (_ for _ in ()).throw(DwgConversionError("Configure ODA File Converter")),
+    )
+    monkeypatch.setattr(
+        document_service,
+        "emit_integration_webhook",
+        lambda event, payload: webhooks.append(event),
+    )
+
+    with sessions() as db:
+        document = _document(db, "plano.dwg", status="pending", quality_status="pending")
+        job = ExtractionJob(document_id=document.id, job_type="extract", status="pending")
+        db.add(job)
+        db.commit()
+
+        try:
+            document_service.process_document(db, document_id=document.id, job_id=job.id, final_failure=True)
+        except DwgConversionError:
+            pass
+        else:
+            raise AssertionError("the worker must retain the conversion error for its task trace")
+
+        db.refresh(document)
+        db.refresh(job)
+        assert document.status == "needs_review"
+        assert document.quality_status == "needs_human_review"
+        assert document.quality_flags_json == ["dwg_conversion_required"]
+        assert job.status == "failed"
+        assert webhooks == ["document.needs_review"]
+
+
 def test_actual_enqueue_calls_route_by_document_and_job_type(monkeypatch, tmp_path: Path):
     calls: list[dict] = []
     sessions = _session_factory()
     monkeypatch.setattr(settings, "files_dir", tmp_path / "files")
-    monkeypatch.setattr(document_service, "inspect_file_for_ingestion", lambda source: type("Result", (), {"allowed": True, "reason": "ok"})())
+    monkeypatch.setattr("app.services.document_registration_service.inspect_file_for_ingestion", lambda source: type("Result", (), {"allowed": True, "reason": "ok"})())
     monkeypatch.setattr("app.workers.tasks.process_document_task.apply_async", lambda *args, **kwargs: calls.append({"args": args, "kwargs": kwargs}))
 
     pdf = tmp_path / "scan.pdf"

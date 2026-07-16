@@ -17,8 +17,20 @@ DEFAULT_SUBFOLDERS = ["presupuestos", "pedidos", "facturas", "planos", "imagenes
 
 
 def scan_input_folders(
-    db: Session, *, user: User | None = None, enqueue: bool = True, limit: int | None = None
+    db: Session,
+    *,
+    user: User | None = None,
+    enqueue: bool = True,
+    limit: int | None = None,
+    max_examined: int | None = None,
 ) -> dict:
+    """Scan only the dynamic inbox.
+
+    ``limit`` retains its historical meaning (maximum registrations).
+    ``max_examined`` bounds periodic callers even when their first files are
+    ignored, unstable, or already known.  The immutable source corpus is
+    intentionally excluded: it is owned by the explicit backfill command.
+    """
     settings.input_dir.mkdir(parents=True, exist_ok=True)
     for folder in DEFAULT_SUBFOLDERS:
         (settings.input_dir / folder).mkdir(parents=True, exist_ok=True)
@@ -33,8 +45,13 @@ def scan_input_folders(
     paused = 0
     backpressure = 0
 
+    # The inbox poller must be bounded.  The fixed corpus is handled only by
+    # the explicit backfill command; recursively walking it here made every
+    # periodic poll traverse tens of thousands of immutable files.
     for path in _iter_files(settings.input_dir):
         if limit is not None and registered >= limit:
+            break
+        if max_examined is not None and scanned >= max_examined:
             break
         scanned += 1
         source_path = str(path)
@@ -196,6 +213,8 @@ def _record_path_status(
 
 
 def _iter_files(root: Path):
-    for path in root.rglob("*"):
+    # ``rglob`` order is filesystem-dependent; deterministic ordering is
+    # required for repeatable limits and resumable callers.
+    for path in sorted(root.rglob("*"), key=lambda candidate: str(candidate)):
         if path.is_file() and not is_ignored_path(path):
             yield path

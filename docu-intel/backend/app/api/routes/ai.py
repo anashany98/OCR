@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.active_context import ActiveContext, load_active_context, persist_context_after_answer
+from app.ai.active_context import (
+    ActiveContext,
+    get_or_create_session,
+    load_active_context,
+    persist_context_after_answer,
+    record_message,
+)
 from app.ai.agent import (
     StreamOutcome,
     _build_memory_block,
@@ -23,17 +31,20 @@ from app.ai.agent import (
 )
 from app.ai.confidence_gates import evaluate_gates_for_turn
 from app.ai.local_client import LocalOpenAICompatibleClient  # noqa: F401
+from app.ai.model_routing import select_chat_model
 from app.ai.reference_resolver import resolve_references
 from app.ai.scope_guard import enforce_budget_scope
+from app.ai.structured_answer import decide_structured_answer
 from app.ai.tools import ToolCall, select_structured_tools
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.database.session import get_db
-from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
+from app.models import AIAnswer, AIAnswerSource, AIQuestion, ChatMessage, ChatSession, User
 from app.schemas.ai import AIAnswerRead, AIQuestionRead, AskRequest
 from app.services.ai_cache import get_cache_stats, invalidate_all_ai_cache
 from app.services.business_redaction import redact_business_payload_for_scope
+from app.services.source_sanitizer import sanitize_sources_batch
 from app.services.tenant_access import (
     access_scope_cache_key,
     filter_documents_for_scope,
@@ -42,6 +53,35 @@ from app.services.tenant_access import (
 
 logger = logging.getLogger("app.api.routes.ai")
 router = APIRouter()
+
+
+def _record_session_turn(
+    db: Session,
+    *,
+    user: User,
+    session_id: str | None,
+    question: str,
+    answer: str,
+    question_id: int | None = None,
+) -> None:
+    """Append a complete turn to the owner-bound session history.
+
+    This is deliberately best-effort. History improves the UI but must never
+    turn a successful answer into an error. The session helper enforces the
+    ``(user_id, session_uuid)`` boundary; no client-supplied session can read
+    or write another user's history.
+    """
+    if not session_id:
+        return
+    try:
+        session, _ = get_or_create_session(db, user, session_id)
+        record_message(db, session, role="user", content=question, question_id=question_id)
+        record_message(db, session, role="assistant", content=answer)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("chat session history save failed: %s", exc)
+        with contextlib.suppress(Exception):
+            db.rollback()
 
 
 @router.post("/ask", response_model=AIAnswerRead)
@@ -54,6 +94,68 @@ async def ask(
 ) -> AIAnswerRead:
     """Non-streaming endpoint. Kept for backward compatibility and for
     quick smoke tests. The UI should prefer `/ask/stream`."""
+    # FASE 4 — read the cache before invoking the LLM. The cache
+    # key includes user, scope, session, mode, model, prompt version
+    # and the knowledge version so a hit is safe to serve directly
+    # and a change in any of those dimensions cannot leak across.
+    access_scope = resolve_user_access_scope(db, user)
+    scope_key = access_scope_cache_key(access_scope)
+    model_route = select_chat_model(payload.question)
+    try:
+        from app.ai.prompts import CHAT_PROMPT_VERSION
+        from app.services.ai_cache import get_cached_answer_async as _get_cached
+        from app.services.knowledge_version import current_knowledge_version
+        from app.services.metrics.rag import track_chat_cache_lookup
+
+        cached = await _get_cached(
+            question=payload.question,
+            user_id=user.id,
+            mode=payload.mode,
+            scope_key=scope_key,
+            session_id=payload.session_id,
+            model=model_route.cache_key or "default",
+            prompt_version=CHAT_PROMPT_VERSION,
+            knowledge_version=current_knowledge_version(db),
+        )
+        track_chat_cache_lookup(
+            kind="exact" if cached and not cached.get("_semantic_match_score") else "semantic",
+            outcome="hit" if cached else "miss",
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.debug("cache_lookup_failed: %s", exc)
+        cached = None
+        track_chat_cache_lookup(kind="exact", outcome="error")
+
+    if cached and cached.get("answer"):
+        # Persist a synthetic AIAnswer row so /ai/history and the
+        # cache hit share a single source of truth.
+        question_row = AIQuestion(user_id=user.id, question=payload.question)
+        db.add(question_row)
+        db.flush()
+        answer_row = AIAnswer(
+            question_id=question_row.id,
+            answer=str(cached.get("answer") or ""),
+            confidence=cached.get("confidence"),
+            model_name=cached.get("model_name") or "cache",
+        )
+        db.add(answer_row)
+        for src in cached.get("sources") or []:
+            answer_row.sources.append(
+                AIAnswerSource(
+                    document_id=src.get("document_id"),
+                    page_number=src.get("page_number"),
+                    block_id=src.get("block_id"),
+                    relevance_score=src.get("relevance_score"),
+                    excerpt=src.get("excerpt"),
+                )
+            )
+        db.commit()
+        from app.ai.agent import _suggest_followups  # local import
+
+        followups = _suggest_followups(payload.question, None, [])
+        answer_row.followups = followups  # type: ignore[attr-defined]
+        return answer_row
+
     answer_row = await answer_question(
         db,
         user=user,
@@ -66,7 +168,6 @@ async def ask(
     from app.ai.agent import _suggest_followups  # local import
 
     tools = select_tools_for_question(payload.question)
-    access_scope = resolve_user_access_scope(db, user)
     context_items, _, _ = collect_context(db, tools, payload.question, access_scope=access_scope)
     followups = _suggest_followups(payload.question, None, context_items)
     # Pydantic + from_attributes will copy AIAnswer fields; attach followups
@@ -75,9 +176,7 @@ async def ask(
     return answer_row
 
 
-@router.post("/ask/stream")
-@limiter.limit("10/minute")
-async def ask_stream(
+async def _build_stream_response(
     request: Request,
     payload: AskRequest,
     db: Session = Depends(get_db),
@@ -92,10 +191,114 @@ async def ask_stream(
                            "resolved_document": {...} | null, "sources": [...] }
       - on LLM failure the end event has "fallback": true and the answer is the
         grounded fallback text (so the client can render it directly).
+      - when the answer is served from the AI cache the end event
+        also has "cache_hit": true so the UI can show a "cached"
+        badge (MiniMax M3 FASE 4).
     """
     question = payload.question
     mode = payload.mode
     session_id = payload.session_id
+    model_route = select_chat_model(question)
+
+    # FASE 4 — read the AI cache *before* building the context. The
+    # previous flow ran the expensive retrieval + LLM call first
+    # and only wrote to the cache at the end. The cache key already
+    # includes tenant, user, scope, session, mode, model, prompt
+    # version and the knowledge version, so a hit is safe to serve
+    # without re-querying. The first SSE event (``start``) is
+    # emitted from inside the cached branch below so the client
+    # sees progress within a few milliseconds even on a cold path.
+    access_scope = resolve_user_access_scope(db, user)
+    scope_key = access_scope_cache_key(access_scope)
+    cached: dict | None = None
+    try:
+        from app.ai.prompts import CHAT_PROMPT_VERSION
+        from app.services.ai_cache import get_cached_answer_async as _get_cached
+        from app.services.knowledge_version import current_knowledge_version
+        from app.services.metrics.rag import (
+            track_chat_cache_lookup,
+            track_chat_stage,
+        )
+
+        with track_chat_stage("cache_lookup"):
+            cached = await _get_cached(
+                question=question,
+                user_id=user.id,
+                mode=mode,
+                scope_key=scope_key,
+                session_id=session_id,
+                model=model_route.cache_key or "default",
+                prompt_version=CHAT_PROMPT_VERSION,
+                knowledge_version=current_knowledge_version(db),
+            )
+        track_chat_cache_lookup(
+            kind="exact" if cached and not cached.get("_semantic_match_score") else "semantic",
+            outcome="hit" if cached else "miss",
+        )
+    except Exception as exc:  # pragma: no cover - cache must never break the stream
+        logger.debug("cache_lookup_failed: %s", exc)
+        track_chat_cache_lookup(kind="exact", outcome="error")
+
+    if cached and cached.get("answer"):
+        # Serve the cached answer without re-running the LLM. The
+        # end event carries the same payload shape as the live path
+        # so the frontend can render it identically.
+        cached_answer = str(cached.get("answer") or "")
+        cached_confidence = cached.get("confidence")
+        cached_model = cached.get("model_name") or "cache"
+        cached_sources = cached.get("sources") or []
+
+        async def cached_stream() -> AsyncIterator[bytes]:
+            yield (
+                b"event: status\ndata: "
+                + json.dumps({"state": "cache", "cache_hit": True}).encode()
+                + b"\n\n"
+            )
+            yield (
+                b"event: start\ndata: "
+                + json.dumps({"model": cached_model, "cache_hit": True}).encode()
+                + b"\n\n"
+            )
+            # Emit the answer as a single delta so the streaming UI
+            # still grows the bubble. The end event is the
+            # authoritative source of the full text.
+            yield (
+                b"event: delta\ndata: "
+                + json.dumps({"text": cached_answer}).encode()
+                + b"\n\n"
+            )
+            _record_session_turn(
+                db,
+                user=user,
+                session_id=session_id,
+                question=question,
+                answer=cached_answer,
+            )
+            yield (
+                b"event: end\ndata: "
+                + json.dumps(
+                    {
+                        "answer": cached_answer,
+                        "model": cached_model,
+                        "confidence": cached_confidence,
+                        "fallback": False,
+                        "cache_hit": True,
+                        "sources": cached_sources,
+                        "followups": [],
+                    },
+                    ensure_ascii=False,
+                ).encode()
+                + b"\n\n"
+            )
+
+        return StreamingResponse(
+            cached_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # 1) build the same context the non-streaming path builds:
     # reference resolution, structured-first tools, active scope and
@@ -105,7 +308,7 @@ async def ask_stream(
         load_active_context(db, user, session_id) if session_id else ActiveContext()
     )
     question, _reference_resolution = resolve_references(question, active_context)
-    tools = select_tools_for_question(question)
+    tools = select_tools_for_question(question, active_context=active_context)
     structured_tools = select_structured_tools(question, active_context=active_context)
     if structured_tools:
         tools = structured_tools + tools
@@ -115,7 +318,6 @@ async def ask_stream(
         tools = [t for t in tools if t.name != "hybrid_search"] + [
             ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}})
         ]
-    access_scope = resolve_user_access_scope(db, user)
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
     )
@@ -156,6 +358,13 @@ async def ask_stream(
         question=question, context_items=context_items, warnings=warnings
     )
     answer_context_available = has_answer_context(context_items)
+    structured_decision = None
+    if settings.ai_structured_answer_enabled:
+        structured_decision = decide_structured_answer(
+            question,
+            context_items,
+            can_view_prices=access_scope.can_view_prices,
+        )
     # 3) serialise sources (deduped) for the end event.
     from app.ai.agent import _dedupe_sources  # local import
 
@@ -214,9 +423,21 @@ async def ask_stream(
             )
 
     async def event_stream() -> AsyncIterator[bytes]:
+        # MiniMax M3 (FASE 4/6) — emit a status event before the
+        # ``start`` so the UI can show "retrieving…" while we are
+        # still building the snapshot. The event is the same
+        # protocol the cache hit emits so the client can render a
+        # consistent progress indicator.
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "retrieval", "cache_hit": False}).encode()
+            + b"\n\n"
+        )
         # start event: announce the model + that the LLM is running
         start_model = (
-            settings.ai_model
+            "backend_structured"
+            if structured_decision is not None
+            else model_route.model
             if answer_context_available and settings.ai_base_url and settings.ai_model
             else "backend_grounded_fallback"
         )
@@ -225,20 +446,46 @@ async def ask_stream(
             + json.dumps({"model": start_model}).encode()
             + b"\n\n"
         )
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "context", "items": len(context_items)}).encode()
+            + b"\n\n"
+        )
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "generation", "model": start_model}).encode()
+            + b"\n\n"
+        )
 
         full_text = ""
         model_name = "backend_grounded_fallback"
         confidence = grounded.confidence
         use_fallback = True
 
-        if answer_context_available and settings.ai_base_url and settings.ai_model:
+        if structured_decision is not None:
+            full_text = structured_decision.answer
+            model_name = "backend_structured"
+            use_fallback = False
+            yield (
+                b"event: delta\ndata: "
+                + json.dumps({"text": full_text}).encode()
+                + b"\n\n"
+            )
+        elif answer_context_available and settings.ai_base_url and settings.ai_model:
             try:
                 # Real token-by-token streaming: each plain-text piece the
                 # generator yields is emitted immediately as its own ``delta``
                 # event (the frontend appends them: ``assembled += ev.text``).
                 # Previously we buffered everything and emitted a single delta
                 # at the end, so the user saw no live typing.
-                async for chunk in _stream_local_ai_answer(question, context_items, warnings):
+                async for chunk in _stream_local_ai_answer(
+                    question,
+                    context_items,
+                    warnings,
+                    model=model_route.model,
+                    context_tokens=model_route.context_tokens,
+                    max_output_tokens=model_route.max_output_tokens,
+                ):
                     if isinstance(chunk, StreamOutcome):
                         # Terminal outcome. ``chunk.text`` is the final
                         # accumulated text. When the generator streamed
@@ -257,7 +504,7 @@ async def ask_stream(
                                     + json.dumps({"text": full_text}).encode()
                                     + b"\n\n"
                                 )
-                            model_name = settings.ai_model
+                            model_name = model_route.model
                             use_fallback = False
                         break
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "thinking":
@@ -294,6 +541,10 @@ async def ask_stream(
 
         # Persist the final answer to the DB so /ai/history and the work
         # inbox stay in sync with the streamed response.
+        #
+        # CR1: Sanitize source references before persistence so stale
+        # block_id values cannot FK-abort the transaction.
+        sanitized_sources = sanitize_sources_batch(db, sources_payload)
         question_row = AIQuestion(user_id=user.id, question=question)
         db.add(question_row)
         db.flush()
@@ -305,20 +556,50 @@ async def ask_stream(
             resolved_document_json=json.dumps(resolved_json, default=str, ensure_ascii=False)
             if resolved_json
             else None,
+            prompt_version=getattr(__import__(
+                "app.ai.prompts", fromlist=["CHAT_PROMPT_VERSION"]
+            ), "CHAT_PROMPT_VERSION", None),
         )
         db.add(answer_row)
         db.flush()
-        for src in sources_payload:
+        for src in sanitized_sources:
             answer_row.sources.append(
                 AIAnswerSource(
-                    document_id=src["document_id"],
-                    page_number=src["page_number"],
-                    block_id=src["block_id"],
-                    relevance_score=src["relevance_score"],
-                    excerpt=src["excerpt"],
+                    document_id=src.document_id,
+                    page_number=src.page_number,
+                    block_id=src.block_id,
+                    relevance_score=src.relevance_score,
+                    excerpt=src.excerpt,
                 )
             )
-        db.commit()
+        # MiniMax M3 (FASE 1) — instrument the persistence stage
+        # with the chat_stage histogram. The timer records the
+        # commit + rollback path uniformly so an operator can see
+        # how much of the wall-clock is spent flushing.
+        from app.services.metrics.rag import track_chat_stage
+
+        with track_chat_stage("persistence") as t:
+            try:
+                db.commit()
+                t.set_outcome("ok")
+            except Exception as exc:
+                logger.error("Failed to persist answer + sources: %s", exc)
+                from app.services.metrics.rag import track_ai_stream_persist_failure
+
+                track_ai_stream_persist_failure("answer")
+                with contextlib.suppress(Exception):
+                    db.rollback()
+                t.set_outcome("error")
+        # CR8: Track answers without sources.
+        if not sanitized_sources:
+            from app.services.metrics.rag import track_answer_without_source
+
+            reason = "no_context" if not answer_context_available else "all_stale"
+            track_answer_without_source(reason)
+            # Still yield end event so the client gets the answer text
+            # (already streamed) but marks it as not persisted.
+        # CR2: Persist context in a separate, best-effort commit so
+        # a context failure never rolls back the answer.
         persist_context_after_answer(
             db,
             user=user,
@@ -327,12 +608,26 @@ async def ask_stream(
             resolved_doc_id=resolved_doc_id,
             context_items=context_items,
         )
+        _record_session_turn(
+            db,
+            user=user,
+            session_id=session_id,
+            question=question,
+            answer=full_text,
+            question_id=question_row.id,
+        )
 
         # Feed the answer into the AI cache so subsequent similar
-        # questions (and exact re-asks) skip the LLM. The cache embeds
-        # the question and stores it as a sidecar semantic index.
+        # questions (and exact re-asks) skip the LLM. The cache
+        # embeds the question and stores it as a sidecar semantic
+        # index. The key is the full isolation vector (user + scope
+        # + session + mode + model + prompt_version + knowledge_version)
+        # so a follow-up with any change in those dimensions is
+        # guaranteed to miss.
         try:
+            from app.ai.prompts import CHAT_PROMPT_VERSION
             from app.services.ai_cache import cache_answer_async as _cache_answer_async
+            from app.services.knowledge_version import current_knowledge_version
 
             await _cache_answer_async(
                 question=question,
@@ -346,6 +641,13 @@ async def ask_stream(
                 mode=mode,
                 scope_key=access_scope_cache_key(access_scope),
                 session_id=session_id,
+                # Lookup happens before structured routing is known and uses
+                # model_route.cache_key. Store under that same isolation
+                # dimension so deterministic structured answers can be read
+                # back safely on an exact re-ask.
+                model=model_route.cache_key,
+                prompt_version=CHAT_PROMPT_VERSION,
+                knowledge_version=current_knowledge_version(db),
             )
         except Exception as exc:
             logger.debug("Cache write failed: %s", exc)
@@ -356,6 +658,7 @@ async def ask_stream(
             "confidence": confidence,
             "fallback": use_fallback,
             "resolved_document": resolved_json,
+            "answer_id": answer_row.id,
             "sources": [
                 {
                     "id": s.id,
@@ -381,6 +684,87 @@ async def ask_stream(
     )
 
 
+def _with_status_elapsed(chunk: bytes, elapsed_ms: float) -> bytes:
+    """Attach timing only to safe status events, leaving answer deltas intact."""
+    prefix = b"event: status\ndata: "
+    if not chunk.startswith(prefix):
+        return chunk
+    try:
+        payload = json.loads(chunk[len(prefix) :].strip())
+        if not isinstance(payload, dict):
+            return chunk
+        payload["elapsed_ms"] = round(elapsed_ms, 1)
+        return prefix + json.dumps(payload, ensure_ascii=False).encode() + b"\n\n"
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return chunk
+
+
+@router.post("/ask/stream")
+@limiter.limit("10/minute")
+async def ask_stream(
+    request: Request,
+    payload: AskRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Return an SSE response before cache lookup or retrieval begins.
+
+    The existing builder owns permissions, cache isolation and persistence. A
+    thin outer stream yields the first non-sensitive state immediately, then
+    forwards that trusted builder's events while adding elapsed time.
+    """
+
+    async def immediate_event_stream() -> AsyncIterator[bytes]:
+        started = perf_counter()
+        yield (
+            b"event: status\ndata: "
+            + json.dumps({"state": "cache", "cache_hit": False, "elapsed_ms": 0.0}).encode()
+            + b"\n\n"
+        )
+        lease = None
+        try:
+            from app.ai.prompts import CHAT_PROMPT_VERSION
+            from app.services.ai_cache import answer_cache_key
+            from app.services.ai_singleflight import chat_singleflight
+            from app.services.knowledge_version import current_knowledge_version
+
+            scope = resolve_user_access_scope(db, user)
+            route = select_chat_model(payload.question)
+            key = answer_cache_key(
+                payload.question,
+                user.id,
+                mode=payload.mode,
+                scope_key=access_scope_cache_key(scope),
+                session_id=payload.session_id,
+                model=route.cache_key,
+                prompt_version=CHAT_PROMPT_VERSION,
+                knowledge_version=current_knowledge_version(db),
+            )
+            lease = await chat_singleflight.acquire(key)
+            if lease.waited:
+                yield (
+                    b"event: status\ndata: "
+                    + json.dumps(
+                        {"state": "cache", "cache_hit": False, "waiting": True,
+                         "elapsed_ms": round((perf_counter() - started) * 1000.0, 1)}
+                    ).encode()
+                    + b"\n\n"
+                )
+            response = await _build_stream_response(request, payload, db, user)
+            async for raw_chunk in response.body_iterator:
+                chunk = raw_chunk.encode() if isinstance(raw_chunk, str) else raw_chunk
+                yield _with_status_elapsed(chunk, (perf_counter() - started) * 1000.0)
+        finally:
+            if lease is not None:
+                await lease.release()
+
+    return StreamingResponse(
+        immediate_event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/history", response_model=list[AIQuestionRead])
 def history(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
@@ -393,6 +777,43 @@ def history(
             .limit(50)
         ).all()
     )
+
+
+@router.get("/sessions/{session_id}/messages")
+def session_messages(
+    session_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Return the message history for one of the current user's sessions.
+
+    A missing foreign session is indistinguishable from a missing session, so
+    callers cannot use this endpoint to discover other users' session ids.
+    """
+    session = db.scalar(
+        select(ChatSession).where(
+            ChatSession.session_uuid == session_id,
+            ChatSession.user_id == user.id,
+        )
+    )
+    if session is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    rows = db.scalars(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session.id)
+        .order_by(ChatMessage.id.asc())
+    ).all()
+    return [
+        {
+            "id": str(item.id),
+            "role": item.role,
+            "content": item.content,
+            "created_at": item.created_at.isoformat(),
+            "intent": item.intent,
+            "was_structured_hit": item.was_structured_hit,
+        }
+        for item in rows
+    ]
 
 
 @router.get("/answers/{answer_id}", response_model=AIAnswerRead)

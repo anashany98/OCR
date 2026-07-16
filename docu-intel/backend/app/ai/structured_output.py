@@ -57,6 +57,7 @@ class SourceRef:
 # Extraction helpers
 # ---------------------------------------------------------------------------
 
+
 def _extract_numbers(text: str) -> list[float]:
     """Extract monetary/numeric values from text.
 
@@ -162,6 +163,7 @@ def _detect_format(text: str) -> str:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def to_structured_response(
     answer: str,
     context_items: list[Any] | None = None,
@@ -203,16 +205,21 @@ def to_structured_response(
     if context_items:
         seen_docs: set[int] = set()
         for item in context_items:
-            if hasattr(item, "document_id") and item.document_id:
-                if item.document_id not in seen_docs:
-                    seen_docs.add(item.document_id)
-                    sources.append(SourceRef(
+            if (
+                hasattr(item, "document_id")
+                and item.document_id
+                and item.document_id not in seen_docs
+            ):
+                seen_docs.add(item.document_id)
+                sources.append(
+                    SourceRef(
                         document_id=item.document_id,
                         document_filename=getattr(item, "document_filename", None),
                         page_number=getattr(item, "page_number", None),
                         relevance=getattr(item, "relevance_score", 0.0),
                         excerpt=(item.summary[:200] if hasattr(item, "summary") else None),
-                    ))
+                    )
+                )
 
     # Calculate confidence based on source quality
     confidence = 0.5  # default

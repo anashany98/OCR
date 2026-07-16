@@ -971,3 +971,286 @@ export function Breadcrumbs({ items }: { items: { label: string }[] }) {
     </nav>
   )
 }
+
+// ===========================================================================
+// PM7 — Overlay toggle panel
+// ===========================================================================
+
+export type OverlayVisibility = {
+  cajetin: boolean
+  legend: boolean
+  chatFacts: boolean
+  revisions: boolean
+  dimensions: boolean
+  rooms: boolean
+  symbols: boolean
+}
+
+const OVERLAY_LABELS: Record<keyof OverlayVisibility, string> = {
+  cajetin: "Cajetín",
+  legend: "Leyenda",
+  chatFacts: "Hechos del chat",
+  revisions: "Cambios rev.",
+  dimensions: "Cotas",
+  rooms: "Habitaciones",
+  symbols: "Símbolos",
+}
+
+const OVERLAY_ICONS: Record<keyof OverlayVisibility, string> = {
+  cajetin: "📋",
+  legend: "📖",
+  chatFacts: "💬",
+  revisions: "🔄",
+  dimensions: "📏",
+  rooms: "🏠",
+  symbols: "🔲",
+}
+
+export function OverlayTogglePanel({
+  visibility,
+  onToggle,
+}: {
+  visibility: OverlayVisibility
+  onToggle: (key: keyof OverlayVisibility) => void
+}) {
+  return (
+    <div className="absolute top-3 right-3 z-10 rounded-md border border-[var(--border)] bg-[var(--bg-surface)]/95 px-2 py-1.5 shadow-sm backdrop-blur-sm">
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        Overlays
+      </div>
+      {(Object.keys(OVERLAY_LABELS) as Array<keyof OverlayVisibility>).map((key) => (
+        <label
+          key={key}
+          className="flex cursor-pointer items-center gap-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          <input
+            type="checkbox"
+            checked={visibility[key]}
+            onChange={() => onToggle(key)}
+            className="h-3 w-3 rounded border-[var(--border)]"
+          />
+          <span>{OVERLAY_ICONS[key]}</span>
+          <span>{OVERLAY_LABELS[key]}</span>
+        </label>
+      ))}
+    </div>
+  )
+}
+
+// ===========================================================================
+// PM7 — Cajetín overlay (SVG rectangle)
+// ===========================================================================
+
+export function CajetinOverlay({
+  regions,
+  svgWidth,
+  svgHeight,
+}: {
+  regions: Array<{ bbox: [number, number, number, number]; label: string; confidence: number }>
+  svgWidth: number
+  svgHeight: number
+}) {
+  return (
+    <>
+      {regions.map((r, i) => {
+        const [x1, y1, x2, y2] = r.bbox
+        return (
+          <g key={`cajetin-${i}`}>
+            <rect
+              x={x1 * svgWidth}
+              y={y1 * svgHeight}
+              width={(x2 - x1) * svgWidth}
+              height={(y2 - y1) * svgHeight}
+              fill="rgba(168, 85, 247, 0.12)"
+              stroke="#a855f7"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+              rx="2"
+            />
+            <text
+              x={x1 * svgWidth + 4}
+              y={y1 * svgHeight + 12}
+              fill="#a855f7"
+              fontSize="10"
+              fontWeight="500"
+            >
+              {r.label}
+            </text>
+          </g>
+        )
+      })}
+    </>
+  )
+}
+
+// ===========================================================================
+// PM7 — Chat facts overlay (highlighted regions)
+// ===========================================================================
+
+export function ChatFactOverlaySVG({
+  facts,
+  svgWidth,
+  svgHeight,
+}: {
+  facts: Array<{
+    fact_type: string
+    subject: string
+    value: string
+    bbox: [number, number, number, number] | null
+    confidence: number
+  }>
+  svgWidth: number
+  svgHeight: number
+}) {
+  const colorMap: Record<string, string> = {
+    room: "#3b82f6",
+    dimension: "#f59e0b",
+    symbol: "#ef4444",
+    material: "#22c55e",
+  }
+
+  return (
+    <>
+      {facts.map((f, i) => {
+        if (!f.bbox) return null
+        const [x1, y1, x2, y2] = f.bbox
+        const color = colorMap[f.fact_type] || "#6b7280"
+        return (
+          <g key={`chat-fact-${i}`}>
+            <rect
+              x={x1 * svgWidth}
+              y={y1 * svgHeight}
+              width={(x2 - x1) * svgWidth}
+              height={(y2 - y1) * svgHeight}
+              fill={`${color}20`}
+              stroke={color}
+              strokeWidth="2"
+              rx="3"
+            />
+            <text
+              x={x1 * svgWidth + 4}
+              y={y2 * svgHeight - 4}
+              fill={color}
+              fontSize="9"
+              fontWeight="600"
+            >
+              {f.subject}: {f.value}
+            </text>
+          </g>
+        )
+      })}
+    </>
+  )
+}
+
+// ===========================================================================
+// PM7 — Revision changes overlay
+// ===========================================================================
+
+export function RevisionOverlay({
+  changes,
+  svgWidth,
+  svgHeight,
+}: {
+  changes: Array<{
+    change_type: string
+    entity_type: string
+    description: string
+    bbox_old: [number, number, number, number] | null
+    bbox_new: [number, number, number, number] | null
+  }>
+  svgWidth: number
+  svgHeight: number
+}) {
+  const colorMap: Record<string, string> = {
+    added: "#22c55e",
+    removed: "#ef4444",
+    modified: "#f59e0b",
+  }
+
+  return (
+    <>
+      {changes.map((c, i) => {
+        const color = colorMap[c.change_type] || "#6b7280"
+        const bbox = c.change_type === "removed" ? c.bbox_old : c.bbox_new
+        if (!bbox) return null
+        const [x1, y1, x2, y2] = bbox
+        return (
+          <g key={`revision-${i}`}>
+            <rect
+              x={x1 * svgWidth}
+              y={y1 * svgHeight}
+              width={(x2 - x1) * svgWidth}
+              height={(y2 - y1) * svgHeight}
+              fill={`${color}15`}
+              stroke={color}
+              strokeWidth="2.5"
+              strokeDasharray={c.change_type === "removed" ? "6 3" : "none"}
+              rx="2"
+            />
+            <text
+              x={x1 * svgWidth + 4}
+              y={y1 * svgHeight - 4}
+              fill={color}
+              fontSize="9"
+              fontWeight="600"
+            >
+              {c.change_type.toUpperCase()}: {c.description}
+            </text>
+          </g>
+        )
+      })}
+    </>
+  )
+}
+
+// ===========================================================================
+// PM7 — Confirmation action bar
+// ===========================================================================
+
+export function ConfirmActionBar({
+  onConfirm,
+  onReject,
+  onCorrect,
+  entityName,
+  isConfirming,
+}: {
+  onConfirm: () => void
+  onReject: () => void
+  onCorrect: () => void
+  entityName: string
+  isConfirming?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-[12px]">
+      <span className="font-medium text-[var(--text-primary)]">{entityName}</span>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onConfirm}
+        disabled={isConfirming}
+        className="h-6 gap-1 text-[11px] text-green-600 hover:bg-green-50"
+      >
+        ✓ Confirmar
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onReject}
+        disabled={isConfirming}
+        className="h-6 gap-1 text-[11px] text-red-600 hover:bg-red-50"
+      >
+        ✗ Rechazar
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onCorrect}
+        disabled={isConfirming}
+        className="h-6 gap-1 text-[11px] text-blue-600 hover:bg-blue-50"
+      >
+        ✎ Corregir
+      </Button>
+    </div>
+  )
+}

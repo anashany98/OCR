@@ -140,8 +140,15 @@ class TestFullPipelineFactura:
         assert "amounts" in resp.data
         assert len(resp.data["amounts"]) >= 1
 
-    def test_multi_query(self):
+    def test_multi_query(self, monkeypatch):
         from app.ai.multi_query import generate_query_variations
+        from app.core.config import settings
+
+        # This is a deterministic unit contract for the template expansion;
+        # do not inherit an operator's production feature flag from .env.
+        monkeypatch.setattr(settings, "search_multi_query_enabled", True)
+        monkeypatch.setattr(settings, "search_multi_query_max_variants", 3)
+
         vars = generate_query_variations("factura TEXTILES MALLORCA")
         assert len(vars) >= 2
         texts = [v.text for v in vars]

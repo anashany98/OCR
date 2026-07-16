@@ -74,7 +74,9 @@ def test_tesseract_extract_uses_tesseract_preprocess(monkeypatch, tmp_path: Path
     _write_test_image(processed)
     opened: list[Path] = []
 
-    monkeypatch.setattr(tesseract, "preprocess_for_tesseract", lambda path: processed, raising=False)
+    monkeypatch.setattr(
+        tesseract, "preprocess_adaptive", lambda path, *, engine: processed
+    )
     monkeypatch.setattr(tesseract.Image, "open", lambda path: opened.append(Path(path)) or object())
     monkeypatch.setattr(
         tesseract.pytesseract,
@@ -90,6 +92,7 @@ def test_tesseract_extract_uses_tesseract_preprocess(monkeypatch, tmp_path: Path
     engine.extract(original)
 
     assert opened == [processed]
+    assert not processed.exists()
 
 
 def test_paddle_and_pp_structure_use_paddle_preprocess(monkeypatch, tmp_path: Path):
@@ -101,28 +104,30 @@ def test_paddle_and_pp_structure_use_paddle_preprocess(monkeypatch, tmp_path: Pa
     _write_test_image(processed)
     calls: list[Path] = []
 
-    def fake_preprocess(path: Path) -> Path:
+    def fake_preprocess(path: Path, *, engine: str) -> Path:
         calls.append(path)
-        return processed
+        return original
 
     class _PaddleModel:
         def ocr(self, path: str):
-            assert Path(path) == processed
+            assert Path(path) == original
             return []
 
     class _Pipeline:
         def predict(self, path: str):
-            assert Path(path) == processed
+            assert Path(path) == original
             return iter([])
 
-    monkeypatch.setattr(paddle, "preprocess_for_paddle", fake_preprocess, raising=False)
+    monkeypatch.setattr(paddle, "preprocess_adaptive", fake_preprocess)
     paddle_engine = object.__new__(paddle.PaddleOCREngine)
     paddle_engine.__dict__["_engine"] = _PaddleModel()
     assert paddle_engine.extract(original).engine == "paddleocr"
 
-    monkeypatch.setattr(pp_structure, "preprocess_for_paddle", fake_preprocess, raising=False)
+    from app.ocr import preprocess
+
+    monkeypatch.setattr(preprocess, "preprocess_adaptive", fake_preprocess)
     pp_engine = pp_structure.PPStructureEngine(device="gpu")
-    pp_engine.__dict__["_pipeline"] = _Pipeline()
+    pp_engine.__dict__["_pipeline_instance"] = _Pipeline()
     assert pp_engine.extract(original) == OCRResult(text="", confidence=None, blocks=[], engine="pp_structure")
 
     assert calls == [original, original]

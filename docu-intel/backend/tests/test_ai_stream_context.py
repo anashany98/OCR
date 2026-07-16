@@ -6,14 +6,35 @@ import pytest
 from starlette.requests import Request
 
 
+def _test_scope():
+    """A resolved server-side scope for route-level stream tests."""
+    from app.services.tenant_access import AccessScope
+
+    return AccessScope(
+        principal_type="user",
+        principal_id="1",
+        can_view_prices=True,
+        can_search_budgets=True,
+    )
+
+
 @pytest.mark.asyncio
 async def test_ai_stream_uses_same_structured_context_path(monkeypatch):
     from app.ai.active_context import ActiveContext
     from app.ai.tools import ToolCall
     from app.api.routes import ai as route
     from app.schemas.ai import AskRequest
+    from app.services import ai_cache
 
     captured: dict[str, object] = {}
+
+    # This test exercises the live retrieval branch.  Answers cached by a
+    # developer's local database would correctly bypass that branch, making
+    # the test order- and environment-dependent.
+    async def cache_miss(**_kwargs):
+        return None
+
+    monkeypatch.setattr(ai_cache, "get_cached_answer_async", cache_miss)
 
     monkeypatch.setattr(
         route,
@@ -28,7 +49,7 @@ async def test_ai_stream_uses_same_structured_context_path(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {"limit": 6}})],
     )
     monkeypatch.setattr(
         route,
@@ -42,7 +63,7 @@ async def test_ai_stream_uses_same_structured_context_path(monkeypatch):
         "enforce_budget_scope",
         lambda question, state, tools: SimpleNamespace(tools=tools, warnings=[]),
     )
-    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: None)
+    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: _test_scope())
 
     def fake_collect_context(db, tools, question, access_scope=None):
         captured["tools"] = tools
@@ -71,7 +92,7 @@ async def test_ai_stream_uses_same_structured_context_path(monkeypatch):
         }
     )
 
-    response = await route.ask_stream(
+    response = await route._build_stream_response(
         request=request,
         payload=AskRequest(
             question="por cuanto esta presupuestado",
@@ -106,7 +127,7 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(
@@ -114,7 +135,7 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
         "enforce_budget_scope",
         lambda question, state, tools: SimpleNamespace(tools=tools, warnings=[]),
     )
-    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: None)
+    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: _test_scope())
     monkeypatch.setattr(
         route,
         "collect_context",
@@ -147,7 +168,7 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
     monkeypatch.setattr(agent, "_suggest_followups", lambda question, doc_id, items: [])
     monkeypatch.setattr(route, "persist_context_after_answer", lambda *args, **kwargs: None)
 
-    async def fake_stream(question, context_items, warnings):
+    async def fake_stream(question, context_items, warnings, **_kwargs):
         called["stream"] = True
         yield "respuesta llm"
         yield StreamOutcome(text="respuesta llm", ok=True)
@@ -175,7 +196,7 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
         }
     )
 
-    response = await route.ask_stream(
+    response = await route._build_stream_response(
         request=request,
         payload=AskRequest(question="por cuanto esta presupuestado", mode="hybrid"),
         db=DB(),
@@ -202,7 +223,7 @@ async def test_ai_stream_without_document_context_uses_not_found_fallback(monkey
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(
@@ -210,7 +231,7 @@ async def test_ai_stream_without_document_context_uses_not_found_fallback(monkey
         "enforce_budget_scope",
         lambda question, state, tools: SimpleNamespace(tools=tools, warnings=[]),
     )
-    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: None)
+    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: _test_scope())
     monkeypatch.setattr(route, "collect_context", lambda db, tools, question, access_scope=None: ([], [], None))
     monkeypatch.setattr(route, "redact_context_items_for_scope", lambda items, scope: items)
     monkeypatch.setattr(
@@ -226,7 +247,7 @@ async def test_ai_stream_without_document_context_uses_not_found_fallback(monkey
     monkeypatch.setattr(route, "_build_memory_block", lambda db, user, question: "")
     monkeypatch.setattr(route, "persist_context_after_answer", lambda *args, **kwargs: None)
 
-    async def fake_stream(question, context_items, warnings):
+    async def fake_stream(question, context_items, warnings, **_kwargs):
         called["stream"] = True
         yield "respuesta general"
         yield StreamOutcome(text="respuesta general", ok=True)
@@ -254,7 +275,7 @@ async def test_ai_stream_without_document_context_uses_not_found_fallback(monkey
         }
     )
 
-    response = await route.ask_stream(
+    response = await route._build_stream_response(
         request=request,
         payload=AskRequest(question="ayudame a redactar un email", mode="hybrid"),
         db=DB(),
@@ -283,7 +304,7 @@ async def test_ai_stream_memory_only_does_not_call_llm(monkeypatch):
     monkeypatch.setattr(
         route,
         "select_tools_for_question",
-        lambda question: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
+        lambda question, active_context=None: [ToolCall("hybrid_search", {"query": question, "filters": {}})],
     )
     monkeypatch.setattr(route, "select_structured_tools", lambda question, active_context=None: [])
     monkeypatch.setattr(
@@ -291,7 +312,7 @@ async def test_ai_stream_memory_only_does_not_call_llm(monkeypatch):
         "enforce_budget_scope",
         lambda question, state, tools: SimpleNamespace(tools=tools, warnings=[]),
     )
-    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: None)
+    monkeypatch.setattr(route, "resolve_user_access_scope", lambda db, user: _test_scope())
     monkeypatch.setattr(route, "collect_context", lambda db, tools, question, access_scope=None: ([], [], None))
     monkeypatch.setattr(route, "redact_context_items_for_scope", lambda items, scope: items)
     monkeypatch.setattr(
@@ -307,7 +328,7 @@ async def test_ai_stream_memory_only_does_not_call_llm(monkeypatch):
     monkeypatch.setattr(route, "_build_memory_block", lambda db, user, question: "Resumen conversacion previa")
     monkeypatch.setattr(route, "persist_context_after_answer", lambda *args, **kwargs: None)
 
-    async def fake_stream(question, context_items, warnings):
+    async def fake_stream(question, context_items, warnings, **_kwargs):
         called["stream"] = True
         yield "respuesta general"
         yield StreamOutcome(text="respuesta general", ok=True)
@@ -335,7 +356,7 @@ async def test_ai_stream_memory_only_does_not_call_llm(monkeypatch):
         }
     )
 
-    response = await route.ask_stream(
+    response = await route._build_stream_response(
         request=request,
         payload=AskRequest(question="y esto?", mode="hybrid", session_id="s1"),
         db=DB(),

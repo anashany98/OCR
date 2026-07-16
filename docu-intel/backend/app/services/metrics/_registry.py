@@ -261,6 +261,88 @@ EMBEDDING_COVERAGE = Gauge(
 )
 
 # ---------------------------------------------------------------------------
+# CR1 — AI source persistence metrics
+# ---------------------------------------------------------------------------
+
+AI_SOURCE_STALE_BLOCK = Counter(
+    "docuintel_ai_source_stale_block_total",
+    "AI answer sources saved with block_id=NULL because the block no longer exists.",
+)
+
+AI_STREAM_PERSIST_FAILURE = Counter(
+    "docuintel_ai_stream_persist_failure_total",
+    "AI stream answer persistence failures.",
+    labelnames=("stage",),
+)
+
+# ---------------------------------------------------------------------------
+# CR4 — Exact document search metrics
+# ---------------------------------------------------------------------------
+
+EXACT_SEARCH = Counter(
+    "docuintel_exact_document_search_total",
+    "Exact document search outcomes.",
+    labelnames=("kind", "outcome"),
+)
+
+EXACT_SEARCH_LATENCY = Histogram(
+    "docuintel_exact_document_search_latency_seconds",
+    "Exact document search wall-clock duration.",
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
+)
+
+# ---------------------------------------------------------------------------
+# CR3 — Follow-up resolution metrics
+# ---------------------------------------------------------------------------
+
+FOLLOWUP_RESOLUTION = Counter(
+    "docuintel_ai_followup_resolution_total",
+    "Follow-up question resolution outcomes.",
+    labelnames=("kind", "outcome"),
+)
+
+# ---------------------------------------------------------------------------
+# CR8 — Answers without sources
+# ---------------------------------------------------------------------------
+
+ANSWERS_WITHOUT_SOURCES = Counter(
+    "docuintel_ai_answers_without_sources_total",
+    "AI answers persisted without any cited source.",
+    labelnames=("reason",),
+)
+
+# ---------------------------------------------------------------------------
+# CR11 — Review pipeline metrics
+# ---------------------------------------------------------------------------
+
+REVIEW_DOCUMENTS = Counter(
+    "docuintel_review_documents_total",
+    "Documents classified for review.",
+    labelnames=("reason", "severity"),
+)
+
+REVIEW_AUTO_RESOLVED = Counter(
+    "docuintel_review_auto_resolved_total",
+    "Review decisions auto-resolved by the quality pipeline.",
+    labelnames=("reason",),
+)
+
+# ---------------------------------------------------------------------------
+# CR9 — OCR render permission failures
+# ---------------------------------------------------------------------------
+
+OCR_RENDER_PERMISSION_FAILURES = Counter(
+    "docuintel_ocr_render_permission_failure_total",
+    "Permission denied errors when rendering pages for OCR.",
+)
+
+OCR_TIER_AVAILABLE = Gauge(
+    "docuintel_ocr_tier_available",
+    "Whether a given OCR tier is available at runtime.",
+    labelnames=("tier",),
+)
+
+# ---------------------------------------------------------------------------
 # P0.1 — Per-stage pipeline timing histograms
 # ---------------------------------------------------------------------------
 
@@ -281,4 +363,131 @@ PAGES_PROCESSED = Counter(
     "docuintel_pages_processed_total",
     "Pages processed, broken down by routing and engine.",
     labelnames=("route", "engine"),
+)
+
+# ---------------------------------------------------------------------------
+# MiniMax M3 — chat path instrumentation
+# ---------------------------------------------------------------------------
+# Stages measured inside the /api/v1/ai/ask and /api/v1/ai/ask/stream
+# handlers. The label set is bounded by the ``stage`` enum passed by
+# the caller; the same value is reused across counters and histograms
+# so an operator can join "duration" and "outcome" by stage.
+#
+# Stages currently emitted:
+#   reference_resolution, tool_selection, scope_enforcement,
+#   context_collection, confidence_gates, memory_block,
+#   grounded_response, source_sanitization, persistence,
+#   cache_lookup, cache_write
+# ---------------------------------------------------------------------------
+
+CHAT_STAGE_DURATION = Histogram(
+    "docuintel_chat_stage_duration_seconds",
+    "Wall-clock duration of each chat path stage in seconds.",
+    labelnames=("stage",),
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+)
+
+CHAT_STAGE_OUTCOME = Counter(
+    "docuintel_chat_stage_outcome_total",
+    "Chat path stage outcomes, broken down by stage and outcome.",
+    labelnames=("stage", "outcome"),
+)
+
+# Bounded variants for the search/retrieval sub-paths. ``strategy``
+# matches the existing search_service vocabulary (exact, structured,
+# hybrid, semantic, multi_query). ``outcome`` is one of hit, miss,
+# skipped, error.
+CHAT_RETRIEVAL_DURATION = Histogram(
+    "docuintel_chat_retrieval_duration_seconds",
+    "Retrieval sub-path wall-clock duration in seconds.",
+    labelnames=("strategy",),
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+)
+
+CHAT_RETRIEVAL_OUTCOME = Counter(
+    "docuintel_chat_retrieval_outcome_total",
+    "Retrieval sub-path outcomes, broken down by strategy.",
+    labelnames=("strategy", "outcome"),
+)
+
+# Cache lookup is split into exact vs semantic so operators can see
+# which is contributing to the hit rate. ``outcome`` is one of hit,
+# miss, error, disabled.
+CHAT_CACHE_LOOKUP = Counter(
+    "docuintel_chat_cache_lookup_total",
+    "AI cache lookups inside the chat path.",
+    labelnames=("kind", "outcome"),
+)
+
+CHAT_CACHE_LOOKUP_LATENCY = Histogram(
+    "docuintel_chat_cache_lookup_seconds",
+    "AI cache lookup wall-clock duration in seconds.",
+    labelnames=("kind",),
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5),
+)
+
+# Streaming milestones. ``event`` is one of start, delta, end, error.
+# No user content is ever put in labels.
+CHAT_STREAM_FIRST_EVENT = Histogram(
+    "docuintel_chat_stream_first_event_seconds",
+    "Time from request to first SSE event, broken down by event type.",
+    labelnames=("event",),
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+)
+
+CHAT_STREAM_TOTAL = Histogram(
+    "docuintel_chat_stream_total_seconds",
+    "Total wall-clock duration of a /ask/stream call, from request to last event.",
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0),
+)
+
+# ---------------------------------------------------------------------------
+# MiniMax M3 — extraction fingerprint
+# ---------------------------------------------------------------------------
+# FASE 3 records one row per HyperExtract attempt, labeled by the
+# outcome (``success``, ``invalid_json``, ``repaired``, ``timeout``,
+# ``provider_error``, ``skipped``, ``cache_hit``), the route
+# (``deterministic``, ``llm_text``, ``vlm``) and the size class
+# (``small``, ``medium``, ``large``). The fingerprint hash itself is
+# never emitted as a label.
+# ---------------------------------------------------------------------------
+
+EXTRACTION_FINGERPRINT_RESULT = Counter(
+    "docuintel_extraction_fingerprint_result_total",
+    "Structured extraction outcomes, broken down by fingerprint outcome and route.",
+    labelnames=("route", "outcome", "size_class"),
+)
+
+EXTRACTION_FINGERPRINT_DURATION = Histogram(
+    "docuintel_extraction_fingerprint_duration_seconds",
+    "Structured extraction wall-clock duration in seconds, broken down by route and outcome.",
+    labelnames=("route", "outcome"),
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0),
+)
+
+EXTRACTION_FINGERPRINT_REUSED = Counter(
+    "docuintel_extraction_fingerprint_reused_total",
+    "Structured extraction attempts that were skipped because the fingerprint matched a prior valid result.",
+    labelnames=("route",),
+)
+
+# ---------------------------------------------------------------------------
+# MiniMax M3 — classification instrumentation
+# ---------------------------------------------------------------------------
+# FASE 2 records the layer that produced the final document_type
+# (source_format, filename, parser, learned, llm). ``dimension`` is
+# the classification axis being measured (``source_format`` vs
+# ``document_type``); ``path`` is the layer that won.
+# ---------------------------------------------------------------------------
+
+CLASSIFICATION_LAYER = Counter(
+    "docuintel_classification_layer_total",
+    "Documents classified, broken down by winning layer and dimension.",
+    labelnames=("dimension", "path", "size_class"),
+)
+
+CLASSIFICATION_RECLASSIFY = Counter(
+    "docuintel_classification_reclassify_total",
+    "Reclassification attempts, broken down by whether OCR/extraction was relaunched.",
+    labelnames=("relauched_ocr", "relauched_extraction"),
 )

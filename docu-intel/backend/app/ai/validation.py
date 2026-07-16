@@ -212,8 +212,15 @@ _DOC_NUMBER_PATTERN = re.compile(
         # Prefixed: F-2026-044, P-2026-007, PV26-020921, F26-001
         (?:[A-Z]{1,4}[\-_]?\d{2,4}[\-_]?\d{1,6})
         |
-        # Slashed or dashed: 2026/143, 2026-143, 2026.143
-        \d{4}[/\-.]?\d{2,6}
+        # Compound references: 20040-IC13-2605-000024.  This must
+        # precede the short numeric form so the validator does not split a
+        # real reference into an invented leading fragment (``20040``).
+        (?:[A-Z0-9]{2,8}-){2,}[A-Z0-9]{2,12}
+        |
+        # Slashed or dashed: 2026/143, 2026-143, 2026.143.  The separator
+        # is required; accepting it as optional made any five-digit prefix
+        # look like a document number.
+        \d{4}[/\-.]\d{2,6}
     )
     \b
     """,
@@ -225,10 +232,10 @@ _DOC_NUMBER_PATTERN = re.compile(
 # numbers, ZIP codes or generic IDs.
 _DOC_NUMBER_WITH_CONTEXT = re.compile(
     r"""
-    (?:nº|n[°o]|num(?:ero)?|factura|presupuesto|pedido|albarán|albaran|
-     expediente|reference|ref\.?)
+    (?<!\w)(?:nº|n[°o]|num(?:ero)?|factura|presupuesto|pedido|albarán|albaran|
+     expediente|referencia|reference|ref\.?)
     \s*[:#:;\-]?\s*
-    (\d{4,10})
+    (\d{4,10})(?![\w-])
     """,
     re.VERBOSE | re.IGNORECASE,
 )
@@ -258,7 +265,7 @@ _AMOUNT_PATTERN = re.compile(
         # avoid IDs and codes)
         \d{4,}(?:[.,]\d{1,2})?
     )
-    (?!\w)                                     # allow sentence punctuation after amount
+    (?![\w-])                                  # not the leading part of a hyphenated identifier
     """,
     re.VERBOSE | re.IGNORECASE,
 )
@@ -316,10 +323,12 @@ def _extract_known_doc_numbers(context_items: list[ContextItem]) -> set[str]:
         for blob in (item.summary, item.excerpt, item.title):
             if not blob:
                 continue
-            for match in _DOC_NUMBER_PATTERN.finditer(blob):
-                normalised = _normalise_doc_number(match.group(0))
-                if len(normalised) >= 4:
-                    known.add(normalised)
+            for pattern in (_DOC_NUMBER_PATTERN, _DOC_NUMBER_WITH_CONTEXT):
+                for match in pattern.finditer(blob):
+                    raw = match.group(1) if match.groups() else match.group(0)
+                    normalised = _normalise_doc_number(raw)
+                    if len(normalised) >= 4:
+                        known.add(normalised)
     return known
 
 
@@ -339,6 +348,11 @@ def _extract_known_reference_numbers(context_items: list[ContextItem]) -> set[st
                 normalised = _normalise_doc_number(match.group(0))
                 if len(normalised) >= 4:
                     known.add(normalised)
+            # Folder names frequently contain a bare budget/reference code
+            # (``Presupuesto 260074``).  They are source metadata, not a
+            # guessed amount, so retain them as known references too.
+            for match in re.finditer(r"\b\d{5,12}\b", blob):
+                known.add(match.group(0))
     return known
 
 
@@ -391,15 +405,23 @@ def _filename_is_known(ref: str, known: set[str]) -> bool:
     # separators in the known name (so ``APROBADO`` matches but
     # ``PRO`` does not).
     for name in known:
-        if not name.endswith(".pdf") and not name.endswith(".msg") and not name.endswith(".xlsx") and not name.endswith(".docx") and not name.endswith(".doc") and not name.endswith(".png") and not name.endswith(".jpg") and not name.endswith(".jpeg") and not name.endswith(".tif") and not name.endswith(".tiff"):
+        if (
+            not name.endswith(".pdf")
+            and not name.endswith(".msg")
+            and not name.endswith(".xlsx")
+            and not name.endswith(".docx")
+            and not name.endswith(".doc")
+            and not name.endswith(".png")
+            and not name.endswith(".jpg")
+            and not name.endswith(".jpeg")
+            and not name.endswith(".tif")
+            and not name.endswith(".tiff")
+        ):
             continue
         name_stem = name.rsplit(".", 1)[0]
         # Match if stem appears as a complete token (separated by
         # spaces, slashes, underscores, or hyphens).
-        if any(
-            token == stem
-            for token in re.split(r"[\s/_\-]+", name_stem)
-        ):
+        if any(token == stem for token in re.split(r"[\s/_\-]+", name_stem)):
             return True
     # Looser fallback: the LLM often cites a document by a meaningful
     # fragment of its filename (e.g. "F-2026-044.pdf" when the stored
@@ -464,9 +486,7 @@ def _looks_like_currency_amount(raw: str) -> bool:
     # Pure digits: only flag if it could plausibly be an amount.
     # 1-4 digit IDs/codes/years/ZIPs are NEVER amounts in this app.
     digits = "".join(ch for ch in body if ch.isdigit())
-    if not digits or len(digits) <= 4:
-        return False
-    return True
+    return not (not digits or len(digits) <= 4)
 
 
 def response_fabricates_documents(answer: str, context_items: list[ContextItem]) -> bool:
@@ -579,6 +599,59 @@ def response_fabricates_documents(answer: str, context_items: list[ContextItem])
                 )
                 return True
     return False
+
+
+def response_covers_retrieved_sources(
+    answer: str,
+    context_items: list[ContextItem],
+    question: str,
+) -> bool:
+    """Return whether a broad answer cites enough of its evidence set.
+
+    The hallucination gate catches invented files, but it cannot catch a
+    perfectly valid answer that silently ignores ten other retrieved sources.
+    For broad questions (``que sabes``, ``que mas`` or visual descriptions),
+    require at least three distinct source names. A short,
+    document-specific question keeps the old
+    permissive behaviour.
+    """
+    sources: set[str] = set()
+    for item in context_items:
+        filename = (item.document_filename or "").strip().casefold()
+        if filename:
+            sources.add(filename)
+    if len(sources) < 3:
+        return True
+
+    normalized_question = unicodedata.normalize("NFKD", question.casefold())
+    normalized_question = normalized_question.encode("ascii", "ignore").decode("ascii")
+    broad_hints = (
+        "que sabes",
+        "que mas",
+        "mas informacion",
+        "informacion sobre",
+        "imagen",
+        "imagenes",
+        "foto",
+        "fotos",
+        "visual",
+        "describe",
+        "describeme",
+        "que se ve",
+        "todos",
+        "todas",
+    )
+    if not any(hint in normalized_question for hint in broad_hints):
+        return True
+
+    answer_folded = answer.casefold()
+    cited = 0
+    for filename in sources:
+        stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+        basename = stem.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        if filename in answer_folded or stem in answer_folded or basename in answer_folded:
+            cited += 1
+    return cited >= 3
 
 
 def has_required_sections(answer: str) -> bool:
@@ -815,4 +888,3 @@ def _normalize(text: str) -> str:
     only used for the cheap, in-Python keyword checks."""
     normalized = unicodedata.normalize("NFKD", text.lower())
     return normalized.encode("ascii", "ignore").decode("ascii")
-

@@ -1,43 +1,4 @@
-"""Docu-Intel RAG agent — orchestrator.
-
-The agent is split across 5 small modules so each concern can be
-read in isolation:
-
-============  ======================  ===================================
-module        responsibility          lines (approx)
-============  ======================  ===================================
-``tools``     rule-based tool         select_tools_for_question +
-              selection               money/number/filename regex
-``context``   context collection,     collect_context + render +
-              rendering, redaction,   dedupe + clip + warning lines
-              grounding fallback
-``prompts``   system + user prompts   build_ai_messages + context line
-              + XML/sanitiser wrap    (R2 prompt-injection defence)
-``validation`` output validation,     language gate, hallucination
-              language detection,     gate, followup suggestions,
-              follow-ups, memory      memory block
-``agent``     this file               answer_question (sync) +
-                                       _stream_local_ai_answer +
-                                       _try_local_ai_answer +
-                                       resolve_document snapshot
-============  ======================  ===================================
-
-Why this split
---------------
-The original 1568-line file made it impossible to change one
-piece of the pipeline without re-reading the whole thing. A
-streaming endpoint change could break the tool selector. A new
-R2 sanitiser regex could change the grounded fallback. The five
-modules above separate those concerns so a change in one has a
-predictable blast radius.
-
-Backward compatibility
-----------------------
-Older code (and tests) imports public names from this module
-directly, e.g. ``from app.ai.agent import select_tools_for_question``.
-We re-export the public surface below so the refactor is
-invisible to the rest of the codebase.
-"""
+"""Docu-Intel RAG orchestrator and backward-compatible AI facade."""
 
 from __future__ import annotations
 
@@ -50,6 +11,8 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.ai.local_client import ContextSizeExceededError, LocalOpenAICompatibleClient
+from app.ai.model_routing import select_chat_model
+from app.ai.structured_answer import decide_structured_answer
 from app.ai.structured_output import to_structured_response
 from app.core.config import settings
 from app.models import AIAnswer, AIAnswerSource, AIQuestion, User
@@ -62,8 +25,7 @@ from app.services.tenant_access import (
 )
 from app.tools import internal
 
-# Public surface re-exports (kept for backward compatibility — see
-# the module docstring).
+# Public surface re-exports kept for backward compatibility.
 from .context import (
     LOW_OCR_CONFIDENCE_THRESHOLD,
     LOW_OCR_MARKER,
@@ -87,12 +49,10 @@ from .context import (
 )
 from .prompts import (
     _build_ai_messages,
+    _build_user_prompt as _build_user_prompt_unused,  # noqa: F401 (kept for tests)
     _context_line_for_ai,
     build_ai_messages,
     build_context_text,
-)
-from .prompts import (
-    _build_user_prompt as _build_user_prompt_unused,  # noqa: F401  (kept for tests)
 )
 from .tools import (
     ToolCall,
@@ -113,6 +73,7 @@ from .validation import (
     has_required_sections,
     looks_like_followup,
     question_is_spanish,
+    response_covers_retrieved_sources,
     response_fabricates_documents,
     response_looks_spanish,
     suggest_followups,
@@ -122,12 +83,7 @@ logger = logging.getLogger("app.ai.agent")
 
 
 def _format_gate_blocked_answer(gate_eval, active_context) -> str:
-    """Thin wrapper around :func:`app.ai.confidence_gates.format_gate_blocked_answer`.
-
-    Kept here as a private alias so the orchestrator code stays short
-    and so a future refactor of the gate helper does not break the
-    call site.
-    """
+    """Backward-compatible wrapper for the confidence-gate formatter."""
     from .confidence_gates import format_gate_blocked_answer
 
     return format_gate_blocked_answer(gate_eval, active_context)
@@ -137,7 +93,6 @@ def _format_gate_blocked_answer(gate_eval, active_context) -> str:
 # import time. We re-import the module to make the dependency
 # explicit (so a test that imports agent.py also imports the
 # validation module, which has the langdetect setup).
-
 
 # ---------------------------------------------------------------------------
 # Backward-compatibility aliases
@@ -264,7 +219,7 @@ async def answer_question(
     # entities and relations when the user mentions a specific file or
     # number. The `mode` is just a hint about which search strategy to
     # prefer when multiple are viable.
-    tools = select_tools_for_question(question)
+    tools = select_tools_for_question(question, active_context=active_context)
 
     # CTX-6: structured-first path. The intent router may have
     # classified the question as one of the business intents that has
@@ -356,11 +311,38 @@ async def answer_question(
 
     answer_text = grounded.answer
     model_name = grounded.model_name
-    if has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
-        from app.ai.local_answer import try_local_ai_answer
-
-        ai_answer = await try_local_ai_answer(
-            question, context_items, warnings, fallback=grounded.answer
+    model_route = select_chat_model(question)
+    structured_decision = None
+    fallback_reason: str | None = None
+    # Amount answers with weak evidence must not be delegated to a fluent
+    # model.  The gate already considers OCR quality, duplicate/review state
+    # and empty text; enforce its verdict instead of treating it as advice.
+    if gate_eval.is_blocked:
+        answer_text = _format_gate_blocked_answer(gate_eval, active_context)
+        model_name = "backend_confidence_gate"
+        fallback_reason = "confidence_gate:" + ",".join(
+            getattr(gate_eval, "gates_open", []) or ["unsafe_evidence"]
+        )
+    elif settings.ai_structured_answer_enabled:
+        structured_decision = decide_structured_answer(
+            question,
+            context_items,
+            can_view_prices=access_scope.can_view_prices,
+        )
+    if structured_decision is not None:
+        answer_text = structured_decision.answer
+        model_name = "backend_structured"
+    elif has_answer_context(context_items) and settings.ai_base_url and settings.ai_model:
+        llm_fallback_reason: list[str] = []
+        ai_answer = await _try_local_ai_answer(
+            question,
+            context_items,
+            warnings,
+            fallback=grounded.answer,
+            model=model_route.model,
+            context_tokens=model_route.context_tokens,
+            max_output_tokens=model_route.max_output_tokens,
+            fallback_reason_sink=llm_fallback_reason,
         )
         # Only adopt the LLM output if it actually produced something new.
         # `_try_local_ai_answer` returns the same `fallback` string when the
@@ -370,7 +352,11 @@ async def answer_question(
         # the LLM for content it did not produce.
         if ai_answer and ai_answer != grounded.answer:
             answer_text = ai_answer
-            model_name = settings.ai_model or grounded.model_name
+            model_name = model_route.model or grounded.model_name
+        else:
+            fallback_reason = llm_fallback_reason[0] if llm_fallback_reason else "llm_fallback"
+    elif not has_answer_context(context_items):
+        fallback_reason = "no_answer_context"
 
     structured = to_structured_response(answer_text, context_items=context_items, warnings=warnings)
 
@@ -427,13 +413,12 @@ async def answer_question(
             except Exception as exc:
                 logger.warning("Could not serialize resolved_document_json: %s", exc)
 
-    # When the LLM successfully produced an answer (not the grounded
-    # fallback), boost the confidence: the model validated the context
-    # and synthesised a coherent response.  A 1.5x multiplier (capped
-    # at 0.95) reflects this without being overconfident.
+    # Confidence is evidence quality, never a proxy for whether a fluent
+    # model happened to return text.  This keeps a polished answer from
+    # looking more certain than the OCR and retrieved sources justify.
     answer_confidence = grounded.confidence
-    if model_name != "backend_grounded_fallback" and grounded.confidence > 0:
-        answer_confidence = min(0.95, grounded.confidence * 1.5)
+    if gate_eval.is_blocked:
+        answer_confidence = min(answer_confidence, 0.2)
 
     answer_row = AIAnswer(
         question_id=question_row.id,
@@ -441,28 +426,44 @@ async def answer_question(
         confidence=answer_confidence,
         model_name=model_name,
         resolved_document_json=resolved_json,
+        fallback_reason=fallback_reason,
     )
     db.add(answer_row)
     db.flush()
 
     sources_data = []
-    for source in dedupe_sources(context_items):
+    # CR1: Sanitize source references so stale block_id values
+    # cannot FK-abort the transaction.
+    from app.services.source_sanitizer import sanitize_sources_batch
+
+    raw_sources = [
+        {
+            "document_id": source.document_id,
+            "page_number": source.page_number,
+            "block_id": source.block_id,
+            "relevance_score": source.relevance_score,
+            "excerpt": source.excerpt or source.summary,
+        }
+        for source in dedupe_sources(context_items)
+    ]
+    sanitized_sources = sanitize_sources_batch(db, raw_sources)
+    for src in sanitized_sources:
         answer_row.sources.append(
             AIAnswerSource(
-                document_id=source.document_id,
-                page_number=source.page_number,
-                block_id=source.block_id,
-                relevance_score=source.relevance_score,
-                excerpt=source.excerpt or source.summary,
+                document_id=src.document_id,
+                page_number=src.page_number,
+                block_id=src.block_id,
+                relevance_score=src.relevance_score,
+                excerpt=src.excerpt,
             )
         )
         sources_data.append(
             {
-                "document_id": source.document_id,
-                "page_number": source.page_number,
-                "block_id": source.block_id,
-                "relevance_score": source.relevance_score,
-                "excerpt": source.excerpt or source.summary,
+                "document_id": src.document_id,
+                "page_number": src.page_number,
+                "block_id": src.block_id,
+                "relevance_score": src.relevance_score,
+                "excerpt": src.excerpt,
             }
         )
 
@@ -475,14 +476,22 @@ async def answer_question(
         user_id=user.id,
         answer={
             "answer": answer_text,
-            "confidence": grounded.confidence,
+            "confidence": answer_confidence,
             "model_name": model_name,
+            "fallback_reason": fallback_reason,
             "sources": sources_data,
             "structured": structured.to_dict(),
         },
         mode=mode,
         scope_key=scope_key,
         session_id=session_id,
+        model=(
+            "backend_confidence_gate:exact"
+            if gate_eval.is_blocked
+            else "backend_structured:exact"
+            if structured_decision is not None
+            else model_route.cache_key
+        ),
     )
 
     # CTX-2: persist the active context (current budget, current
@@ -507,8 +516,37 @@ async def answer_question(
 # Streaming and one-shot LLM call
 # ---------------------------------------------------------------------------
 
+
 # _try_local_ai_answer extracted to app.ai.local_answer (FASE 6.1)
-from app.ai.local_answer import _polish_answer_text  # noqa: F401 — used in streaming path
+# Keep the old private import surface so extension code and tests retain the
+# agent-level client injection point after the module split.
+async def _try_local_ai_answer(
+    question,
+    context_items,
+    warnings,
+    *,
+    fallback,
+    model=None,
+    context_tokens=None,
+    max_output_tokens=4000,
+    fallback_reason_sink=None,
+):
+    from app.ai.local_answer import try_local_ai_answer
+
+    return await try_local_ai_answer(
+        question,
+        context_items,
+        warnings,
+        fallback=fallback,
+        model=model,
+        context_tokens=context_tokens,
+        max_output_tokens=max_output_tokens,
+        client_factory=LocalOpenAICompatibleClient,
+        fallback_reason_sink=fallback_reason_sink,
+    )
+
+
+from app.ai.local_answer import _polish_answer_text  # noqa: E402,F401 — used in streaming path
 
 
 @dataclass
@@ -521,12 +559,17 @@ class StreamOutcome:
 
     text: str
     ok: bool
+    reason: str | None = None
 
 
 async def _stream_local_ai_answer(
     question: str,
     context_items: list[ContextItem],
     warnings: list[str],
+    *,
+    model: str | None = None,
+    context_tokens: int | None = None,
+    max_output_tokens: int = 4000,
 ) -> AsyncIterator[str | tuple[str, str] | StreamOutcome]:
     """Stream chunks of the LLM's answer. Yields plain-text deltas, optional
     ``("thinking", chunk)`` tuples (reasoning models), and a final
@@ -539,10 +582,11 @@ async def _stream_local_ai_answer(
     retry once with thinking enabled. Both log a clear warning so the
     operator can see the root cause.
     """
-    if not settings.ai_base_url or not settings.ai_model:
+    selected_model = model or settings.ai_model
+    if not settings.ai_base_url or not selected_model:
         return
 
-    context_text = build_context_text(context_items)
+    context_text = build_context_text(context_items, max_tokens_override=context_tokens)
     warning_text = "\n".join(warnings) if warnings else "Sin advertencias previas."
 
     # Reuse the system + user prompts that the non-streaming path uses, so
@@ -552,13 +596,33 @@ async def _stream_local_ai_answer(
     accumulated: list[str] = []
     thinking_accumulated: list[str] = []
     aborted = False
-    client = LocalOpenAICompatibleClient()
+    failure_reason: str | None = None
+    client = LocalOpenAICompatibleClient(model=selected_model)
+    # MiniMax M3 (FASE 1/4) — record the time-to-first-token for
+    # the model queue. The timer is reported through
+    # track_chat_stream_event with event="delta"; the model
+    # caller can also surface it on the SSE stream.
+    from time import perf_counter as _perf_counter
+
+    _t_first_token: float | None = None
+    _t_model_queue = _perf_counter()
     try:
         # 4000 tokens (was 2000) so Qwen3 thinking-mode can fit both its
         # reasoning trace and a real answer in the same completion.
         async for piece in client.chat_stream(
-            base_messages, temperature=0.0, max_tokens=4000
+            base_messages, temperature=0.0, max_tokens=max_output_tokens
         ):
+            if _t_first_token is None:
+                _t_first_token = _perf_counter()
+                try:
+                    from app.services.metrics.rag import track_chat_stream_event
+
+                    track_chat_stream_event(
+                        "delta",
+                        latency_ms=(_t_first_token - _t_model_queue) * 1000.0,
+                    )
+                except Exception:  # pragma: no cover - metrics never raise
+                    pass
             # Pass through ("thinking", ...) tuples unchanged so the SSE
             # endpoint can emit them as their own event type.
             if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
@@ -571,13 +635,17 @@ async def _stream_local_ai_answer(
         # Prompt too big for the loaded context_length (caller fault — the
         # client avoided the circuit breaker). Shrink the budget and retry
         # ONCE, buffered (nothing was streamed yet).
-        halved = max(1000, (settings.ai_max_context_tokens or 6000) // 2)
-        logger.warning("Stream exceeded context_length — retry budget=%d: %s", halved, question[:100])
+        halved = max(1000, (context_tokens or settings.ai_max_context_tokens or 6000) // 2)
+        logger.warning(
+            "Stream exceeded context_length — retry budget=%d: %s", halved, question[:100]
+        )
         shrunk = build_ai_messages(
             question, build_context_text(context_items, max_tokens_override=halved), warning_text
         )
         try:
-            async for piece in client.chat_stream(shrunk, temperature=0.0, max_tokens=4000):
+            async for piece in client.chat_stream(
+                shrunk, temperature=0.0, max_tokens=max_output_tokens
+            ):
                 if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
                     continue
                 accumulated.append(piece)  # type: ignore[arg-type]
@@ -586,23 +654,30 @@ async def _stream_local_ai_answer(
     except TimeoutError:
         logger.warning("AI stream timed out for question: %s", question[:100])
         aborted = True
+        failure_reason = "llm_timeout"
     except (httpx.HTTPError, httpx.TimeoutException) as exc:
         logger.warning("AI stream request failed: %s - question: %s", exc, question[:100])
         aborted = True
+        failure_reason = "llm_transport_error"
     except Exception as exc:
         logger.error("Unexpected error in AI stream: %s - question: %s", exc, question[:100])
         aborted = True
+        failure_reason = "llm_error"
 
     full = "".join(accumulated)
     # Qwen3 + LM Studio: with ``/no_think`` it can return EMPTY (0 tokens).
     # Retry ONCE with thinking enabled, buffered (nothing streamed yet);
     # only in the pure-empty case (no text AND no reasoning).
-    if not full and not thinking_accumulated and not aborted and "qwen" in (settings.ai_model or "").lower():
+    if not full and not thinking_accumulated and not aborted and "qwen" in selected_model.lower():
         logger.warning("Qwen3 empty with /no_think — retry thinking on: %s", question[:100])
-        retry_messages = build_ai_messages(question, context_text, warning_text, enable_thinking=True)
+        retry_messages = build_ai_messages(
+            question, context_text, warning_text, enable_thinking=True
+        )
         retry_parts: list[str] = []
         try:
-            async for piece in client.chat_stream(retry_messages, temperature=0.0, max_tokens=4000):
+            async for piece in client.chat_stream(
+                retry_messages, temperature=0.0, max_tokens=max_output_tokens
+            ):
                 if isinstance(piece, tuple) and len(piece) == 2 and piece[0] == "thinking":
                     continue
                 retry_parts.append(piece)  # type: ignore[arg-type]
@@ -628,15 +703,21 @@ async def _stream_local_ai_answer(
                 "AI stream produced no visible content for question: %s",
                 question[:100],
             )
-        yield StreamOutcome(text=full, ok=False)
+        yield StreamOutcome(
+            text=full,
+            ok=False,
+            reason=failure_reason or ("llm_only_thinking" if thinking_accumulated else "llm_empty_response"),
+        )
         return
     if question_is_spanish(question) and not response_looks_spanish(full):
         logger.warning("Streamed AI response not in Spanish")
-        yield StreamOutcome(text=full, ok=False)
+        yield StreamOutcome(text=full, ok=False, reason="validation_language")
         return
-    if response_fabricates_documents(full, context_items):
-        logger.warning("Streamed AI response mentions documents not in context")
-        yield StreamOutcome(text=full, ok=False)
+    if response_fabricates_documents(full, context_items) or not response_covers_retrieved_sources(
+        full, context_items, question
+    ):
+        logger.warning("Streamed AI response failed document/source validation")
+        yield StreamOutcome(text=full, ok=False, reason="validation_source_coverage")
         return
     yield StreamOutcome(text=_polish_answer_text(full), ok=True)
 
@@ -709,6 +790,7 @@ __all__ = [
     "_is_low_ocr_context",
     "_average_confidence",
     "_money_filters",
+    "_try_local_ai_answer",
     # Constants
     "LOW_OCR_CONFIDENCE_THRESHOLD",
     "LOW_OCR_MARKER",

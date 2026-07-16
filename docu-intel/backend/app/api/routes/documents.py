@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_roles
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.database.session import get_db
 from app.models import Document, DocumentBlock, DocumentEntity, DocumentPage, User
 from app.schemas.documents import (
@@ -23,8 +24,8 @@ from app.schemas.documents import (
 )
 from app.schemas.jobs import ExtractionJobRead
 from app.services.audit import write_audit
-from app.services.document_service import register_upload, reprocess_document, soft_delete_document
 from app.services.document_registration_service import normalize_untrusted_relative_path
+from app.services.document_service import register_upload, reprocess_document, soft_delete_document
 from app.services.operations import BulkReprocessFilters, bulk_reprocess_documents
 from app.services.tenant_access import (
     apply_access_predicates,
@@ -53,7 +54,9 @@ class BatchUploadResponse(BaseModel):
 
 
 @router.post("/upload", response_model=UploadResponse)
+@limiter.limit("30/minute")
 def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor")),
@@ -70,7 +73,9 @@ def upload_document(
 
 
 @router.post("/upload/batch", response_model=BatchUploadResponse)
+@limiter.limit("10/minute")
 def upload_batch(
+    request: Request,
     files: list[UploadFile] = File(...),
     relative_paths: str = Form(default="[]"),
     db: Session = Depends(get_db),
@@ -104,13 +109,13 @@ def upload_batch(
         source_path = None
         if raw_path:
             try:
-                source_path = normalize_untrusted_relative_path(
-                    raw_path, user_id=user.id
-                )
+                source_path = normalize_untrusted_relative_path(raw_path, user_id=user.id)
             except ValueError as exc:
                 logger.warning(
                     "batch_upload_rejected_path user=%d path=%r reason=%s",
-                    user.id, raw_path, exc,
+                    user.id,
+                    raw_path,
+                    exc,
                 )
                 failed += 1
                 results.append(
@@ -145,6 +150,12 @@ def upload_batch(
             )
         except Exception:
             logger.exception("batch_upload_failed filename=%s", file.filename)
+            # ``register_upload`` normally commits one file at a time, but a
+            # database error before that commit leaves this shared request
+            # session unusable.  Roll it back before advancing to the next
+            # selected file so one bad item cannot turn the whole folder into
+            # an HTTP 500.
+            db.rollback()
             failed += 1
 
     db.commit()
@@ -154,7 +165,9 @@ def upload_batch(
 
 
 @router.get("", response_model=list[DocumentRead])
+@limiter.limit("120/minute")
 def list_documents(
+    request: Request,
     status: str | None = None,
     document_type: str | None = None,
     q: str | None = None,
@@ -188,7 +201,9 @@ def list_documents(
 
 
 @router.post("/reprocess-bulk", response_model=BulkReprocessResponse)
+@limiter.limit("10/minute")
 def reprocess_bulk(
+    request: Request,
     payload: BulkReprocessRequest,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin", "gestor")),
@@ -211,7 +226,9 @@ def reprocess_bulk(
 
 
 @router.post("/reclassify")
+@limiter.limit("10/minute")
 def reclassify_documents(
+    request: Request,
     limit: int = Query(default=500, ge=1, le=5000),
     dry_run: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -221,16 +238,32 @@ def reclassify_documents(
 
     This re-evaluates document_type without re-running OCR. Useful after
     classification rule changes. Set dry_run=true to preview changes.
+
+    MiniMax M3 (FASE 2):
+    * Uses :func:`app.services.classification_v2.classify_multidim` so
+      ``source_format``, ``document_subtype``, ``content_tags`` and
+      ``classification_evidence`` are recomputed in the same pass.
+    * Persists the new ``confidence`` to ``Document.confidence`` (the
+      correct mapped attribute) instead of the legacy
+      ``classification_confidence`` that did not exist as a column.
+    * Tags the run with the classifier version and emits the
+      ``track_classification_reclassify`` metric with the
+      ``relaunched_ocr``/``relaunched_extraction`` flags always set
+      to ``False`` so the operator can confirm the reclassify path
+      did not relaunch expensive work.
     """
-    from app.services.classification import LearnedRule, classify_document
+    from datetime import UTC, datetime
+
+    from app.services.classification import LearnedRule
+    from app.services.classification_v2 import classify_multidim
+    from app.services.metrics.minimax_m3 import track_classification_reclassify
 
     # Load learned rules
     learned_rules: list[LearnedRule] = []
     try:
         from app.models.learning import LearnedPattern
-        patterns = db.scalars(
-            select(LearnedPattern).where(LearnedPattern.status == "active")
-        ).all()
+
+        patterns = db.scalars(select(LearnedPattern).where(LearnedPattern.status == "active")).all()
         learned_rules = [
             LearnedRule(
                 pattern_value=p.pattern_value,
@@ -243,55 +276,94 @@ def reclassify_documents(
         pass
 
     documents = list(
-        db.scalars(
-            select(Document).where(Document.deleted_at.is_(None)).limit(limit)
-        ).all()
+        db.scalars(select(Document).where(Document.deleted_at.is_(None)).limit(limit)).all()
     )
 
-    changes = []
+    changes: list[dict[str, object]] = []
     unchanged = 0
+    relaunched_ocr = False
+    relaunched_extraction = False
 
     for doc in documents:
         text = ""
         if hasattr(doc, "pages") and doc.pages:
             text = "\n".join(filter(None, (p.text for p in doc.pages if p.text)))
 
-        old_type = doc.document_type or "desconocido"
-        result = classify_document(
+        result = classify_multidim(
             filename=doc.original_filename,
             source_path=doc.source_path,
+            mime_type=doc.mime_type,
+            parser_signature=None,
             text=text,
             learned_rules=learned_rules,
         )
 
-        if result.document_type != old_type:
-            changes.append({
-                "id": doc.id,
-                "filename": doc.original_filename,
-                "old_type": old_type,
-                "new_type": result.document_type,
-                "confidence": result.confidence,
-            })
+        old_type = doc.document_type or "desconocido"
+        old_source = doc.source_format
+        old_subtype = doc.document_subtype
+        if (
+            result.document_type != old_type
+            or result.source_format != old_source
+            or result.document_subtype != old_subtype
+            or list(doc.content_tags or []) != list(result.content_tags)
+            or doc.classification_evidence != dict(result.evidence)
+            or doc.classifier_version != result.classifier_version
+        ):
+            changes.append(
+                {
+                    "id": doc.id,
+                    "filename": doc.original_filename,
+                    "old_type": old_type,
+                    "new_type": result.document_type,
+                    "old_source_format": old_source,
+                    "new_source_format": result.source_format,
+                    "old_subtype": old_subtype,
+                    "new_subtype": result.document_subtype,
+                    "confidence": result.confidence,
+                }
+            )
             if not dry_run:
                 doc.document_type = result.document_type
-                doc.classification_confidence = result.confidence
+                doc.source_format = result.source_format
+                doc.document_subtype = result.document_subtype
+                doc.content_tags = list(result.content_tags)
+                doc.classification_evidence = dict(result.evidence)
+                doc.classifier_version = result.classifier_version
+                doc.classified_at = datetime.now(UTC)
+                # Persist the confidence on the mapped column. The
+                # previous code wrote to ``classification_confidence``,
+                # which is NOT a Document column; the value silently
+                # disappeared on commit.
+                doc.confidence = result.confidence
         else:
             unchanged += 1
 
     if not dry_run and changes:
+        from app.services.knowledge_version import bump_knowledge_version
+
+        bump_knowledge_version(db, event="documents_reclassified")
         db.commit()
+
+    track_classification_reclassify(
+        relaunched_ocr=relaunched_ocr,
+        relaunched_extraction=relaunched_extraction,
+    )
 
     return {
         "total": len(documents),
         "changed": len(changes),
         "unchanged": unchanged,
+        "relaunched_ocr": relaunched_ocr,
+        "relaunched_extraction": relaunched_extraction,
         "changes": changes[:100],
         "dry_run": dry_run,
     }
 
 
 @router.get("/{document_id}", response_model=DocumentRead)
+@limiter.limit("120/minute")
 def get_document(
+    request: Request,
     document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> Document:
     document = db.get(Document, document_id)
@@ -301,7 +373,9 @@ def get_document(
 
 
 @router.get("/{document_id}/pages", response_model=list[DocumentPageRead])
+@limiter.limit("120/minute")
 def get_document_pages(
+    request: Request,
     document_id: int,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -323,7 +397,9 @@ def get_document_pages(
 
 
 @router.get("/{document_id}/pages/{page_number}/image")
+@limiter.limit("120/minute")
 def get_document_page_image(
+    request: Request,
     document_id: int,
     page_number: int,
     db: Session = Depends(get_db),
@@ -356,7 +432,9 @@ def get_document_page_image(
 
 
 @router.get("/{document_id}/blocks", response_model=list[DocumentBlockRead])
+@limiter.limit("120/minute")
 def get_document_blocks(
+    request: Request,
     document_id: int,
     page_number: int | None = None,
     limit: int = Query(default=100, ge=1, le=500),
@@ -378,7 +456,9 @@ def get_document_blocks(
 
 
 @router.get("/{document_id}/entities", response_model=list[DocumentEntityRead])
+@limiter.limit("120/minute")
 def get_document_entities(
+    request: Request,
     document_id: int,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -400,7 +480,9 @@ def get_document_entities(
 
 
 @router.post("/{document_id}/reprocess", response_model=ExtractionJobRead)
+@limiter.limit("10/minute")
 def reprocess(
+    request: Request,
     document_id: int,
     mode: Literal[
         "full", "ocr", "text", "classification", "entities", "chunks", "embeddings"
@@ -417,7 +499,9 @@ def reprocess(
 
 
 @router.delete("/{document_id}", response_model=DocumentRead)
+@limiter.limit("30/minute")
 def delete_document(
+    request: Request,
     document_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin")),
@@ -431,7 +515,9 @@ def delete_document(
 
 
 @router.get("/{document_id}/download")
+@limiter.limit("30/minute")
 def download_document(
+    request: Request,
     document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     document = db.get(Document, document_id)

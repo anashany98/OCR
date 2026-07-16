@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import random
 import threading
@@ -138,17 +139,15 @@ class DotsMOCREngine:
 
         processed_path = preprocess_for_manuscript(image_path)
         try:
-            image_b64 = base64.b64encode(processed_path.read_bytes()).decode("ascii")
+            image_bytes, mime = _encode_image_for_vlm(processed_path)
+            image_b64 = base64.b64encode(image_bytes).decode("ascii")
         finally:
             # Clean up temporary file if it was created
             if processed_path != image_path:
                 import contextlib
+
                 with contextlib.suppress(OSError):
                     processed_path.unlink(missing_ok=True)
-        suffix = image_path.suffix.lower().lstrip(".") or "png"
-        mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "tif": "tiff", "tiff": "tiff",
-                "bmp": "bmp", "webp": "webp"}.get(suffix, "png")
-
         model = self.config.model or settings.vision_model
         prompt = PROMPTS_BY_DOMAIN.get(self.config.domain, PROMPT_GENERIC)
         payload = {
@@ -172,6 +171,9 @@ class DotsMOCREngine:
             ],
             "max_tokens": 4000,
             "temperature": 0.0,
+            # Kept for the native DotsMOCR endpoint; OpenAI-compatible
+            # adapters simply ignore it.
+            "image_base64": image_b64,
         }
         headers = (
             {"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else None
@@ -191,6 +193,8 @@ class DotsMOCREngine:
                 msg = choices[0].get("message") or {}
                 text = str(msg.get("content") or "").strip()
         except (AttributeError, IndexError):
+            pass
+        if not text:
             text = str(data.get("text") or data.get("content") or "").strip()
 
         confidence = _coerce_confidence(data.get("confidence"))
@@ -239,8 +243,9 @@ class DotsMOCREngine:
 
     def _post(self, payload: dict, headers: dict | None) -> dict:
         """Single HTTP attempt. Wrapped by the breaker in ``_call_with_retry``."""
+        endpoint = _chat_completions_endpoint(self.config.endpoint)
         with httpx.Client(timeout=self.config.timeout_seconds) as client:
-            response = client.post(self.config.endpoint, json=payload, headers=headers)
+            response = client.post(endpoint, json=payload, headers=headers)
             response.raise_for_status()
             return response.json()
 
@@ -257,6 +262,58 @@ def _coerce_confidence(value: object) -> float | None:
         return max(0.0, min(1.0, float(value)))
     except (TypeError, ValueError):
         return None
+
+
+def _encode_image_for_vlm(path: Path) -> tuple[bytes, str]:
+    """Bound VLM image payloads to the configured resolution and JPEG size.
+
+    A PDF render can be several thousand pixels on each side.  Sending it
+    verbatim to LM Studio exceeds the vision model's image-token budget and
+    produces a 400 response, which silently downgrades OCR quality.  The
+    existing vision client already uses this limit; DotsMOCR must do the same.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            max_dim = max(1, settings.vision_max_image_dim)
+            if max(image.size) > max_dim:
+                image.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, format="JPEG", quality=85, optimize=True)
+            return buffer.getvalue(), "jpeg"
+    except Exception as exc:  # noqa: BLE001 - preserve OCR fallback for unusual formats
+        logger.debug("VLM image normalization skipped for %s: %s", path, exc)
+        suffix = path.suffix.lower().lstrip(".") or "png"
+        mime = {
+            "jpg": "jpeg",
+            "jpeg": "jpeg",
+            "png": "png",
+            "tif": "tiff",
+            "tiff": "tiff",
+            "bmp": "bmp",
+            "webp": "webp",
+        }.get(suffix, "png")
+        return path.read_bytes(), mime
+
+
+def _chat_completions_endpoint(endpoint: str | None) -> str:
+    """Accept either an OpenAI-compatible base URL or a direct OCR URL.
+
+    Deployments commonly configure ``DOTS_MOCR_ENDPOINT`` as
+    ``http://host:port/v1``.  Posting the OCR payload to that base path can
+    yield a successful but empty response, so a low-confidence page silently
+    falls back to the weaker OCR result.  OpenAI-compatible servers expect
+    the actual inference route at ``/v1/chat/completions``.  A deployment
+    that already provides a dedicated endpoint (for example ``/ocr``) keeps
+    that URL unchanged.
+    """
+    if not endpoint:
+        raise RuntimeError("dots.mocr endpoint is not configured")
+    normalized = endpoint.rstrip("/")
+    if normalized.endswith("/v1"):
+        return f"{normalized}/chat/completions"
+    return normalized
 
 
 def _parse_blocks(raw_blocks: object) -> list[OCRBlock]:

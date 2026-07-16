@@ -86,6 +86,51 @@ _REFERENCE_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     (re.compile(r"\b(esta|la|esa)\s+carpeta\b"), "folder", "current_folder_path"),
     (re.compile(r"\bde\s+este\s+"), "budget", "current_budget_number"),
     (re.compile(r"\bde\s+esta\s+"), "folder", "current_folder_path"),
+    # CR3 — Elliptical follow-ups: short questions without explicit
+    # references that should resolve to the active document.
+    # These match very short questions (< 8 words) that ask about a
+    # common property (date, amount, client, supplier, etc.) and have
+    # no explicit document/presupuesto/pedido/factura reference.
+    (
+        re.compile(r"^(de\s+que\s+)?fecha\s+es(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
+    (
+        re.compile(r"^que\s+(importe|precio|coste|total)\s+(tiene|tiene\s+el)\s*(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
+    (
+        re.compile(r"^(de\s+)?quien\s+(es|lo\s+instala|instala)\s*(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
+    (
+        re.compile(r"^cuantas?\s+(unidades?|piezas?|lineas?)\s*(tiene)?\s*(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
+    (
+        re.compile(r"^(y|que)\s+(el\s+)?cliente\s*(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
+    (
+        re.compile(r"^(y|que)\s+(el\s+)?proveedor\s*(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
+    (
+        re.compile(r"^que\s+(direccion|ubicacion|lugar)\s+(tiene|es)\s*(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
+    (
+        re.compile(r"^que\s+(estado|status|situacion)\s+(tiene|esta)\s*(\?)?\s*$"),
+        "document",
+        "current_document_id",
+    ),
 )
 
 
@@ -98,7 +143,10 @@ _NORMALIZE_TABLE = str.maketrans(
 def _normalize(text: str) -> str:
     """Lightweight lowercase + accent-strip. Shared with ``tools._normalize``."""
     lowered = (text or "").lower()
-    return lowered.translate(_NORMALIZE_TABLE)
+    normalized = lowered.translate(_NORMALIZE_TABLE)
+    # Strip leading/trailing whitespace and punctuation that may
+    # remain after accent translation (¿, ¡ become spaces).
+    return normalized.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +291,10 @@ def resolve_references(
         context_parts.append(f"albaran {state.current_delivery_note_number}")
     if state.current_document_path and kind in {"document", "plan"}:
         context_parts.append(f"documento {state.current_document_path}")
+    elif state.current_document_id and kind == "document":
+        # CR3: elliptical follow-up resolved to document by ID even
+        # when path is not available in the active context.
+        context_parts.append(f"documento activo id={state.current_document_id}")
     if not context_parts:
         return original, ResolvedReference(referenced_entity="none")
 

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Budget, Document, DocumentPage, Order, Plan
 from app.services.dates import find_dates_in_text
+from app.services.ocr_page_roles import is_ocr_applicable
 
 LOW_OCR_THRESHOLD = settings.low_ocr_confidence_threshold
 MIN_TEXT_CHARS = 40
@@ -21,11 +22,20 @@ class QualityResult:
 
     @property
     def needs_review(self) -> bool:
+        # CR11: Blocking statuses that require human review.
         return self.status in {
-            "processed_low_quality",
-            "processed_missing_fields",
             "needs_human_review",
+            "technical_failure",
+            "security_quarantine",
             "failed",
+        }
+
+    @property
+    def is_usable(self) -> bool:
+        """True when the document can be queried even with warnings."""
+        return self.status in {
+            "processed_ok",
+            "usable_with_warnings",
         }
 
 
@@ -122,7 +132,8 @@ def evaluate_document_quality(
     pages = list(
         db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all()
     )
-    ocr_values = [page.ocr_confidence for page in pages if page.ocr_confidence is not None]
+    ocr_pages = [page for page in pages if is_ocr_applicable(page.ocr_content_kind)]
+    ocr_values = [page.ocr_confidence for page in ocr_pages if page.ocr_confidence is not None]
     min_ocr = min(ocr_values) if ocr_values else 0.0
     classification_conf = document.confidence if document.confidence is not None else 0.0
     is_classified = document.document_type not in {"desconocido", "", None}
@@ -135,7 +146,7 @@ def evaluate_document_quality(
     # extraction may fail to match its regex patterns (missing fields), but
     # that is a pattern-gap issue, not a quality issue — the document
     # should still be auto-approved if the text is present and classified.
-    is_digital = min_ocr >= 1.0
+    is_digital = bool(pages) and (not ocr_pages or min_ocr >= 1.0)
 
     # Quick auto-approve for emails and well-classified documents.
     # Emails (.msg) are always useful as-is; classified docs with
@@ -146,16 +157,22 @@ def evaluate_document_quality(
     )
     is_email = document.document_type == "email_exportado"
     well_classified = is_classified and classification_conf >= 0.6
-    if (
+    # CR11: Determine status using a proper elif chain so the first
+    # assignment is never silently overwritten.
+    status = "processed_ok"  # default, refined below
+    if document.status == "failed":
+        status = "failed"
+    elif "page_failed" in flags:
+        # CR11: page_failed is a blocking technical failure.
+        status = "technical_failure"
+    elif (business_needs_review or plan_needs_review) and not is_digital:
+        # A review request from deterministic extraction is blocking for
+        # scanned material. Digital PDFs are the deliberate exception: their
+        # source text is directly readable and the flag represents a parser
+        # gap rather than an OCR-quality problem.
+        status = "needs_human_review"
+    elif (
         document.status != "failed"
-        and "page_failed" not in flags
-        and (has_text or is_photo_doc)   # --- CAMBIO: fotos sin texto también ---
-        and (is_email or well_classified or is_photo_doc)  # --- CAMBIO ---
-    ):
-        status = "processed_ok"
-    if (
-        document.status != "failed"
-        and "page_failed" not in flags
         and "page_without_text" not in flags
         and min_ocr >= settings.auto_approve_min_ocr
         and (
@@ -169,16 +186,27 @@ def evaluate_document_quality(
         )
     ):
         status = "processed_ok"
-    elif document.status == "failed":
-        status = "failed"
-    elif "page_failed" in flags:
-        status = "needs_human_review"
+    elif (
+        document.status != "failed"
+        and (has_text or is_photo_doc)
+        and (is_email or well_classified or is_photo_doc)
+        and "low_ocr_confidence" not in flags
+        and "page_without_text" not in flags
+    ):
+        status = "processed_ok"
     elif (
         "low_ocr_confidence" in flags
         or "page_without_text" in flags
         or score < settings.quality_score_threshold
     ):
-        status = "processed_low_quality"
+        # CR11: Low quality but potentially usable with warnings.
+        has_majority_text = sum(
+            1 for p in pages if (p.text or "").strip()
+        ) > len(pages) * 0.5
+        if has_majority_text and not is_photo_doc:
+            status = "usable_with_warnings"
+        else:
+            status = "needs_human_review"
     elif any(
         flag.endswith("_missing")
         or flag
@@ -190,9 +218,8 @@ def evaluate_document_quality(
         }
         for flag in flags
     ):
-        # Accept partial extraction: if at least one key field was
-        # found (budget_number OR supplier_name), don't block on
-        # missing fields. Only flag when ALL key fields are missing.
+        # CR11: Missing fields are non-blocking when partial extraction
+        # exists. Document is still usable for search.
         from app.models import DocumentEntity
         existing_entities = list(
             db.scalars(
@@ -203,14 +230,31 @@ def evaluate_document_quality(
             e.entity_type in {"budget_number", "supplier_name", "order_number", "invoice_number"}
             for e in existing_entities
         )
-        if has_any_key_field:
-            status = "processed_ok"
+        if has_any_key_field or has_text:
+            status = "usable_with_warnings"
         else:
-            status = "processed_missing_fields"
-    elif business_needs_review or plan_needs_review or "document_type_unknown" in flags:
+            status = "usable_with_warnings"
+    elif business_needs_review or plan_needs_review:
         status = "needs_human_review"
+    elif "document_type_unknown" in flags:
+        # CR11: Unknown type with text is usable, not blocking.
+        if has_text:
+            status = "usable_with_warnings"
+        else:
+            status = "needs_human_review"
     else:
         status = "processed_ok"
+
+    # CR11: Track review metrics.
+    from app.services.metrics.pipeline import track_review_auto_resolved, track_review_document
+
+    if status in {"needs_human_review", "technical_failure"}:
+        blocking_reason = "page_failed" if "page_failed" in flags else "quality"
+        track_review_document(reason=blocking_reason, severity="blocking")
+    elif status == "usable_with_warnings":
+        warning_reasons = [f for f in flags if f not in {"page_failed"}]
+        if warning_reasons:
+            track_review_auto_resolved(reason=warning_reasons[0])
 
     return QualityResult(status=status, score=score, flags=sorted(flags))
 
@@ -242,7 +286,9 @@ def refresh_quality_from_existing_pages(db: Session, document: Document) -> Qual
     low = [
         page.ocr_confidence
         for page in pages
-        if page.ocr_confidence is not None and page.ocr_confidence < LOW_OCR_THRESHOLD
+        if is_ocr_applicable(page.ocr_content_kind)
+        and page.ocr_confidence is not None
+        and page.ocr_confidence < LOW_OCR_THRESHOLD
     ]
     result = evaluate_document_quality(
         db, document, text=text, page_count=len(pages), low_ocr_confidences=low
@@ -255,7 +301,11 @@ def _quality_score(db: Session, document: Document, flags: set[str]) -> float:
     pages = list(
         db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all()
     )
-    ocr_values = [page.ocr_confidence for page in pages if page.ocr_confidence is not None]
+    ocr_values = [
+        page.ocr_confidence
+        for page in pages
+        if is_ocr_applicable(page.ocr_content_kind) and page.ocr_confidence is not None
+    ]
     base = document.confidence if document.confidence is not None else 0.80
     if ocr_values:
         # Use minimum OCR confidence instead of average.

@@ -1,6 +1,9 @@
 alembic==1.13.3
 bcrypt==4.2.0
 celery[redis]==5.6.0
+# redis-py 5.2 imports this module for asyncio connections on the GPU image;
+# pin it explicitly because its metadata omits it on Python 3.11.
+async-timeout==5.0.1
 fastapi==0.136.0
 email-validator==2.2.0
 ezdxf>=1.4.0

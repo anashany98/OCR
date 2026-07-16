@@ -79,6 +79,19 @@ def _render_page_to_image(page, image_file: Path, *, dpi: int) -> str | None:
         staging_jpg.write_bytes(jpeg_bytes)
         target_ext = ".jpg"
         payload = ("staging", staging_jpg)
+    except PermissionError as exc:
+        # CR9: Permission denied when writing page image. This is a
+        # technical failure, not an OCR quality issue. Track the metric
+        # so operators can see permission problems in /metrics.
+        from app.services.metrics.ocr import track_ocr_render_permission_failure
+
+        track_ocr_render_permission_failure()
+        logger.error(
+            "Permission denied rendering page at dpi=%d: %s",
+            dpi,
+            exc,
+        )
+        return None
     except Exception as exc:
         # OPS-1 / OPS-2: the JPEG encoder in PyMuPDF raises on
         # a handful of pages (weird CMYK profiles, broken
@@ -140,6 +153,16 @@ def _render_page_to_image(page, image_file: Path, *, dpi: int) -> str | None:
             # ``Pixmap.save()`` infers the format from the
             # suffix, so we just point it at the final path.
             pix.save(str(final_path))
+    except PermissionError as exc:
+        from app.services.metrics.ocr import track_ocr_render_permission_failure
+
+        track_ocr_render_permission_failure()
+        logger.error(
+            "Permission denied finalising page render at dpi=%d: %s",
+            dpi,
+            exc,
+        )
+        return None
     except Exception as exc:
         logger.warning(
             "page render finalise failed at dpi=%d (target=%s): %s: %s",
@@ -260,9 +283,8 @@ _DPI_MIN_CONFIDENCE = 0.55  # DPI-escalación umbral (relajado vs low_ocr=0.70)
 def _get_dpi_ladder(page_width: float = 0, page_height: float = 0) -> list[int]:
     """Build the DPI ladder dynamically from the configured base DPI.
 
-    Two-step ladder: [base, base+100]. The previous 3rd step (+300) was
-    almost never needed and tripled OCR time on hard pages. With base=200
-    most pages pass on step 1; the +100 step covers borderline scans.
+    The final +300 step is reserved for pages whose lower-DPI attempts are
+    empty; the caller stops before it for merely low-quality OCR.
     For small pages (width < 400pt), start 100 DPI higher so the
     rendered image is large enough for OCR.
     """
@@ -271,7 +293,7 @@ def _get_dpi_ladder(page_width: float = 0, page_height: float = 0) -> list[int]:
     # Small page: start 100 DPI higher
     if min_side < 400:
         base = min(base + 100, 400)
-    return [base, base + 100]
+    return [base, base + 100, base + 300]
 
 
 def _ocr_with_dpi_ladder(
@@ -520,6 +542,7 @@ def _process_scanned_page(
         text=text,
         image_path=image_path,
         ocr_confidence=ocr_confidence,
+        ocr_content_kind=ocr.content_kind or "ocr",
         ocr_engine=page_engine,
         blocks=blocks,
     )
@@ -834,7 +857,12 @@ def parse_pdf(
                     height=float(rect.height),
                     text=text,
                     image_path=None,
+                    # Native PDF text has not gone through probabilistic OCR:
+                    # its extraction confidence is therefore deterministic.
+                    # Keeping this at 1.0 also lets downstream review logic
+                    # distinguish a healthy digital page from an unscored one.
                     ocr_confidence=1.0,
+                    ocr_content_kind="native_text",
                     ocr_engine="pymupdf",
                     blocks=blocks,
                 )

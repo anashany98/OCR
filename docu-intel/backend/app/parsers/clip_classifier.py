@@ -3,11 +3,16 @@
 Uses OpenCV-based heuristics to classify images into categories before OCR.
 No external models needed - works with just OpenCV which is already installed.
 
-Categories:
+NOTE: This module is named clip_classifier historically but does NOT use CLIP.
+It uses OpenCV heuristics (color variance, edge structure, text detection).
+
+Legacy categories (single-label):
 - document: invoices, receipts, scanned documents, forms
 - product_photo: furniture, fabric samples, interior design
 - plan: architectural plans, technical drawings
 - text_document: text-heavy images that need OCR
+
+Phase 5: Multi-label taxonomy via classify_image_multilabel().
 """
 
 from __future__ import annotations
@@ -182,4 +187,75 @@ def classify_image(image_path: Path) -> dict:
         return {"category": "unknown", "confidence": 0.0, "scores": {}}
 
 
-__all__ = ["classify_image"]
+__all__ = ["classify_image", "classify_image_multilabel"]
+
+
+def classify_image_multilabel(image_path: Path) -> dict:
+    """Phase 5: Multi-label classification using OpenCV heuristics.
+
+    Returns:
+        {
+            "labels": [("label", confidence), ...],
+            "primary_label": "label",
+            "primary_confidence": 0.x,
+            "opencv_category": "document" | "product_photo" | ...,
+            "opencv_confidence": 0.x,
+            "all_scores": {...},
+        }
+    """
+    from app.parsers.image_taxonomy import ImageLabel, classify_by_filename
+
+    # Run legacy classifier
+    legacy = classify_image(image_path)
+
+    # Map legacy categories to taxonomy labels
+    LEGACY_MAP = {
+        "document": [
+            (ImageLabel.DOCUMENTO_FOTOGRAFIADO, 0.6),
+            (ImageLabel.COMPROBANTE_PAGO, 0.4),
+        ],
+        "product_photo": [
+            (ImageLabel.FOTO_PRODUCTO, 0.6),
+            (ImageLabel.FOTO_INSTALACION, 0.3),
+        ],
+        "plan": [
+            (ImageLabel.PLANO_TECNICO, 0.6),
+            (ImageLabel.CROQUIS_MEDICION, 0.3),
+        ],
+        "text_document": [
+            (ImageLabel.DOCUMENTO_FOTOGRAFIADO, 0.5),
+        ],
+        "unknown": [
+            (ImageLabel.DESCONOCIDO, 0.2),
+        ],
+    }
+
+    # Start with filename-based labels
+    filename_labels = classify_by_filename(image_path.name)
+
+    # Add OpenCV-based labels
+    opencv_labels = LEGACY_MAP.get(legacy["category"], [(ImageLabel.DESCONOCIDO, 0.2)])
+
+    # Merge: take the higher confidence for each label
+    all_labels: dict[str, float] = {}
+    for label, conf in filename_labels:
+        key = label.value if hasattr(label, "value") else str(label)
+        all_labels[key] = max(all_labels.get(key, 0), conf)
+    for label, conf in opencv_labels:
+        key = label.value if hasattr(label, "value") else str(label)
+        # Boost OpenCV confidence since it analyzed the actual pixels
+        boosted_conf = min(conf + 0.1, 0.95)
+        all_labels[key] = max(all_labels.get(key, 0), boosted_conf)
+
+    # Sort by confidence
+    sorted_labels = sorted(all_labels.items(), key=lambda x: x[1], reverse=True)
+    primary = sorted_labels[0] if sorted_labels else ("desconocido", 0.0)
+
+    return {
+        "labels": sorted_labels,
+        "primary_label": primary[0],
+        "primary_confidence": primary[1],
+        "opencv_category": legacy["category"],
+        "opencv_confidence": legacy["confidence"],
+        "all_scores": legacy.get("scores", {}),
+    }

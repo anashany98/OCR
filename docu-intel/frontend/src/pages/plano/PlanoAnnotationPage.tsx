@@ -9,12 +9,14 @@ import {
   AnnotationSidebar,
   Breadcrumbs,
   CanvasToolbar,
+  OverlayTogglePanel,
   PlanCanvas,
   SymbolLegend,
   SymbolOverlay,
   colorForSymbolClass as _colorForSymbolClass,
 } from "./components"
 import { usePlanAnnotation } from "./usePlanAnnotation"
+import { usePlanOverlays } from "./usePlanOverlays"
 
 // ---------------------------------------------------------------------------
 // F8b-cont - plano annotation page composition
@@ -40,6 +42,7 @@ export function PlanoAnnotationPage() {
   const documentId = Number(id)
   const navigate = useNavigate()
   const a = usePlanAnnotation(documentId)
+  const overlays = usePlanOverlays(a.plan?.id ?? null, documentId)
 
   if (!a.plan && a.plansList.isLoading) {
     return (
@@ -118,8 +121,9 @@ export function PlanoAnnotationPage() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 sm:p-4 lg:grid-cols-[280px_minmax(0,1fr)_300px]">
         {/* LEFT: rooms + dimensions + P2 symbol legend */}
-        <Card className="flex min-h-0 flex-col overflow-hidden">
+        <Card className="relative flex min-h-0 flex-col overflow-hidden">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
+            <OverlayTogglePanel visibility={overlays.visibility} onToggle={overlays.toggleOverlay} />
             <AnnotationSidebar
               rooms={a.rooms}
               dimensions={a.dimensions}

@@ -283,6 +283,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/admin/ocr-automation-metrics",
+      "name": "ocr_automation_metrics"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/admin/ocr-errors",
       "name": "ocr_errors"
     },
@@ -557,6 +562,11 @@
       "name": "history"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/ai/sessions/{id}/messages",
+      "name": "session_messages"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/auth/login",
       "name": "login"
@@ -685,6 +695,11 @@
       "method": "GET",
       "path": "/api/v1/documents/{id}/pages/{id}/image",
       "name": "get_document_page_image"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/documents/{id}/preview",
+      "name": "get_document_preview"
     },
     {
       "method": "POST",
@@ -833,6 +848,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/plans/{id}/chat-facts",
+      "name": "get_plan_chat_facts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/plans/{id}/confirm-scale",
+      "name": "confirm_scale"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/plans/{id}/dimensions",
       "name": "get_dimensions"
     },
@@ -847,6 +872,11 @@
       "name": "delete_dimension"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/plans/{id}/dimensions/{id}/confirm",
+      "name": "confirm_dimension"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/plans/{id}/measurements",
       "name": "list_plan_measurements"
@@ -857,9 +887,19 @@
       "name": "create_plan_measurement"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}/overlays",
+      "name": "get_plan_overlays"
+    },
+    {
       "method": "PATCH",
       "path": "/api/v1/plans/{id}/project",
       "name": "update_project"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/plans/{id}/revisions",
+      "name": "get_plan_revision_changes"
     },
     {
       "method": "GET",
@@ -875,6 +915,16 @@
       "method": "DELETE",
       "path": "/api/v1/plans/{id}/rooms/{id}",
       "name": "delete_room"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/plans/{id}/rooms/{id}",
+      "name": "correct_room"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/plans/{id}/rooms/{id}/confirm",
+      "name": "confirm_room"
     },
     {
       "method": "PATCH",

@@ -25,6 +25,7 @@ def _make_pages(ocr_confidences):
         page.id = i
         page.ocr_confidence = conf
         page.page_status = "processed"
+        page.text = ""
         pages.append(page)
     return pages
 
@@ -138,7 +139,7 @@ class TestDigitalPdfAutoApprove:
             page_count=1,
         )
 
-        assert result.status == "processed_low_quality"
+        assert result.status == "needs_human_review"
         assert result.needs_review
 
     def test_digital_pdf_fails_when_page_failed(self):
@@ -153,12 +154,13 @@ class TestDigitalPdfAutoApprove:
             page_count=1,
         )
 
-        assert result.status == "needs_human_review"
+        assert result.status == "technical_failure"
         assert result.needs_review
 
     def test_scanned_pdf_with_low_ocr_needs_review(self):
         doc = _make_document(confidence=0.85)
         pages = _make_pages([0.5])
+        pages[0].text = LONG_TEXT
         db = _patch_db(pages)
 
         result = evaluate_document_quality(
@@ -169,8 +171,8 @@ class TestDigitalPdfAutoApprove:
             low_ocr_confidences=[0.5],
         )
 
-        assert result.status == "processed_low_quality"
-        assert result.needs_review
+        assert result.status == "usable_with_warnings"
+        assert not result.needs_review
 
     def test_multipage_pdf_with_one_low_ocr_page_stays_processed_when_text_is_good(self):
         doc = _make_document(confidence=0.88, document_type="factura")
@@ -208,7 +210,7 @@ class TestDigitalPdfAutoApprove:
 
 class TestQualityResult:
     def test_needs_review_statuses(self):
-        for status in ("processed_low_quality", "processed_missing_fields", "needs_human_review", "failed"):
+        for status in ("needs_human_review", "technical_failure", "security_quarantine", "failed"):
             r = QualityResult(status=status, score=0.5, flags=[])
             assert r.needs_review is True
 

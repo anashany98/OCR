@@ -83,6 +83,7 @@ def test_work_items_are_persistent_and_commentable():
         token = _admin_token(db)
         document = _document(db)
         document_id = document.id
+        db.commit()
 
     created = client.post(
         "/admin/work-items",

@@ -2,19 +2,34 @@ import type { AIAnswer, AIQuestion } from "@/types/api"
 import { request } from "./core"
 
 export type AIStreamEvent =
-  | { type: "start"; model: string }
+  | { type: "start"; model: string; cache_hit?: boolean }
   | { type: "delta"; text: string }
   | { type: "thinking"; text: string }
+  | {
+      type: "status"
+      state: "cache" | "exact_search" | "retrieval" | "context" | "generation"
+      cache_hit?: boolean
+      items?: number
+      model?: string
+    }
   | {
       type: "end"
       answer: string
       model: string
       confidence: number | null
       fallback: boolean
+      cache_hit?: boolean
       resolved_document: AIAnswer["resolved_document"]
       sources: NonNullable<AIAnswer["sources"]>
       followups: string[]
     }
+
+export type ChatSessionMessage = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  created_at: string
+}
 
 export const aiApi = {
   askAI: (question: string, mode?: string, sessionId?: string) =>
@@ -63,6 +78,8 @@ export const aiApi = {
   },
   aiAnswer: (id: number) => request<AIAnswer>(`/ai/answers/` + id),
   aiHistory: () => request<AIQuestion[]>(`/ai/history`),
+  chatSessionMessages: (sessionId: string) =>
+    request<ChatSessionMessage[]>(`/ai/sessions/${encodeURIComponent(sessionId)}/messages`),
   postFeedback: (answerId: number, vote: number, reason?: string, comment?: string) =>
     request<{ accepted: boolean; reason: string; new_chunk_weight: number | null }>(
       `/ai/answers/${answerId}/feedback`,

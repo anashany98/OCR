@@ -132,7 +132,7 @@ def test_register_upload_rejects_files_over_configured_limit(tmp_path, monkeypat
             )
 
 
-def test_file_security_validates_magic_signatures_and_blocks_office_docs(tmp_path, monkeypatch):
+def test_file_security_validates_magic_signatures_and_permits_safe_office_docs(tmp_path, monkeypatch):
     from app.services.file_security import inspect_file_for_ingestion
 
     monkeypatch.setattr(settings, "allowed_file_extensions", [".pdf", ".png", ".jpg", ".xlsx", ".docx"])
@@ -142,7 +142,9 @@ def test_file_security_validates_magic_signatures_and_blocks_office_docs(tmp_pat
     docx.write_bytes(b"PK\x03\x04fake office document")
 
     assert inspect_file_for_ingestion(fake_pdf).reason == "invalid_pdf_signature"
-    assert inspect_file_for_ingestion(docx).reason == "office_document_blocked"
+    # .docx is parsed by the supported document pipeline. Macro-enabled
+    # formats remain blocked and ZIP contents are inspected separately.
+    assert inspect_file_for_ingestion(docx).allowed is True
 
 
 def test_parser_limits_reject_huge_images_and_excel(monkeypatch, tmp_path):
@@ -193,6 +195,21 @@ def test_pgvector_store_requires_budget_scope_filter():
 
     with pytest.raises(ValueError, match="budget_scope_id"):
         PgvectorStore().search(db=None, query_embedding=[0.1] * 1024, limit=10, filters={})  # type: ignore[arg-type]
+
+
+def test_pgvector_store_allows_only_the_internal_admin_global_marker(monkeypatch):
+    """The admin marker is the explicit exception to budget-scoped vectors."""
+    from app.services import vector_store
+    from app.services.vector_store import PgvectorStore
+
+    monkeypatch.setattr(vector_store, "_is_postgres", lambda _db: True)
+    monkeypatch.setattr(PgvectorStore, "_search_postgres", lambda *_args, **_kwargs: [])
+    assert PgvectorStore().search(
+        db=object(),
+        query_embedding=[0.1] * 1024,
+        limit=10,
+        filters={"_allow_global_semantic_search": True},
+    ) == []
 
 
 def test_text_search_applies_budget_scope_filter_in_sql():
@@ -324,6 +341,7 @@ def test_ai_cache_key_includes_access_scope_signature():
 
 def test_backup_verification_script_accepts_manifest(tmp_path):
     import json
+    import shutil
     import subprocess
 
     script = Path(__file__).resolve().parents[2] / "scripts" / "verify-backup.ps1"
@@ -344,8 +362,12 @@ def test_backup_verification_script_accepts_manifest(tmp_path):
         encoding="utf-8",
     )
 
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("PowerShell is not installed")
+
     completed = subprocess.run(
-        ["pwsh", "-NoProfile", "-File", str(script), "-BackupDir", str(backup_dir), "-MinDumpBytes", "1024"],
+        [powershell, "-NoProfile", "-File", str(script), "-BackupDir", str(backup_dir), "-MinDumpBytes", "1024"],
         check=False,
         text=True,
         capture_output=True,
@@ -430,7 +452,7 @@ def test_local_compose_splits_worker_queues():
     assert "worker-heavy:" in content
     assert "worker-maintenance:" in content
     assert "-Q ocr_heavy" in content
-    assert "OCR_WORKER_CONCURRENCY:-1" in content
+    assert "WORKER_HEAVY_CPU_CONCURRENCY:-1" in content
 
 
 def test_internal_ai_context_redacts_amounts_without_price_permission():

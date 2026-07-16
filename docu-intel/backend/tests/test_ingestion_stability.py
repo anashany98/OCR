@@ -7,23 +7,14 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
-
 import pytest
 
 # Set DATABASE_URL before any app imports to prevent pydantic validation errors
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
-# Patch settings module first to avoid pydantic_settings import error
-import app.core.config
-mock_settings = MagicMock()
-mock_settings.allowed_file_extensions = [
-    ".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
-    ".txt", ".csv", ".tsv", ".log", ".eml", ".xls", ".xlsx", ".xlsm"
-]
-app.core.config.settings = mock_settings
-
-# Now we can import the stability module
+# ``tests/conftest.py`` supplies a valid isolated application configuration.
+# Do not replace the process-global settings object at collection time: that
+# leaks a MagicMock into unrelated modules collected later in the suite.
 from app.ingestion.stability import (
     IGNORED_SUFFIXES,
     is_ignored_path,
@@ -67,8 +58,8 @@ class TestIsAllowedFilePath:
         assert is_allowed_file_path(Path("/data/file.txt")) is True
 
     def test_rejects_unknown_extensions(self):
-        # .doc is not in allowed list, .xyz is not either
-        assert is_allowed_file_path(Path("/data/file.doc")) is False
+        # Keep this against an actually unknown extension. The production
+        # configuration supports legacy Word documents as an ingestible type.
         assert is_allowed_file_path(Path("/data/file.xyz")) is False
 
     def test_extension_case_insensitive(self):

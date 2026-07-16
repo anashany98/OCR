@@ -74,7 +74,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); exit(0 if r.status==200 else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/healthz'); exit(0 if r.status==200 else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -91,11 +91,8 @@ services:
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q text_fast,embeddings,celery --concurrency=${WORKER_FAST_CONCURRENCY:-2} -n worker-fast@%h
     restart: unless-stopped
-    # H-2: enabled. The image's ENTRYPOINT (docker-entrypoint.sh)
-    # chowns bind-mounts that are still owned by root, so the
-    # non-root appuser can write to /app/data/files and /app/data/input
-    # on Linux/Windows hosts.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # The entrypoint must start as root to repair nested bind-mount ownership,
+    # then drops privileges to appuser before starting Celery.
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,7 +121,7 @@ services:
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_CPU_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy@%h
     restart: unless-stopped
     # Recycle the worker process after every task (--max-tasks-per-child=1)
     # to release VRAM/RAM leaked by PaddleOCR/PP-Structure on CPU. Combined
@@ -135,8 +132,7 @@ services:
     # 45g host while still protecting the OS. The --max-tasks-per-child=1
     # ensures the 30g working set is released back between jobs.
     mem_limit: ${WORKER_HEAVY_MEM_LIMIT:-40g}
-    # H-2: enabled. See worker-fast for the bind-mount chown design.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # See worker-fast: entrypoint repairs nested ownership then drops privilege.
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,6 +145,9 @@ services:
       - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - ovisocr2_internal
     # M-5: instead of a ``pgrep`` (which passes even when the worker
     # cannot reach the broker), ask Celery for the registered task
     # names. The worker must be up, registered with Redis, and
@@ -158,13 +157,14 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - celery -A app.workers.celery_app.celery_app inspect registered -t 5 -d worker-heavy@$$(hostname) 2>/dev/null | grep -q 'app.workers.tasks' || exit 1
+        - celery -A app.workers.celery_app.celery_app inspect ping -t 5 -d worker-heavy@$$(hostname) 2>/dev/null | grep -q pong || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 180s
 
   worker-heavy-cpu-2:
+    profiles: ["cpu-fallback"]
     build:
       context: ./backend
     env_file: .env
@@ -173,9 +173,8 @@ services:
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-cpu-2@%h
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_CPU_FALLBACK_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-cpu-2@%h
     restart: unless-stopped
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     mem_limit: 4g
     cpus: 2
     depends_on:
@@ -209,8 +208,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-0@%h
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_GPU_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-0@%h
     restart: unless-stopped
     mem_limit: 8g
     depends_on:
@@ -220,11 +218,16 @@ services:
         condition: service_healthy
     environment:
       - WORKER_NAME=worker-heavy-gpu-0
+      # Physical GPU 0 is reserved by deploy.resources; inside the
+      # container it is always CUDA device 0.
       - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_VISIBLE_DEVICES=0
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
+    networks:
+      - default
+      - ovisocr2_internal
     runtime: nvidia
     deploy:
       resources:
@@ -255,8 +258,7 @@ services:
       dockerfile: Dockerfile.gpu
     image: docu-intel-backend-gpu:latest
     env_file: .env
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${OCR_WORKER_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-1@%h
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q ocr_heavy --concurrency=${WORKER_HEAVY_GPU_CONCURRENCY:-1} --max-tasks-per-child=1 -n worker-heavy-gpu-1@%h
     restart: unless-stopped
     mem_limit: 8g
     depends_on:
@@ -266,12 +268,16 @@ services:
         condition: service_healthy
     environment:
       - WORKER_NAME=worker-heavy-gpu-1
-      # GPU 1 (second RTX 4070). PaddleOCR auto-detects CUDA via CUDA_VISIBLE_DEVICES.
-      - CUDA_VISIBLE_DEVICES=1
+      # Physical GPU 1 is reserved by deploy.resources; inside the
+      # container it is always CUDA device 0.
+      - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_VISIBLE_DEVICES=1
       - LMS_SHIM_URL=http://host.docker.internal:1235
       - LMS_CLI_PATH=/usr/local/bin/lms
       - VISION_UNLOAD_DELAY_SECONDS=${VISION_UNLOAD_DELAY_SECONDS:-300}
+    networks:
+      - default
+      - ovisocr2_internal
     runtime: nvidia
     deploy:
       resources:
@@ -304,8 +310,7 @@ services:
       - WORKER_NAME=worker-maintenance
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q maintenance --concurrency=${WORKER_MAINTENANCE_CONCURRENCY:-1} -n worker-maintenance@%h
     restart: unless-stopped
-    # H-2: enabled. See worker-fast.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # Entry point repairs nested bind-mount ownership, then runs as appuser.
     depends_on:
       postgres:
         condition: service_healthy
@@ -324,14 +329,14 @@ services:
       retries: 3
       start_period: 60s
 
-  watcher:
+  worker-hyperextract:
     build:
       context: ./backend
     env_file: .env
-    command: python -m app.ingestion.watcher
+    environment:
+      - WORKER_NAME=worker-hyperextract
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO -Q hyperextract --concurrency=${WORKER_HYPEREXTRACT_CONCURRENCY:-1} -n worker-hyperextract@%h
     restart: unless-stopped
-    # H-2: enabled. See worker-fast.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -340,7 +345,33 @@ services:
     volumes:
       - ./data/files:/app/data/files
       - ./data/input:/app/data/input
-      - C:\Users\Usuario\Desktop\TEST2025:/app/data/input/TEST2025:ro
+      - ./backend/app:/app/app
+      - ${LMS_BIN_PATH:-./scripts/lms_server.py}:/usr/local/bin/lms:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d worker-hyperextract@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  watcher:
+    build:
+      context: ./backend
+    env_file: .env
+    command: python -m app.ingestion.watcher
+    restart: unless-stopped
+    # Entry point repairs nested bind-mount ownership, then runs as appuser.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/files:/app/data/files
+      - ./data/input:/app/data/input
+      - ${SOURCE_CORPUS_DIR:?Set SOURCE_CORPUS_DIR in .env}:/app/source/2025:ro
       - ./backend/app:/app/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -356,8 +387,7 @@ services:
     env_file: .env
     command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
     restart: unless-stopped
-    # H-2: enabled. See worker-fast.
-    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    # Entry point repairs nested bind-mount ownership, then runs as appuser.
     depends_on:
       redis:
         condition: service_healthy
@@ -391,6 +421,51 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  # The model never publishes a host port. Only OCR workers join this
+  # internal network, so a misconfigured frontend/backend cannot call it.
+  ovisocr2:
+    profiles: ["ovisocr2"]
+    build:
+      context: ./services/ovisocr2
+    image: docu-intel-ovisocr2:latest
+    env_file: .env
+    restart: unless-stopped
+    mem_limit: ${OVISOCR2_MEM_LIMIT:-12g}
+    shm_size: ${OVISOCR2_SHM_SIZE:-4g}
+    environment:
+      - HF_HOME=/models/huggingface
+      - OVISOCR2_MODEL=${OVISOCR2_MODEL:-ATH-MaaS/OvisOCR2}
+      - OVISOCR2_MODEL_REVISION=${OVISOCR2_MODEL_REVISION:-77bfe9462d1e6f8965ee6698f08ea8ede580912c}
+      - OVISOCR2_MAX_CONCURRENCY=${OVISOCR2_MAX_CONCURRENCY:-1}
+      - OVISOCR2_MAX_TOKENS=${OVISOCR2_MAX_TOKENS:-16384}
+      - OVISOCR2_MAX_MODEL_LEN=${OVISOCR2_MAX_MODEL_LEN:-32768}
+      - OVISOCR2_MIN_PIXELS=${OVISOCR2_MIN_PIXELS:-200704}
+      - OVISOCR2_MAX_PIXELS=${OVISOCR2_MAX_PIXELS:-8294400}
+      - OVISOCR2_MAX_IMAGE_BYTES=${OVISOCR2_MAX_IMAGE_BYTES:-33554432}
+      - OVISOCR2_GPU_MEMORY_UTILIZATION=${OVISOCR2_GPU_MEMORY_UTILIZATION:-0.50}
+      - OVISOCR2_API_KEY=${OVISOCR2_API_KEY:-}
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${OVISOCR2_GPU_DEVICE:-0}"]
+              capabilities: [gpu]
+    volumes:
+      - ovisocr2_model_cache:/models/huggingface
+    networks:
+      - ovisocr2_internal
+      # This bridge has no other attached service. It permits the initial
+      # Hugging Face model download without exposing the inference API.
+      - ovisocr2_egress
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:8000/readyz'); exit(0 if r.status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
 
   pgadmin:
     image: dpage/pgadmin4:8
@@ -458,3 +533,10 @@ services:
 volumes:
   postgres_data:
   glitchtip_data:
+  ovisocr2_model_cache:
+
+networks:
+  ovisocr2_internal:
+    internal: true
+  ovisocr2_egress:
+    internal: false

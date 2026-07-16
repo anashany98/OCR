@@ -7,6 +7,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from app.core.config import settings
 settings.database_url = "sqlite+pysqlite:///:memory:"
+# Performance tests use synthetic vectors and must not issue network requests
+# to an operator's embedding service.
+settings.embedding_provider = "local_hash"
+settings.embedding_dimensions = 1024
 from app.database.base import Base
 from app.models import Document, ExtractionJob, DocumentPage, DocumentBlock, DocumentChunk, Budget, ExtractionJob
 from app.services.search_service import search_text, search_semantic, search_hybrid
@@ -60,7 +64,12 @@ def test_search_text_scales_to_100_docs():
     sess.close()
 
 
-def test_search_semantic_scales_to_1000_chunks():
+def test_search_semantic_scales_to_1000_chunks(monkeypatch):
+    # This benchmark intentionally models an unscoped local corpus.  Whole-
+    # document retrieval is scope-gated in production, so benchmark the chunk
+    # path here rather than granting the test an internal global-search
+    # capability that application callers never receive.
+    monkeypatch.setattr(settings, "search_use_document_embedding", False)
     engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     sess = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)()

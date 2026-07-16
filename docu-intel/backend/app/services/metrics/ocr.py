@@ -32,7 +32,9 @@ from ._registry import (
     OCR_LANGUAGE_DETECTED,
     OCR_LANGUAGE_THRESHOLD_USED,
     OCR_POSTPROCESS_CORRECTIONS,
+    OCR_RENDER_PERMISSION_FAILURES,
     OCR_SKIP_TIER2,
+    OCR_TIER_AVAILABLE,
     OCR_TIER4_INVOKED,
     OCR_TIER_BY_DOC_TYPE,
     OCR_TIER_USED,
@@ -207,3 +209,22 @@ def track_preprocess_path_chosen(path_type: str) -> None:
     PREPROCESS_PATH_CHOSEN.labels(
         path_type=(path_type or "unknown").lower().strip() or "unknown",
     ).inc()
+
+
+# ---------------------------------------------------------------------------
+# CR9 — OCR render permission & tier availability
+# ---------------------------------------------------------------------------
+
+
+def track_ocr_render_permission_failure() -> None:
+    """Record a permission denied error when rendering a page for OCR."""
+    OCR_RENDER_PERMISSION_FAILURES.inc()
+
+
+def set_ocr_tier_available(tier: str, available: bool) -> None:
+    """Set the availability gauge for a given OCR tier.
+
+    ``tier`` is one of ``"tesseract" | "paddleocr" | "pp_structure" | "vlm"``.
+    """
+    clean_tier = (tier or "unknown").lower().strip() or "unknown"
+    OCR_TIER_AVAILABLE.labels(tier=clean_tier).set(1.0 if available else 0.0)

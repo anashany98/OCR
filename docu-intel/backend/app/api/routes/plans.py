@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -639,3 +640,344 @@ def update_room(
     db.commit()
     db.refresh(room)
     return room
+
+
+# ===========================================================================
+# PM7 — Overlays, confirmation, and learning
+# ===========================================================================
+
+class OverlayRegion(BaseModel):
+    """A labeled region on the plan (cajetín, legend, etc.)."""
+    region_type: str  # "cajetin", "legend", "notes", "revision_table", "viewport"
+    bbox: tuple[float, float, float, float]  # x1, y1, x2, y2 in PDF coords
+    label: str
+    confidence: float = 1.0
+    page_number: int = 1
+    source_document: str = ""
+    source_kind: str = "derived"
+
+
+class ChatFactOverlay(BaseModel):
+    """A fact cited by chat that should be highlighted on the plan."""
+    fact_type: str  # "room", "dimension", "symbol", "material"
+    subject: str
+    value: str
+    bbox: tuple[float, float, float, float] | None = None
+    page_number: int = 1
+    source_document: str = ""
+    confidence: float = 0.0
+
+
+class RevisionChange(BaseModel):
+    """A change between two revisions of the same plan."""
+    change_type: str  # "added", "removed", "modified"
+    entity_type: str  # "room", "dimension", "symbol", "text"
+    description: str
+    bbox_old: tuple[float, float, float, float] | None = None
+    bbox_new: tuple[float, float, float, float] | None = None
+    page_number: int = 1
+
+
+class ConfirmRequest(BaseModel):
+    """Request to confirm/reject an entity."""
+    action: str  # "confirm" | "reject"
+    notes: str | None = None
+
+
+class CorrectRoomRequest(BaseModel):
+    """Request to correct a room's name or polygon."""
+    name: str | None = None
+    polygon: list[dict] | None = None  # [{"x": 0, "y": 0}, ...]
+    notes: str | None = None
+
+
+class ScaleCalibrationRequest(BaseModel):
+    """Request to calibrate scale with two points."""
+    point1: dict  # {"x": 0, "y": 0}
+    point2: dict  # {"x": 100, "y": 0}
+    real_distance_m: float
+
+
+@router.get("/{plan_id}/overlays", response_model=list[OverlayRegion])
+def get_plan_overlays(
+    plan_id: int,
+    page: int | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """PM7.1 — Get overlay regions for a plan (cajetín, legend, notes)."""
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    document = db.get(Document, plan.document_id)
+    source_document = document.original_filename if document else ""
+    # A title-block indicator has no geometry extractor yet, so keep it
+    # explicitly marked as derived. Room and dimension overlays below are
+    # source-backed facts with their persisted confidence and coordinates.
+    regions = [
+        OverlayRegion(
+            region_type="cajetin",
+            bbox=(0.05, 0.85, 0.35, 0.95),
+            label=f"{plan.project_name or 'Proyecto'} - {plan.project_phase or ''}",
+            confidence=0.9,
+            source_document=source_document,
+            source_kind="plan_metadata",
+        ),
+    ]
+
+    for dimension in db.scalars(
+        select(PlanDimension).where(PlanDimension.plan_id == plan_id)
+    ).all():
+        coordinates = (dimension.bbox_x1, dimension.bbox_y1, dimension.bbox_x2, dimension.bbox_y2)
+        if any(value is None for value in coordinates):
+            continue
+        regions.append(
+            OverlayRegion(
+                region_type="dimension",
+                bbox=coordinates,
+                label=dimension.raw_text or str(dimension.value_m or dimension.value or "Cota"),
+                confidence=dimension.confidence or 0.0,
+                page_number=dimension.page_number or 1,
+                source_document=source_document,
+                source_kind="ocr_dimension",
+            )
+        )
+
+    for room in db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id)).all():
+        points = room.polygon_json if isinstance(room.polygon_json, list) else []
+        coordinates = [(point.get("x"), point.get("y")) for point in points if isinstance(point, dict)]
+        coordinates = [(x, y) for x, y in coordinates if x is not None and y is not None]
+        if not coordinates:
+            continue
+        xs = [point[0] for point in coordinates]
+        ys = [point[1] for point in coordinates]
+        regions.append(
+            OverlayRegion(
+                region_type="room",
+                bbox=(min(xs), min(ys), max(xs), max(ys)),
+                label=room.name or "Estancia",
+                confidence=room.confidence or 0.0,
+                source_document=source_document,
+                source_kind=room.source or "ocr_room",
+            )
+        )
+
+    if page:
+        regions = [r for r in regions if r.page_number == page]
+
+    return regions
+
+
+@router.get("/{plan_id}/chat-facts", response_model=list[ChatFactOverlay])
+def get_plan_chat_facts(
+    plan_id: int,
+    query: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """PM7.1 — Get chat-cited facts to highlight on the plan."""
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    facts: list[ChatFactOverlay] = []
+
+    # Add room facts
+    rooms = list(db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id)).all())
+    for room in rooms:
+        if room.polygon_json:
+            # Estimate bbox from polygon
+            points = room.polygon_json if isinstance(room.polygon_json, list) else []
+            if points:
+                xs = [p.get("x", 0) for p in points if isinstance(p, dict)]
+                ys = [p.get("y", 0) for p in points if isinstance(p, dict)]
+                if xs and ys:
+                    facts.append(ChatFactOverlay(
+                        fact_type="room",
+                        subject=room.name or "Sin nombre",
+                        value=f"{room.area_m2:.1f} m²" if room.area_m2 else "",
+                        bbox=(min(xs), min(ys), max(xs), max(ys)),
+                        confidence=room.confidence or 0.8,
+                    ))
+
+    # Filter by query if provided
+    if query:
+        query_lower = query.lower()
+        facts = [f for f in facts if query_lower in f.subject.lower() or query_lower in f.value.lower()]
+
+    return facts
+
+
+@router.get("/{plan_id}/revisions", response_model=list[RevisionChange])
+def get_plan_revision_changes(
+    plan_id: int,
+    revision_a: str | None = Query(None),
+    revision_b: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """PM5.3 — Get changes between two revisions of the same plan."""
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    # For now, return empty list — revision comparison requires
+    # two versions of the same plan stored in the database
+    return []
+
+
+@router.post("/{plan_id}/rooms/{room_id}/confirm", response_model=PlanRoomRead)
+def confirm_room(
+    plan_id: int,
+    room_id: int,
+    payload: ConfirmRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "gestor")),
+):
+    """PM7.2 — Confirm or reject a detected room."""
+    room = db.get(PlanRoom, room_id)
+    if not room or room.plan_id != plan_id:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    if payload.action == "confirm":
+        room.needs_review = False
+        room.confidence = min(1.0, (room.confidence or 0.5) + 0.2)
+    elif payload.action == "reject":
+        room.needs_review = True
+        room.confidence = max(0.0, (room.confidence or 0.5) - 0.3)
+
+    write_audit(
+        db, user=user,
+        action=f"plan_room_{payload.action}ed",
+        entity_type="plan_room",
+        entity_id=room_id,
+    )
+    db.commit()
+    db.refresh(room)
+    return room
+
+
+@router.patch("/{plan_id}/rooms/{room_id}", response_model=PlanRoomRead)
+def correct_room(
+    plan_id: int,
+    room_id: int,
+    payload: CorrectRoomRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "gestor")),
+):
+    """PM7.2 — Correct a room's name or polygon."""
+    room = db.get(PlanRoom, room_id)
+    if not room or room.plan_id != plan_id:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    if payload.name is not None:
+        room.name = payload.name
+    if payload.polygon is not None:
+        room.polygon_json = payload.polygon
+    room.needs_review = False
+    room.confidence = min(1.0, (room.confidence or 0.5) + 0.3)
+
+    write_audit(
+        db, user=user,
+        action="plan_room_corrected",
+        entity_type="plan_room",
+        entity_id=room_id,
+    )
+    db.commit()
+    db.refresh(room)
+    return room
+
+
+@router.post("/{plan_id}/confirm-scale", response_model=PlanRead)
+def confirm_scale(
+    plan_id: int,
+    payload: ScaleCalibrationRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "gestor")),
+):
+    """PM7.2 — Calibrate scale using two points and a known real distance."""
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    import math
+    dx = payload.point2["x"] - payload.point1["x"]
+    dy = payload.point2["y"] - payload.point1["y"]
+    pixel_distance = math.sqrt(dx * dx + dy * dy)
+
+    if pixel_distance > 0 and payload.real_distance_m > 0:
+        # Calculate scale: pixels per meter
+        pixels_per_meter = pixel_distance / payload.real_distance_m
+        # Convert to ratio (assuming 72 DPI PDF)
+        scale_ratio = int(72 / (pixels_per_meter / 25.4 * 72))
+
+        plan.scale_ratio = scale_ratio
+        plan.scale_text = f"1:{scale_ratio}"
+        plan.has_valid_scale = True
+        plan.scale_confidence = 1.0
+
+    write_audit(
+        db, user=user,
+        action="plan_scale_calibrated",
+        entity_type="plan",
+        entity_id=plan_id,
+    )
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+@router.post("/{plan_id}/dimensions/{dim_id}/confirm", response_model=PlanDimensionRead)
+def confirm_dimension(
+    plan_id: int,
+    dim_id: int,
+    payload: ConfirmRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin", "gestor")),
+):
+    """PM7.2 — Confirm or reject a detected dimension."""
+    dim = db.get(PlanDimension, dim_id)
+    if not dim or dim.plan_id != plan_id:
+        raise HTTPException(status_code=404, detail="Dimension not found")
+
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    if payload.action == "confirm":
+        dim.confidence = min(1.0, (dim.confidence or 0.5) + 0.2)
+    elif payload.action == "reject":
+        dim.confidence = max(0.0, (dim.confidence or 0.5) - 0.3)
+
+    write_audit(
+        db, user=user,
+        action=f"plan_dimension_{payload.action}ed",
+        entity_type="plan_dimension",
+        entity_id=dim_id,
+    )
+    db.commit()
+    db.refresh(dim)
+    return dim

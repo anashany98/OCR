@@ -286,6 +286,12 @@ def _build_filter_clauses(filters: dict[str, Any] | None) -> tuple[str, dict[str
     if f.get("budget_scope_id") is not None:
         clauses.append("d.budget_scope_id = :budget_scope_id")
         params["budget_scope_id"] = f["budget_scope_id"]
+    if f.get("project_id") is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM document_occurrences o "
+            "WHERE o.document_id = d.id AND o.project_id = :project_id)"
+        )
+        params["project_id"] = f["project_id"]
     if f.get("document_type"):
         clauses.append("d.document_type = :document_type")
         params["document_type"] = f["document_type"]

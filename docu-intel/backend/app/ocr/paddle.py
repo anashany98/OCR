@@ -17,8 +17,10 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import os
+import subprocess
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager, nullcontext
 from functools import cached_property
@@ -82,6 +84,60 @@ def _get_gpu_device() -> str | None:
     if devices and devices[0].strip():
         return devices[0].strip()
     return None
+
+
+def gpu_has_headroom(minimum_free_memory_mb: int | None = None) -> bool:
+    """Return whether the worker's assigned GPU has enough free VRAM.
+
+    CUDA visibility alone is insufficient on a desktop machine: LM Studio or
+    another local model may already occupy almost all VRAM.  Starting Paddle
+    in that condition leads to a cgroup SIGKILL, which loses the Celery child
+    and stalls the queue.  A failed probe is deliberately treated as no
+    headroom, so the cascade can use its safe Tesseract/VLM path.
+    """
+    device = _get_gpu_device()
+    if device is None:
+        return False
+    minimum = (
+        settings.paddle_gpu_min_free_memory_mb
+        if minimum_free_memory_mb is None
+        else minimum_free_memory_mb
+    )
+    visible_device = os.environ.get("NVIDIA_VISIBLE_DEVICES", device).strip()
+    if not visible_device or visible_device.lower() in {"all", "void", "none"}:
+        visible_device = device
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--id=" + visible_device.split(",")[0],
+                "--query-gpu=memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=5,
+        )
+        free_memory_mb = int(result.stdout.strip().splitlines()[0])
+    except (
+        FileNotFoundError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        ValueError,
+        IndexError,
+    ):
+        logger.warning("Unable to determine free VRAM; disabling GPU OCR for this worker")
+        return False
+    if free_memory_mb < minimum:
+        logger.warning(
+            "GPU OCR deferred: only %s MiB VRAM free on GPU %s (minimum %s MiB)",
+            free_memory_mb,
+            visible_device,
+            minimum,
+        )
+        return False
+    return True
 
 
 class PaddleOCREngine:
@@ -236,7 +292,9 @@ class PaddleOCREngine:
                         bbox = None
                         if i < len(dt_polys):
                             poly = dt_polys[i]
-                            bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
+                            bbox = _polygon_to_bbox(
+                                poly.tolist() if hasattr(poly, "tolist") else poly
+                            )
 
                         blocks.append(
                             OCRBlock(
@@ -268,9 +326,7 @@ class PaddleOCREngine:
             if ocr_path != image_path:
                 ocr_path.unlink(missing_ok=True)
 
-    def extract_batch(
-        self, image_paths: list[Path], max_workers: int = 2
-    ) -> list[OCRResult]:
+    def extract_batch(self, image_paths: list[Path], max_workers: int = 2) -> list[OCRResult]:
         """Process multiple pages using PaddleOCR's batch mode.
 
         PaddleOCR 3.x can process multiple images in one call, which
@@ -285,6 +341,7 @@ class PaddleOCREngine:
 
         # Preprocess all images
         from app.ocr.preprocess import preprocess_adaptive
+
         ocr_paths = []
         temp_files = []
         for path in image_paths:
@@ -299,7 +356,10 @@ class PaddleOCREngine:
 
             results = []
             if raw is None:
-                results = [OCRResult(text="", confidence=None, blocks=[], engine=self.name) for _ in image_paths]
+                results = [
+                    OCRResult(text="", confidence=None, blocks=[], engine=self.name)
+                    for _ in image_paths
+                ]
             else:
                 if not isinstance(raw, list):
                     raw = [raw]
@@ -333,11 +393,13 @@ class PaddleOCREngine:
                     poly = dt_polys[i]
                     bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
 
-                blocks.append(OCRBlock(
-                    text=text or "",
-                    confidence=float(score) if score is not None else None,
-                    bbox=bbox,
-                ))
+                blocks.append(
+                    OCRBlock(
+                        text=text or "",
+                        confidence=float(score) if score is not None else None,
+                        bbox=bbox,
+                    )
+                )
                 if score is not None:
                     confidences.append(float(score))
         elif isinstance(page_raw, (list, tuple)):

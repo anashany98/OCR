@@ -1,9 +1,9 @@
+# syntax=docker/dockerfile:1.7
 # GPU variant of the backend image (multi-stage + non-root).
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=5 \
     DEBIAN_FRONTEND=noninteractive
@@ -24,7 +24,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN python -m pip install --upgrade pip
 
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --default-timeout=120 --retries=5 \
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    python -m pip install --default-timeout=120 --retries=5 \
         -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
         --extra-index-url https://pypi.org/simple \
         paddlepaddle-gpu==3.3.1 \
@@ -56,7 +57,11 @@ COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY scripts /app/scripts
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# The repository is also built from Windows hosts.  Normalize CRLF here so
+# ``tini`` can execute the shell script instead of reporting a misleading
+# "No such file or directory" for its /bin/sh shebang.
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /app
 

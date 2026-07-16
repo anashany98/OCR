@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Budget, Document, DocumentPage, Order, Plan, SensitiveTag
+from app.services.ocr_page_roles import ocr_applicable_clause
 from app.services.quality import LOW_OCR_THRESHOLD, refresh_quality_from_existing_pages
 
 RULE_DEFINITIONS = {
@@ -53,6 +54,7 @@ def quality_summary(db: Session) -> dict:
             .select_from(DocumentPage)
             .join(Document, Document.id == DocumentPage.document_id)
             .where(Document.deleted_at.is_(None))
+            .where(ocr_applicable_clause(DocumentPage.ocr_content_kind))
             .where(DocumentPage.ocr_confidence.is_not(None))
             .where(DocumentPage.ocr_confidence < LOW_OCR_THRESHOLD)
         )

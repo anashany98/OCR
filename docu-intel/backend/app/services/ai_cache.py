@@ -4,8 +4,56 @@ Provides caching for AI responses to improve performance and reduce
 load on the local LLM server for repeated questions. The cache supports
 both exact-key lookups and semantic (embedding-similarity) lookups so
 reformulations of the same question also hit the cache.
-"""
 
+Cache-key isolation contract
+============================
+The cache key is a SHA-256 of every dimension that can change the
+answer for the *same* question text:
+
+* user_id — never share answers across users.
+* tenant / scope — every project, hotel chain, hotel, group and
+  permission flag the user holds at lookup time. See
+  :func:`app.services.tenant_access.access_scope_cache_key` for
+  the deterministic serialisation.
+* session_id — keeps the active-context resolution from leaking
+  across chat sessions.
+* mode — ``hybrid`` vs ``semantic`` produce different retrieval
+  results; the same question in two modes must not collide.
+* model — the chat-completion model name. A switch of model must
+  invalidate the cache.
+* prompt_version — see
+  :data:`app.ai.prompts.CHAT_PROMPT_VERSION`. Bumping the version
+  automatically invalidates the cache because the key changes.
+* knowledge_version — a monotonic counter bumped whenever the
+  underlying data the answer was built from changes (new
+  extraction, classification update, embedding re-embed,
+  permission grant, document delete). The caller passes the
+  current value (a small integer) so the cache is invalidated
+  atomically with the change.
+
+Anything outside this contract is *not* part of the key, so a
+question asked twice with the same scope always hits.
+
+Semantic cache isolation
+------------------------
+The semantic sidecar index is keyed by user_id so an embedding
+match from another user cannot leak. When the user changes scope
+(session, project, model, prompt_version) the sidecar entries
+are filtered by their ``key`` (which already encodes the full
+isolation vector) before cosine similarity is computed.
+
+Invalidation
+------------
+* :func:`invalidate_user_cache` removes all entries for a user
+  (used when their access scope changes).
+* :func:`invalidate_scope` removes entries for a specific scope
+  signature (used when a document in that scope is updated,
+  re-classified, re-embedded, re-extracted or deleted).
+* :func:`invalidate_all_ai_cache` is the escape hatch used by the
+  admin endpoint.
+* Any change to ``prompt_version`` or ``model`` is a key change,
+  not an invalidation — old entries naturally expire.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -21,6 +69,10 @@ AI_CACHE_TTL = 3600  # 1 hour (default)
 AI_CACHE_TTL_SHORT = 1800  # 30 min for complex/specific questions
 AI_CACHE_PREFIX = "ai:answer:"
 AI_SEMANTIC_PREFIX = "ai:sem:"
+# Index version is a per-deployment constant. Bumping it invalidates
+# every cached entry by changing the key namespace, which is the
+# cheap way to roll out a key-format change without a Redis flush.
+CACHE_INDEX_VERSION = 2
 SEMANTIC_SIM_THRESHOLD = 0.92  # cosine similarity above this = cache hit
 
 
@@ -37,31 +89,86 @@ def _cache_ttl(question: str) -> int:
 def _cache_key(
     question: str,
     user_id: int,
+    *,
     mode: str | None = None,
     scope_key: str | None = None,
     session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
 ) -> str:
-    """Generate a cache key for an AI question.
+    """Generate a fully isolated cache key.
 
-    Uses SHA256 hash to handle long questions and ensure consistent key length.
-    The user_id is placed before the hash so invalidate_user_cache can scan by prefix.
-    The session_id is mixed in so the same question from two different
-    sessions (e.g. one with active context, one without) does not
-    collide. The two requests could legitimately produce different
-    answers (the second one has the active context to resolve "este
-    presupuesto").
+    The function is the single source of truth for the isolation
+    vector. Any new dimension that can change the answer for the
+    same question text MUST be added here, otherwise two distinct
+    answers could collide and the user would see stale data.
     """
-    normalized_question = question.strip().lower()
-    content = (
-        f"{normalized_question}:{user_id}:{mode or 'default'}:"
-        f"{scope_key or 'default-scope'}:{session_id or 'no-session'}"
+    isolation = _cache_isolation_key(
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
     )
-    hash_digest = hashlib.sha256(content.encode()).hexdigest()
-    return f"{AI_CACHE_PREFIX}{user_id}:{hash_digest}"
+    normalized_question = question.strip().lower()
+    payload = f"{isolation}\u0001q={normalized_question}".encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()
+    return f"{AI_CACHE_PREFIX}{user_id}:{digest}"
+
+
+def answer_cache_key(
+    question: str,
+    user_id: int,
+    *,
+    mode: str | None = None,
+    scope_key: str | None = None,
+    session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
+) -> str:
+    """Return the isolated exact-answer key for cache and single-flight use."""
+    return _cache_key(
+        question,
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
+
+
+def _cache_isolation_key(
+    user_id: int,
+    *,
+    mode: str | None = None,
+    scope_key: str | None = None,
+    session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
+) -> str:
+    """Return cache dimensions that must match for semantic reuse."""
+    parts = [
+        f"v={CACHE_INDEX_VERSION}",
+        f"u={user_id}",
+        f"m={model or 'default'}",
+        f"pv={prompt_version or 'default'}",
+        f"mode={mode or 'default'}",
+        f"scope={scope_key or 'default-scope'}",
+        f"session={session_id or 'no-session'}",
+        f"kv={knowledge_version}",
+    ]
+    return "\u0001".join(parts)
 
 
 def _semantic_key(user_id: int) -> str:
-    return f"{AI_SEMANTIC_PREFIX}{user_id}"
+    return f"{AI_SEMANTIC_PREFIX}{user_id}:{CACHE_INDEX_VERSION}"
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -93,21 +200,48 @@ def get_cached_answer(
     mode: str | None = None,
     scope_key: str | None = None,
     session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
 ) -> dict[str, Any] | None:
     """Retrieve a cached AI answer if available.
 
     Lookup order:
-      1. Exact key (fastest).
+      1. Exact key (fastest, fully isolated).
       2. Semantic similarity >= `SEMANTIC_SIM_THRESHOLD` (catches
          reformulations like "cuanto llevamos en melia?" vs "total
-         facturado a melia").
+         facturado a melia?"). The semantic sidecar only considers
+         entries whose stored ``key`` matches the current isolation
+         vector, so a reformulation from another scope can never win.
     """
-    key = _cache_key(question, user_id, mode, scope_key, session_id)
+    key = _cache_key(
+        question,
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
+    isolation = _cache_isolation_key(
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
     exact = cache_service.get(key)
     if exact:
         return exact
 
-    # Semantic lookup
+    # Semantic lookup. The sidecar only stores entries that the same
+    # user produced, but we still filter by the full isolation vector
+    # (encoded inside each entry's ``key``) so a question that was
+    # answered in a *different* scope, with a *different* model or
+    # with a *different* prompt version can never be reused.
     query_vec = _embed_question(question)
     if not query_vec:
         return None
@@ -116,15 +250,19 @@ def get_cached_answer(
     if not sem_index:
         return None
     try:
-        best_match: tuple[float, dict | None] = (0.0, None)
+        best_match: tuple[float, str | None] = (0.0, None)
         for entry in sem_index:  # type: ignore[union-attr]
+            entry_key = entry.get("key")
+            if not entry_key or entry.get("isolation") != isolation:
+                # The isolation vector differs. Skip
+                # without even computing cosine.
+                continue
             vec = entry.get("embedding")
-            ans_key = entry.get("key")
-            if not vec or not ans_key:
+            if not vec:
                 continue
             sim = _cosine(query_vec, vec)
             if sim > best_match[0]:
-                best_match = (sim, ans_key)
+                best_match = (sim, entry_key)
         if best_match[0] >= SEMANTIC_SIM_THRESHOLD and best_match[1]:
             cached = cache_service.get(best_match[1])
             if cached:
@@ -143,30 +281,70 @@ def cache_answer(
     mode: str | None = None,
     scope_key: str | None = None,
     session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
     ttl: int | None = None,
 ) -> bool:
     """Cache an AI answer for future queries.
 
-    Stores both the exact-key entry and a sidecar semantic index entry
-    containing the question's embedding, so subsequent reformulations
-    can be served from cache.
+    The ``answer`` payload should already be the canonical response
+    dict (with ``answer``, ``confidence``, ``model_name``,
+    ``sources``). The function stores the exact-key entry and
+    appends a sidecar semantic index entry with the full isolation
+    vector. Any future lookup that does not match
+    the same vector will skip the entry before computing cosine.
     """
+    key = _cache_key(
+        question,
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
+    isolation = _cache_isolation_key(
+        user_id,
+        mode=mode,
+        scope_key=scope_key,
+        session_id=session_id,
+        model=model,
+        prompt_version=prompt_version,
+        knowledge_version=knowledge_version,
+    )
     effective_ttl = ttl if ttl is not None else _cache_ttl(question)
-    key = _cache_key(question, user_id, mode, scope_key, session_id)
-    ok = cache_service.set(key, answer, effective_ttl)
-    # Sidecar: append a {embedding, key} to the per-user semantic index.
+    # Store the isolation vector inside the payload so
+    # :func:`invalidate_scope` can find entries produced under a
+    # given scope without re-deriving the key. The fields are
+    # prefixed with ``_`` so the route handlers strip them before
+    # serialising to the client.
+    enriched = dict(answer)
+    enriched.setdefault("_scope_key", scope_key)
+    enriched.setdefault("_prompt_version", prompt_version)
+    enriched.setdefault("_model", model)
+    enriched.setdefault("_knowledge_version", knowledge_version)
+    ok = cache_service.set(key, enriched, effective_ttl)
+    # Sidecar: append the vector and its isolation dimensions to the
+    # per-user semantic index.
     try:
         vec = _embed_question(question)
         if vec:
             sem_key = _semantic_key(user_id)
             index = cache_service.get(sem_key) or []
             index.append(
-                {"embedding": vec, "key": key, "ts": hashlib.md5(question.encode()).hexdigest()[:8]}
+                {
+                    "embedding": vec,
+                    "key": key,
+                    "isolation": isolation,
+                    "ts": hashlib.md5(question.encode()).hexdigest()[:8],
+                }
             )
             # Keep the index bounded; trim oldest entries past 200.
             if len(index) > 200:
                 index = index[-200:]
-            cache_service.set(sem_key, index, ttl)
+            cache_service.set(sem_key, index, effective_ttl)
     except Exception as exc:
         logger.debug("Failed to extend semantic cache index: %s", exc)
     return ok
@@ -176,7 +354,47 @@ def invalidate_user_cache(user_id: int) -> int:
     """Invalidate all cached AI answers for a specific user."""
     pattern = f"{AI_CACHE_PREFIX}{user_id}:*"
     deleted = cache_service.delete_pattern(pattern)
-    cache_service.delete(f"{AI_SEMANTIC_PREFIX}{user_id}")
+    cache_service.delete(_semantic_key(user_id))
+    return deleted
+
+
+def invalidate_scope(scope_key: str) -> int:
+    """Invalidate every cached answer that was produced under a given
+    scope signature.
+
+    The implementation scans the answer namespace and removes any
+    entry whose stored payload advertises the scope. This is
+    sufficient for the FASE 7/8 invalidation contract: when a
+    document in the scope is added, modified, re-classified or
+    re-embedded, the operator calls this function and the next
+    lookup falls through to the live LLM.
+    """
+    if not scope_key:
+        return 0
+    client = cache_service.client
+    deleted = 0
+    for key in client.scan_iter(match=f"{AI_CACHE_PREFIX}*", count=200):
+        payload = cache_service.get(key)
+        if not payload:
+            continue
+        if payload.get("_scope_key") == scope_key:
+            cache_service.delete(key)
+            deleted += 1
+    for sem_key in client.scan_iter(match=f"{AI_SEMANTIC_PREFIX}*", count=200):
+        index = cache_service.get(sem_key)
+        if not isinstance(index, list):
+            continue
+        retained = []
+        for entry in index:
+            isolation = entry.get("isolation") if isinstance(entry, dict) else None
+            parts = str(isolation).split("") if isolation else []
+            if f"scope={scope_key}" not in parts:
+                retained.append(entry)
+        if len(retained) != len(index):
+            if retained:
+                cache_service.set(sem_key, retained, AI_CACHE_TTL)
+            else:
+                cache_service.delete(sem_key)
     return deleted
 
 
@@ -198,6 +416,7 @@ def get_cache_stats() -> dict[str, Any]:
             "ai_semantic_indexes": len(sem_keys),
             "ttl_seconds": AI_CACHE_TTL,
             "semantic_threshold": SEMANTIC_SIM_THRESHOLD,
+            "cache_index_version": CACHE_INDEX_VERSION,
             "enabled": True,
         }
     except Exception:
@@ -206,6 +425,7 @@ def get_cache_stats() -> dict[str, Any]:
             "ai_cache_entries": 0,
             "ai_semantic_indexes": 0,
             "ttl_seconds": AI_CACHE_TTL,
+            "cache_index_version": CACHE_INDEX_VERSION,
             "enabled": False,
             "error": "Unable to connect to cache",
         }
@@ -244,12 +464,17 @@ async def get_cached_answer_async(
     mode: str | None = None,
     scope_key: str | None = None,
     session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
 ) -> dict[str, Any] | None:
     """Async variant of :func:`get_cached_answer` for FastAPI handlers.
 
-    Lookup semantics match the sync helper exactly. The function is
-    off-loaded to a worker thread because the underlying Redis client
-    used by :mod:`app.services.cache` is synchronous.
+    The argument list mirrors the sync helper exactly so the
+    call-sites in the route handlers cannot accidentally drop a
+    dimension. The function is off-loaded to a worker thread
+    because the underlying Redis client used by
+    :mod:`app.services.cache` is synchronous.
     """
     return await asyncio.to_thread(
         get_cached_answer,
@@ -258,6 +483,9 @@ async def get_cached_answer_async(
         mode,
         scope_key,
         session_id,
+        model,
+        prompt_version,
+        knowledge_version,
     )
 
 
@@ -268,21 +496,34 @@ async def cache_answer_async(
     mode: str | None = None,
     scope_key: str | None = None,
     session_id: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    knowledge_version: int = 0,
     ttl: int | None = None,
 ) -> bool:
     """Async variant of :func:`cache_answer` for FastAPI handlers.
 
-    Stores both the exact-key entry and the sidecar semantic index in
-    Redis via a worker thread so the event loop stays responsive while
-    the answer is being persisted.
+    The extra ``_scope_key``/``_prompt_version`` fields in the
+    stored payload make the entry discoverable by
+    :func:`invalidate_scope` without recomputing the key. The
+    keys are prefixed with ``_`` so they never leak to the client
+    (the route handlers strip the prefix before serialising).
     """
+    enriched = dict(answer)
+    enriched["_scope_key"] = scope_key
+    enriched["_prompt_version"] = prompt_version
+    enriched["_model"] = model
+    enriched["_knowledge_version"] = knowledge_version
     return await asyncio.to_thread(
         cache_answer,
         question,
         user_id,
-        answer,
+        enriched,
         mode,
         scope_key,
         session_id,
+        model,
+        prompt_version,
+        knowledge_version,
         ttl,
     )

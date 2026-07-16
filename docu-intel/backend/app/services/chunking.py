@@ -255,6 +255,14 @@ def _emit_table(
     if not text:
         return heading_prefix
 
+    # Tables are atomic retrieval units: totals and row labels lose their
+    # meaning when a large table is split into independent embeddings.
+    if heading_prefix:
+        text = f"{heading_prefix}\n{text}"
+        heading_prefix = None
+    chunks.append(Chunk(text=text, token_count=_word_count(text), chunk_type="table"))
+    return heading_prefix
+
     word_count = _word_count(text)
     if word_count <= max_words or len(lines) <= 2:
         # Small table or no header/body distinction — keep as single chunk.

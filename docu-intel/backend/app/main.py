@@ -180,7 +180,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
+def healthz() -> dict[str, str | dict[str, str]]:
     """Readiness real: DB + Redis."""
     from sqlalchemy import text as _sa_text
 

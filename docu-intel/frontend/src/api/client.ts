@@ -1,4 +1,4 @@
-﻿import { adminApi } from "./admin"
+import { adminApi } from "./admin"
 import { aiApi } from "./ai"
 import { authApi } from "./auth"
 import { businessApi } from "./business"
@@ -11,9 +11,11 @@ export {
   ApiError,
   type BatchUploadResult,
   buildSearchParams,
+  documentPreviewUrl,
   downloadUrl,
   pageImageUrl,
   request,
+  setUnauthorizedHandler,
   thumbnailUrl,
 } from "./core"
 

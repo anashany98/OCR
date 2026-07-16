@@ -1,10 +1,16 @@
 from app.ai.agent import build_grounded_response, select_tools_for_question
-from app.services.embeddings import cosine_similarity, embed_text
 from app.services import search_service
+from app.services.embeddings import cosine_similarity, embed_text
 from app.services.search_service import SearchResult, merge_hybrid_results
 
 
-def test_local_embedding_is_1024_dimensional_and_semantically_useful():
+def test_local_embedding_is_1024_dimensional_and_semantically_useful(monkeypatch):
+    # This is an offline unit contract; it must not depend on a running
+    # OpenAI-compatible embedding server from the developer environment.
+    from app.services import embeddings
+
+    monkeypatch.setattr(embeddings.settings, "embedding_provider", "local_hash")
+    monkeypatch.setattr(embeddings.settings, "embedding_dimensions", 1024)
     query_vector = embed_text("pedido referencia ABC123")
     related_vector = embed_text("Lineas del pedido con referencia ABC123")
     unrelated_vector = embed_text("plano salon escala y superficie")
@@ -15,9 +21,14 @@ def test_local_embedding_is_1024_dimensional_and_semantically_useful():
 
 def test_search_semantic_uses_query_embedding_role(monkeypatch):
     calls: list[str] = []
+    monkeypatch.setattr(search_service.settings, "search_use_query_transformer", False)
 
     class _FakePgvectorStore:
         def search(self, db, *, query_embedding, limit, filters):
+            assert query_embedding == [0.4, 0.3, 0.2, 0.1]
+            return []
+
+        def search_documents(self, db, *, query_embedding, limit, filters):
             assert query_embedding == [0.4, 0.3, 0.2, 0.1]
             return []
 
@@ -117,7 +128,10 @@ def test_ai_agent_selects_only_controlled_tools_for_common_intents():
         "get_accepted_budgets_without_order"
     )
     assert select_tools_for_question("Ensenyame las lineas del pedido 2026/154")[0].name == "get_order_by_number"
-    assert select_tools_for_question("Que documentos mencionan la referencia ABC123?")[0].name == "hybrid_search"
+    assert (
+        select_tools_for_question("Que documentos mencionan la referencia ABC123?")[0].name
+        == "find_documents_by_exact_phrase"
+    )
     assert select_tools_for_question("Cuanto mide el salon segun el plano?")[0].name == "search_plan_room_measurements"
 
 

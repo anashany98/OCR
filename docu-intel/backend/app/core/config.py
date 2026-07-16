@@ -56,6 +56,19 @@ class Settings(BaseSettings):
 
     files_dir: Path = Path("/app/data/files")
     input_dir: Path = Path("/app/data/input")
+    source_corpus_dir: Path = Path("/app/source/2025")
+
+    @field_validator("source_corpus_dir", mode="after")
+    @classmethod
+    def _resolve_source_corpus(cls, value: Path) -> Path:
+        """Fall back to /app/source/2025 if the configured path doesn't exist."""
+        if value.is_dir():
+            return value
+        fallback = Path("/app/source/2025")
+        if fallback.is_dir():
+            return fallback
+        return value
+
     scan_interval_seconds: int = 300
     ingestion_stable_seconds: int = 30
     ingestion_max_pending_jobs: int = 200
@@ -85,9 +98,23 @@ class Settings(BaseSettings):
             ".eml",
             ".doc",
             ".docx",
+            ".msg",
             ".dxf",
+            ".dwg",
         ]
     )
+    # Absolute path inside the worker/container to ODA File Converter.  The
+    # converter is optional because it is a separately licensed executable;
+    # when absent, DWG files remain visible for manual conversion instead of
+    # being decoded as corrupt text.
+    dwg_converter_path: str = ""
+    dwg_converter_timeout_seconds: int = 120
+    dwg_converter_version: str = "ACAD2018"
+    # Docker containers cannot execute a Windows ``ODAFileConverter.exe``.
+    # On Docker Desktop, a local authenticated bridge can invoke the
+    # operator-installed executable on the Windows host instead.
+    dwg_converter_bridge_url: str = ""
+    dwg_converter_bridge_token: str = ""
     file_storage_strategy: Literal["copy", "hardlink", "auto"] = "auto"
     watcher_enabled: bool = True
     watcher_backend: Literal["native", "polling"] = "native"
@@ -112,6 +139,10 @@ class Settings(BaseSettings):
     ai_provider: str = "local_openai_compatible"
     ai_base_url: str = ""
     ai_model: str = ""
+    # Optional low-latency model for short factual chat turns. Empty keeps the
+    # current single-model behaviour, making rollout and rollback explicit.
+    ai_fast_model: str = ""
+    ai_model_routing_enabled: bool = True
     ai_api_key: str = ""
     ai_request_timeout_seconds: float = 120.0
     ai_max_retries: int = 2
@@ -121,6 +152,9 @@ class Settings(BaseSettings):
     # Max concurrent LLM/vision requests. Prevents VRAM exhaustion
     # when many users ask questions simultaneously. Set to 0 to disable.
     ai_max_concurrent_requests: int = 4
+    # Deterministic answers for a deliberately narrow set of trusted
+    # structured facts. They avoid an LLM request while retaining the source.
+    ai_structured_answer_enabled: bool = True
     # M11 (Sprint 4): hard token budget for the context sent to the LLM.
     # The system prompt + user prompt overhead is ~800 tokens; the
     # remainder is context.  Local 8B models typically have 8K context;
@@ -169,6 +203,9 @@ class Settings(BaseSettings):
     dots_mocr_api_key: str = ""
     dots_mocr_timeout_seconds: float = 120.0
     dots_mocr_quality_threshold: float = 0.62
+    ocr_auto_accept_confidence: float = 0.70
+    ocr_auto_accept_improvement: float = 0.15
+    ocr_manuscript_route_threshold: float = 0.75
     # Domain-specific VLM prompt. "generic" uses standard OCR prompt;
     # "interior_design" uses a specialized prompt for hand-drawn sketches,
     # furniture measurements, fabric samples, and curtain dimensions.
@@ -251,6 +288,11 @@ class Settings(BaseSettings):
     # visible GPU (CUDA_VISIBLE_DEVICES unset) and degrades to Tier 1 (Tesseract)
     # + Tier 4 (vision LLM). GPU workers are unaffected.
     paddleocr_gpu_only: bool = True
+    # Leave a small VRAM reserve for the desktop model server and the display
+    # driver.  If the assigned GPU has less than this available, the cascade
+    # skips Paddle/PP-Structure for this task instead of letting the kernel
+    # kill the Celery child during model initialisation.
+    paddle_gpu_min_free_memory_mb: int = 2048
     # Number of scanned pages to OCR in parallel within a single document.
     # Each worker thread opens its own fitz handle and runs the cascade
     # independently; the OCR C extensions release the GIL so this achieves
@@ -326,8 +368,26 @@ class Settings(BaseSettings):
     search_mmr_pool_size: int = 0  # 0 = use the default
     # Multi-query expansion: generate N query variations to improve
     # recall when the user's phrasing differs from the document's.
-    search_multi_query_enabled: bool = True
+    search_multi_query_enabled: bool = False
     search_multi_query_max_variants: int = 3
+    # CHAT-LATENCY: the chat context collector already owns query
+    # expansion. Keeping the semantic layer's own expansion enabled creates
+    # a multiplicative number of embeddings and vector searches.
+    search_query_plan_enabled: bool = True
+    search_query_plan_version: str = "v1"
+    search_allow_nested_expansion: bool = False
+    search_max_variants_factual: int = 1
+    search_max_variants_synthesis: int = 2
+    # The in-process BGE cross-encoder is unsafe for latency when the
+    # backend has no CUDA device. It is opt-in until a bounded GPU or HTTP
+    # reranker passes the quality gate.
+    search_reranker_enabled: bool = False
+    search_reranker_backend: str = "off"  # off | local | http
+    search_reranker_max_candidates: int = 8
+    search_reranker_timeout_seconds: float = 0.5
+    # Exact document references already have authoritative structured
+    # context; semantic search is a fallback, not a compulsory second step.
+    search_exact_first_enabled: bool = True
     # R2 — Prompt-injection defence knobs. ``sensitivity``
     # controls how aggressive the regex detector is
     # (``low`` catches only obvious patterns, ``high`` is very
@@ -452,6 +512,8 @@ class Settings(BaseSettings):
     max_upload_files: int = 2000
     max_pdf_pages: int = 1000  # Bumped for large plan sets
     max_image_megapixels: float = 40.0
+    max_embedded_images_per_document: int = 20
+    max_embedded_image_bytes: int = 10_000_000
     max_excel_rows: int = 100_000
     max_excel_sheets: int = 50
     pdf_ocr_dpi: int = 300
@@ -525,7 +587,7 @@ class Settings(BaseSettings):
     # Master switch for the periodic engine-version sweep. Disabled by
     # default so deployments that have not migrated pick up no extra
     # work; set ``OCR_REPROCESS_ON_VERSION_DRIFT=true`` to enable.
-    ocr_reprocess_on_version_drift: bool = True
+    ocr_reprocess_on_version_drift: bool = False
 
     # =========================================================================
     # Hyper-Extract — optional structured-extraction layer on top of OCR
@@ -553,6 +615,9 @@ class Settings(BaseSettings):
     # standard ``process_document`` pipeline. When False, only explicit
     # calls via the API or the test script trigger an extraction.
     hyperextract_run_in_pipeline: bool = False
+    # Keep provider calls off the OCR worker. When pipeline extraction is
+    # enabled, a post-commit Celery task performs it on the dedicated queue.
+    hyperextract_async: bool = True
 
     metrics_token: str = ""
     admin_email: str = "admin@local"

@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -16,6 +17,7 @@ from app.core.security import (
     decode_integration_token,
 )
 from app.models import ApiClientBudgetScope, BudgetScope, Document
+from app.models.project import Project
 
 
 @dataclass(frozen=True)
@@ -70,10 +72,21 @@ def extract_budget_code_from_path(path: str | None) -> str | None:
 def ensure_budget_scope(
     db: Session, budget_code: str, *, source_path: str | None = None
 ) -> BudgetScope:
+    """Return a legacy, explicitly unscoped integration scope.
+
+    This entry point remains for integrations that have not supplied the
+    hierarchy yet.  It must never select an arbitrary contextual scope merely
+    because the human-readable code is the same.
+    """
     clean = _clean_budget_code(budget_code)
     if not clean:
         raise ValueError("Invalid budget code")
-    scope = db.scalar(select(BudgetScope).where(BudgetScope.budget_code == clean))
+    scope = db.scalar(
+        select(BudgetScope).where(
+            BudgetScope.budget_code == clean,
+            BudgetScope.legacy_unscoped.is_(True),
+        )
+    )
     if scope:
         if source_path and not scope.source_path:
             scope.source_path = source_path
@@ -83,10 +96,92 @@ def ensure_budget_scope(
         source_path=source_path,
         display_name=f"Presupuesto {clean}",
         status="pending",
+        legacy_unscoped=True,
     )
     db.add(scope)
     db.flush()
     return scope
+
+
+def get_or_create_budget_scope(
+    db: Session,
+    year: int,
+    brand_id: int,
+    hotel_id: int | None,
+    budget_code: str,
+) -> BudgetScope:
+    """Return the deterministic budget identity for one physical context."""
+    clean = _clean_budget_code(budget_code)
+    if not clean:
+        raise ValueError("Invalid budget code")
+    stmt = select(BudgetScope).where(
+        BudgetScope.year == year,
+        BudgetScope.brand_id == brand_id,
+        BudgetScope.hotel_id.is_(None) if hotel_id is None else BudgetScope.hotel_id == hotel_id,
+        BudgetScope.budget_code == clean,
+    )
+    scope = db.scalar(stmt)
+    if scope:
+        return scope
+    context_key = f"{year}:{brand_id}:{hotel_id if hotel_id is not None else '-'}:{clean}"
+    try:
+        with db.begin_nested():
+            scope = BudgetScope(
+                year=year,
+                brand_id=brand_id,
+                hotel_id=hotel_id,
+                budget_code=clean,
+                context_key=context_key,
+                display_name=f"Presupuesto {clean}",
+                status="pending",
+                legacy_unscoped=False,
+            )
+            db.add(scope)
+            db.flush()
+        return scope
+    except IntegrityError:
+        # PostgreSQL enforces contextual uniqueness.  A concurrent writer may
+        # win after the initial read; re-read inside the caller transaction.
+        scope = db.scalar(stmt)
+        if scope is None:
+            raise
+        return scope
+
+
+def get_or_create_project_for_budget(
+    db: Session,
+    year: int,
+    brand_id: int,
+    hotel_id: int | None,
+    budget_scope_id: int,
+) -> Project:
+    """Create exactly one project for an explicitly contextual budget."""
+    stmt = select(Project).where(
+        Project.year == year,
+        Project.brand_id == brand_id,
+        Project.primary_budget_scope_id == budget_scope_id,
+        Project.hotel_id.is_(None) if hotel_id is None else Project.hotel_id == hotel_id,
+    )
+    project = db.scalar(stmt)
+    if project:
+        return project
+    try:
+        with db.begin_nested():
+            project = Project(
+                year=year,
+                brand_id=brand_id,
+                hotel_id=hotel_id,
+                primary_budget_scope_id=budget_scope_id,
+                name=f"Proyecto {year}/{brand_id}/{budget_scope_id}",
+            )
+            db.add(project)
+            db.flush()
+        return project
+    except IntegrityError:
+        project = db.scalar(stmt)
+        if project is None:
+            raise
+        return project
 
 
 def assign_document_budget_scope(
@@ -130,10 +225,31 @@ def _upsert_budget_entity(db, document_id: int, budget_number: str) -> None:
 
 
 def get_budget_scope_by_code(db: Session, budget_code: str) -> BudgetScope | None:
+    """Resolve a code only when it is legacy or unambiguous.
+
+    Contextual callers must use year/brand/hotel.  Returning no result for an
+    ambiguous bare code is safer than leaking or joining the wrong project.
+    """
     clean = _clean_budget_code(budget_code)
     if not clean:
         return None
-    return db.scalar(select(BudgetScope).where(BudgetScope.budget_code == clean))
+    legacy_scope = db.scalar(
+        select(BudgetScope).where(
+            BudgetScope.budget_code == clean,
+            BudgetScope.legacy_unscoped.is_(True),
+        )
+    )
+    if legacy_scope is not None:
+        return legacy_scope
+    contextual_scopes = list(
+        db.scalars(
+            select(BudgetScope)
+            .where(BudgetScope.budget_code == clean)
+            .where(BudgetScope.legacy_unscoped.is_(False))
+            .limit(2)
+        )
+    )
+    return contextual_scopes[0] if len(contextual_scopes) == 1 else None
 
 
 def get_client_budget_permission(
@@ -210,6 +326,11 @@ def _clean_budget_code(value: str | None) -> str | None:
     candidate = value.strip().strip("/\\")
     if not candidate or "." in candidate:
         return None
+    # Budget identifiers in the source corpus commonly use ``YYYY/NNN``.
+    # This is an identifier, not a filesystem path, so accept that narrow
+    # numeric form while keeping arbitrary slash-containing values rejected.
+    if re.fullmatch(r"\d{4}/\d{1,115}", candidate):
+        return candidate
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{1,119}", candidate):
         return None
     return candidate

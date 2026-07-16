@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 interface TableState {
   sort?: { id: string; desc: boolean }
@@ -13,20 +13,29 @@ interface TableState {
  */
 export function useTableState(tableId: string, initialState?: TableState) {
   const storageKey = `docu-intel:table:${tableId}`
+  const skipNextPersist = useRef(false)
 
   const [state, setState] = useState<TableState>(() => {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) return { ...initialState, ...JSON.parse(saved) }
-    } catch {}
+    } catch {
+      // Ignore unavailable or malformed persisted state.
+    }
     return initialState ?? {}
   })
 
   // Save to localStorage on change
   useEffect(() => {
+    if (skipNextPersist.current) {
+      skipNextPersist.current = false
+      return
+    }
     try {
       localStorage.setItem(storageKey, JSON.stringify(state))
-    } catch {}
+    } catch {
+      // Persistence is best-effort.
+    }
   }, [storageKey, state])
 
   const setSort = useCallback((sort: TableState["sort"]) => {
@@ -72,8 +81,11 @@ export function useTableState(tableId: string, initialState?: TableState) {
   }, [])
 
   const reset = useCallback(() => {
+    skipNextPersist.current = true
     setState(initialState ?? {})
-    try { localStorage.removeItem(storageKey) } catch {}
+    try { localStorage.removeItem(storageKey) } catch {
+      // Persistence is best-effort.
+    }
   }, [storageKey, initialState])
 
   return {

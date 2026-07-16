@@ -28,6 +28,8 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
+from app.ocr.base import BaseOCREngine
+from app.parsers.embedded_images import EmbeddedImage, extract_embedded_image_pages
 from app.parsers.types import ExtractedBlock, ExtractedDocument, ExtractedPage
 
 logger = logging.getLogger(__name__)
@@ -241,7 +243,21 @@ def _extract_html_tables_markdown(html: str) -> str:
     return parser.close()
 
 
-def parse_msg(path: Path) -> ExtractedDocument:
+def _image_attachment(att) -> EmbeddedImage | None:
+    name = (
+        getattr(att, "longFilename", None)
+        or getattr(att, "shortFilename", None)
+        or "(adjunto sin nombre)"
+    )
+    content = getattr(att, "data", None)
+    return EmbeddedImage(name, content) if isinstance(content, bytes) else None
+
+
+def parse_msg(
+    path: Path,
+    output_dir: Path | None = None,
+    ocr_engine: BaseOCREngine | None = None,
+) -> ExtractedDocument:
     import extract_msg
 
     msg = extract_msg.Message(str(path))
@@ -296,6 +312,7 @@ def parse_msg(path: Path) -> ExtractedDocument:
             )
 
         attachment_names: list[str] = []
+        image_attachments: list[EmbeddedImage] = []
         try:
             for att in msg.attachments or []:
                 name = (
@@ -304,6 +321,9 @@ def parse_msg(path: Path) -> ExtractedDocument:
                     or "(adjunto sin nombre)"
                 )
                 attachment_names.append(name)
+                image = _image_attachment(att)
+                if image is not None:
+                    image_attachments.append(image)
         except Exception:
             logger.debug("attachment_list_failed", exc_info=True)
     finally:
@@ -327,20 +347,28 @@ def parse_msg(path: Path) -> ExtractedDocument:
 
     text = "\n".join(header_lines) + "\n\n" + body_clean
 
-    return ExtractedDocument(
-        pages=[
-            ExtractedPage(
-                page_number=1,
-                text=text,
-                blocks=[
-                    ExtractedBlock(
-                        block_type="text",
-                        text=text,
-                        page_number=1,
-                        confidence=1.0,
-                        source_engine="extract-msg",
-                    )
-                ],
-            )
-        ]
+    pages = [
+        ExtractedPage(
+            page_number=1,
+            text=text,
+            ocr_content_kind="native_text",
+            blocks=[
+                ExtractedBlock(
+                    block_type="text",
+                    text=text,
+                    page_number=1,
+                    confidence=1.0,
+                    source_engine="extract-msg",
+                )
+            ],
+        )
+    ]
+    pages.extend(
+        extract_embedded_image_pages(
+            image_attachments,
+            output_dir=output_dir,
+            ocr_engine=ocr_engine,
+            first_page_number=len(pages) + 1,
+        )
     )
+    return ExtractedDocument(pages=pages)

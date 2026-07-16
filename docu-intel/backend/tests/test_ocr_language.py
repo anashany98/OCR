@@ -49,8 +49,8 @@ def test_thresholds_for_known_latin_languages():
     es = thresholds_for("es")
     en = thresholds_for("en")
     de = thresholds_for("de")
-    assert es == LanguageThresholds(min_chars=30, min_confidence=0.50)
-    assert en == LanguageThresholds(min_chars=30, min_confidence=0.50)
+    assert es == LanguageThresholds(min_chars=150, min_confidence=0.70)
+    assert en == LanguageThresholds(min_chars=150, min_confidence=0.70)
     # German: tighter confidence floor because of umlauts.
     assert de.min_confidence > es.min_confidence
 
@@ -218,21 +218,20 @@ def _result(text: str, confidence: float = 0.8, engine: str = "fake") -> OCRResu
 
 
 def test_cascade_uses_per_language_min_confidence(monkeypatch, tmp_path: Path):
-    """A page detected as German (min_confidence=0.55) must escalate
-    when the primary result lands at conf=0.52, whereas a Spanish
-    page (min_confidence=0.50) would keep the same result."""
+    """German's stricter confidence floor must escalate while Spanish
+    accepts the same sufficiently long primary result."""
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "ocr_cascading_use_adaptive_thresholds", True)
 
-    primary = _RecordingEngine("primary", _result("A" * 40, confidence=0.52, engine="tesseract"))
+    primary = _RecordingEngine("primary", _result("A" * 200, confidence=0.72, engine="tesseract"))
     fallback = _RecordingEngine("fallback", _result("B" * 60, confidence=0.95, engine="paddleocr"))
     cascade = CascadingOCREngine(primary=primary, fallback=fallback, min_chars=30, min_confidence=0.5)
 
     image = tmp_path / "blank.png"
     image.write_bytes(b"")
 
-    # Spanish: conf=0.52 > 0.50 (es) -> primary is acceptable, no escalation.
+    # Spanish: 200 chars and 0.72 meet its 150/0.70 threshold.
     cascade.current_language = "es"
     cascade.extract(image)
     assert primary.calls == 1

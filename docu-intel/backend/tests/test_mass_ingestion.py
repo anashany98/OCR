@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Generator
 from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
@@ -76,6 +75,30 @@ def test_scan_registers_stable_files_from_input_folders(tmp_path, monkeypatch):
     assert document.source_path == str(stable_file)
 
 
+def test_scan_max_examined_bounds_periodic_rescans(tmp_path, monkeypatch):
+    sessions = _session_factory()
+    input_dir = tmp_path / "input"
+    for index in range(3):
+        stable_file = input_dir / "pedidos" / f"pedido-{index}.txt"
+        stable_file.parent.mkdir(parents=True, exist_ok=True)
+        stable_file.write_bytes(f"pedido {index}".encode())
+        _old_enough(stable_file)
+
+    monkeypatch.setattr(settings, "input_dir", input_dir)
+    monkeypatch.setattr(settings, "files_dir", tmp_path / "files")
+    monkeypatch.setattr(settings, "ingestion_stable_seconds", 1)
+    monkeypatch.setattr(settings, "allowed_file_extensions", [".txt"])
+    monkeypatch.setattr(settings, "file_storage_strategy", "copy")
+
+    with sessions() as db:
+        result = scan_input_folders(db, enqueue=False, max_examined=2)
+        documents = list(db.scalars(select(Document)).all())
+
+    assert result["scanned"] == 2
+    assert result["registered"] == 2
+    assert len(documents) == 2
+
+
 def test_file_storage_auto_uses_hardlink_when_available(tmp_path, monkeypatch):
     source = tmp_path / "origen.pdf"
     source.write_bytes(b"contenido grande")
@@ -116,7 +139,9 @@ def test_pending_file_registry_releases_paths_after_settle_delay():
     pending.add(Path("/data/input/pedidos/a.pdf"), now=10.0)
     pending.add(Path("/data/input/pedidos/b.pdf"), now=20.0)
 
-    assert pending.ready_paths(now=24.0, settle_seconds=5.0, limit=10) == [Path("/data/input/pedidos/a.pdf")]
+    assert pending.ready_paths(now=24.0, settle_seconds=5.0, limit=10) == [
+        Path("/data/input/pedidos/a.pdf")
+    ]
     assert pending.ready_paths(now=25.0, settle_seconds=5.0, limit=10) == [
         Path("/data/input/pedidos/a.pdf"),
         Path("/data/input/pedidos/b.pdf"),
@@ -181,7 +206,9 @@ def test_scan_mixed_batch_records_auditable_rows(tmp_path, monkeypatch):
 
         result = scan_input_folders(db, enqueue=False)
         watched = {row.path: row.status for row in db.scalars(select(WatchedFile)).all()}
-        events = {(row.source_path, row.event_type) for row in db.scalars(select(IngestionEvent)).all()}
+        events = {
+            (row.source_path, row.event_type) for row in db.scalars(select(IngestionEvent)).all()
+        }
 
     assert result["registered"] == 2
     assert result["ignored"] == 1
@@ -227,11 +254,19 @@ def test_scan_same_source_path_changed_hash_registers_new_pending_document(tmp_p
         db.commit()
 
         result = scan_input_folders(db, enqueue=False)
-        documents = list(db.scalars(select(Document).where(Document.source_path == str(changed_file))).all())
-        job = db.scalar(select(ExtractionJob).join(Document).where(Document.file_hash == calculate_sha256(changed_file)))
+        documents = list(
+            db.scalars(select(Document).where(Document.source_path == str(changed_file))).all()
+        )
+        job = db.scalar(
+            select(ExtractionJob)
+            .join(Document)
+            .where(Document.file_hash == calculate_sha256(changed_file))
+        )
         event_types = [
             row.event_type
-            for row in db.scalars(select(IngestionEvent).where(IngestionEvent.source_path == str(changed_file))).all()
+            for row in db.scalars(
+                select(IngestionEvent).where(IngestionEvent.source_path == str(changed_file))
+            ).all()
         ]
 
     assert result["registered"] == 1
@@ -273,7 +308,9 @@ def test_scan_backpressure_records_event_without_registering_document(tmp_path, 
         result = scan_input_folders(db, enqueue=False)
         document = db.scalar(select(Document).where(Document.source_path == str(candidate)))
         watched = db.scalar(select(WatchedFile).where(WatchedFile.path == str(candidate)))
-        event = db.scalar(select(IngestionEvent).where(IngestionEvent.source_path == str(candidate)))
+        event = db.scalar(
+            select(IngestionEvent).where(IngestionEvent.source_path == str(candidate))
+        )
 
     assert result["backpressure"] == 1
     assert document is None
@@ -307,7 +344,9 @@ def test_scan_pause_records_audit_and_resume_registers(tmp_path, monkeypatch):
         document = db.scalar(select(Document).where(Document.source_path == str(candidate)))
         event_types = [
             row.event_type
-            for row in db.scalars(select(IngestionEvent).where(IngestionEvent.source_path == str(candidate))).all()
+            for row in db.scalars(
+                select(IngestionEvent).where(IngestionEvent.source_path == str(candidate))
+            ).all()
         ]
 
     assert paused_result["paused"] == 1
@@ -329,12 +368,20 @@ def test_watcher_retry_exhaustion_stops_requeueing_and_records_failed(tmp_path, 
 
     monkeypatch.setattr(settings, "watcher_settle_seconds", 0)
     monkeypatch.setattr(settings, "watcher_max_files_per_tick", 10)
-    monkeypatch.setattr(watcher, "ingest_path_if_ready", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        watcher,
+        "ingest_path_if_ready",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
 
     with sessions() as db:
         first = watcher.process_pending_paths(db, pending, enqueue=False)
         second = watcher.process_pending_paths(db, pending, enqueue=False)
-        failed_events = list(db.scalars(select(IngestionEvent).where(IngestionEvent.source_path == str(candidate))).all())
+        failed_events = list(
+            db.scalars(
+                select(IngestionEvent).where(IngestionEvent.source_path == str(candidate))
+            ).all()
+        )
         watched = db.scalar(select(WatchedFile).where(WatchedFile.path == str(candidate)))
 
     assert first["failed"] == 1

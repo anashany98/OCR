@@ -1,0 +1,54 @@
+﻿{
+    "stages":  {
+                   "backend-suite":  {
+                                         "status":  "passed",
+                                         "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\backend-suite.log"
+                                     },
+                   "postgres-migrations":  {
+                                               "status":  "passed",
+                                               "ended_at":  "2026-07-13T06:08:40.6231676Z",
+                                               "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\postgres-migrations.log",
+                                               "started_at":  "2026-07-13T06:08:36.5046300Z"
+                                           },
+                   "frontend-tests":  {
+                                          "status":  "passed",
+                                          "ended_at":  "2026-07-13T06:08:35.9523660Z",
+                                          "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\frontend-tests.log",
+                                          "started_at":  "2026-07-13T06:08:30.8121072Z"
+                                      },
+                   "tenant-isolation":  {
+                                            "status":  "passed",
+                                            "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\tenant-isolation.log"
+                                        },
+                   "frontend-build":  {
+                                          "status":  "passed",
+                                          "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\frontend-build.log"
+                                      },
+                   "postgres-e2e":  {
+                                        "status":  "passed",
+                                        "ended_at":  "2026-07-13T06:08:58.4327339Z",
+                                        "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\postgres-e2e.log",
+                                        "started_at":  "2026-07-13T06:08:40.6252612Z"
+                                    },
+                   "baseline":  {
+                                    "status":  "passed",
+                                    "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\baseline.log"
+                                },
+                   "postgres-create":  {
+                                           "status":  "passed",
+                                           "ended_at":  "2026-07-13T06:08:36.5025474Z",
+                                           "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\postgres-create.log",
+                                           "started_at":  "2026-07-13T06:08:36.1633173Z"
+                                       },
+                   "docker-health":  {
+                                         "status":  "passed",
+                                         "ended_at":  "2026-07-13T06:08:58.6321159Z",
+                                         "log":  "C:\\Users\\Usuario\\Desktop\\OCR\\OCR\\docu-intel\\data\\terra-certification-ocr-automation\\docker-health.log",
+                                         "started_at":  "2026-07-13T06:08:58.4343335Z"
+                                     }
+               },
+    "updated_at":  "2026-07-13T06:08:58.9991287Z",
+    "started_at":  "2026-07-13T05:20:01.2382243Z",
+    "run_id":  "terra-cert-20260713T052001Z",
+    "completed_at":  "2026-07-13T06:08:58.9980487Z"
+}

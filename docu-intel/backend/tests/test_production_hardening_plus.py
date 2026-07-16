@@ -272,6 +272,7 @@ def test_quality_rule_configuration_lists_threshold_and_sensitive_tags():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["low_ocr_threshold"] == 0.7
+    # The endpoint must expose the configured operational threshold.
+    assert payload["low_ocr_threshold"] == settings.low_ocr_confidence_threshold
     assert "contabilidad" in payload["sensitive_tags"]
     assert "missing_budget_number" in payload["business_rules"]

@@ -6,8 +6,18 @@ Aplicación web interna de inteligencia documental para ingestar presupuestos, p
 
 ```bash
 cd docu-intel
-docker compose up --build
+# Primer arranque, o tras cambiar dependencias/Dockerfiles:
+docker compose up -d --build
+
+# Cambios normales de Python/TypeScript: reutiliza las imágenes y la caché.
+docker compose up -d
 ```
+
+El backend monta `backend/app`, por lo que los cambios de Python no requieren
+reconstruir la imagen. Evita `--no-cache`, `--pull` y `docker system prune -a`
+en el ciclo diario: eliminan la caché de dependencias. Las imágenes usan caché
+BuildKit de pip/npm para que un cambio inevitable de dependencias no descargue
+todo de nuevo.
 
 Servicios principales:
 

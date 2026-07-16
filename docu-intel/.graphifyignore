@@ -1,0 +1,80 @@
+.env
+.env.local
+.env.production
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+dist/
+build/
+.vite/
+data/files/*
+!data/files/.gitkeep
+data/input/**/*
+!data/input/**/.gitkeep
+postgres_data/
+.kilo/
+.kiro/
+# Local LM Studio shim logs (host-side process)
+lms_server.log
+lms_server.log.err
+# TypeScript incremental build cache
+*.tsbuildinfo
+# Generated golden fixture PNGs (created at runtime by test fixture builder)
+backend/tests/fixtures/golden/
+
+
+# Exclusiones específicas para Graphify
+
+# Secretos
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Dependencias y entornos
+node_modules/
+**/node_modules/
+.venv/
+venv/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Datos procesados o privados
+data/
+uploads/
+storage/
+tmp/
+temp/
+
+# Registros y salidas generadas
+*.log
+*.err
+graphify-out/
+dist/
+build/
+coverage/
+frontend/dist/
+backend/dist/
+
+# Archivos binarios y modelos
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.pdf
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.gguf
+
+# IDE y Git
+.git/
+.vscode/
+.idea/

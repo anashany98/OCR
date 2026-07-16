@@ -1,0 +1,9 @@
+{
+  "fixture_simple.dxf": {
+    "texts": 1,
+    "dimensions": 0,
+    "geometry_types": ["circle", "line"],
+    "inserts": 0,
+    "layers": ["0", "WALLS"]
+  }
+}

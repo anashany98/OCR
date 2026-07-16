@@ -5,6 +5,7 @@ Tests the OCR engine helpers and parsing logic without requiring GPU inference.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -16,6 +17,7 @@ from app.ocr.paddle import (
     OCRBlock,
     OCRResult,
     _get_gpu_device,
+    gpu_has_headroom,
     _polygon_to_bbox,
 )
 
@@ -46,6 +48,30 @@ class TestGetGpuDevice:
     def test_returns_none_for_whitespace_only(self, monkeypatch):
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "   ")
         assert _get_gpu_device() is None
+
+
+class TestGpuHeadroom:
+    def test_returns_false_when_cuda_is_not_visible(self, monkeypatch):
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        assert gpu_has_headroom(1) is False
+
+    def test_accepts_gpu_with_sufficient_free_memory(self, monkeypatch):
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "4096\\n", ""),
+        )
+        assert gpu_has_headroom(2048) is True
+
+    def test_rejects_gpu_without_enough_free_memory(self, monkeypatch):
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "1024\\n", ""),
+        )
+        assert gpu_has_headroom(2048) is False
 
 
 class TestPolygonToBbox:

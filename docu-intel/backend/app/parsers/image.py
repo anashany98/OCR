@@ -54,6 +54,51 @@ _PROMPT_FABRIC = (
     "Responde en espanol."
 )
 
+# Phase 5: Sensitive data detection instructions appended to all prompts
+_SENSITIVE_DATA_INSTRUCTIONS = (
+    "\n\nIMPORTANTE: Si la imagen contiene datos sensibles, enumeralos:\n"
+    "- Numeros de cuenta o IBAN\n"
+    "- NIF, CIF o DNI\n"
+    "- Telefonos o emails\n"
+    "- Importes bancarios o datos de pago\n"
+    "- Nombres de personas\n"
+    "Si no hay datos sensibles, indica 'NINGUNO'."
+)
+
+
+def _estimate_vision_confidence(vision_text: str, content_route: str | None) -> float:
+    """Estimate per-fact confidence from VLM response characteristics.
+
+    Instead of hardcoding 0.85, we estimate based on:
+    - Response length (longer = more detailed = higher confidence)
+    - Content route match (interior_design/fabric with specific prompts = higher)
+    - Presence of uncertainty markers ('ilegible', 'no se puede', 'posible')
+    """
+    if not vision_text:
+        return 0.3
+
+    base = 0.5
+    text_len = len(vision_text.strip())
+
+    # Length bonus
+    if text_len > 500:
+        base += 0.15
+    elif text_len > 200:
+        base += 0.1
+    elif text_len > 50:
+        base += 0.05
+
+    # Content route bonus
+    if content_route in ("interior_design", "fabric_description"):
+        base += 0.1
+
+    # Penalty for uncertainty markers
+    uncertainty_markers = ["ilegible", "no se puede", "posible", "uncertain", "dudoso"]
+    uncertainty_count = sum(1 for m in uncertainty_markers if m.lower() in vision_text.lower())
+    base -= uncertainty_count * 0.05
+
+    return max(0.3, min(base, 0.95))
+
 
 def _get_vision_prompt(content_route: str | None = None) -> str:
     """Return the appropriate vision prompt based on content classification."""
@@ -105,13 +150,15 @@ def parse_image(
         )
         for block in result.blocks
     ]
+    is_non_ocr_photo = actual_engine == "photo_skip"
     page = ExtractedPage(
         page_number=1,
         width=float(width),
         height=float(height),
         text=result.text,
         image_path=str(path),
-        ocr_confidence=result.confidence,
+        ocr_confidence=None if is_non_ocr_photo else result.confidence,
+        ocr_content_kind="photo" if is_non_ocr_photo else (result.content_kind or "ocr"),
         ocr_engine=actual_engine,
         blocks=blocks,
     )
@@ -134,25 +181,29 @@ def parse_image(
             if not VisionManager.is_loaded():
                 VisionManager.ensure_loaded()
             client = LocalVisionClient()
-            prompt = _get_vision_prompt(content_route)
+            prompt = _get_vision_prompt(content_route) + _SENSITIVE_DATA_INSTRUCTIONS
             vision_text = _run_coro_sync(
                 client.describe(path, prompt=prompt, max_tokens=2000)
             )
             if vision_text:
+                # Phase 5: per-fact confidence instead of hardcoded 0.85
+                vision_confidence = _estimate_vision_confidence(vision_text, content_route)
+                # Phase 5: use "vision_description" block_type for image descriptions
+                block_type = "vision_description" if len(vision_text) > 100 else "text"
                 page.blocks.append(
                     ExtractedBlock(
-                        block_type="table",
+                        block_type=block_type,
                         text=vision_text,
                         page_number=1,
                         bbox=(0.0, 0.0, float(width), float(height)),
-                        confidence=0.85,
+                        confidence=vision_confidence,
                         source_engine="vision",
                     )
                 )
                 if not result.text or len(result.text.strip()) < 30:
                     page.text = vision_text
                     page.ocr_engine = "vision"
-                    page.ocr_confidence = 0.85
+                    page.ocr_confidence = vision_confidence
             VisionManager.schedule_unload()
         except Exception as exc:
             from app.services.metrics import track_parser_fallback_failure

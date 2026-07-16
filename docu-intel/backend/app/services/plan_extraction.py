@@ -180,6 +180,7 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
     if not result.plan:
         return result
 
+    project_phase, revision = extract_plan_phase(text)
     plan = Plan(
         document_id=document.id,
         project_name=result.plan.project_name,
@@ -188,6 +189,8 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
         scale_confidence=result.plan.scale_confidence,
         unit=result.plan.unit,
         has_valid_scale=result.plan.has_valid_scale,
+        project_phase=project_phase,
+        revision=revision,
     )
     db.add(plan)
     db.flush()
@@ -828,7 +831,10 @@ _PHASE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     (re.compile(r"\bsecci[oó]n\s+([A-Z])\s*[-–]?\s*([A-Z])?\b", re.IGNORECASE), None),
     (re.compile(r"\bsecci[oó]n\s+([A-Z])\b", re.IGNORECASE), None),
-    (re.compile(r"\bdetalle\s+(.+?)\s*$", re.IGNORECASE), None),
+    # ``DETALLE`` is only a phase when it is a short standalone drawing
+    # header.  Matching to the end of an OCR blob captured paragraphs and
+    # could exceed the 80-character database field.
+    (re.compile(r"^\s*detalle\s+[^\r\n]{1,60}\s*$", re.IGNORECASE | re.MULTILINE), None),
 ]
 
 _REVISION_RE = re.compile(
@@ -876,4 +882,9 @@ def extract_plan_phase(text: str) -> tuple[str | None, str | None]:
     if rev_match:
         revision = rev_match.group(1).upper()
 
+    # Keep the extractor safe even if a future dynamic pattern is broadened.
+    # A truncated label is preferable to rolling back the entire document
+    # transaction; the normal patterns above all produce much shorter values.
+    if phase is not None:
+        phase = phase[:80].rstrip() or None
     return phase, revision

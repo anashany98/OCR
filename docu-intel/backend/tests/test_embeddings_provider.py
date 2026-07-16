@@ -43,10 +43,14 @@ def test_openai_compatible_embedding_client_posts_to_local_embeddings_endpoint()
     assert len(requests) == 1
 
 
-def test_embedding_dimension_mismatch_fails_fast():
+def test_embedding_dimension_mismatch_fails_fast(monkeypatch):
+    from app.services.embeddings import EmbeddingProviderError as CurrentEmbeddingProviderError
     from app.services.embeddings import coerce_embedding_dimensions
+    from app.core.config import settings
 
-    with pytest.raises(EmbeddingProviderError, match="dimension mismatch"):
+    monkeypatch.setattr(settings, "embedding_allow_dimension_coercion", False)
+
+    with pytest.raises(CurrentEmbeddingProviderError, match="dimension mismatch"):
         coerce_embedding_dimensions([1, 2], 4)
 
 
@@ -82,16 +86,22 @@ def test_embed_many_uses_configured_local_openai_provider(monkeypatch):
     monkeypatch.setattr(settings, "embedding_model", "bge-m3")
     monkeypatch.setattr(settings, "embedding_api_key", "local-key")
     monkeypatch.setattr(settings, "embedding_dimensions", 4)
+    # This unit test exercises provider selection, not Redis persistence.
+    # A previous test run can legitimately have cached the same fixture text.
+    monkeypatch.setattr(embeddings.cache_service, "get", lambda _key: None)
+    monkeypatch.setattr(embeddings.cache_service, "set", lambda *_args, **_kwargs: True)
 
     assert embed_many(["uno", "dos"]) == [[0.25, 0.5, 0.75, 1.0], [0.25, 0.5, 0.75, 1.0]]
     assert calls == [("http://embedding.local:1234/v1", "bge-m3", "local-key", 4, ["uno", "dos"])]
 
 
 def test_embed_text_fails_fast_when_remote_provider_is_not_configured(monkeypatch):
+    from app.services.embeddings import EmbeddingProviderError as CurrentEmbeddingProviderError
+
     monkeypatch.setattr(settings, "embedding_provider", "local_openai_compatible")
     monkeypatch.setattr(settings, "embedding_base_url", "")
     monkeypatch.setattr(settings, "ai_base_url", "")
     monkeypatch.setattr(settings, "embedding_dimensions", EMBEDDING_DIMENSIONS)
 
-    with pytest.raises(EmbeddingProviderError, match="requires EMBEDDING_BASE_URL"):
+    with pytest.raises(CurrentEmbeddingProviderError, match="requires EMBEDDING_BASE_URL"):
         embed_text("pedido referencia ABC123")

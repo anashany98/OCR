@@ -12,6 +12,7 @@ def parse_plain_text(path: Path) -> ExtractedDocument:
             ExtractedPage(
                 page_number=1,
                 text=text,
+                ocr_content_kind="native_text",
                 blocks=[
                     ExtractedBlock(
                         block_type="text",

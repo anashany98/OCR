@@ -111,10 +111,13 @@ def test_cascading_factory_reuses_single_engine_instance(monkeypatch):
     tesseract_module.TesseractOCREngine = _FakeTesseract
     paddle_module = ModuleType("app.ocr.paddle")
     paddle_module.PaddleOCREngine = _FakePaddle
+    paddle_module._get_gpu_device = lambda: None
+    paddle_module.gpu_has_headroom = lambda: False
     monkeypatch.setitem(sys.modules, "app.ocr.tesseract", tesseract_module)
     monkeypatch.setitem(sys.modules, "app.ocr.paddle", paddle_module)
     monkeypatch.setattr(settings, "ocr_engine", "cascading")
     monkeypatch.setattr(settings, "ocr_cascading_use_pp_structure", False)
+    monkeypatch.setattr(settings, "paddleocr_gpu_only", False)
     factory.get_ocr_engine_class.cache_clear()
     if hasattr(factory, "clear_ocr_engine_cache"):
         factory.clear_ocr_engine_cache()
@@ -206,6 +209,32 @@ def test_cascade_uses_tier4_vlm_when_prior_quality_is_low(tmp_path: Path):
     assert result.engine == "dots_mocr"
     assert cascade.name == "fake_vlm"
     assert vlm.calls == 1
+
+
+def test_cascade_promotes_coherent_vision_text_when_classical_confidence_is_low(tmp_path: Path):
+    primary = _RecordingEngine(
+        "fake_primary",
+        _result("Texto manuscrito parcialmente legible " * 4, confidence=0.40, engine="tesseract"),
+    )
+    vision = _RecordingEngine(
+        "fake_vlm",
+        _result("Texto manuscrito transcrito con referencias y medidas claras " * 4, confidence=0.50, engine="dots_mocr"),
+    )
+    cascade = CascadingOCREngine(
+        primary=primary,
+        fallback=None,
+        min_chars=30,
+        min_confidence=0.70,
+        vlm_ocr=vision,
+        tier4_quality_threshold=0.62,
+    )
+    image = tmp_path / "manuscrito.png"
+    image.write_bytes(b"")
+
+    result = cascade.extract(image)
+
+    assert result.engine == "dots_mocr"
+    assert vision.calls == 1
 
 
 def test_quality_penalizes_long_symbol_noise():

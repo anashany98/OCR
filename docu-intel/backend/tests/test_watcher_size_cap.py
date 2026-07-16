@@ -10,14 +10,11 @@ Verifies:
 3. ``enqueue_existing_files`` stops at the configured limit
    and skips oversized files.
 """
+
 from __future__ import annotations
 
 import os
 import time
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "x" * 64)
@@ -158,8 +155,7 @@ class TestIsFileStableDoubleCheck:
 
 class TestEnqueueExistingFiles:
     def test_respects_limit(self, tmp_path, monkeypatch):
-        from app.ingestion.stability import is_file_too_large
-        from app.ingestion.watcher import enqueue_existing_files, PendingFileRegistry
+        from app.ingestion.watcher import PendingFileRegistry, enqueue_existing_files
 
         monkeypatch.setattr(
             "app.ingestion.watcher.is_file_too_large",
@@ -181,7 +177,7 @@ class TestEnqueueExistingFiles:
         assert count == 5
 
     def test_skips_oversized_files(self, tmp_path, monkeypatch):
-        from app.ingestion.watcher import enqueue_existing_files, PendingFileRegistry
+        from app.ingestion.watcher import PendingFileRegistry, enqueue_existing_files
 
         # Mark every file as "too large".
         monkeypatch.setattr(
@@ -202,3 +198,16 @@ class TestEnqueueExistingFiles:
         assert count == 0
         # The file was NOT added to pending.
         assert len(pending) == 0
+
+
+def test_live_watcher_observes_only_dynamic_input(tmp_path, monkeypatch):
+    """The fixed corpus belongs to explicit backfill, never to the watcher."""
+    from app.core.config import settings
+    from app.ingestion.watcher import _watch_roots
+
+    input_dir = tmp_path / "input"
+    corpus_dir = tmp_path / "2025"
+    monkeypatch.setattr(settings, "input_dir", input_dir)
+    monkeypatch.setattr(settings, "source_corpus_dir", corpus_dir)
+
+    assert _watch_roots() == (input_dir,)

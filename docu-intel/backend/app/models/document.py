@@ -4,6 +4,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     Computed,
     DateTime,
     Float,
@@ -43,6 +44,36 @@ class Document(Base):
     document_type: Mapped[str] = mapped_column(
         String(50), default="desconocido", nullable=False, index=True
     )
+    # MiniMax M3 — multi-dimensional classification (FASE 2).
+    # ``source_format`` describes the physical file format (email,
+    # spreadsheet, word, pdf, image, dxf). It is computed from the
+    # extension, MIME and parser signature, never from the document
+    # content. ``document_subtype`` and ``content_tags`` refine the
+    # business meaning without overloading ``document_type``.
+    # ``classification_evidence`` records which signal won for each
+    # dimension so an operator can audit the assignment. All fields
+    # are nullable or default to safe values so existing rows remain
+    # valid without a backfill.
+    source_format: Mapped[str | None] = mapped_column(String(40), index=True)
+    document_subtype: Mapped[str | None] = mapped_column(String(80))
+    content_tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    classification_evidence: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    classifier_version: Mapped[str | None] = mapped_column(String(40))
+    classified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # MiniMax M3 — extraction fingerprint (FASE 3). When
+    # ``extraction_fingerprint`` matches the freshly-computed value
+    # AND ``extraction_fingerprint_at`` is recent enough, the
+    # extraction pipeline can skip the provider call.
+    extraction_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    extraction_fingerprint_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    # MiniMax M3 (FASE 3) — the route the last extraction took
+    # (text LLM vs VLM). Computed from source_format and OCR
+    # confidence and persisted for the admin panel.
+    processing_route: Mapped[str | None] = mapped_column(String(40), index=True)
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
     quality_status: Mapped[str] = mapped_column(
         String(50), default="pending", nullable=False, index=True
@@ -114,6 +145,12 @@ class Document(Base):
         back_populates="document",
         cascade="all, delete-orphan",
     )
+    # Phase 3: one document can appear in multiple paths/budgets
+    occurrences = relationship(
+        "DocumentOccurrence",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
 
 
 class DocumentPage(Base):
@@ -132,6 +169,14 @@ class DocumentPage(Base):
         String(40), default="processed", nullable=False, index=True
     )
     ocr_confidence: Mapped[float | None] = mapped_column(Float)
+    # ``ocr_confidence`` is the raw value reported by the winning engine.
+    # The calibrated score is the common decision value used for automatic
+    # acceptance and review, including engines (such as VLM OCR) that do not
+    # return a native confidence.
+    ocr_calibrated_confidence: Mapped[float | None] = mapped_column(Float, index=True)
+    ocr_content_kind: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    ocr_decision: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    ocr_decision_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     # Which engine produced this page's text. NULL for pages that haven't been
     # processed yet. Values: pymupdf | paddleocr | empty
     ocr_engine: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -157,6 +202,36 @@ class DocumentPage(Base):
 
     document = relationship("Document", back_populates="pages")
     blocks = relationship("DocumentBlock", back_populates="page", cascade="all, delete-orphan")
+    ocr_attempts = relationship("OcrAttempt", back_populates="page", cascade="all, delete-orphan")
+
+
+class OcrAttempt(Base):
+    """Immutable evidence for each OCR candidate considered for a page."""
+
+    __tablename__ = "ocr_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("document_pages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    attempt_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    engine: Mapped[str] = mapped_column(String(80), nullable=False)
+    engine_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    route: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    text: Mapped[str | None] = mapped_column(Text)
+    raw_confidence: Mapped[float | None] = mapped_column(Float)
+    calibrated_confidence: Mapped[float | None] = mapped_column(Float)
+    quality_score: Mapped[float | None] = mapped_column(Float)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    decision: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    decision_reasons_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    selected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    page = relationship("DocumentPage", back_populates="ocr_attempts")
 
 
 class DocumentBlock(Base):
@@ -196,6 +271,21 @@ class DocumentBlock(Base):
     def _sanitize_block_type(self, key, value):
         v = (value or "text").strip().lower()
         return v if v in self._ALLOWED_BLOCK_TYPES else "text"
+
+    @property
+    def bbox(self) -> tuple[float, float, float, float] | None:
+        """Expose persisted geometry through the parser-block contract.
+
+        Extraction services accept both transient parser blocks and persisted
+        ``DocumentBlock`` rows.  The parser object already has ``bbox`` while
+        this model stores the coordinates in separate columns.  Incomplete
+        geometry must be reported as absent: a partial tuple would reach the
+        layout clustering code and fail during arithmetic.
+        """
+        coordinates = (self.bbox_x1, self.bbox_y1, self.bbox_x2, self.bbox_y2)
+        if any(value is None for value in coordinates):
+            return None
+        return tuple(float(value) for value in coordinates)
 
 
 class DocumentEntity(Base):
@@ -291,3 +381,61 @@ class ExtractionJob(Base):
     )
 
     document = relationship("Document", back_populates="jobs")
+
+
+class ImageAnalysis(Base):
+    """Phase 5 — Structured visual analysis of an image.
+
+    Stores multi-label classification, visible text, objects, materials,
+    measurements, and per-fact confidence. One row per document.
+    """
+    __tablename__ = "image_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), unique=True, index=True, nullable=False,
+    )
+    occurrence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_occurrences.id", ondelete="SET NULL"), index=True,
+    )
+    # Multi-label taxonomy
+    labels_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # Structured visual facts
+    visible_text: Mapped[str | None] = mapped_column(Text)
+    objects_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    materials_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    colors_json: Mapped[list[str] | None] = mapped_column(JSON)
+    measurements_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    product_refs_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    room_or_zone: Mapped[str | None] = mapped_column(String(300))
+    installation_state: Mapped[str | None] = mapped_column(String(100))
+    issue_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # Sensitive data detection
+    sensitive_data_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    # Visual embedding (for similarity search)
+    visual_embedding: Mapped[Any | None] = mapped_column(Vector(768), nullable=True)
+    perceptual_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Model metadata
+    model_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC), nullable=False,
+    )
+
+    document = relationship("Document", back_populates="image_analysis")
+
+
+# Add back_populates for ImageAnalysis on Document
+Document.image_analysis = relationship(
+    "ImageAnalysis",
+    back_populates="document",
+    uselist=False,
+    cascade="all, delete-orphan",
+)

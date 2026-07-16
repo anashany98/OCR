@@ -299,8 +299,58 @@ def test_reembed_task_ignores_pending_and_duplicate_documents():
         ok_id = _make_document(db, document_id_seed=23, status="processed", has_needing_chunk=True)
 
         rows = _select_reembed_candidates(db, limit=50)
-        ids = [document.id for document, _ in rows]
+        ids = [document.id for document, *_reasons in rows]
         assert ok_id in ids
         assert 20 not in ids
         assert 21 not in ids
         assert 22 not in ids
+
+
+def test_reembed_selector_does_not_starve_pending_chunks_with_healthy_documents():
+    """A normal confidence score alone is not a re-embedding reason."""
+    from app.database.base import Base
+    from app.workers.embedding_tasks import _select_reembed_candidates
+
+    engine = _memory_engine()
+    Base.metadata.create_all(engine)
+    Session = _session_factory(engine)
+    with Session() as db:
+        healthy_id = _make_document(
+            db, document_id_seed=30, confidence=0.98, has_needing_chunk=False
+        )
+        pending_id = _make_document(
+            db, document_id_seed=31, confidence=0.98, has_needing_chunk=True
+        )
+
+        rows = _select_reembed_candidates(db, limit=50)
+        ids = [document.id for document, *_reasons in rows]
+        assert pending_id in ids
+        assert healthy_id not in ids
+
+
+def test_reembed_selector_ignores_low_ocr_when_reocr_is_disabled():
+    """A disabled re-OCR budget must not consume every maintenance tick."""
+    from app.core.config import settings
+    from app.database.base import Base
+    from app.workers.embedding_tasks import _select_reembed_candidates
+
+    engine = _memory_engine()
+    Base.metadata.create_all(engine)
+    Session = _session_factory(engine)
+    with Session() as db:
+        low_id = _make_document(
+            db, document_id_seed=32, confidence=0.40, has_needing_chunk=False
+        )
+        pending_id = _make_document(
+            db, document_id_seed=33, confidence=0.98, has_needing_chunk=True
+        )
+        previous_cap = settings.reembed_reocr_per_tick
+        settings.reembed_reocr_per_tick = 0
+        try:
+            rows = _select_reembed_candidates(db, limit=50)
+        finally:
+            settings.reembed_reocr_per_tick = previous_cap
+
+        ids = [document.id for document, *_reasons in rows]
+        assert pending_id in ids
+        assert low_id not in ids

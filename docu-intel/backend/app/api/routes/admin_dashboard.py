@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.database.session import get_db
+from app.services.ocr_page_roles import ocr_applicable_clause
 from app.models import (
     AIAnswer,
     AIQuestion,
@@ -83,6 +84,7 @@ def dashboard_stats(
     avg_confidence = (
         db.scalar(
             select(func.avg(DocumentPage.ocr_confidence)).where(
+                ocr_applicable_clause(DocumentPage.ocr_content_kind),
                 DocumentPage.ocr_confidence.is_not(None)
             )
         )
@@ -251,6 +253,7 @@ def dashboard_activity(
             )
             .where(
                 DocumentPage.created_at >= start_date,
+                ocr_applicable_clause(DocumentPage.ocr_content_kind),
                 DocumentPage.ocr_confidence.is_not(None),
             )
             .group_by(func.date(DocumentPage.created_at))

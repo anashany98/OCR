@@ -24,7 +24,11 @@ def search_entities(db: Session, entity_type: str, value: str):
     )
 
 
-def hybrid_search(db: Session, query: str, filters: dict | None = None):
+def hybrid_search(db: Session, query: str, filters: dict | None = None, *, access_scope=None):
     return run_hybrid_search(
-        db, query, filters=(filters or {}), limit=(filters or {}).get("limit", 10)
+        db,
+        query,
+        filters=(filters or {}),
+        limit=(filters or {}).get("limit", 10),
+        access_scope=access_scope,
     )
