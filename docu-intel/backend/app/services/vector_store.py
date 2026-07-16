@@ -63,6 +63,10 @@ class PgvectorStore:
         limit: int,
         filters: dict[str, Any],
     ) -> list[VectorSearchMatch]:
+        # PG-HNSW-01: per-transaction override. ``SET LOCAL`` is scoped to the
+        # current SQLAlchemy transaction and reverts on commit/rollback, so
+        # the value never leaks to other sessions/connections in the pool.
+        _apply_hnsw_ef_search(db)
         clauses = ["d.deleted_at IS NULL", "c.embedding IS NOT NULL"]
         params: dict[str, Any] = {
             "query_embedding": _vector_literal(query_embedding),
@@ -189,7 +193,9 @@ class PgvectorStore:
         has_project_scope = effective_filters.get("project_id") is not None
         allow_verified_admin_global = effective_filters.get("_allow_global_semantic_search") is True
         if not has_budget_scope and not has_project_scope and not allow_verified_admin_global:
-            raise ValueError("PgvectorStore.search_documents requires budget_scope_id or project_id filter")
+            raise ValueError(
+                "PgvectorStore.search_documents requires budget_scope_id or project_id filter"
+            )
         if _is_postgres(db):
             return self._search_documents_postgres(
                 db, query_embedding=query_embedding, limit=limit, filters=effective_filters
@@ -206,6 +212,9 @@ class PgvectorStore:
         limit: int,
         filters: dict[str, Any],
     ) -> list[VectorSearchMatch]:
+        # PG-HNSW-01: same per-transaction override as ``_search_postgres``.
+        # Applied here too so document-level retrieval honours the same knob.
+        _apply_hnsw_ef_search(db)
         clauses = ["d.deleted_at IS NULL", "d.embedding IS NOT NULL"]
         params: dict[str, Any] = {
             "query_embedding": _vector_literal(query_embedding),
@@ -353,3 +362,37 @@ def _doc_excerpt(text: str | None, max_chars: int = 300) -> str:
     if not text:
         return ""
     return text[:max_chars]
+
+
+# PG-HNSW-01: clamp values produced by Pydantic out of an unexpected
+# migration path (e.g. tests reading ``settings.search_hnsw_ef_search``
+# from a different Settings instance). The Settings model already enforces
+# ``ge=20, le=200`` at construction time, so this clamp is defensive only.
+_HNSW_EF_SEARCH_MIN = 20
+_HNSW_EF_SEARCH_MAX = 200
+
+
+def _apply_hnsw_ef_search(db: Session) -> None:
+    """Apply ``SET LOCAL hnsw.ef_search`` to the current transaction.
+
+    pgvector exposes the HNSW ``ef_search`` parameter as a session-level
+    GUC. ``SET LOCAL`` confines the override to the current SQLAlchemy
+    transaction (which the upcoming ``SELECT`` joins automatically),
+    so neighbouring requests in the same connection pool are unaffected.
+
+    The value comes from :attr:`Settings.search_hnsw_ef_search` and is
+    clamped to the validated range ``[20, 200]``. See
+    ``PLAN_ARQUITECTURA_PGVECTOR_GRAPH_RAG.md`` §2.3 for the rationale.
+    """
+    raw_value = int(getattr(settings, "search_hnsw_ef_search", 40))
+    clamped = max(_HNSW_EF_SEARCH_MIN, min(_HNSW_EF_SEARCH_MAX, raw_value))
+    if clamped != raw_value:
+        # Surface a warning so operators notice silent clamping.
+        from logging import getLogger
+
+        getLogger(__name__).warning(
+            "search_hnsw_ef_search=%s fuera de rango; clampeado a %s",
+            raw_value,
+            clamped,
+        )
+    db.execute(text(f"SET LOCAL hnsw.ef_search = {clamped}"))
