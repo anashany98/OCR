@@ -16,6 +16,7 @@ from app.schemas.search import HybridSearchRequest, SearchResultRead, SemanticSe
 from app.services.search_service import SearchResult, search_hybrid, search_semantic, search_text
 from app.services.tenant_access import (
     access_scope_cache_key,
+    apply_access_predicates,
     filter_search_results_for_scope,
     resolve_user_access_scope,
 )
@@ -66,10 +67,18 @@ def exact_search(
     scope = resolve_user_access_scope(db, user)
     normalized = q.strip()
     results: list[SearchResult] = []
+    # 1.1 M-12 follow-up: scope at the SQL layer BEFORE the LIMIT so a
+    # user with restricted access does not consume the page with rows
+    # they cannot see. ``filter_search_results_for_scope`` is kept as
+    # defense-in-depth (tag/allowed-type post-filter).
     if kind == "budget":
-        budgets = db.scalars(
-            select(Budget).where(Budget.budget_number == normalized).limit(limit)
-        ).all()
+        stmt = (
+            select(Budget)
+            .join(Document, Document.id == Budget.document_id)
+            .where(Budget.budget_number == normalized)
+        )
+        stmt = apply_access_predicates(stmt, scope).limit(limit)
+        budgets = db.scalars(stmt).all()
         results = [
             _business_result(
                 db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "exact_budget"
@@ -77,9 +86,13 @@ def exact_search(
             for budget in budgets
         ]
     elif kind == "order":
-        orders = db.scalars(
-            select(Order).where(Order.order_number == normalized).limit(limit)
-        ).all()
+        stmt = (
+            select(Order)
+            .join(Document, Document.id == Order.document_id)
+            .where(Order.order_number == normalized)
+        )
+        stmt = apply_access_predicates(stmt, scope).limit(limit)
+        orders = db.scalars(stmt).all()
         results = [
             _business_result(
                 db, order.document_id, f"Pedido {order.order_number}", 1.4, "exact_order"
@@ -90,34 +103,42 @@ def exact_search(
         budget_rows = []
         order_rows = []
         if kind == "client":
-            budget_rows = list(
-                db.scalars(
-                    select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)
-                ).all()
+            budget_stmt = (
+                select(Budget)
+                .join(Document, Document.id == Budget.document_id)
+                .where(Budget.client_name.ilike(f"%{normalized}%"))
             )
-            order_rows = list(
-                db.scalars(
-                    select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)
-                ).all()
+            budget_stmt = apply_access_predicates(budget_stmt, scope).limit(limit)
+            budget_rows = list(db.scalars(budget_stmt).all())
+            order_stmt = (
+                select(Order)
+                .join(Document, Document.id == Order.document_id)
+                .where(Order.client_name.ilike(f"%{normalized}%"))
             )
+            order_stmt = apply_access_predicates(order_stmt, scope).limit(limit)
+            order_rows = list(db.scalars(order_stmt).all())
         else:
-            order_rows = list(
-                db.scalars(
-                    select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)
-                ).all()
+            order_stmt = (
+                select(Order)
+                .join(Document, Document.id == Order.document_id)
+                .where(Order.supplier_name.ilike(f"%{normalized}%"))
             )
+            order_stmt = apply_access_predicates(order_stmt, scope).limit(limit)
+            order_rows = list(db.scalars(order_stmt).all())
         results = [
             _business_result(db, row.document_id, normalized, 1.1, f"{kind}_match")
             for row in [*budget_rows, *order_rows]
         ]
     else:
         entity_type = "reference" if kind == "reference" else kind
-        entities = db.scalars(
+        entity_stmt = (
             select(DocumentEntity)
+            .join(Document, Document.id == DocumentEntity.document_id)
             .where(DocumentEntity.entity_type == entity_type)
             .where(DocumentEntity.normalized_value == normalized.lower())
-            .limit(limit)
-        ).all()
+        )
+        entity_stmt = apply_access_predicates(entity_stmt, scope).limit(limit)
+        entities = db.scalars(entity_stmt).all()
         results = [
             _business_result(
                 db, entity.document_id, entity.entity_value, 1.3, f"exact_{entity_type}"
@@ -143,11 +164,15 @@ def guided_search(
     normalized = q.strip()
     results: list[SearchResult] = []
     if mode == "text":
-        results = search_text(db, normalized, limit=limit)
+        results = search_text(db, normalized, limit=limit, access_scope=scope)
     elif mode == "budget":
-        budgets = db.scalars(
-            select(Budget).where(Budget.budget_number == normalized).limit(limit)
-        ).all()
+        stmt = (
+            select(Budget)
+            .join(Document, Document.id == Budget.document_id)
+            .where(Budget.budget_number == normalized)
+        )
+        stmt = apply_access_predicates(stmt, scope).limit(limit)
+        budgets = db.scalars(stmt).all()
         results = [
             _business_result(
                 db, budget.document_id, f"Presupuesto {budget.budget_number}", 1.4, "guided_budget"
@@ -155,9 +180,13 @@ def guided_search(
             for budget in budgets
         ]
     elif mode == "order":
-        orders = db.scalars(
-            select(Order).where(Order.order_number == normalized).limit(limit)
-        ).all()
+        stmt = (
+            select(Order)
+            .join(Document, Document.id == Order.document_id)
+            .where(Order.order_number == normalized)
+        )
+        stmt = apply_access_predicates(stmt, scope).limit(limit)
+        orders = db.scalars(stmt).all()
         results = [
             _business_result(
                 db, order.document_id, f"Pedido {order.order_number}", 1.4, "guided_order"
@@ -168,34 +197,42 @@ def guided_search(
         budget_rows = []
         order_rows = []
         if mode == "client":
-            budget_rows = list(
-                db.scalars(
-                    select(Budget).where(Budget.client_name.ilike(f"%{normalized}%")).limit(limit)
-                ).all()
+            budget_stmt = (
+                select(Budget)
+                .join(Document, Document.id == Budget.document_id)
+                .where(Budget.client_name.ilike(f"%{normalized}%"))
             )
-            order_rows = list(
-                db.scalars(
-                    select(Order).where(Order.client_name.ilike(f"%{normalized}%")).limit(limit)
-                ).all()
+            budget_stmt = apply_access_predicates(budget_stmt, scope).limit(limit)
+            budget_rows = list(db.scalars(budget_stmt).all())
+            order_stmt = (
+                select(Order)
+                .join(Document, Document.id == Order.document_id)
+                .where(Order.client_name.ilike(f"%{normalized}%"))
             )
+            order_stmt = apply_access_predicates(order_stmt, scope).limit(limit)
+            order_rows = list(db.scalars(order_stmt).all())
         else:
-            order_rows = list(
-                db.scalars(
-                    select(Order).where(Order.supplier_name.ilike(f"%{normalized}%")).limit(limit)
-                ).all()
+            order_stmt = (
+                select(Order)
+                .join(Document, Document.id == Order.document_id)
+                .where(Order.supplier_name.ilike(f"%{normalized}%"))
             )
+            order_stmt = apply_access_predicates(order_stmt, scope).limit(limit)
+            order_rows = list(db.scalars(order_stmt).all())
         results = [
             _business_result(db, row.document_id, normalized, 1.1, f"guided_{mode}")
             for row in [*budget_rows, *order_rows]
         ]
     else:
         entity_type = "reference" if mode == "reference" else mode
-        entities = db.scalars(
+        entity_stmt = (
             select(DocumentEntity)
+            .join(Document, Document.id == DocumentEntity.document_id)
             .where(DocumentEntity.entity_type == entity_type)
             .where(DocumentEntity.normalized_value == normalized.lower())
-            .limit(limit)
-        ).all()
+        )
+        entity_stmt = apply_access_predicates(entity_stmt, scope).limit(limit)
+        entities = db.scalars(entity_stmt).all()
         results = [
             _business_result(
                 db, entity.document_id, entity.entity_value, 1.3, f"guided_{entity_type}"
