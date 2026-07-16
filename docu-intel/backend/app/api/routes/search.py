@@ -149,6 +149,7 @@ def exact_search(
 
 
 @router.get("/guided", response_model=list[SearchResultRead])
+@limiter.limit("60/minute")
 def guided_search(
     request: Request,
     q: str = Query(min_length=1),
