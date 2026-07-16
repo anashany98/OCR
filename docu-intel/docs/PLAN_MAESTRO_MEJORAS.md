@@ -548,3 +548,57 @@ FASE 0  estabilizar árbol (revert docstrings + commits segmentados)
 
 Cada fix se entrega con su test y se commitea de forma aislada. Tras cada fase,
 actualiza los checklists `[x]` de este documento.
+
+---
+
+# Decisión arquitectónica vinculante — pgvector + Graph RAG relacional
+
+Esta sección es **no negociable** y sustituye a cualquier plan previo
+(estos u otros) que mencionara Milvus, una segunda base vectorial, una
+base de grafos independiente o una migración de embeddings fuera de
+PostgreSQL. El plan completo está en
+`docs/PLAN_ARQUITECTURA_PGVECTOR_GRAPH_RAG.md` (rama
+`codex/plan-pgvector-graph-rag`); este resumen basta para revisión de
+PRs y para el briefing diario del agente de código.
+
+**Prohibido (revisión automática en CI + manual):**
+
+* Instalar Milvus o añadirlo a `docker-compose*.yml`.
+* Añadir `pymilvus` / `zilliz-*` a `requirements*.txt` o `pyproject.toml`.
+* Crear conectores o clases `Milvus*` en `app/`.
+* Migrar embeddings a otra base vectorial.
+* Instalar Neo4j o Apache AGE; el Graph RAG se modela con tablas
+  relacionales planas (`graph_*`, migración `0064_graph_rag_relational`).
+* Preparar benchmarks de pgvector contra Milvus o cualquier base externa.
+
+**Auditoría de partida (verificar antes de fusionar cualquier cambio en
+`codex/plan-pgvector-graph-rag`):**
+
+```bash
+grep -ril "milvus\|pymilvus\|zilliz" .
+# Debe devolver únicamente el propio plan y este anexo. Cualquier otra
+# ocurrencia es un bug de revisión y bloquea el PR.
+```
+
+**Lo que sí se hace** (resumen de los commits de la rama):
+
+* Override de `hnsw.ef_search` por transacción (`SET LOCAL`) en
+  `app.services.vector_store._apply_hnsw_ef_search`, configurable vía
+  `settings.search_hnsw_ef_search` (Pydantic `ge=20, le=200`).
+* Script de benchmark que compara pgvector contra sí mismo
+  (`backend/scripts/benchmark_pgvector_configs.py`) — 6 ramas, sin
+  base externa.
+* Migración `0064_graph_rag_relational` con las 7 tablas del Graph RAG
+  y sus índices.
+* Extractor de relaciones idempotente con evidencia
+  (`app.services.graph_extraction`).
+* Panel de revisión admin (`/admin/graph-review-queue/*`).
+* Enrutado a grafo en `app.ai.intent_router` mediante
+  `IntentClassification.retrieval_strategy`.
+* Endpoint y servicio para mostrar evidencia (`/documents/{id}/graph-relations`,
+  `/documents/{id}/graph-evidence`).
+
+**Orden de optimización si hace falta escalar** (siempre antes de
+plantear cambiar de base): SQL → índices btree/GIN → HNSW `ef_search`
+→ re-particionado → réplicas de lectura → hardware. El paso 12 — migrar
+a otra base — **no existe**.
