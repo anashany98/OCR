@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -10,6 +19,28 @@ from app.database.base import Base
 
 class BudgetScope(Base):
     __tablename__ = "budget_scopes"
+    # 2.2 M-12 follow-up: the raw unique index
+    # ``uq_budget_scope_context`` was created by the
+    # ``0053_contextual_budget_identity`` migration on the live
+    # database. To keep the ORM model in sync with the schema (so a
+    # ``Base.metadata.create_all`` does not silently drop the
+    # constraint) we mirror it here as a partial unique ``Index``
+    # rather than a ``UniqueConstraint`` because the original
+    # constraint is ``WHERE legacy_unscoped = false`` with
+    # ``NULLS NOT DISTINCT`` semantics — neither of which can be
+    # expressed with a plain ``UniqueConstraint``.
+    __table_args__ = (
+        Index(
+            "uq_budget_scope_context",
+            "year",
+            "brand_id",
+            "hotel_id",
+            "budget_code",
+            unique=True,
+            postgresql_where="legacy_unscoped = false",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # A budget code is only meaningful inside its source hierarchy.  Legacy
