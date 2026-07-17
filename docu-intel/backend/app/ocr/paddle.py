@@ -120,7 +120,13 @@ def gpu_has_headroom(minimum_free_memory_mb: int | None = None) -> bool:
             timeout=5,
         )
         free_memory_mb = int(result.stdout.strip().splitlines()[0])
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, IndexError):
+    except (
+        FileNotFoundError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        ValueError,
+        IndexError,
+    ):
         logger.warning("Unable to determine free VRAM; disabling GPU OCR for this worker")
         return False
     if free_memory_mb < minimum:
@@ -286,7 +292,9 @@ class PaddleOCREngine:
                         bbox = None
                         if i < len(dt_polys):
                             poly = dt_polys[i]
-                            bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
+                            bbox = _polygon_to_bbox(
+                                poly.tolist() if hasattr(poly, "tolist") else poly
+                            )
 
                         blocks.append(
                             OCRBlock(
@@ -318,9 +326,7 @@ class PaddleOCREngine:
             if ocr_path != image_path:
                 ocr_path.unlink(missing_ok=True)
 
-    def extract_batch(
-        self, image_paths: list[Path], max_workers: int = 2
-    ) -> list[OCRResult]:
+    def extract_batch(self, image_paths: list[Path], max_workers: int = 2) -> list[OCRResult]:
         """Process multiple pages using PaddleOCR's batch mode.
 
         PaddleOCR 3.x can process multiple images in one call, which
@@ -335,6 +341,7 @@ class PaddleOCREngine:
 
         # Preprocess all images
         from app.ocr.preprocess import preprocess_adaptive
+
         ocr_paths = []
         temp_files = []
         for path in image_paths:
@@ -349,7 +356,10 @@ class PaddleOCREngine:
 
             results = []
             if raw is None:
-                results = [OCRResult(text="", confidence=None, blocks=[], engine=self.name) for _ in image_paths]
+                results = [
+                    OCRResult(text="", confidence=None, blocks=[], engine=self.name)
+                    for _ in image_paths
+                ]
             else:
                 if not isinstance(raw, list):
                     raw = [raw]
@@ -383,11 +393,13 @@ class PaddleOCREngine:
                     poly = dt_polys[i]
                     bbox = _polygon_to_bbox(poly.tolist() if hasattr(poly, "tolist") else poly)
 
-                blocks.append(OCRBlock(
-                    text=text or "",
-                    confidence=float(score) if score is not None else None,
-                    bbox=bbox,
-                ))
+                blocks.append(
+                    OCRBlock(
+                        text=text or "",
+                        confidence=float(score) if score is not None else None,
+                        bbox=bbox,
+                    )
+                )
                 if score is not None:
                     confidences.append(float(score))
         elif isinstance(page_raw, (list, tuple)):

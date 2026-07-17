@@ -1,0 +1,8 @@
+# Keep vLLM isolated from backend/Paddle/Celery dependencies.  This is the
+# version published in the OvisOCR2 model card; changing it requires the
+# golden corpus and GPU certification gates in docs/runbooks/ovisocr2.md.
+vllm==0.22.1
+fastapi==0.136.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.18
+pillow==10.4.0

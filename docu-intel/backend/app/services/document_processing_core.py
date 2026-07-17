@@ -19,7 +19,6 @@ from app.models import (
     DocumentPage,
     ExtractionJob,
     OcrAttempt,
-    Plan,
 )
 from app.ocr.base import OCRResult
 from app.ocr.factory import get_ocr_engine_class
@@ -65,12 +64,22 @@ def _celery_broker_available() -> bool:
     so apply_async doesn't hang waiting for a connection.
     """
     import os
+
     if os.environ.get("CELERY_ALWAYS_EAGER") or os.environ.get("TESTING"):
         return False
     try:
         from app.workers.celery_app import celery_app
-        conn = celery_app.connection_or_acquire()
-        with conn:
+
+        # 1.2 M-12 follow-up: ``connection_or_acquire`` is a *context
+        # manager*, not a connection. Using ``with conn:`` directly on
+        # the returned object (the previous code) accidentally relied
+        # on Celery's internal duck-typing and could falsely report
+        # the broker as unavailable, which made ingestion skip the
+        # ``embed_document_task`` enqueue and force a manual
+        # re-embed. Bind the context manager to ``conn`` so the
+        # ``ensure_connection`` call actually runs on the live
+        # connection.
+        with celery_app.connection_or_acquire() as conn:
             conn.ensure_connection(max_retries=0, timeout=2.0)
             return True
     except Exception:
@@ -114,6 +123,9 @@ class _LazyOCREngine:
     def __init__(self) -> None:
         self._engine = None
         self._current_language = None
+        self._current_content_route = None
+        self._current_document_id = None
+        self._current_page_number = None
 
     def _load(self):
         if self._engine is None:
@@ -121,6 +133,11 @@ class _LazyOCREngine:
             if self._current_language is not None:
                 with contextlib.suppress(Exception):
                     self._engine.current_language = self._current_language
+            for attr in ("current_content_route", "current_document_id", "current_page_number"):
+                value = getattr(self, f"_{attr}", None)
+                if value is not None:
+                    with contextlib.suppress(Exception):
+                        setattr(self._engine, attr, value)
         return self._engine
 
     def extract(self, image_path: Path):
@@ -130,12 +147,17 @@ class _LazyOCREngine:
         return getattr(self._load(), attr)
 
     def __setattr__(self, attr: str, value) -> None:
-        if attr == "current_language":
-            object.__setattr__(self, "_current_language", value)
+        if attr in {
+            "current_language",
+            "current_content_route",
+            "current_document_id",
+            "current_page_number",
+        }:
+            object.__setattr__(self, f"_{attr}", value)
             engine = self.__dict__.get("_engine")
             if engine is not None:
                 with contextlib.suppress(Exception):
-                    engine.current_language = value
+                    setattr(engine, attr, value)
             return
         object.__setattr__(self, attr, value)
 
@@ -348,13 +370,15 @@ def _record_ocr_attempt(
         if decision.decision == "review_required":
             page.review_status = "pending"
     attempt_decision = decision.decision if selected else "superseded"
-    attempt_reasons = decision.reasons if selected else [*decision.reasons, "preserved_better_existing"]
+    attempt_reasons = (
+        decision.reasons if selected else [*decision.reasons, "preserved_better_existing"]
+    )
     db.add(
         OcrAttempt(
             page_id=page.id,
             attempt_index=(page.attempts or 0),
             engine=result.engine or page.ocr_engine or "unknown",
-            engine_version=settings.current_ocr_engine_version,
+            engine_version=result.engine_version or settings.current_ocr_engine_version,
             route=route,
             text=result.text,
             raw_confidence=result.confidence,
@@ -648,6 +672,7 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     stored_path = settings.files_dir / document.stored_filename
     page_image_dir = settings.files_dir / document.file_hash[:2] / f"{document.file_hash}_pages"
     ocr_engine = _LazyOCREngine()
+    ocr_engine.current_document_id = document.id
     # Extract folder hint from source_path for content routing.
     # e.g. "/app/data/input/presupuestos/245745/foto.jpg" -> "presupuestos"
     folder_hint = None
@@ -672,14 +697,15 @@ def _process_full_parse(db: Session, document: Document) -> bool:
     t_persist = time.perf_counter()
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document.id))
-    db.execute(delete(Plan).where(Plan.document_id == document.id))
     # Keep page rows stable across full reprocessing so their OCR attempt
     # history remains auditable and a worse candidate can never erase the
     # previous evidence. Pages removed from the source are cleaned up after
     # the new page set is known.
     existing_pages = {
         page.page_number: page
-        for page in db.scalars(select(DocumentPage).where(DocumentPage.document_id == document.id)).all()
+        for page in db.scalars(
+            select(DocumentPage).where(DocumentPage.document_id == document.id)
+        ).all()
     }
     db.flush()
 
@@ -732,6 +758,9 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             page.text = extracted_page.text
             page.ocr_engine = extracted_page.ocr_engine
             page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
+            page.ocr_engine_version = (
+                extracted_page.ocr_engine_version or settings.current_ocr_engine_version
+            )
             _mark_non_ocr_page(page, content_kind=content_kind)
         else:
             candidate = OCRResult(
@@ -741,9 +770,13 @@ def _process_full_parse(db: Session, document: Document) -> bool:
                 engine=extracted_page.ocr_engine or "unknown",
                 content_kind=content_kind,
                 route=getattr(extracted, "route", None),
+                engine_version=extracted_page.ocr_engine_version,
+                warnings=list(extracted_page.ocr_warnings),
             )
             candidate_decision = decide_ocr_result(candidate)
-            replaces_page_content = _should_select_ocr_candidate(page, candidate, candidate_decision)
+            replaces_page_content = _should_select_ocr_candidate(
+                page, candidate, candidate_decision
+            )
             page.attempts = (page.attempts or 0) + 1
             if replaces_page_content:
                 for attempt in page.ocr_attempts:
@@ -753,7 +786,9 @@ def _process_full_parse(db: Session, document: Document) -> bool:
                 page.ocr_engine = extracted_page.ocr_engine
                 page.ocr_content_kind = content_kind
                 page.processing_time_ms = getattr(extracted_page, "processing_time_ms", None)
-                page.ocr_engine_version = settings.current_ocr_engine_version
+                page.ocr_engine_version = (
+                    candidate.engine_version or settings.current_ocr_engine_version
+                )
             _record_ocr_attempt(
                 db,
                 page=page,
@@ -831,6 +866,10 @@ def _process_full_parse(db: Session, document: Document) -> bool:
             and page.ocr_confidence < settings.low_ocr_confidence_threshold
         ],
         pages=persisted_pages,
+        cad_extraction=extracted.cad if settings.cad_structured_extraction_enabled else None,
+        # Disabling the feature is a rollback switch, not an instruction to
+        # discard structured evidence that was already persisted.
+        preserve_existing_cad=not settings.cad_structured_extraction_enabled,
     )
     track_stage_duration("classification", time.perf_counter() - t_classify)
 
@@ -930,6 +969,9 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
     try:
         page_path = _resolve_files_dir_path(page.image_path)
         engine = _instantiate_effective_ocr_engine()
+        with contextlib.suppress(Exception):
+            engine.current_document_id = document.id
+            engine.current_page_number = page_number
         ocr = engine.extract(page_path)
     except Exception as exc:
         page.page_status = "failed"
@@ -958,7 +1000,7 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
         page.ocr_engine = actual_engine
         page.ocr_content_kind = content_kind
         page.processing_time_ms = int((time.perf_counter() - started) * 1000)
-        page.ocr_engine_version = settings.current_ocr_engine_version
+        page.ocr_engine_version = ocr.engine_version or settings.current_ocr_engine_version
         page.review_status = "pending"
         page.review_notes = None
         page.reviewed_at = None
@@ -979,7 +1021,7 @@ def _process_ocr_page_only(db: Session, document: Document, *, page_number: int)
             .where(DocumentBlock.page_number == page_number)
         )
         db.flush()
-    for block_payload in (ocr.blocks if replaces_page_content else []):
+    for block_payload in ocr.blocks if replaces_page_content else []:
         bbox = block_payload.bbox or (None, None, None, None)
         db.add(
             DocumentBlock(
@@ -1046,6 +1088,8 @@ def _apply_classification_and_extraction(
     page_count: int,
     low_ocr_confidences: list[float],
     pages: list | None = None,
+    cad_extraction=None,
+    preserve_existing_cad: bool = False,
 ) -> bool:
     # R1 — apply operator-approved learned rules so a pattern like
     # ``cliente_x → pedido`` overrides the generic filename/folder
@@ -1138,7 +1182,11 @@ def _apply_classification_and_extraction(
         track_classification_layer(
             dimension="document_type",
             path="rules" if not learned_rules else "rules+learned",
-            size_class="small" if len(text) < 6_000 else "medium" if len(text) < 24_000 else "large",
+            size_class="small"
+            if len(text) < 6_000
+            else "medium"
+            if len(text) < 24_000
+            else "large",
         )
         track_classification_layer(
             dimension="source_format",
@@ -1159,7 +1207,15 @@ def _apply_classification_and_extraction(
         except Exception:
             logger.exception("communication_enrichment_failed document_id=%s", document.id)
 
-    if (getattr(document, "extension", None) or "").lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}:
+    if (getattr(document, "extension", None) or "").lower() in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".tif",
+        ".tiff",
+        ".bmp",
+        ".webp",
+    }:
         try:
             from app.services.image_analysis_service import analyze_image_document
 
@@ -1174,23 +1230,32 @@ def _apply_classification_and_extraction(
         text,
         pages=pages,
     )
-    db.execute(delete(Plan).where(Plan.document_id == document.id))
-    db.flush()
-    plan_result = _get_effective_persist_plan_extraction()(db, document, text)
-    if (
-        document.document_type.startswith("plano")
-        or document.document_type in {
-            "memoria_descriptiva",
-            "memoria_constructiva",
-            "medicion",
-            "mediciones_obra",
-        }
-    ):
+    persist_plan = _get_effective_persist_plan_extraction()
+    if cad_extraction is None:
+        plan_result = persist_plan(
+            db,
+            document,
+            text,
+            preserve_existing_cad=preserve_existing_cad,
+        )
+    else:
+        plan_result = persist_plan(db, document, text, cad_extraction=cad_extraction)
+    if document.document_type.startswith("plano") or document.document_type in {
+        "memoria_descriptiva",
+        "memoria_constructiva",
+        "medicion",
+        "mediciones_obra",
+    }:
         try:
             from app.services.technical_pipeline import process_technical_document
+
             technical_result = process_technical_document(
-                db, document.id, text, document.original_filename,
-                document.document_type, blocks=pages,
+                db,
+                document.id,
+                text,
+                document.original_filename,
+                document.document_type,
+                blocks=pages,
             )
             evidence = dict(document.classification_evidence or {})
             evidence["technical_pipeline"] = {
@@ -1234,9 +1299,7 @@ def _apply_classification_and_extraction(
 
         bump_knowledge_version(db, event="document_processed")
     except Exception:
-        logger.exception(
-            "knowledge_version_bump_failed document_id=%s", document.id
-        )
+        logger.exception("knowledge_version_bump_failed document_id=%s", document.id)
     return quality.needs_review
 
 
@@ -1302,9 +1365,8 @@ def _maybe_run_hyperextract(
             total_pages += 1
             if (p.ocr_calibrated_confidence or 1.0) < 0.5:
                 low_ocr_pages += 1
-    avg_ocr_conf = (
-        sum((p.ocr_calibrated_confidence or 0.0) for p in (document.pages or []))
-        / max(total_pages, 1)
+    avg_ocr_conf = sum((p.ocr_calibrated_confidence or 0.0) for p in (document.pages or [])) / max(
+        total_pages, 1
     )
     is_scan = source_format == "image" or (
         source_format == "pdf" and (total_pages == 0 or avg_ocr_conf < 0.5)
@@ -1335,14 +1397,11 @@ def _maybe_run_hyperextract(
     fingerprint = extraction_fingerprint(
         text_hash=hash_text_for_fingerprint(text),
         document_type=document_type or "",
-        classifier_version=getattr(document, "classifier_version", None)
-        or CLASSIFIER_VERSION,
+        classifier_version=getattr(document, "classifier_version", None) or CLASSIFIER_VERSION,
         provider=settings.hyperextract_provider,
         model=settings.hyperextract_model,
-        prompt_version=getattr(settings, "hyperextract_prompt_version", None)
-        or "v1",
-        schema_version=getattr(settings, "hyperextract_schema_version", None)
-        or "v1",
+        prompt_version=getattr(settings, "hyperextract_prompt_version", None) or "v1",
+        schema_version=getattr(settings, "hyperextract_schema_version", None) or "v1",
         extractor_version="hyperextract-service-1.0.0",
     )
 

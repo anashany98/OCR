@@ -1,4 +1,5 @@
 """Small, deterministic model router for chat latency."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,9 +46,8 @@ def select_chat_model(question: str) -> ChatModelRoute:
     primary = settings.ai_model
     normalized = question.lower().strip()
     answer_profile = select_answer_profile(question)
-    is_simple = (
-        len(normalized) <= 140
-        and not any(marker in normalized for marker in _DEEP_REASONING_MARKERS)
+    is_simple = len(normalized) <= 140 and not any(
+        marker in normalized for marker in _DEEP_REASONING_MARKERS
     )
     if settings.ai_model_routing_enabled and settings.ai_fast_model and is_simple:
         return ChatModelRoute(

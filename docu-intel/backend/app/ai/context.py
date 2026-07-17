@@ -34,7 +34,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Budget, Document, Order, OrderLine
 from app.services.business_redaction import redact_business_payload_for_scope
-from app.services.redaction import redact_sensitive_text
+from app.services.redaction import (
+    redact_for_llm,
+    redact_pii,
+    redact_sensitive_text,
+)
 from app.services.tenant_access import (
     AccessScope,
     access_scope_cache_key,
@@ -140,9 +144,7 @@ def _search_result_matches_exact_subject(result: Any, subjects: list[str]) -> bo
         getattr(result, "full_text", None),
     )
     return any(
-        matches_exact_phrase(haystack, subject)
-        for subject in subjects
-        for haystack in haystacks
+        matches_exact_phrase(haystack, subject) for subject in subjects for haystack in haystacks
     )
 
 
@@ -207,8 +209,21 @@ def _find_fuzzy_subject_documents(
     from app.services.exact_document_search import search_exact_phrase
 
     stop_words = {
-        "que", "sabes", "del", "de", "en", "para", "con", "este", "esta",
-        "ese", "esa", "presupuesto", "presupuestos", "documento", "documentos",
+        "que",
+        "sabes",
+        "del",
+        "de",
+        "en",
+        "para",
+        "con",
+        "este",
+        "esta",
+        "ese",
+        "esa",
+        "presupuesto",
+        "presupuestos",
+        "documento",
+        "documentos",
     }
     tokens: list[str] = []
     for subject in subjects:
@@ -311,9 +326,28 @@ def _collect_visual_context_items(
         if len(token) > 2
         and token
         not in {
-            "describe", "describeme", "imagen", "imagenes", "foto", "fotos",
-            "visual", "que", "se", "ve", "las", "los", "del", "de", "la",
-            "el", "una", "uno", "hay", "puedes", "puedo", "dime",
+            "describe",
+            "describeme",
+            "imagen",
+            "imagenes",
+            "foto",
+            "fotos",
+            "visual",
+            "que",
+            "se",
+            "ve",
+            "las",
+            "los",
+            "del",
+            "de",
+            "la",
+            "el",
+            "una",
+            "uno",
+            "hay",
+            "puedes",
+            "puedo",
+            "dime",
         }
     }
     visual_markers = (
@@ -364,7 +398,9 @@ def _collect_visual_context_items(
         if is_logo:
             score = 0.20
         summary = text or "La página contiene una imagen, pero no hay texto OCR utilizable."
-        title = f"Imagen de la conversacion: {document.original_filename}, pagina {page.page_number}"
+        title = (
+            f"Imagen de la conversacion: {document.original_filename}, pagina {page.page_number}"
+        )
         item = ContextItem(
             title=title,
             summary=clip_excerpt(summary, 2600),
@@ -376,9 +412,7 @@ def _collect_visual_context_items(
             confidence=document.confidence,
             ocr_confidence=page.ocr_confidence or page.ocr_calibrated_confidence,
             source_path=(
-                document.source_path
-                if access_scope is not None and access_scope.is_admin
-                else None
+                document.source_path if access_scope is not None and access_scope.is_admin else None
             ),
         )
         ranked.append((score, order_index.get(document.id, document.id), item))
@@ -398,22 +432,62 @@ def redact_context_items_for_scope(
     items: list[ContextItem],
     access_scope: AccessScope,
 ) -> list[ContextItem]:
-    """Apply price/amount redaction to context items when the user
-    is not authorised to see them.
+    """Apply price/amount redaction (gated by ``can_view_prices``) and
+    PII redaction (universal) to context items before they are
+    injected into the LLM prompt.
 
     Items are returned as new dataclass instances (the original
-    list is untouched — ContextItem is frozen).
+    list is untouched — ContextItem is frozen). PII redaction is
+    applied unconditionally because we never want a Spanish ID,
+    IBAN, email or phone number to leak into a prompt sent to the
+    local model — even an admin/operator looking at the same
+    document never needs the model to memorise a customer's
+    personal details.
     """
     if access_scope.can_view_prices:
-        return items
+        # PII is still redacted even when amounts are visible.
+        return [
+            replace(
+                item,
+                summary=redact_pii(item.summary),
+                excerpt=redact_pii(item.excerpt) if item.excerpt is not None else None,
+            )
+            for item in items
+        ]
     return [
         replace(
             item,
-            summary=redact_sensitive_text(item.summary),
-            excerpt=redact_sensitive_text(item.excerpt) if item.excerpt is not None else None,
+            summary=redact_for_llm(item.summary),
+            excerpt=redact_for_llm(item.excerpt) if item.excerpt is not None else None,
         )
         for item in items
     ]
+
+
+def _cad_entity_context_label(entity: Any) -> str:
+    """Render native CAD labels without dropping the text that users ask for.
+
+    ``M1``/``M4`` commonly live in TEXT entities or INSERT attributes, not in
+    the entity type or layer. Keeping those values in the grounded excerpt is
+    what lets the model answer exact plan questions with evidence.
+    """
+    properties = getattr(entity, "properties_json", None) or {}
+    geometry = getattr(entity, "geometry_json", None) or {}
+    labels: list[str] = []
+    for key in ("text", "block_name", "displayed_text"):
+        value = properties.get(key)
+        if value:
+            labels.append(str(value))
+    attributes = properties.get("attributes")
+    if isinstance(attributes, dict):
+        labels.extend(str(value) for value in attributes.values() if value)
+    point = geometry.get("insertion_point") or geometry.get("center")
+    location = f" pos={point}" if isinstance(point, (list, tuple)) and len(point) >= 2 else ""
+    label = f" {', '.join(labels)}" if labels else ""
+    return (
+        f"{getattr(entity, 'entity_type', 'entidad')}#{getattr(entity, 'entity_handle', None) or '-'}"
+        f" capa={getattr(entity, 'layer', None) or '-'}{label}{location}"
+    )
 
 
 def collect_context(
@@ -447,8 +521,11 @@ def collect_context(
             return payload
         allowed = filter_document_ids_for_scope(db, [doc_id], access_scope)
         if doc_id not in allowed:
-            return {"found": False, "budget_number": payload.get("budget_number"),
-                    "reason": "no autorizado"}
+            return {
+                "found": False,
+                "budget_number": payload.get("budget_number"),
+                "reason": "no autorizado",
+            }
         return payload
 
     for tool in tools:
@@ -663,10 +740,7 @@ def collect_context(
                     continue
                 details = redact_business_payload_for_scope(details, access_scope)
                 rendered = render_document_details(details)
-                summary = (
-                    f"Coincidencia literal de {label} en {match.matched_in}.\n"
-                    f"{rendered}"
-                )
+                summary = f"Coincidencia literal de {label} en {match.matched_in}.\n{rendered}"
                 # An ambiguous literal hit must still carry real evidence.
                 # Previously we rendered only the empty entity card, so the
                 # grounded answer selected the first arbitrary filename and
@@ -745,7 +819,9 @@ def collect_context(
                 # The scope helper returns a set by design. Re-apply it to
                 # the original list so conversation evidence stays in the
                 # order in which it was retrieved.
-                requested_ids = [document_id for document_id in requested_ids if document_id in allowed_ids]
+                requested_ids = [
+                    document_id for document_id in requested_ids if document_id in allowed_ids
+                ]
             if tool.arguments.get("visual_only"):
                 visual_items = _collect_visual_context_items(
                     db,
@@ -786,7 +862,9 @@ def collect_context(
                     )
                 )
             if not context and requested_ids:
-                warnings.append("No he podido recuperar los documentos de la conversacion anterior.")
+                warnings.append(
+                    "No he podido recuperar los documentos de la conversacion anterior."
+                )
         elif tool.name == "search_visual_documents":
             visual_items = _collect_visual_context_items(
                 db,
@@ -914,6 +992,7 @@ def collect_context(
                     search_exact_by_number,
                     select_best_exact_match,
                 )
+
                 try:
                     from app.services.metrics import EXACT_SEARCH
                 except ImportError:  # metrics must never break retrieval
@@ -942,7 +1021,11 @@ def collect_context(
                                         f"(coincidencia en: {best.matched_in}). "
                                         f"Tipo: {best.document_type or doc_row.document_type} | "
                                         f"Estado: {doc_row.status}"
-                                        + (f" | Ruta: {best.source_path}" if best.source_path else "")
+                                        + (
+                                            f" | Ruta: {best.source_path}"
+                                            if best.source_path
+                                            else ""
+                                        )
                                     ),
                                     document_id=best.document_id,
                                     document_filename=best.original_filename,
@@ -1043,8 +1126,7 @@ def collect_context(
             # ``hosal Anibal``; never mix a broad semantic list into an exact
             # multi-document answer.
             if tool.arguments.get("fallback_if_exact_miss") and any(
-                item.title.startswith("Documento encontrado por frase exacta")
-                for item in context
+                item.title.startswith("Documento encontrado por frase exacta") for item in context
             ):
                 continue
             query = tool.arguments.get("query") or question
@@ -1139,11 +1221,7 @@ def collect_context(
                     if allow_fuzzy_subject
                     else _search_result_matches_exact_subject
                 )
-                verified_results = [
-                    result
-                    for result in results
-                    if matcher(result, exact_subjects)
-                ]
+                verified_results = [result for result in results if matcher(result, exact_subjects)]
                 if len(verified_results) != len(results):
                     warnings.append(
                         "No hubo coincidencia literal; he usado una coincidencia "
@@ -1188,7 +1266,8 @@ def collect_context(
                 # Patterns: empty Excel sheets, pages with no extracted text.
                 _EMPTY_PATTERNS = ("(Hoja sin datos)", "(Sheet sin datos)", "Hoja sin datos")
                 chunks = [
-                    c for c in chunks
+                    c
+                    for c in chunks
                     if len(c.strip()) > 50 and not any(p in c for p in _EMPTY_PATTERNS)
                 ]
                 if not chunks:
@@ -1263,9 +1342,7 @@ def collect_context(
                         f"{render_document_details(details)}"
                     )
                     if document_text:
-                        summary += "\nTexto del documento:\n" + clip_excerpt(
-                            document_text, 2200
-                        )
+                        summary += "\nTexto del documento:\n" + clip_excerpt(document_text, 2200)
                     if access_scope and access_scope.is_admin and match.source_path:
                         summary += f"\nRuta de carga: {match.source_path}"
                     context.append(
@@ -1288,9 +1365,7 @@ def collect_context(
                 fuzzy_ids = {
                     item.document_id
                     for item in context
-                    if item.title.startswith(
-                        "Documento encontrado por coincidencia aproximada"
-                    )
+                    if item.title.startswith("Documento encontrado por coincidencia aproximada")
                     and item.document_id is not None
                 }
                 if len(fuzzy_ids) == 1:
@@ -1338,6 +1413,53 @@ def collect_context(
                             source_path=document.source_path,
                         )
                     )
+        elif tool.name == "get_plan_cad_context":
+            rows = internal.get_plan_cad_context(
+                db,
+                document_id=tool.arguments.get("document_id") or resolved_doc_id,
+                query=tool.arguments.get("query") or question,
+            )
+            if access_scope:
+                allowed_ids = filter_document_ids_for_scope(
+                    db, [row["document"].id for row in rows], access_scope
+                )
+                rows = [row for row in rows if row["document"].id in allowed_ids]
+            for row in rows:
+                plan = row["plan"]
+                document = row["document"]
+                dimensions = row["dimensions"]
+                entities = row["cad_entities"]
+                dim_text = (
+                    "; ".join(
+                        f"{d.raw_text or d.value} {d.unit or ''}"
+                        f" [{d.source_method or 'unknown'}, capa {d.layer or '-'}, estado {d.validation_status}]"
+                        for d in dimensions[:30]
+                    )
+                    or "sin cotas estructuradas"
+                )
+                entity_text = (
+                    "; ".join(_cad_entity_context_label(entity) for entity in entities[:40])
+                    or "sin entidades CAD"
+                )
+                summary = (
+                    f"Plano {document.original_filename}; formato={plan.source_format or '-'}; "
+                    f"unidad CAD={plan.cad_unit or '-'}; capas={','.join((plan.cad_metadata_json or {}).get('layers', [])) or '-'}; "
+                    f"cotas={dim_text}; entidades={entity_text}. "
+                    "Las coordenadas nativas están en el sistema CAD y no deben convertirse a metros sin unidad/escala validada."
+                )
+                context.append(
+                    ContextItem(
+                        title=f"CAD de {document.original_filename}",
+                        summary=summary,
+                        document_id=document.id,
+                        document_filename=document.original_filename,
+                        page_number=1,
+                        relevance_score=1.0,
+                        excerpt=summary[:1800],
+                        confidence=1.0,
+                        source_path=document.source_path,
+                    )
+                )
         elif tool.name == "search_plan_room_measurements":
             room_name = (
                 tool.arguments.get("room_name")
@@ -1399,6 +1521,8 @@ def collect_context(
         )
     if not context and any(tool.name == "search_plan_room_measurements" for tool in tools):
         warnings.append("No hay habitaciones con medidas verificables para esa consulta.")
+    if not context and any(tool.name == "get_plan_cad_context" for tool in tools):
+        warnings.append("No hay entidades CAD estructuradas disponibles para ese plano.")
     if not context and any(tool.name == "get_related_documents" for tool in tools):
         warnings.append(
             "El documento no tiene vinculos conocidos con otros documentos del proyecto."
@@ -1432,9 +1556,7 @@ def _maybe_load_resolved_document_text(
     from app.models import DocumentPage
 
     # Check if context already has items from this document
-    already_loaded = any(
-        getattr(item, "document_id", None) == doc_id for item in context
-    )
+    already_loaded = any(getattr(item, "document_id", None) == doc_id for item in context)
     if already_loaded:
         return
 
@@ -1566,6 +1688,25 @@ def render_document_details(details: dict) -> str:
         ]
         if parts:
             lines.append("Plano: " + " | ".join(parts))
+        cad_parts = [
+            f"formato CAD {pl.get('source_format')}" if pl.get("source_format") else None,
+            f"unidad CAD {pl.get('cad_unit')}" if pl.get("cad_unit") else None,
+            f"entidades CAD {pl.get('cad_entity_count')}"
+            if pl.get("cad_entity_count") is not None
+            else None,
+            f"capas {', '.join(pl.get('cad_layers') or [])}" if pl.get("cad_layers") else None,
+        ]
+        if any(cad_parts):
+            lines.append("  CAD: " + " | ".join(p for p in cad_parts if p))
+        for d in pl.get("dimensions") or []:
+            lines.append(
+                f"    - cota {d.get('raw_text') or d.get('value')}: {d.get('value_m')} m "
+                f"(origen {d.get('source_method') or '-'}, capa {d.get('layer') or '-'}, estado {d.get('validation_status') or '-'})"
+            )
+        for e in pl.get("cad_entities_preview") or []:
+            lines.append(
+                f"    - entidad CAD {e.get('type')}#{e.get('handle') or '-'} capa {e.get('layer') or '-'}"
+            )
         for r in pl.get("rooms_preview") or []:
             lines.append(
                 f"    - estancia {r.get('name') or '-'}: area {r.get('area_m2')} m2"
@@ -1632,9 +1773,7 @@ def build_grounded_response(
     which is also called directly from the LLM path when the LLM
     output is rejected.
     """
-    context_items = [
-        item for item in context_items if item.title != "Memoria de la conversacion"
-    ]
+    context_items = [item for item in context_items if item.title != "Memoria de la conversacion"]
     if not context_items:
         # Natural-language "nothing found": 1-2 sentences, no bullet list.
         lead = (
@@ -1704,9 +1843,7 @@ def build_grounded_response(
     # Markdown tables (e.g. from ``aggregate_business`` tool results) are
     # rendered as-is: they read well as a table and would break inside prose.
     starts_table = raw_text.lstrip().startswith("|")
-    aggregate_header_then_table = (
-        raw_text.lstrip().startswith("Agregado:") and "\n|" in raw_text
-    )
+    aggregate_header_then_table = raw_text.lstrip().startswith("Agregado:") and "\n|" in raw_text
     is_table = starts_table or aggregate_header_then_table
     quote = clip_excerpt(raw_text, 600)
 
@@ -1788,18 +1925,31 @@ def _build_multi_source_fallback(
     # are explicitly labelled as budget/presupuesto references, ignoring
     # dates, phone numbers and measurements in the OCR body.
     normalized_question = _normalize(question)
-    if any(token in normalized_question for token in ("presupuesto", "presupuestos", "numero", "num")):
+    if any(
+        token in normalized_question for token in ("presupuesto", "presupuestos", "numero", "num")
+    ):
         budget_numbers: dict[str, set[str]] = {}
         budget_patterns = (
-            re.compile(r"(?:presupuesto|presupost|ppto|budget)\s*(?:n[Âºo]?\.?\s*)?([A-Z]?\d{3,7})", re.I),
-            re.compile(r"(?:numero|n[Âºo])\s*(?:de\s*)?(?:presupuesto|presupost)?\s*[:#-]?\s*([A-Z]?\d{3,7})", re.I),
+            re.compile(
+                r"(?:presupuesto|presupost|ppto|budget)\s*(?:n[Âºo]?\.?\s*)?([A-Z]?\d{3,7})", re.I
+            ),
+            re.compile(
+                r"(?:numero|n[Âºo])\s*(?:de\s*)?(?:presupuesto|presupost)?\s*[:#-]?\s*([A-Z]?\d{3,7})",
+                re.I,
+            ),
         )
         # Use an ASCII-safe ordinal marker in the regular expressions. The
         # first draft accepted ``no`` as an ordinal and could misread phone
         # numbers after the phrase ``no:``.
         budget_patterns = (
-            re.compile(r"(?:presupuesto|presupost|ppto|budget)\s*(?:(?:n\u00ba|n\.|num\.?)\s*)?([A-Z]?\d{3,7})", re.I),
-            re.compile(r"(?:numero|n\u00ba)\s*(?:de\s*)?(?:presupuesto|presupost)?\s*[:#-]?\s*([A-Z]?\d{3,7})", re.I),
+            re.compile(
+                r"(?:presupuesto|presupost|ppto|budget)\s*(?:(?:n\u00ba|n\.|num\.?)\s*)?([A-Z]?\d{3,7})",
+                re.I,
+            ),
+            re.compile(
+                r"(?:numero|n\u00ba)\s*(?:de\s*)?(?:presupuesto|presupost)?\s*[:#-]?\s*([A-Z]?\d{3,7})",
+                re.I,
+            ),
         )
         for item in context_items:
             body = f"{item.summary or ''}\n{item.excerpt or ''}"
@@ -1990,9 +2140,7 @@ def _related_filenames(items: list[ContextItem]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _fetch_full_document_text(
-    db: Session, document_id: int, page_number: int | None
-) -> str | None:
+def _fetch_full_document_text(db: Session, document_id: int, page_number: int | None) -> str | None:
     """Return the full OCR text of a document (or a single page).
 
     Used as a fallback when the hybrid search only returned a partial
@@ -2135,16 +2283,12 @@ def _structured_not_found_text(tool_name: str, payload: dict) -> str:
     if tool_name == "get_budget_total":
         num = payload.get("budget_number") or payload.get("budget_id")
         scope = f" {num}" if num else ""
-        return (
-            f"No he encontrado el importe total del presupuesto{scope} en la base "
-            "estructurada."
-        )
+        return f"No he encontrado el importe total del presupuesto{scope} en la base estructurada."
     if tool_name == "get_invoiced_amount_for_budget":
         num = payload.get("budget_number") or payload.get("budget_id")
         scope = f" {num}" if num else ""
         return (
-            f"No he encontrado facturacion asociada al presupuesto{scope} en la base "
-            "estructurada."
+            f"No he encontrado facturacion asociada al presupuesto{scope} en la base estructurada."
         )
     if tool_name == "get_budget_lines":
         num = payload.get("budget_number") or payload.get("budget_id")
@@ -2153,13 +2297,9 @@ def _structured_not_found_text(tool_name: str, payload: dict) -> str:
     if tool_name == "list_recent_accepted_budgets":
         return "No he encontrado presupuestos aceptados recientes."
     if tool_name == "find_delivery_note_in_scope":
-        return (
-            "No he encontrado un albaran de entrega dentro del ambito de busqueda actual."
-        )
+        return "No he encontrado un albaran de entrega dentro del ambito de busqueda actual."
     if tool_name == "find_shipping_cost_in_scope":
-        return (
-            "No he encontrado gastos de envio asociados dentro del ambito de busqueda actual."
-        )
+        return "No he encontrado gastos de envio asociados dentro del ambito de busqueda actual."
     # Generic fallback: never leak the raw tool name. Describe the entity
     # by the keys present (minus internal flags) so the sentence is useful.
     public = [
@@ -2362,18 +2502,12 @@ def _average_confidence(items: list[ContextItem]) -> float:
 
     # --- relevance ---
     rel_values = [
-        min(item.relevance_score or 0.0, 1.0)
-        for item in items
-        if item.relevance_score is not None
+        min(item.relevance_score or 0.0, 1.0) for item in items if item.relevance_score is not None
     ]
     rel_score = (sum(rel_values) / len(rel_values)) if rel_values else 0.5
 
     # --- OCR quality ---
-    ocr_values = [
-        item.ocr_confidence
-        for item in items
-        if item.ocr_confidence is not None
-    ]
+    ocr_values = [item.ocr_confidence for item in items if item.ocr_confidence is not None]
     if ocr_values:
         # geometric mean, floored at 0.15
         product = 1.0
@@ -2453,7 +2587,11 @@ def _render_aggregate_table(entity: str, kind: str, rows: list[dict]) -> str:
                     continue
                 # Field prefix with empty value, e.g. "cliente - " (already filtered above
                 # because the post-split " - " lands as a "-")
-                if low.startswith("cliente ") or low.startswith("proveedor ") or low.startswith("estado "):
+                if (
+                    low.startswith("cliente ")
+                    or low.startswith("proveedor ")
+                    or low.startswith("estado ")
+                ):
                     value_after = part.split(" ", 1)[1].strip()
                     if value_after and value_after != "-":
                         if low.startswith("cliente ") or low.startswith("proveedor "):
@@ -2461,7 +2599,11 @@ def _render_aggregate_table(entity: str, kind: str, rows: list[dict]) -> str:
                         elif low.startswith("estado "):
                             status = value_after
                     continue
-                if low.startswith("presupuesto ") or low.startswith("pedido ") or low.startswith("factura "):
+                if (
+                    low.startswith("presupuesto ")
+                    or low.startswith("pedido ")
+                    or low.startswith("factura ")
+                ):
                     doc_id = part
                     continue
                 # Heuristic: amount-like (contains digits and '.' or ',')
@@ -2473,9 +2615,7 @@ def _render_aggregate_table(entity: str, kind: str, rows: list[dict]) -> str:
                 amount = value
             if extra and party == "-":
                 party = " / ".join(extra)
-            out_lines.append(
-                f"| {idx} | {doc_id} | {party} | {amount} | {status} |"
-            )
+            out_lines.append(f"| {idx} | {doc_id} | {party} | {amount} | {status} |")
         return "\n".join(out_lines)
 
     # Generic rows: key | value (and optional count)

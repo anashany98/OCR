@@ -27,6 +27,7 @@ async def try_local_ai_answer(
     context_tokens: int | None = None,
     max_output_tokens: int = 4000,
     client_factory: Callable[..., Any] | None = None,
+    fallback_reason_sink: list[str] | None = None,
 ) -> str | None:
     """One-shot LLM call with the same context as the streaming
     path. Returns the model's answer, or ``fallback`` (and logs
@@ -42,8 +43,13 @@ async def try_local_ai_answer(
         response_looks_spanish,
     )
 
+    def mark_fallback(reason: str) -> None:
+        if fallback_reason_sink is not None:
+            fallback_reason_sink[:] = [reason]
+
     selected_model = model or settings.ai_model
     if not settings.ai_base_url or not selected_model:
+        mark_fallback("llm_unconfigured")
         return None
 
     context_text = build_context_text(context_items, max_tokens_override=context_tokens)
@@ -58,7 +64,9 @@ async def try_local_ai_answer(
         answer = await client.chat(messages, temperature=0.0, max_tokens=max_output_tokens)
     except ContextSizeExceededError:
         halved = max(1000, (context_tokens or settings.ai_max_context_tokens or 6000) // 2)
-        logger.warning("Prompt exceeded context_length — retry budget=%d: %s", halved, question[:100])
+        logger.warning(
+            "Prompt exceeded context_length — retry budget=%d: %s", halved, question[:100]
+        )
         messages = build_ai_messages(
             question, build_context_text(context_items, max_tokens_override=halved), warning_text
         )
@@ -67,16 +75,20 @@ async def try_local_ai_answer(
         except Exception as exc:
             logger.warning("Context-shrunk retry failed: %s", exc)
             answer = ""
+            mark_fallback("llm_context_retry_failed")
     except TimeoutError:
         logger.warning("AI answer timed out for question: %s", question[:100])
+        mark_fallback("llm_timeout")
         return None
     except (httpx.HTTPError, httpx.TimeoutException) as exc:
         logger.warning("AI client request failed: %s - question: %s", exc, question[:100])
+        mark_fallback("llm_transport_error")
         return None
     except Exception as exc:
         logger.error(
             "Unexpected error in AI answer generation: %s - question: %s", exc, question[:100]
         )
+        mark_fallback("llm_error")
         return None
 
     if not answer and "qwen" in selected_model.lower():
@@ -89,24 +101,31 @@ async def try_local_ai_answer(
             question, context_text, warning_text, enable_thinking=True
         )
         try:
-            answer = await client.chat(retry_messages, temperature=0.0, max_tokens=max_output_tokens)
+            answer = await client.chat(
+                retry_messages, temperature=0.0, max_tokens=max_output_tokens
+            )
         except Exception as exc:
             logger.warning("Qwen3 thinking-enabled retry failed: %s", exc)
             answer = ""
+            mark_fallback("llm_retry_failed")
 
     if not answer:
+        mark_fallback("llm_empty_response")
         return fallback
     if question_is_spanish(question) and not response_looks_spanish(answer):
         logger.warning("AI response not in Spanish for Spanish question: %s", answer[:200])
+        mark_fallback("validation_language")
         return fallback
     if response_fabricates_documents(answer, context_items):
         logger.warning("AI response mentions documents not in context: %s", answer[:200])
+        mark_fallback("validation_fabricated_document")
         return fallback
     if not response_covers_retrieved_sources(answer, context_items, question):
         logger.warning(
             "AI response does not cover enough retrieved sources for a broad question: %s",
             question[:100],
         )
+        mark_fallback("validation_source_coverage")
         return fallback
     return _polish_answer_text(answer)
 
@@ -116,6 +135,7 @@ def _polish_answer_text(answer: str) -> str:
     if not answer:
         return answer
     import re
+
     # Remove markdown headers that LLMs sometimes add
     answer = re.sub(r"^#{1,3}\s+", "", answer, flags=re.MULTILINE)
     # Some OpenAI-compatible local servers leak the streaming terminator

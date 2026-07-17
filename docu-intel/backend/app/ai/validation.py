@@ -405,15 +405,23 @@ def _filename_is_known(ref: str, known: set[str]) -> bool:
     # separators in the known name (so ``APROBADO`` matches but
     # ``PRO`` does not).
     for name in known:
-        if not name.endswith(".pdf") and not name.endswith(".msg") and not name.endswith(".xlsx") and not name.endswith(".docx") and not name.endswith(".doc") and not name.endswith(".png") and not name.endswith(".jpg") and not name.endswith(".jpeg") and not name.endswith(".tif") and not name.endswith(".tiff"):
+        if (
+            not name.endswith(".pdf")
+            and not name.endswith(".msg")
+            and not name.endswith(".xlsx")
+            and not name.endswith(".docx")
+            and not name.endswith(".doc")
+            and not name.endswith(".png")
+            and not name.endswith(".jpg")
+            and not name.endswith(".jpeg")
+            and not name.endswith(".tif")
+            and not name.endswith(".tiff")
+        ):
             continue
         name_stem = name.rsplit(".", 1)[0]
         # Match if stem appears as a complete token (separated by
         # spaces, slashes, underscores, or hyphens).
-        if any(
-            token == stem
-            for token in re.split(r"[\s/_\-]+", name_stem)
-        ):
+        if any(token == stem for token in re.split(r"[\s/_\-]+", name_stem)):
             return True
     # Looser fallback: the LLM often cites a document by a meaningful
     # fragment of its filename (e.g. "F-2026-044.pdf" when the stored
@@ -880,4 +888,3 @@ def _normalize(text: str) -> str:
     only used for the cheap, in-Python keyword checks."""
     normalized = unicodedata.normalize("NFKD", text.lower())
     return normalized.encode("ascii", "ignore").decode("ascii")
-

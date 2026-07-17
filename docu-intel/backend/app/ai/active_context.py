@@ -281,7 +281,12 @@ def update_after_answer(
             ctx.current_folder_path = None
         if new_project_id is not None:
             ctx.current_project_id = int(new_project_id)
-        for key, attr in (("name", "current_project_name"), ("brand_id", "current_brand_id"), ("hotel_id", "current_hotel_id"), ("budget_scope_id", "current_budget_scope_id")):
+        for key, attr in (
+            ("name", "current_project_name"),
+            ("brand_id", "current_brand_id"),
+            ("hotel_id", "current_hotel_id"),
+            ("budget_scope_id", "current_budget_scope_id"),
+        ):
             value = resolved_project.get(key)
             if value is not None:
                 setattr(ctx, attr, value)
@@ -385,12 +390,14 @@ def persist_context_after_answer(
         if resolved_doc_id is not None:
             from app.models.project import DocumentOccurrence, Project
 
-            occurrences = list(db.scalars(
-                select(DocumentOccurrence)
-                .where(DocumentOccurrence.document_id == resolved_doc_id)
-                .where(DocumentOccurrence.project_id.is_not(None))
-                .order_by(DocumentOccurrence.id)
-            ).all())
+            occurrences = list(
+                db.scalars(
+                    select(DocumentOccurrence)
+                    .where(DocumentOccurrence.document_id == resolved_doc_id)
+                    .where(DocumentOccurrence.project_id.is_not(None))
+                    .order_by(DocumentOccurrence.id)
+                ).all()
+            )
             # A document shared by several projects is intentionally
             # ambiguous: never select one silently for a follow-up.
             if len(occurrences) == 1:

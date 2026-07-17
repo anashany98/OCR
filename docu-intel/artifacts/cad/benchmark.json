@@ -1,0 +1,23 @@
+{
+  "corpus": "backend\\tests\\fixtures\\cad",
+  "files": 1,
+  "rows": [
+    {
+      "dimensions": 0,
+      "error": null,
+      "file": "fixture_simple.dxf",
+      "format": "dxf",
+      "geometry": 5,
+      "inserts": 0,
+      "layers": [
+        "0",
+        "Defpoints",
+        "WALLS"
+      ],
+      "pages": 1,
+      "seconds": 0.1862,
+      "texts": 1
+    }
+  ],
+  "successful": 1
+}
