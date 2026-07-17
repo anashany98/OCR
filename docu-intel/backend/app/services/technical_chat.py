@@ -74,7 +74,10 @@ TECHNICAL_TOOLS = [
             "type": "object",
             "properties": {
                 "document_id": {"type": "integer", "description": "ID del documento memoria"},
-                "system_element": {"type": "string", "description": "Elemento constructivo a buscar"},
+                "system_element": {
+                    "type": "string",
+                    "description": "Elemento constructivo a buscar",
+                },
                 "material": {"type": "string", "description": "Material a buscar"},
             },
         },
@@ -86,7 +89,10 @@ TECHNICAL_TOOLS = [
             "type": "object",
             "properties": {
                 "room_name": {"type": "string", "description": "Nombre de la habitación"},
-                "element_type": {"type": "string", "description": "Tipo: tabique, suelo, techo, etc."},
+                "element_type": {
+                    "type": "string",
+                    "description": "Tipo: tabique, suelo, techo, etc.",
+                },
             },
             "required": ["room_name"],
         },
@@ -110,7 +116,11 @@ TECHNICAL_TOOLS = [
             "type": "object",
             "properties": {
                 "document_id": {"type": "integer", "description": "ID del documento"},
-                "group_by": {"type": "string", "enum": ["chapter", "unit", "zone"], "description": "Agrupar por"},
+                "group_by": {
+                    "type": "string",
+                    "enum": ["chapter", "unit", "zone"],
+                    "description": "Agrupar por",
+                },
             },
             "required": ["group_by"],
         },
@@ -123,7 +133,10 @@ TECHNICAL_TOOLS = [
             "properties": {
                 "plan_id": {"type": "integer", "description": "ID del plano"},
                 "memory_id": {"type": "integer", "description": "ID de la memoria"},
-                "topic": {"type": "string", "description": "Tema a comparar (material, dimensiones, etc.)"},
+                "topic": {
+                    "type": "string",
+                    "description": "Tema a comparar (material, dimensiones, etc.)",
+                },
             },
         },
     },
@@ -156,6 +169,7 @@ REGLAS:
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ChatMessage:
@@ -191,14 +205,21 @@ class ChatSource:
 
 QUESTION_PATTERNS = {
     "scale": re.compile(r"escala|1\s*:\s*\d+", re.IGNORECASE),
-    "room": re.compile(r"habitaci[oó]n|estancia|dormitorio|sal[oó]n|cocina|ba[nñ]o|superficie|área|m2|medida", re.IGNORECASE),
+    "room": re.compile(
+        r"habitaci[oó]n|estancia|dormitorio|sal[oó]n|cocina|ba[nñ]o|superficie|área|m2|medida",
+        re.IGNORECASE,
+    ),
     "dimension": re.compile(r"mide|dimensi[oó]n|largo|ancho|alto|cota|metros", re.IGNORECASE),
-    "material": re.compile(r"material|tabique|pared|muro|ladrillo|pladur|hormig[oó]n|aislamiento", re.IGNORECASE),
+    "material": re.compile(
+        r"material|tabique|pared|muro|ladrillo|pladur|hormig[oó]n|aislamiento", re.IGNORECASE
+    ),
     "fire": re.compile(r"fuego|incendio|REI|resistencia|reacci[oó]n", re.IGNORECASE),
     "acoustic": re.compile(r"ac[uú]stico|ruido|sonido|Rw|dB|aislamiento", re.IGNORECASE),
     "thermal": re.compile(r"t[eé]rmico|calor|U\s*=|transmitancia|EPS|poliestireno", re.IGNORECASE),
     "symbol": re.compile(r"puerta|ventana|s[ií]mbolo|baldosa|sanitario|luminaria", re.IGNORECASE),
-    "budget": re.compile(r"presupuesto|partida|medici[oó]n|importe|precio|coste|cuesta|cu[aá]nto vale", re.IGNORECASE),
+    "budget": re.compile(
+        r"presupuesto|partida|medici[oó]n|importe|precio|coste|cuesta|cu[aá]nto vale", re.IGNORECASE
+    ),
     "standard": re.compile(r"norma|UNE|enro|c[oó]digo|reglamento|certificaci[oó]n", re.IGNORECASE),
     "comparison": re.compile(r"comparar|diferencia|contradici[oó]n|coincide|cambia", re.IGNORECASE),
 }
@@ -216,6 +237,7 @@ def classify_question(question: str) -> list[str]:
 # ---------------------------------------------------------------------------
 # RAG retrieval
 # ---------------------------------------------------------------------------
+
 
 def build_search_queries(question: str) -> list[str]:
     """Build multiple search queries from a user question."""
@@ -259,6 +281,7 @@ def retrieve_context(
 # ---------------------------------------------------------------------------
 # Answer generation
 # ---------------------------------------------------------------------------
+
 
 def generate_grounded_answer(
     question: str,
@@ -312,6 +335,7 @@ def generate_grounded_answer(
 # Tool execution
 # ---------------------------------------------------------------------------
 
+
 def execute_tool(
     tool_name: str,
     arguments: dict,
@@ -353,8 +377,8 @@ def _get_plan_info(args: dict, db) -> dict:
     """Get plan information."""
     if not db:
         return {"error": "Database not available"}
-    from sqlalchemy import select
     from app.models import Plan
+
     plan_id = args.get("plan_id")
     if not plan_id:
         return {"error": "plan_id required"}
@@ -375,17 +399,14 @@ def _get_plan_rooms(args: dict, db) -> dict:
     if not db:
         return {"rooms": []}
     from sqlalchemy import select
+
     from app.models import PlanRoom
+
     plan_id = args.get("plan_id")
     if not plan_id:
         return {"error": "plan_id required"}
     rooms = list(db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id)).all())
-    return {
-        "rooms": [
-            {"name": r.name, "area_m2": r.area_m2, "source": r.source}
-            for r in rooms
-        ]
-    }
+    return {"rooms": [{"name": r.name, "area_m2": r.area_m2, "source": r.source} for r in rooms]}
 
 
 def _get_room_dimensions(args: dict, db) -> dict:
@@ -393,14 +414,14 @@ def _get_room_dimensions(args: dict, db) -> dict:
     if not db:
         return {"error": "Database not available"}
     from sqlalchemy import select
+
     from app.models import PlanRoom
+
     plan_id = args.get("plan_id")
     room_name = args.get("room_name", "")
     if not plan_id or not room_name:
         return {"error": "plan_id and room_name required"}
-    rooms = list(db.scalars(
-        select(PlanRoom).where(PlanRoom.plan_id == plan_id)
-    ).all())
+    rooms = list(db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id)).all())
     for room in rooms:
         if room_name.lower() in (room.name or "").lower():
             return {
@@ -418,8 +439,10 @@ def _get_plan_symbols(args: dict, db) -> dict:
     """Get symbol counts from a plan."""
     if not db:
         return {"symbols": {}}
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
+
     from app.models import PlanSymbol
+
     plan_id = args.get("plan_id")
     if not plan_id:
         return {"error": "plan_id required"}
@@ -451,17 +474,26 @@ def _get_work_items(args: dict, db) -> dict:
     if not db:
         return {"items": []}
     from sqlalchemy import select
+
     from app.models import ConstructionWorkItem
+
     doc_id = args.get("document_id")
     if not doc_id:
         return {"error": "document_id required"}
-    items = list(db.scalars(
-        select(ConstructionWorkItem).where(ConstructionWorkItem.document_id == doc_id)
-    ).all())
+    items = list(
+        db.scalars(
+            select(ConstructionWorkItem).where(ConstructionWorkItem.document_id == doc_id)
+        ).all()
+    )
     return {
         "items": [
-            {"code": i.code, "description": i.description, "unit": i.unit,
-             "quantity": i.quantity, "total_price": float(i.total_price) if i.total_price else None}
+            {
+                "code": i.code,
+                "description": i.description,
+                "unit": i.unit,
+                "quantity": i.quantity,
+                "total_price": float(i.total_price) if i.total_price else None,
+            }
             for i in items
         ]
     }

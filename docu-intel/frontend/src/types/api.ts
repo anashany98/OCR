@@ -612,6 +612,7 @@ export type AIAnswer = {
   answer: string
   confidence: number | null
   model_name: string | null
+  fallback_reason?: string | null
   resolved_document: ResolvedDocument | null
   followups: string[]
   created_at: string

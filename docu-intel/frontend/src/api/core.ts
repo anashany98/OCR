@@ -1,10 +1,10 @@
 // Canonical versioned API. Override with VITE_API_BASE_URL at build time.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1"
 
-let onUnauthorized: (() => void) | null = null;
+let onUnauthorized: (() => void) | null = null
 
 export function setUnauthorizedHandler(cb: () => void): void {
-  onUnauthorized = cb;
+  onUnauthorized = cb
 }
 
 export class ApiError extends Error {
@@ -26,7 +26,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     ...options,
   })
   if (response.status === 401) {
-    onUnauthorized?.();
+    onUnauthorized?.()
   }
   if (!response.ok) {
     let message = response.statusText

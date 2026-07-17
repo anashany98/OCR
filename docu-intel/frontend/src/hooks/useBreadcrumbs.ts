@@ -17,12 +17,20 @@ export function useBreadcrumbs(): Breadcrumb[] {
   const matches = useMatches()
 
   return matches
-    .filter((match) => match.handle && (match.handle as { breadcrumb?: string | ((params: Record<string, string>) => string) }).breadcrumb)
+    .filter(
+      (match) =>
+        match.handle &&
+        (match.handle as { breadcrumb?: string | ((params: Record<string, string>) => string) })
+          .breadcrumb,
+    )
     .map((match) => {
-      const handle = match.handle as { breadcrumb: string | ((params: Record<string, string>) => string) }
-      const label = typeof handle.breadcrumb === "function"
-        ? handle.breadcrumb(match.params as Record<string, string>)
-        : handle.breadcrumb
+      const handle = match.handle as {
+        breadcrumb: string | ((params: Record<string, string>) => string)
+      }
+      const label =
+        typeof handle.breadcrumb === "function"
+          ? handle.breadcrumb(match.params as Record<string, string>)
+          : handle.breadcrumb
       return { label, path: match.pathname }
     })
 }

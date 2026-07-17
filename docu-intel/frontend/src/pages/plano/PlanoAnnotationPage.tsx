@@ -123,7 +123,10 @@ export function PlanoAnnotationPage() {
         {/* LEFT: rooms + dimensions + P2 symbol legend */}
         <Card className="relative flex min-h-0 flex-col overflow-hidden">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
-            <OverlayTogglePanel visibility={overlays.visibility} onToggle={overlays.toggleOverlay} />
+            <OverlayTogglePanel
+              visibility={overlays.visibility}
+              onToggle={overlays.toggleOverlay}
+            />
             <AnnotationSidebar
               rooms={a.rooms}
               dimensions={a.dimensions}

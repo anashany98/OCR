@@ -17,7 +17,14 @@ describe("useChat", () => {
     localStorage.setItem(
       CONVERSATIONS_KEY,
       JSON.stringify([
-        { id: "saved", title: "Consulta guardada", messageCount: 2, createdAt: "2026-01-01", updatedAt: "2026-01-02", pinned: true },
+        {
+          id: "saved",
+          title: "Consulta guardada",
+          messageCount: 2,
+          createdAt: "2026-01-01",
+          updatedAt: "2026-01-02",
+          pinned: true,
+        },
       ]),
     )
     localStorage.setItem(ACTIVE_CONV_KEY, "saved")
@@ -26,7 +33,11 @@ describe("useChat", () => {
 
     await waitFor(() => expect(result.current.hydrated).toBe(true))
     expect(result.current.activeConvId).toBe("saved")
-    expect(result.current.conversations[0]).toMatchObject({ id: "saved", pinned: true, messages: [] })
+    expect(result.current.conversations[0]).toMatchObject({
+      id: "saved",
+      pinned: true,
+      messages: [],
+    })
   })
 
   it("creates, pins, filters, switches and deletes local conversations", async () => {

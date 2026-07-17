@@ -66,7 +66,7 @@ def detect_lines(
     try:
         import cv2
         import numpy as np
-    except ImportError:
+    except Exception:  # noqa: BLE001 - optional native dependency must be fail-safe
         logger.debug("OpenCV not available, skipping line detection")
         return []
 

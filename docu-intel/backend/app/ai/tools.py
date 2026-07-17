@@ -1062,6 +1062,37 @@ def select_structured_tools(
     classification = classify_intent(question, active_context)
     intent = classification.intent
 
+    # ----------------------------------------------------------------
+    # Override: when the user asks "está duplicada X" or "existe y cuál
+    # es el más cercano" the intent router sometimes misclassifies the
+    # question as INTENT_INVOICE_ORIGIN_ORDER (it sees "factura 250013"
+    # and routes to the order-origin lookup). We re-route those to the
+    # dossier tools first.
+    # ----------------------------------------------------------------
+    clean_q = _strip_context_prefix(question)
+    normalised_q = _normalize(clean_q)
+    if re.search(r"\b(duplicad[oa]s?|duplicado|duplicate|duplicada|repetid[oa])\b", normalised_q):
+        ref = (
+            _extract_reference(clean_q)
+            or _extract_document_number(clean_q)
+            or _extract_any_budget_code(normalised_q)
+            or ""
+        )
+        if ref:
+            return [
+                ToolCall(
+                    "find_documents_by_reference",
+                    {"reference": ref, "include_duplicates": True},
+                )
+            ]
+    if re.search(
+        r"\b(existe|existes?|mas cercano|closest|plus proche|naheste|piu vicino|mais proximo)\b",
+        normalised_q,
+    ):
+        any_b = _extract_document_number(clean_q) or _extract_any_budget_code(normalised_q)
+        if any_b:
+            return [ToolCall("find_nearest_budget", {"budget_code": any_b})]
+
     # The intent router returns ``needs_state=True`` when the intent
     # requires an active context. When the context has nothing to
     # resolve the follow-up, we still emit the tool call with an
@@ -1163,7 +1194,236 @@ def select_structured_tools(
         # selection so the orchestrator knows the question is about a
         # plan and applies the right context windows.
         return []
+    # ----------------------------------------------------------------
+    # Dossier / aggregation patterns (added for the eval questionnaire).
+    # These cover "cuántos presupuestos hay", "lista los albaranes del
+    # 250053", "resumen ejecutivo del 250152", "el 250999 existe? cuál
+    # es el más cercano" and "está duplicada la factura 250013".
+    # The detection is rule-based and lives here (not in the intent
+    # router) because the patterns are short and very specific.
+    # The order matters: special-case patterns (nearest, duplicate) run
+    # before the generic list, otherwise a "existe? más cercano" question
+    # falls into the generic count pattern and never reaches nearest.
+    # ----------------------------------------------------------------
+    clean_question = _strip_context_prefix(question)
+    normalised = _normalize(clean_question)
+    explicit_budget_in_q = _extract_document_number(clean_question)
+    any_budget_in_q = explicit_budget_in_q or _extract_any_budget_code(normalised)
+
+    has_special_keyword = bool(
+        re.search(
+            r"\b(existe|existes?|hay|esta|mas cercano|closest|plus proche|naheste|piu vicino|mais proximo|duplicad[oa]s?|duplicado|duplicate|duplicada|repetid[oa])\b",
+            normalised,
+        )
+    )
+
+    # 4) "el presupuesto N existe? cuál es el más cercano?"
+    # Runs BEFORE the generic list so "presupuesto 250999" routes to
+    # nearest_budget instead of list_distinct_budget_codes.
+    if re.search(
+        r"\b(existe|existes?|hay|mas cercano|closest|plus proche|naheste|piu vicino|mais proximo)\b",
+        normalised,
+    ) and any_budget_in_q:
+        return [ToolCall("find_nearest_budget", {"budget_code": any_budget_in_q})]
+
+    # 5) "está duplicada la factura / el documento / el pedido N"
+    if re.search(
+        r"\b(duplicad[oa]s?|duplicado|duplicate|duplicada|repetid[oa])\b",
+        normalised,
+    ):
+        ref = (
+            _extract_reference(clean_question)
+            or explicit_budget_in_q
+            or _extract_any_budget_code(normalised)
+            or ""
+        )
+        if ref:
+            return [
+                ToolCall(
+                    "find_documents_by_reference",
+                    {"reference": ref, "include_duplicates": True},
+                )
+            ]
+
+    # 1) "cuántos presupuestos distintos hay / lista los códigos"
+    if not has_special_keyword and re.search(
+        r"\b(cuantos|cuantas|cuales|que|listar?|lista|how many|combien|wie viele|quanti|quante)\b"
+        r".*\b(presupuestos?|budgets?)\b"
+        r"(?!\s+(del?|de la|con))",
+        normalised,
+    ) and any_budget_in_q is None:
+        return [ToolCall("list_distinct_budget_codes", {"limit": 200})]
+
+    # 2) "resumen ejecutivo / resumen del presupuesto N"
+    if any_budget_in_q and re.search(
+        r"\b(resumen|resum|summary|resumir|executive|executivo|overview|vista general)\b",
+        normalised,
+    ):
+        return [ToolCall("get_budget_summary", {"budget_code": any_budget_in_q})]
+
+    # 3) "qué X tiene el presupuesto N / lista los X del N / enumera X del N"
+    if any_budget_in_q:
+        doc_type_filter = _classify_doc_type_in_question(normalised)
+        ext_filter = _classify_extension_in_question(normalised)
+        quality_filter = _classify_quality_in_question(normalised)
+        return [
+            ToolCall(
+                "list_documents_by_budget_code",
+                {
+                    "budget_code": any_budget_in_q,
+                    "document_type": doc_type_filter,
+                    "extension": ext_filter,
+                    "quality_status": quality_filter,
+                    "limit": 50,
+                },
+            )
+        ]
+
     return []
+
+
+# ---------------------------------------------------------------------------
+# Question-classification helpers (dossier filters)
+# ---------------------------------------------------------------------------
+
+
+_DOC_TYPE_SYNONYMS: dict[str, tuple[str, ...]] = {
+    # Specific types FIRST so the matcher does not pick up the word
+    # "presupuesto" used as the scope field name. ``presupuesto`` stays
+    # last as a fallback (when the user really asks for a budget, e.g.
+    # "lista los presupuestos aceptados").
+    "albaran": (
+        "albaran", "albaranes", "albaran de entrega", "albaran_transporte",
+        "delivery", "delivery note", "delivery notes", "packing list",
+    ),
+    "factura": (
+        "factura", "facturas", "invoice", "invoices", "fra",
+    ),
+    "pedido": (
+        "pedido", "pedidos", "orden de compra", "ordenes de compra",
+        "order", "orders", "purchase order",
+    ),
+    "email_exportado": (
+        "correo", "correos", "email", "emails", "correo electronico",
+        "correos electronicos", "mensaje", "mensajes", ".msg",
+    ),
+    "excel": (
+        "excel", "excels", "hoja de calculo", "xlsx",
+    ),
+    "plano": (
+        "plano", "planos", "plan", "plans", "drawing", "blueprint",
+    ),
+    "comprobante_pago": (
+        "comprobante", "comprobantes", "pago", "pagos", "transferencia",
+        "comprobante de pago", "payment", "receipt",
+    ),
+    "orden_trabajo": (
+        "orden de trabajo", "ordenes de trabajo", "work order",
+    ),
+    "ficha_tecnica": (
+        "ficha tecnica", "fichas tecnicas", "technical sheet",
+    ),
+    "dua": (
+        "dua", "duas", "declaracion unica aduanera", "aduana", "customs",
+    ),
+    "croquis_medida": (
+        "croquis", "croquis de medida", "croquis de medidas",
+    ),
+    "medicion": (
+        "medicion", "mediciones", "medida", "medidas",
+    ),
+    "foto_producto": (
+        "foto", "fotos", "fotografia", "imagen", "imagenes",
+    ),
+    "presupuesto": (
+        "presupuesto", "presupuestos", "budget", "budgets",
+        "cotizacion", "cotizaciones", "oferta",
+    ),
+}
+
+_EXTENSION_HINTS: dict[str, tuple[str, ...]] = {
+    ".msg": (".msg", "outlook", "correo outlook", "email"),
+    ".pdf": (".pdf", "pdf", "pdfs"),
+    ".xlsx": (".xlsx", "excel"),
+    ".jpg": (".jpg", ".jpeg", "foto", "fotos", "imagen", "imagenes"),
+    ".dwg": (".dwg", "autocad"),
+    ".dxf": (".dxf",),
+}
+
+_QUALITY_HINTS: dict[str, tuple[str, ...]] = {
+    "needs_human_review": (
+        "necesita revision", "necesitan revision", "pendiente de revision",
+        "revisar", "human review", "needs review", "needs_human_review",
+    ),
+    "usable_with_warnings": (
+        "con advertencias", "con warnings", "calidad baja",
+    ),
+    "processed_ok": (
+        "ok", "correctos", "validados", "procesados correctamente",
+    ),
+    "duplicate": (
+        "duplicados", "repetidos", "duplicada",
+    ),
+    "pending": (
+        "pendientes", "por procesar", "no procesados",
+    ),
+}
+
+
+def _extract_any_budget_code(normalised: str) -> str | None:
+    """Pull any 5-7 digit numeric identifier that could be a budget code.
+
+    ``_extract_document_number`` is calibrated for the canonical 6-digit
+    code. This helper accepts 5-7 digits so an out-of-range reference
+    like ``250999`` or a legacy 5-digit one still routes to the right
+    tool. The check is intentionally cheap.
+    """
+    m = re.search(r"\b(\d{5,7})\b", normalised)
+    return m.group(1) if m else None
+
+
+def _classify_doc_type_in_question(normalised: str) -> str | None:
+    """Map a normalised Spanish/English question to a document_type filter.
+
+    Returns the canonical ``document_type`` value used by the DB
+    (``albaran``, ``factura``, ``email_exportado``, …) or ``None``
+    when the question does not specify one.
+
+    The "presupuesto" type is special: the word almost always refers
+    to the *scope* (presupuesto 250053) and only rarely to the
+    document *type* (e.g. "lista los presupuestos aceptados"). We
+    therefore only return "presupuesto" when no other more specific
+    type matched AND the word appears without a trailing 6-digit code.
+    """
+    # First pass: specific types in order
+    for canonical, synonyms in _DOC_TYPE_SYNONYMS.items():
+        if canonical == "presupuesto":
+            continue  # handled below
+        if any(_contains_word(normalised, s) for s in synonyms):
+            return canonical
+    # Second pass: "presupuesto" only if not followed by a 6-digit code
+    if _contains_word(normalised, "presupuesto") or _contains_word(normalised, "presupuestos"):
+        # Strip "presupuesto NNNNN" occurrences to detect scope-only use
+        stripped = re.sub(r"presupuestos?\s+\d{6}\b", " ", normalised)
+        if re.search(r"\bpresupuestos?\b", stripped):
+            return "presupuesto"
+    return None
+
+
+def _classify_extension_in_question(normalised: str) -> str | None:
+    """Return the file extension filter (``".msg"``, ``".pdf"`` …) or None."""
+    for ext, hints in _EXTENSION_HINTS.items():
+        if any(_contains_word(normalised, h) for h in hints):
+            return ext
+    return None
+
+
+def _classify_quality_in_question(normalised: str) -> str | None:
+    """Return the quality_status filter or None."""
+    for status, hints in _QUALITY_HINTS.items():
+        if any(_contains_word(normalised, h) for h in hints):
+            return status
+    return None
 
 
 # ---------------------------------------------------------------------------

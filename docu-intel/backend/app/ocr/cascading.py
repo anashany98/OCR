@@ -38,6 +38,7 @@ from app.core.config import settings
 from app.ocr.base import BaseOCREngine, OCRResult
 from app.ocr.ovisocr2 import OvisOCR2InputTooLarge
 from app.ocr.preprocess import clear_preprocess_cache
+from app.parsers.content_router import ContentRoute
 from app.services.metrics import (
     track_ocr_cascade_fallback,
     track_ocr_duration,
@@ -483,6 +484,16 @@ class CascadingOCREngine:
     def _should_force_tier4(self, image_path: Path, baseline: OCRResult) -> bool:
         if self.vlm_ocr is None:
             return False
+        # Content-route override: when ``classify_content`` flagged the
+        # page as ``vlm_ocr`` (handwritten document, see
+        # ``app.parsers.content_router._handwritten_filename_match``)
+        # we MUST go to the VLM tier. Tesseract/Paddle/PP-Structure
+        # cannot read handwriting and the empty output would otherwise
+        # pass the ``_is_acceptable`` gate as if it were a legitimate
+        # blank page. The route is set on the engine by the parser
+        # via ``ocr_engine.current_content_route``.
+        if self.current_content_route == ContentRoute.VLM_OCR.value:
+            return True
         context_setter = getattr(self.vlm_ocr, "set_context", None)
         if callable(context_setter):
             context_setter(

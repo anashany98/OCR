@@ -407,7 +407,9 @@ def _run_semantic_search(
     return chunk_results
 
 
-def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -> list[SearchResult]:
+def _apply_rerank_and_mmr(
+    query: str, results: list[SearchResult], limit: int
+) -> list[SearchResult]:
     """Apply the cross-encoder reranker and the MMR diversity pass to a
     result list, mirroring what :func:`search_hybrid` does.
 
@@ -430,6 +432,7 @@ def _apply_rerank_and_mmr(query: str, results: list[SearchResult], limit: int) -
         except Exception as exc:  # noqa: BLE001 - reranker is best-effort
             logger.warning("semantic rerank failed: %s", exc)
             from app.services.metrics.search import track_rerank_failure
+
             track_rerank_failure(str(exc)[:80])
 
     # MMR diversity pass, same policy as the hybrid path.
@@ -464,7 +467,11 @@ def _semantic_filters_for_access(filters: dict | None, access_scope=None) -> dic
         for key, value in (filters or {}).items()
         if key != "_allow_global_semantic_search"
     }
-    if effective.get("budget_scope_id") is None and access_scope is not None and access_scope.is_admin:
+    if (
+        effective.get("budget_scope_id") is None
+        and access_scope is not None
+        and access_scope.is_admin
+    ):
         effective["_allow_global_semantic_search"] = True
     return effective
 
@@ -631,7 +638,11 @@ def search_hybrid(
                 finally:
                     sess.close()
 
-            futures[_search_pool.submit(_run_with_session, search_text, query, effective_limit, effective_filters)] = "text"
+            futures[
+                _search_pool.submit(
+                    _run_with_session, search_text, query, effective_limit, effective_filters
+                )
+            ] = "text"
             futures[
                 _search_pool.submit(
                     _run_with_session,
@@ -691,6 +702,7 @@ def search_hybrid(
             except Exception as exc:  # noqa: BLE001 - reranker is best-effort
                 logger.warning("hybrid rerank failed: %s", exc)
                 from app.services.metrics.search import track_rerank_failure
+
                 track_rerank_failure(str(exc)[:80])
 
         # E5 — MMR diversity pass. We pull a slightly larger

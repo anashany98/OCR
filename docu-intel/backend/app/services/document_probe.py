@@ -142,6 +142,4 @@ def _detect_plan_signals(text: str) -> bool:
     # Plan keywords
     plan_keywords = {"escala", "planta", "cota", "cotas", "alzado", "seccion"}
     hits = sum(1 for kw in plan_keywords if kw in normalized)
-    if hits >= 2:
-        return True
-    return False
+    return hits >= 2

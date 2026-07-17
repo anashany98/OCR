@@ -9,6 +9,7 @@ manager that records the wall-clock duration of one extraction attempt
 and tags it with the route, outcome and size class without exposing
 the document hash, filename or any other high-cardinality value.
 """
+
 from __future__ import annotations
 
 import time
@@ -21,7 +22,6 @@ from ._registry import (
     EXTRACTION_FINGERPRINT_RESULT,
     EXTRACTION_FINGERPRINT_REUSED,
 )
-
 
 RouteLabel = Literal["deterministic", "llm_text", "vlm"]
 OutcomeLabel = Literal[
@@ -77,7 +77,7 @@ class ExtractionFingerprintTimer:
     def set_outcome(self, outcome: OutcomeLabel) -> None:
         self.outcome = outcome
 
-    def __enter__(self) -> "ExtractionFingerprintTimer":
+    def __enter__(self) -> ExtractionFingerprintTimer:
         self._t0 = time.perf_counter()
         return self
 
@@ -89,9 +89,9 @@ class ExtractionFingerprintTimer:
         if exc is not None:
             self.outcome = "error"
         try:
-            EXTRACTION_FINGERPRINT_DURATION.labels(
-                route=self.route, outcome=self.outcome
-            ).observe(elapsed)
+            EXTRACTION_FINGERPRINT_DURATION.labels(route=self.route, outcome=self.outcome).observe(
+                elapsed
+            )
             EXTRACTION_FINGERPRINT_RESULT.labels(
                 route=self.route,
                 outcome=self.outcome,

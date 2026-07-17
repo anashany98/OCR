@@ -72,7 +72,9 @@ def repair_communication_materialization(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Repair source-backed communications")
-    parser.add_argument("--execute", action="store_true", help="Persist changes; default is dry-run")
+    parser.add_argument(
+        "--execute", action="store_true", help="Persist changes; default is dry-run"
+    )
     parser.add_argument("--limit", type=int, help="Maximum documents to inspect")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)

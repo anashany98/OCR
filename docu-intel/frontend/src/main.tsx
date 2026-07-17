@@ -46,22 +46,22 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <AuthProvider>
         <DensityProvider>
           <ConfirmDialogHost>
-          <RootErrorBoundary>
-            <RouterProvider router={router} />
-            <Toaster
-              position="bottom-right"
-              richColors
-              closeButton
-              duration={5000}
-              toastOptions={{
-                classNames: {
-                  toast: "font-sans",
-                  title: "text-[13px] font-medium",
-                  description: "text-[12px] text-[var(--text-muted)]",
-                },
-              }}
-            />
-          </RootErrorBoundary>
+            <RootErrorBoundary>
+              <RouterProvider router={router} />
+              <Toaster
+                position="bottom-right"
+                richColors
+                closeButton
+                duration={5000}
+                toastOptions={{
+                  classNames: {
+                    toast: "font-sans",
+                    title: "text-[13px] font-medium",
+                    description: "text-[12px] text-[var(--text-muted)]",
+                  },
+                }}
+              />
+            </RootErrorBoundary>
           </ConfirmDialogHost>
         </DensityProvider>
       </AuthProvider>

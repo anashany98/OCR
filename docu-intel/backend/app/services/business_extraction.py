@@ -328,7 +328,9 @@ def extract_delivery_note(
         text, ["proveedor", "emisor", "empresa", "razon social", "razón social", "entregado por"]
     )
     client_name = _line_value(text, ["cliente", "receptor", "recibido por", "destinatario"])
-    parsed_date = _date_from_label(text, ["fecha albarán", "fecha albaran", "fecha entrega", "fecha"])
+    parsed_date = _date_from_label(
+        text, ["fecha albarán", "fecha albaran", "fecha entrega", "fecha"]
+    )
     total_amount, total_currency = _total_amount(text, "albaran")
     lines = _extract_lines_for_document(text, pages)
 
@@ -485,6 +487,7 @@ def persist_business_extraction(
         db.flush()
         # Phase 6: persist invoice lines
         from app.models.business import InvoiceLine
+
         for line in extraction.lines:
             inv_line = InvoiceLine(
                 invoice_id=invoice.id,
@@ -558,9 +561,7 @@ def _delete_existing_business_data(db: Session, document_id: int) -> None:
         db.scalars(select(Invoice.id).where(Invoice.document_id == document_id)).all()
     )
     delivery_note_ids = list(
-        db.scalars(
-            select(DeliveryNote.id).where(DeliveryNote.document_id == document_id)
-        ).all()
+        db.scalars(select(DeliveryNote.id).where(DeliveryNote.document_id == document_id)).all()
     )
     if budget_ids:
         db.execute(delete(BudgetLine).where(BudgetLine.budget_id.in_(budget_ids)))
@@ -578,9 +579,7 @@ def _delete_existing_business_data(db: Session, document_id: int) -> None:
         db.execute(delete(Invoice).where(Invoice.id.in_(invoice_ids)))
     if delivery_note_ids:
         db.execute(
-            delete(DeliveryNoteLine).where(
-                DeliveryNoteLine.delivery_note_id.in_(delivery_note_ids)
-            )
+            delete(DeliveryNoteLine).where(DeliveryNoteLine.delivery_note_id.in_(delivery_note_ids))
         )
         db.execute(delete(DeliveryNote).where(DeliveryNote.id.in_(delivery_note_ids)))
     db.execute(delete(DocumentEntity).where(DocumentEntity.document_id == document_id))
@@ -664,9 +663,7 @@ def _add_entities_for_invoice(db: Session, document_id: int, extraction: Invoice
 def _add_entities_for_delivery_note(
     db: Session, document_id: int, extraction: DeliveryNoteExtraction
 ) -> None:
-    _entity(
-        db, document_id, "delivery_number", extraction.delivery_number, extraction.confidence
-    )
+    _entity(db, document_id, "delivery_number", extraction.delivery_number, extraction.confidence)
     _entity(db, document_id, "supplier_name", extraction.supplier_name, extraction.confidence)
     _entity(db, document_id, "client_name", extraction.client_name, extraction.confidence)
     _entity(
@@ -805,7 +802,9 @@ def _supplement_budget_number_from_context(
     budget_code = db.scalar(
         select(DocumentOccurrence.resolved_budget_code)
         .where(DocumentOccurrence.document_id == document.id)
-        .where(DocumentOccurrence.association_status.in_(("verified", "folder_only", "content_only")))
+        .where(
+            DocumentOccurrence.association_status.in_(("verified", "folder_only", "content_only"))
+        )
         .where(DocumentOccurrence.resolved_budget_code.is_not(None))
         .order_by(DocumentOccurrence.id)
         .limit(1)
@@ -1354,8 +1353,7 @@ def _extract_lines_for_document(
         # block the layout-aware and regex fallbacks below. Treat it as
         # unparseable and fall through.
         if table_lines and any(
-            ln.total_price is not None or ln.unit_price is not None
-            for ln in table_lines
+            ln.total_price is not None or ln.unit_price is not None for ln in table_lines
         ):
             return table_lines
         if table_lines:
@@ -1415,7 +1413,9 @@ def _extract_lines(text: str) -> list[ExtractedLine]:
 
     patterns = [
         # 1. Full: REF DESC CANT UNIDAD P.UNIDAD TOTAL
-        re.compile(rf"^\s*{_REF}{_DESC}\s+{_QTY}\s+{_UNIT}\s+{_UPRICE}\s+{_TPRICE}\s*$", re.IGNORECASE),
+        re.compile(
+            rf"^\s*{_REF}{_DESC}\s+{_QTY}\s+{_UNIT}\s+{_UPRICE}\s+{_TPRICE}\s*$", re.IGNORECASE
+        ),
         # 2. REF DESC CANT P.UNIDAD TOTAL (no unit word)
         re.compile(rf"^\s*{_REF}{_DESC}\s+{_QTY}\s+{_UPRICE}\s+{_TPRICE}\s*$", re.IGNORECASE),
         # 3. REF DESC CANT TOTAL (no unit price)

@@ -23,8 +23,10 @@ export function CountBadge({
   variant: "warning" | "success" | "danger" | "info" | "neutral"
 }) {
   const colors = {
-    warning: "border-[var(--warning-light)] bg-[var(--warning-light)]/30 text-[var(--text-on-warning)]",
-    success: "border-[var(--success-light)] bg-[var(--success-light)]/30 text-[var(--text-on-success)]",
+    warning:
+      "border-[var(--warning-light)] bg-[var(--warning-light)]/30 text-[var(--text-on-warning)]",
+    success:
+      "border-[var(--success-light)] bg-[var(--success-light)]/30 text-[var(--text-on-success)]",
     danger: "border-[var(--danger-light)] bg-[var(--danger-light)]/30 text-[var(--text-on-danger)]",
     info: "border-[var(--info-light)] bg-[var(--info-light)]/30 text-[var(--text-on-info)]",
     neutral: "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]",

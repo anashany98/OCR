@@ -292,10 +292,8 @@ def test_response_looks_spanish_basic():
 def test_extract_filenames_finds_known_extensions():
     from app.ai.agent import _extract_filenames
     assert _extract_filenames("dame el doc presupuesto.pdf") == ["presupuesto.pdf"]
-    # ``.dwg`` is not in the supported set (the extractor only knows
-    # the formats the platform ingests). Verify the negative case
-    # explicitly so a future extension to ``.dwg`` is easy to spot.
-    assert _extract_filenames("y el plano.dwg?") == []
+    assert _extract_filenames("y el plano.dwg?") == ["plano.dwg"]
+    assert _extract_filenames("revisa instalaciones.dxf") == ["instalaciones.dxf"]
     assert _extract_filenames("hola sin archivos") == []
 
 

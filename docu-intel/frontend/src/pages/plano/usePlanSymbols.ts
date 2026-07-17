@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query"
 
 import { plansApi, type PlanSymbol, type PlanSymbolSummary } from "@/api/plans"
 
+const EMPTY_PLAN_SYMBOLS: PlanSymbol[] = []
+
 // ---------------------------------------------------------------------------
 // P2 — YOLO plan symbol hook
 // ---------------------------------------------------------------------------
@@ -69,7 +71,7 @@ export function usePlanSymbols(planId: number | undefined, options: UsePlanSymbo
   const disableAllClasses = () => setActiveClasses(new Set())
 
   // --- Derived data -------------------------------------------------------
-  const allSymbols: PlanSymbol[] = listQuery.data ?? []
+  const allSymbols = listQuery.data ?? EMPTY_PLAN_SYMBOLS
   const summary: PlanSymbolSummary | null = summaryQuery.data ?? null
 
   // Stable list of every class that has at least one detection, in
@@ -133,7 +135,6 @@ export function filterSymbolsByPage(symbols: PlanSymbol[], page: number): PlanSy
  * name into the HSL hue wheel so every plan uses the same color
  * for "door", "window", etc., without a hard-coded table.
  */
-const HUE_STEP = 31 // prime-ish, scatters neighbours
 const SATURATION = 70
 const LIGHTNESS = 55
 

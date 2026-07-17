@@ -27,8 +27,20 @@ export function AdminAccessPage() {
           setHotelCode={state.setHotelCode}
           hotelChainId={state.hotelChainId}
           setHotelChainId={state.setHotelChainId}
-          createChain={{ mutate: () => mutations.createChain.mutate(), isPending: mutations.createChain.isPending, data: mutations.createChain.data, isError: mutations.createChain.isError, error: mutations.createChain.error }}
-          createHotel={{ mutate: () => mutations.createHotel.mutate(), isPending: mutations.createHotel.isPending, data: mutations.createHotel.data, isError: mutations.createHotel.isError, error: mutations.createHotel.error }}
+          createChain={{
+            mutate: () => mutations.createChain.mutate(),
+            isPending: mutations.createChain.isPending,
+            data: mutations.createChain.data,
+            isError: mutations.createChain.isError,
+            error: mutations.createChain.error,
+          }}
+          createHotel={{
+            mutate: () => mutations.createHotel.mutate(),
+            isPending: mutations.createHotel.isPending,
+            data: mutations.createHotel.data,
+            isError: mutations.createHotel.isError,
+            error: mutations.createHotel.error,
+          }}
         />
       )}
 
@@ -47,8 +59,18 @@ export function AdminAccessPage() {
           setRuleHotelId={state.setRuleHotelId}
           ruleTags={state.ruleTags}
           setRuleTags={state.setRuleTags}
-          createFolderRule={{ mutate: () => mutations.createFolderRule.mutate(), isPending: mutations.createFolderRule.isPending, data: mutations.createFolderRule.data, isError: mutations.createFolderRule.isError, error: mutations.createFolderRule.error }}
-          applyFolderRules={{ mutate: () => mutations.applyFolderRules.mutate(), isPending: mutations.applyFolderRules.isPending, data: mutations.applyFolderRules.data }}
+          createFolderRule={{
+            mutate: () => mutations.createFolderRule.mutate(),
+            isPending: mutations.createFolderRule.isPending,
+            data: mutations.createFolderRule.data,
+            isError: mutations.createFolderRule.isError,
+            error: mutations.createFolderRule.error,
+          }}
+          applyFolderRules={{
+            mutate: () => mutations.applyFolderRules.mutate(),
+            isPending: mutations.applyFolderRules.isPending,
+            data: mutations.applyFolderRules.data,
+          }}
         />
       )}
 
@@ -70,7 +92,13 @@ export function AdminAccessPage() {
           setGroupCanPrices={state.setGroupCanPrices}
           groupCanSearchBudgets={state.groupCanSearchBudgets}
           setGroupCanSearchBudgets={state.setGroupCanSearchBudgets}
-          createAccessGroup={{ mutate: () => mutations.createAccessGroup.mutate(), isPending: mutations.createAccessGroup.isPending, data: mutations.createAccessGroup.data, isError: mutations.createAccessGroup.isError, error: mutations.createAccessGroup.error }}
+          createAccessGroup={{
+            mutate: () => mutations.createAccessGroup.mutate(),
+            isPending: mutations.createAccessGroup.isPending,
+            data: mutations.createAccessGroup.data,
+            isError: mutations.createAccessGroup.isError,
+            error: mutations.createAccessGroup.error,
+          }}
         />
         <MembersSection
           accessGroups={queries.accessGroups.data ?? []}
@@ -80,7 +108,13 @@ export function AdminAccessPage() {
           setMemberType={state.setMemberType}
           memberPrincipalId={state.memberPrincipalId}
           setMemberPrincipalId={state.setMemberPrincipalId}
-          upsertMember={{ mutate: () => mutations.upsertMember.mutate(), isPending: mutations.upsertMember.isPending, data: mutations.upsertMember.data, isError: mutations.upsertMember.isError, error: mutations.upsertMember.error }}
+          upsertMember={{
+            mutate: () => mutations.upsertMember.mutate(),
+            isPending: mutations.upsertMember.isPending,
+            data: mutations.upsertMember.data,
+            isError: mutations.upsertMember.isError,
+            error: mutations.upsertMember.error,
+          }}
         />
       </div>
 
@@ -90,7 +124,13 @@ export function AdminAccessPage() {
         setTagName={state.setTagName}
         tagDescription={state.tagDescription}
         setTagDescription={state.setTagDescription}
-        createSensitiveTag={{ mutate: () => mutations.createSensitiveTag.mutate(), isPending: mutations.createSensitiveTag.isPending, data: mutations.createSensitiveTag.data, isError: mutations.createSensitiveTag.isError, error: mutations.createSensitiveTag.error }}
+        createSensitiveTag={{
+          mutate: () => mutations.createSensitiveTag.mutate(),
+          isPending: mutations.createSensitiveTag.isPending,
+          data: mutations.createSensitiveTag.data,
+          isError: mutations.createSensitiveTag.isError,
+          error: mutations.createSensitiveTag.error,
+        }}
       />
 
       <div className="grid gap-4 xl:grid-cols-3">
@@ -101,7 +141,13 @@ export function AdminAccessPage() {
           setExplainPrincipalId={state.setExplainPrincipalId}
           explainDocumentId={state.explainDocumentId}
           setExplainDocumentId={state.setExplainDocumentId}
-          explainAccess={{ mutate: () => mutations.explainAccess.mutate(), isPending: mutations.explainAccess.isPending, data: mutations.explainAccess.data, isError: mutations.explainAccess.isError, error: mutations.explainAccess.error }}
+          explainAccess={{
+            mutate: () => mutations.explainAccess.mutate(),
+            isPending: mutations.explainAccess.isPending,
+            data: mutations.explainAccess.data,
+            isError: mutations.explainAccess.isError,
+            error: mutations.explainAccess.error,
+          }}
         />
         <RulePreviewSection
           rulePreviewPath={state.rulePreviewPath}
@@ -110,7 +156,13 @@ export function AdminAccessPage() {
           setRulePreviewPattern={state.setRulePreviewPattern}
           rulePreviewTags={state.rulePreviewTags}
           setRulePreviewTags={state.setRulePreviewTags}
-          previewRule={{ mutate: () => mutations.previewRule.mutate(), isPending: mutations.previewRule.isPending, data: mutations.previewRule.data, isError: mutations.previewRule.isError, error: mutations.previewRule.error }}
+          previewRule={{
+            mutate: () => mutations.previewRule.mutate(),
+            isPending: mutations.previewRule.isPending,
+            data: mutations.previewRule.data,
+            isError: mutations.previewRule.isError,
+            error: mutations.previewRule.error,
+          }}
         />
         <RedactionPreviewSection
           redactionPrincipalType={state.redactionPrincipalType}
@@ -119,7 +171,13 @@ export function AdminAccessPage() {
           setRedactionPrincipalId={state.setRedactionPrincipalId}
           redactionText={state.redactionText}
           setRedactionText={state.setRedactionText}
-          previewRedaction={{ mutate: () => mutations.previewRedaction.mutate(), isPending: mutations.previewRedaction.isPending, data: mutations.previewRedaction.data, isError: mutations.previewRedaction.isError, error: mutations.previewRedaction.error }}
+          previewRedaction={{
+            mutate: () => mutations.previewRedaction.mutate(),
+            isPending: mutations.previewRedaction.isPending,
+            data: mutations.previewRedaction.data,
+            isError: mutations.previewRedaction.isError,
+            error: mutations.previewRedaction.error,
+          }}
         />
       </div>
     </div>

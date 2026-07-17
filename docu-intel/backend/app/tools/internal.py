@@ -18,11 +18,32 @@ The domain modules are:
 
 from __future__ import annotations
 
+from app.services.project_dossier import (  # noqa: F401
+    get_project_communications,
+    get_project_dossier,
+    get_project_financials,
+    get_project_issues,
+    get_project_people,
+    get_project_products,
+    get_project_timeline,
+    list_project_documents,
+    resolve_project,
+    search_project_images,
+)
+
 # Re-export everything from domain modules for backward compatibility.
 from app.tools.analytics import (  # noqa: F401
     PRICE_AGGREGATE_KINDS,
     _money_filters,
     aggregate_business,
+)
+from app.tools.dossiers import (  # noqa: F401
+    document_count_by_status,
+    find_documents_by_reference,
+    find_nearest_budget,
+    get_budget_summary,
+    list_distinct_budget_codes,
+    list_documents_by_budget_code,
 )
 from app.tools.budgets import (  # noqa: F401
     get_accepted_budgets_without_order,
@@ -49,6 +70,7 @@ from app.tools.orders import (  # noqa: F401
     search_orders,
 )
 from app.tools.plans import (  # noqa: F401
+    get_plan_cad_context,
     get_plan_dimensions,
     get_plan_rooms,
     get_room_measurements,
@@ -56,18 +78,6 @@ from app.tools.plans import (  # noqa: F401
     search_plans,
 )
 from app.tools.search import hybrid_search, search_entities  # noqa: F401
-from app.services.project_dossier import (  # noqa: F401
-    get_project_dossier,
-    get_project_financials,
-    get_project_products,
-    get_project_people,
-    get_project_communications,
-    get_project_issues,
-    get_project_timeline,
-    list_project_documents,
-    resolve_project,
-    search_project_images,
-)
 from app.tools.shipping import (  # noqa: F401
     SHIPPING_KEYWORDS,
     find_delivery_note_in_scope,

@@ -90,11 +90,15 @@ def repair_upload_occurrences(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Repair hierarchical upload occurrences")
-    parser.add_argument("--execute", action="store_true", help="Persist occurrences; default is dry-run")
+    parser.add_argument(
+        "--execute", action="store_true", help="Persist occurrences; default is dry-run"
+    )
     parser.add_argument("--limit", type=int, help="Maximum documents to inspect")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
-    print(json.dumps(repair_upload_occurrences(dry_run=not args.execute, limit=args.limit), indent=2))
+    print(
+        json.dumps(repair_upload_occurrences(dry_run=not args.execute, limit=args.limit), indent=2)
+    )
 
 
 if __name__ == "__main__":

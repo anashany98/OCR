@@ -27,7 +27,15 @@
 
 ### Pendientes
 - **FASE 7:** CI (mypy strict, coverage 70%) — golden-ocr GPU queda como deuda: requiere runner GPU dedicado (hoy no valida PaddleOCR en GPU)
-- **FASE 8.2:** DB indexes — `hnsw.ef_search` sigue en script SQL manual `optimize_vector_indexes.sql` (no en migración Alembic; activarlo requiere reinicio de Postgres)
+- **FASE 8.2:** ~~DB indexes — `hnsw.ef_search` sigue en script SQL manual `optimize_vector_indexes.sql`~~ **Resuelto** en `codex/plan-pgvector-graph-rag`. El override se aplica ahora desde `app.services.vector_store._apply_hnsw_ef_search` (`SET LOCAL hnsw.ef_search`) con el valor configurable `search_hnsw_ef_search` (default 40, validado por Pydantic en `[20, 200]`). Ver `docs/PLAN_ARQUITECTURA_PGVECTOR_GRAPH_RAG.md` §2.3.
+
+## Decisiones arquitectónicas vinculantes (no negociables)
+
+- **Una sola plataforma vectorial: PostgreSQL + pgvector.** No se instala ni se referencia Milvus, Zilliz Cloud, Qdrant, Weaviate ni Pinecone en ninguna capa (Docker, `requirements*.txt`, `pyproject.toml`, código de aplicación). Cualquier PR que añada `pymilvus` o un servicio `milvus` en compose se rechaza en revisión. Auditoría: `grep -ril "milvus\|pymilvus\|zilliz" .` debe seguir devolviendo cero ocurrencias fuera del propio plan.
+- **Graph RAG sobre tablas relacionales.** No se instala Neo4j ni Apache AGE; las relaciones se modelan con tablas SQL planas (`graph_entities`, `graph_relations`, `graph_relation_evidence`, etc., migración `0064_graph_rag_relational`).
+- **Orden de escalado:** primero SQL/índices → HNSW `ef_search` → re-particionado. Nunca "migrar a otra base vectorial".
+
+Plan completo y razonamiento: `docs/PLAN_ARQUITECTURA_PGVECTOR_GRAPH_RAG.md` (rama `codex/plan-pgvector-graph-rag`).
 
 ## Estructura clave
 ```

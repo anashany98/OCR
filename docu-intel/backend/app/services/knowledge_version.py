@@ -11,6 +11,7 @@ across the whole deployment (there is one logical knowledge
 state per installation), but a future migration can partition it
 by tenant if the workload demands it.
 """
+
 from __future__ import annotations
 
 import time
@@ -20,7 +21,6 @@ from sqlalchemy import BigInteger, DateTime, String
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database.base import Base
-
 
 SINGLE_ROW_ID = 1
 
@@ -77,9 +77,7 @@ def bump_knowledge_version(db: Session, event: str) -> int:
     row = db.get(KnowledgeVersion, SINGLE_ROW_ID)
     now = datetime.now(UTC)
     if row is None:
-        row = KnowledgeVersion(
-            id=SINGLE_ROW_ID, version=1, last_event=event, last_event_at=now
-        )
+        row = KnowledgeVersion(id=SINGLE_ROW_ID, version=1, last_event=event, last_event_at=now)
         db.add(row)
         db.flush()
         return 1

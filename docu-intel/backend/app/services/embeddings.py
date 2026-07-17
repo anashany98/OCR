@@ -104,6 +104,7 @@ class OpenAICompatibleEmbeddingClient:
     def _do_request(self, client: httpx.Client, headers: dict, payload: dict) -> dict:
         """Execute request with exponential backoff retries for transient errors."""
         import random
+
         attempts = max(1, self.max_retries)
         last_exc = None
         for attempt in range(attempts):
@@ -119,7 +120,7 @@ class OpenAICompatibleEmbeddingClient:
                     if retry_after:
                         wait = float(retry_after)
                     else:
-                        wait = min(2 ** attempt + random.uniform(0, 1), 10)
+                        wait = min(2**attempt + random.uniform(0, 1), 10)
                     if attempt < attempts - 1:
                         time.sleep(wait)
                         continue
@@ -128,7 +129,7 @@ class OpenAICompatibleEmbeddingClient:
             except httpx.HTTPError as exc:
                 last_exc = exc
                 if attempt < attempts - 1:
-                    wait = min(2 ** attempt + random.uniform(0, 1), 10)
+                    wait = min(2**attempt + random.uniform(0, 1), 10)
                     time.sleep(wait)
                     continue
                 raise EmbeddingProviderError(
@@ -749,7 +750,7 @@ def coerce_embedding_dimensions(raw_embedding: object, dimensions: int) -> list[
     vector = [float(value) for value in raw_embedding]
     if len(vector) != dimensions and not settings.embedding_allow_dimension_coercion:
         raise EmbeddingProviderError(
-                f"embedding dimension mismatch: got {len(vector)}, expected {dimensions}. "
+            f"embedding dimension mismatch: got {len(vector)}, expected {dimensions}. "
             "Check EMBEDDING_MODEL/EMBEDDING_DIMENSIONS or enable "
             "EMBEDDING_ALLOW_DIMENSION_COERCION only during a controlled migration."
         )
@@ -758,7 +759,8 @@ def coerce_embedding_dimensions(raw_embedding: object, dimensions: int) -> list[
         logger.warning(
             "Embedding coaccionado de %d a %d dims (coercion habilitada). "
             "Esto corrompe la similitud — apaga EMBEDDING_ALLOW_DIMENSION_COERCION.",
-            len(vector), dimensions,
+            len(vector),
+            dimensions,
         )
     if len(vector) < dimensions:
         return list(vector) + [0.0] * (dimensions - len(vector))

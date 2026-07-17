@@ -1,13 +1,17 @@
+import logging as _logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import structlog as _structlog
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.errors import DomainError
 from app.core.logging import setup_logging
 from app.core.multipart_limits import _APPLIED_MAX_FILES
 from app.core.rate_limit import limiter
@@ -25,7 +29,6 @@ init_sentry()
 # Multipart file-part cap: imported for its side effect (patches
 # Starlette's Request._get_form default). Must run before any route
 # resolves its dependencies, hence the top-level import.
-import logging as _logging  # noqa: E402  (intentional — runs after setup_logging)
 
 _logging.getLogger("app.bootstrap").info(
     "multipart max_files patched from %d to %d",
@@ -153,18 +156,15 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 # Register Prometheus metrics endpoint
 register_metrics_endpoint(app)
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from app.core.errors import DomainError
-import structlog as _structlog
-
 _err_logger = _structlog.get_logger("app.errors")
 
 
 @app.exception_handler(DomainError)
 async def _domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     rid = getattr(request.state, "request_id", "-")
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message, "request_id": rid})
+    return JSONResponse(
+        status_code=exc.status_code, content={"detail": exc.message, "request_id": rid}
+    )
 
 
 @app.exception_handler(Exception)

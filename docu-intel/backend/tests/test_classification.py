@@ -241,3 +241,179 @@ def test_phase0_fabric_description_is_muestra_tela():
 
     assert result.document_type == "muestra_tela"
 
+
+# ---------------------------------------------------------------------------
+# Fix 1 (regression 2026-07-16): PDFs whose leaf filename declares
+# ``presupuesto`` must report as ``presupuesto`` even when the body
+# mentions dimensional vocabulary. Previously the short-circuit was
+# image-only and PDFs lost to the ``medicion`` rule whenever the OCR
+# yielded numbers and headers like ``ACEPTACION PRESUPUESTO``.
+# ---------------------------------------------------------------------------
+
+
+def test_pdf_presupuesto_filename_wins_over_body_dimension_vocabulary():
+    result = classify_document(
+        filename="Presupuesto 1-250258 MELIA HOTELS INTERNATIONAL S.A..pdf",
+        source_path="/app/data/input/MELIA/Presupuesto 250258/PDF/Presupuesto 1-250258 MELIA HOTELS INTERNATIONAL S.A..pdf",
+        text=(
+            "1.348,21 N.I.F. TIPO IVA% IMPORTE I.V.A. 40% ACEPTACION PRESUPUESTO 30% "
+            "RECEPCION MATERIALES 30% FINALIZACION TRABAJO NIF TEL. FAX "
+            "Ancho 240 cm, largo 180 cm, alto 75 cm."
+        ),
+    )
+    assert result.document_type == "presupuesto"
+
+
+def test_pdf_presupuesto_abbrev_ppto_wins_too():
+    result = classify_document(
+        filename="ppto_250544_melia.pdf",
+        source_path="/app/data/input/ppto_250544_melia.pdf",
+        text="Ancho 200 cm alto 180 cm. IVA 21%.",
+    )
+    assert result.document_type == "presupuesto"
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 (regression 2026-07-16): an .xlsx file is always a spreadsheet,
+# regardless of content_route or body vocabulary. Previously a
+# spreadsheet whose cells contained address/header lines plus
+# dimensional columns outscored the ``excel`` extension hint because
+# the Phase 0 short-circuit only fired when content_route was
+# interior_design / fabric_description.
+# ---------------------------------------------------------------------------
+
+
+def test_xlsx_with_dimension_vocabulary_in_body_still_classifies_as_excel():
+    result = classify_document(
+        filename="PL_FRA PLANTILLA_solo FILIAL R.D y MX.xlsx",
+        source_path="/app/data/input/PLANTILLA_solo.xlsx",
+        text=(
+            "### Hoja: PL - C/ Gremi Ferrers 29 - Pol. Son Castello 07009 Baleares - "
+            "Telf.: 971 - 43.37.90  Fax.: 971 - 43.60.76"
+        ),
+        content_route=None,
+    )
+    assert result.document_type == "excel"
+
+
+def test_xlsx_with_no_content_route_still_classifies_as_excel():
+    result = classify_document(
+        filename="datos_obra.xlsx",
+        source_path="/app/data/input/datos_obra.xlsx",
+        text="",
+    )
+    assert result.document_type == "excel"
+
+
+# ---------------------------------------------------------------------------
+# Fix 3 (regression 2026-07-16): the ``medicion`` rule used to include
+# generic dimensional words (``ancho``, ``alto``, ``largo``,
+# ``cantidad``, ``armario``) which made it win over more specific
+# types like ``presupuesto`` whenever the OCR body mentioned
+# dimensions. The generic words are gone; ``medicion`` now requires
+# explicit measurement vocabulary in either filename or body.
+# ---------------------------------------------------------------------------
+
+
+def test_pdf_presupuesto_with_dimension_body_does_not_become_medicion():
+    """A quote that lists dimensions in the body must stay a quote."""
+    result = classify_document(
+        filename="presupuesto_250298.pdf",
+        source_path="/app/data/input/presupuesto_250298.pdf",
+        text=(
+            "Cliente ACME. Total presupuesto 1.245,60 EUR. Validez 30 dias. "
+            "Ancho 240 cm, alto 180 cm, largo 75 cm. Cantidad 4 unidades."
+        ),
+    )
+    assert result.document_type == "presupuesto"
+    assert result.document_type != "medicion"
+
+
+def test_pedido_with_armario_vocabulary_does_not_become_medicion():
+    """``armario`` was previously a medicion keyword. An order whose
+    body lists the items must stay an order."""
+    result = classify_document(
+        filename="pedido_250102.pdf",
+        source_path="/app/data/input/pedido_250102.pdf",
+        text=(
+            "Pedido 250102. Cliente: Hotel X. Fecha pedido: 2026-05-14. "
+            "2 armarios, 4 sillas, 1 mesa. Total 4.500 EUR."
+        ),
+    )
+    assert result.document_type == "pedido"
+    assert result.document_type != "medicion"
+
+
+def test_explicit_measurement_filename_still_wins_as_medicion():
+    """The fix removes the generic words; the explicit ones remain."""
+    result = classify_document(
+        filename="Medición 2 armarios hotel lobby.docx",
+        source_path="/app/data/input/Medición 2 armarios hotel lobby.docx",
+        text="",
+    )
+    assert result.document_type == "medicion"
+
+
+# ---------------------------------------------------------------------------
+# Fix 4 (regression 2026-07-16): the registration-time filename
+# keyword pass in ``document_registration_service`` populates
+# ``document_type`` for files whose leaf name strongly declares a
+# type, so a PDF does not sit as ``desconocido`` until the worker
+# reclassifies it.
+# ---------------------------------------------------------------------------
+
+
+def test_filename_hint_returns_presupuesto_for_pdf():
+    from app.services.document_registration_service import _type_from_filename
+
+    assert _type_from_filename("Presupuesto 1-250544 MELIA.pdf") == "presupuesto"
+    assert _type_from_filename("PPTO 250000.pdf") == "presupuesto"
+
+
+def test_filename_hint_returns_factura_and_invoice():
+    from app.services.document_registration_service import _type_from_filename
+
+    assert _type_from_filename("Factura 2-250013.pdf") == "factura"
+    assert _type_from_filename("INVOICE AR INV - BCA2500222229.PDF") == "factura"
+
+
+def test_filename_hint_returns_albaran():
+    from app.services.document_registration_service import _type_from_filename
+
+    assert _type_from_filename("albaran de entrega II.pdf") == "albaran"
+    assert _type_from_filename("albarán de recogida muestra.pdf") == "albaran"
+
+
+def test_filename_hint_returns_pedido_and_order():
+    from app.services.document_registration_service import _type_from_filename
+
+    assert _type_from_filename("pedido_250102.pdf") == "pedido"
+    assert _type_from_filename("order_99001.xlsx") == "pedido"
+
+
+def test_filename_hint_returns_hoja_confeccion():
+    from app.services.document_registration_service import _type_from_filename
+
+    assert (
+        _type_from_filename("hoja de confeccion sombrillas erroneas beige.pdf")
+        == "hoja_confeccion"
+    )
+
+
+def test_filename_hint_returns_medicion_and_incidencia():
+    from app.services.document_registration_service import _type_from_filename
+
+    assert _type_from_filename("MEDIDAS.pdf") == "medicion"
+    assert _type_from_filename("incidencia silla lobby.pdf") == "incidencia"
+
+
+def test_filename_hint_returns_none_for_ambiguous_filename():
+    from app.services.document_registration_service import _type_from_filename
+
+    assert _type_from_filename("0892_001.pdf") is None
+    assert _type_from_filename("scan_2025_05_18.pdf") is None
+    # Folder hints must NOT trigger the filename hint — the registration
+    # pass is leaf-only by design (the worker reclassifies with the
+    # full path).
+    assert _type_from_filename("/app/data/presupuestos/x.pdf") is None
+

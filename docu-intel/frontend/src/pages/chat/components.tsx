@@ -7,14 +7,12 @@ import {
   ImageIcon,
   Link2,
   Map as MapIcon,
-  MessageCircle,
   Receipt,
   Sparkles,
 } from "lucide-react"
 
 import { pageImageUrl, thumbnailUrl } from "@/api/core"
 import { Badge } from "@/components/ui/badge"
-import { EmptyChatIllustration } from "@/components/illustrations/EditorialIllustrations"
 import { formatDate, formatMoney, cn } from "@/lib/utils"
 import type { AIAnswer, AIQuestion, ResolvedDocument, ResolvedDocumentEntity } from "@/types/api"
 
@@ -87,7 +85,8 @@ export function WelcomeCard({ onPick }: { onPick: (q: string) => void }) {
           Hola, soy tu asistente documental
         </h2>
         <p className="mx-auto max-w-md text-[12px] text-[var(--text-muted)]">
-          Pregúntame sobre tus documentos. Respondo en lenguaje natural, entiendo PDFs, emails, planos e imágenes, y cito siempre la fuente.
+          Pregúntame sobre tus documentos. Respondo en lenguaje natural, entiendo PDFs, emails,
+          planos e imágenes, y cito siempre la fuente.
         </p>
       </div>
       <div className="grid w-full max-w-lg gap-1.5 sm:grid-cols-2">

@@ -5,7 +5,7 @@ Usage (from the backend/ directory):
     python -m scripts.eval_rag
     python -m scripts.eval_rag --golden tests/eval/golden_qa.jsonl
     python -m scripts.eval_rag --k 5 --json-out reports/rag.json
-    python -m scripts.eval_rag --strategy hybrid      # default
+    python -m scripts.eval_rag --strategy agent       # default, same routing as chat
     python -m scripts.eval_rag --strategy semantic
     python -m scripts.eval_rag --strategy text
 
@@ -82,7 +82,35 @@ def _build_search_fn(strategy: str):
             for r in results
         ]
 
-    return {"hybrid": hybrid, "semantic": semantic, "text": text}[strategy]
+    def agent(question: str):
+        """Evaluate the chat retrieval path, not an unscoped vector call.
+
+        The vector store correctly requires a project/budget scope for
+        semantic search. The older evaluator bypassed the agent's exact,
+        structured and CAD routes, so a valid corpus could score 0. This
+        route mirrors the collector used by chat and makes the golden set a
+        measure of what users actually receive.
+        """
+        from app.ai.context import collect_context
+        from app.ai.tools import select_structured_tools, select_tools_for_question
+
+        db = _SessionLocal()
+        try:
+            tools = select_structured_tools(question) + select_tools_for_question(question)
+            items, _warnings, _resolved_doc_id = collect_context(db, tools, question)
+            return [
+                RetrievalHit(
+                    document_id=item.document_id,
+                    score=item.relevance_score or 0.0,
+                    excerpt=item.excerpt or item.summary or "",
+                )
+                for item in items
+                if item.document_id is not None
+            ]
+        finally:
+            db.close()
+
+    return {"agent": agent, "hybrid": hybrid, "semantic": semantic, "text": text}[strategy]
 
 
 def _SessionLocal():
@@ -113,8 +141,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--strategy",
-        choices=("hybrid", "semantic", "text"),
-        default="hybrid",
+        choices=("agent", "hybrid", "semantic", "text"),
+        default="agent",
         help="Which retrieval strategy to evaluate.",
     )
     parser.add_argument(

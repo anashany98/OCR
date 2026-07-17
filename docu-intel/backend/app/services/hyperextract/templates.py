@@ -56,9 +56,7 @@ def _load_yaml(path: Path) -> HyperExtractTemplate | None:
         )
         return None
     if not isinstance(data, dict):
-        logger.warning(
-            "hyperextract: template %s is not a mapping, ignoring", path.name
-        )
+        logger.warning("hyperextract: template %s is not a mapping, ignoring", path.name)
         return None
     document_type = str(data.get("document_type") or path.stem).strip().lower()
     return HyperExtractTemplate(

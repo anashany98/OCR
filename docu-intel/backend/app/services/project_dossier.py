@@ -30,6 +30,7 @@ logger = logging.getLogger("app.services.dossier")
 @dataclass
 class ProjectDossier:
     """Complete project information bundle."""
+
     project_id: int
     project_name: str
     brand_name: str | None = None
@@ -66,8 +67,18 @@ class ProjectDossier:
             "project": {"id": self.project_id, "name": self.project_name, "status": self.status},
             "identity": {"year": self.year, "brand": self.brand_name, "hotel": self.hotel_name},
             "description": {"text": self.description, "deterministic": True},
-            "documents": {"unique_documents": self.total_documents, "occurrences": self.occurrence_count, "by_category": self.documents_by_category},
-            "financials": {"totals": {"budget": self.budget_total, "orders": self.order_total, "invoices": self.invoice_total}},
+            "documents": {
+                "unique_documents": self.total_documents,
+                "occurrences": self.occurrence_count,
+                "by_category": self.documents_by_category,
+            },
+            "financials": {
+                "totals": {
+                    "budget": self.budget_total,
+                    "orders": self.order_total,
+                    "invoices": self.invoice_total,
+                }
+            },
             "people": {"count": self.participant_count},
             "communications": {"threads": self.thread_count, "messages": self.message_count},
             "issues": {"open_count": self.open_issues},
@@ -104,6 +115,7 @@ def resolve_project(
         )
         if hotel_name:
             from app.models.tenant import Hotel
+
             stmt = stmt.join(Hotel, Project.hotel_id == Hotel.id).where(
                 Hotel.name.ilike(f"%{hotel_name}%")
             )
@@ -124,9 +136,10 @@ def require_project_access(db: Session, project: Project, access_scope: AccessSc
 def _scope_allows_project(project: Project, scope: AccessScope) -> bool:
     if scope.is_admin or scope.allow_all_hotels:
         return True
-    return bool(
-        project.hotel_id is not None and project.hotel_id in scope.hotel_ids
-    ) or project.brand_id in scope.chain_ids
+    return (
+        bool(project.hotel_id is not None and project.hotel_id in scope.hotel_ids)
+        or project.brand_id in scope.chain_ids
+    )
 
 
 def get_project_dossier(
@@ -149,21 +162,26 @@ def get_project_dossier(
     hotel = None
     if project.hotel_id:
         from app.models.tenant import Hotel
+
         hotel = db.get(Hotel, project.hotel_id)
 
     # Resolve visible documents before calculating any aggregate.  An
     # occurrence is a membership, while a document is the unique SHA-backed
     # object; the dossier must report both without leaking another tenant's
     # occurrence into its sums.
-    visible_document_ids = list(dict.fromkeys(db.scalars(
-        apply_access_predicates(
-            select(DocumentOccurrence.document_id)
-            .join(Document, DocumentOccurrence.document_id == Document.id)
-            .where(DocumentOccurrence.project_id == project_id),
-            access_scope,
-            document_column=Document.id,
+    visible_document_ids = list(
+        dict.fromkeys(
+            db.scalars(
+                apply_access_predicates(
+                    select(DocumentOccurrence.document_id)
+                    .join(Document, DocumentOccurrence.document_id == Document.id)
+                    .where(DocumentOccurrence.project_id == project_id),
+                    access_scope,
+                    document_column=Document.id,
+                )
+            ).all()
         )
-    ).all()))
+    )
     visible_sources = [
         {"document_id": document_id, "filename": filename, "kind": "document"}
         for document_id, filename in db.execute(
@@ -198,6 +216,7 @@ def get_project_dossier(
     if visible_document_ids:
         from app.models.business import Budget, Order
         from app.models.professional import Invoice
+
         budget_row = db.scalar(
             select(func.sum(Budget.total_amount)).where(
                 Budget.document_id.in_(visible_document_ids),
@@ -210,9 +229,7 @@ def get_project_dossier(
         )
         invoice_row = db.scalar(
             select(func.sum(Invoice.total_amount)).where(
-                Invoice.document_id.in_(
-                    visible_document_ids
-                )
+                Invoice.document_id.in_(visible_document_ids)
             )
         )
         budget_total = float(budget_row) if budget_row else None
@@ -221,54 +238,68 @@ def get_project_dossier(
 
     # Communications
     from app.models.communication import CommunicationMessage, CommunicationThread
-    message_count = db.scalar(
-        select(func.count(CommunicationMessage.id)).join(
-            CommunicationThread
-        ).where(
-            CommunicationThread.project_id == project_id,
-            CommunicationMessage.document_id.in_(visible_document_ids),
+
+    message_count = (
+        db.scalar(
+            select(func.count(CommunicationMessage.id))
+            .join(CommunicationThread)
+            .where(
+                CommunicationThread.project_id == project_id,
+                CommunicationMessage.document_id.in_(visible_document_ids),
+            )
         )
-    ) or 0
-    thread_count = db.scalar(
-        select(func.count(func.distinct(CommunicationMessage.thread_id)))
-        .join(CommunicationThread)
-        .where(
-            CommunicationThread.project_id == project_id,
-            CommunicationMessage.document_id.in_(visible_document_ids),
+        or 0
+    )
+    thread_count = (
+        db.scalar(
+            select(func.count(func.distinct(CommunicationMessage.thread_id)))
+            .join(CommunicationThread)
+            .where(
+                CommunicationThread.project_id == project_id,
+                CommunicationMessage.document_id.in_(visible_document_ids),
+            )
         )
-    ) or 0
+        or 0
+    )
 
     # Issues
     from app.models.communication import ProjectIssue
-    open_issues = db.scalar(
-        select(func.count(ProjectIssue.id)).where(
-            ProjectIssue.project_id == project_id,
-            ProjectIssue.source_document_id.in_(visible_document_ids),
-            ProjectIssue.status.in_(["open", "in_progress"]),
+
+    open_issues = (
+        db.scalar(
+            select(func.count(ProjectIssue.id)).where(
+                ProjectIssue.project_id == project_id,
+                ProjectIssue.source_document_id.in_(visible_document_ids),
+                ProjectIssue.status.in_(["open", "in_progress"]),
+            )
         )
-    ) or 0
+        or 0
+    )
 
     # Image count
     image_count = docs_by_category.get("imagenes", 0) + docs_by_category.get("fotos", 0)
 
     from app.models.communication import ProjectParticipant
 
-    participant_count = db.scalar(
-        select(func.count(ProjectParticipant.id)).where(
-            ProjectParticipant.project_id == project_id
+    participant_count = (
+        db.scalar(
+            select(func.count(ProjectParticipant.id)).where(
+                ProjectParticipant.project_id == project_id
+            )
         )
-    ) or 0
+        or 0
+    )
 
     # Date range
     first_date = db.scalar(
-        select(func.min(DocumentOccurrence.first_seen_at)).where(
-            DocumentOccurrence.project_id == project_id
-        ).where(DocumentOccurrence.document_id.in_(visible_document_ids))
+        select(func.min(DocumentOccurrence.first_seen_at))
+        .where(DocumentOccurrence.project_id == project_id)
+        .where(DocumentOccurrence.document_id.in_(visible_document_ids))
     )
     last_date = db.scalar(
-        select(func.max(DocumentOccurrence.last_seen_at)).where(
-            DocumentOccurrence.project_id == project_id
-        ).where(DocumentOccurrence.document_id.in_(visible_document_ids))
+        select(func.max(DocumentOccurrence.last_seen_at))
+        .where(DocumentOccurrence.project_id == project_id)
+        .where(DocumentOccurrence.document_id.in_(visible_document_ids))
     )
 
     return ProjectDossier(
@@ -279,7 +310,9 @@ def get_project_dossier(
         year=project.year,
         status=project.status,
         description=redact_for_scope(
-            {"description": project.description}, access_scope.can_view_prices, access_scope.is_admin
+            {"description": project.description},
+            access_scope.can_view_prices,
+            access_scope.is_admin,
         )["description"],
         total_documents=total_docs,
         occurrence_count=occurrence_count,
@@ -298,7 +331,10 @@ def get_project_dossier(
             gap
             for gap, present in (
                 ("documents", bool(visible_document_ids)),
-                ("financials", any(value is not None for value in (budget_total, order_total, invoice_total))),
+                (
+                    "financials",
+                    any(value is not None for value in (budget_total, order_total, invoice_total)),
+                ),
                 ("communications", bool(message_count)),
                 ("issues", bool(open_issues)),
                 ("images", bool(image_count)),
@@ -334,15 +370,17 @@ def list_project_documents(
 
     results = []
     for occ, doc in db.execute(stmt).unique().all():
-        results.append({
-            "occurrence_id": occ.id,
-            "document_id": doc.id,
-            "filename": doc.original_filename,
-            "category": occ.category,
-            "source_path": occ.source_path if access_scope.is_admin else None,
-            "first_seen": str(occ.first_seen_at),
-            "last_seen": str(occ.last_seen_at),
-        })
+        results.append(
+            {
+                "occurrence_id": occ.id,
+                "document_id": doc.id,
+                "filename": doc.original_filename,
+                "category": occ.category,
+                "source_path": occ.source_path if access_scope.is_admin else None,
+                "first_seen": str(occ.first_seen_at),
+                "last_seen": str(occ.last_seen_at),
+            }
+        )
     return results
 
 
@@ -370,32 +408,40 @@ def search_project_images(
     )
     if query:
         pattern = f"%{query}%"
-        stmt = stmt.where(or_(
-            Document.original_filename.ilike(pattern),
-            ImageAnalysis.description.ilike(pattern),
-            ImageAnalysis.labels_json.cast(Text).ilike(pattern),
-            ImageAnalysis.room_or_zone.ilike(pattern),
-        ))
-    stmt = apply_access_predicates(
-        stmt, access_scope, document_column=Document.id
-    ).order_by(DocumentOccurrence.last_seen_at.desc()).limit(limit)
+        stmt = stmt.where(
+            or_(
+                Document.original_filename.ilike(pattern),
+                ImageAnalysis.description.ilike(pattern),
+                ImageAnalysis.labels_json.cast(Text).ilike(pattern),
+                ImageAnalysis.room_or_zone.ilike(pattern),
+            )
+        )
+    stmt = (
+        apply_access_predicates(stmt, access_scope, document_column=Document.id)
+        .order_by(DocumentOccurrence.last_seen_at.desc())
+        .limit(limit)
+    )
 
     results = []
     for occ, doc, analysis in db.execute(stmt).unique().all():
-        results.append({
-            "occurrence_id": occ.id,
-            "document_id": doc.id,
-            "filename": doc.original_filename,
-            "source_path": occ.source_path if access_scope.is_admin else None,
-            "labels": analysis.labels_json if analysis else [],
-            "description": analysis.description if analysis else None,
-            "zone": analysis.room_or_zone if analysis else None,
-            "confidence": analysis.confidence if analysis else None,
-        })
+        results.append(
+            {
+                "occurrence_id": occ.id,
+                "document_id": doc.id,
+                "filename": doc.original_filename,
+                "source_path": occ.source_path if access_scope.is_admin else None,
+                "labels": analysis.labels_json if analysis else [],
+                "description": analysis.description if analysis else None,
+                "zone": analysis.room_or_zone if analysis else None,
+                "confidence": analysis.confidence if analysis else None,
+            }
+        )
     return results
 
 
-def get_project_financials(db: Session, project_id: int, *, access_scope: AccessScope | None) -> dict[str, Any]:
+def get_project_financials(
+    db: Session, project_id: int, *, access_scope: AccessScope | None
+) -> dict[str, Any]:
     """Return source-backed financial records without crossing document scope."""
     project = db.get(Project, project_id)
     if not project:
@@ -404,32 +450,87 @@ def get_project_financials(db: Session, project_id: int, *, access_scope: Access
     ids = _visible_document_ids(db, project_id, access_scope)
     from app.models.business import Budget, Order
     from app.models.professional import Invoice
+
     def rows(model, number_field: str) -> list[dict[str, Any]]:
         result = []
         for row in db.scalars(select(model).where(model.document_id.in_(ids))).all():
-            result.append({"id": row.id, "number": getattr(row, number_field, None), "total": float(row.total_amount) if row.total_amount is not None and access_scope.can_view_prices else None, "currency": row.currency if access_scope.can_view_prices else None, "source_document_id": row.document_id})
+            result.append(
+                {
+                    "id": row.id,
+                    "number": getattr(row, number_field, None),
+                    "total": float(row.total_amount)
+                    if row.total_amount is not None and access_scope.can_view_prices
+                    else None,
+                    "currency": row.currency if access_scope.can_view_prices else None,
+                    "source_document_id": row.document_id,
+                }
+            )
         return result
-    budgets, orders, invoices = rows(Budget, "budget_number"), rows(Order, "order_number"), rows(Invoice, "invoice_number")
-    return {"budgets": budgets, "orders": orders, "invoices": invoices, "totals": {"budget": _sum_amounts(budgets), "orders": _sum_amounts(orders), "invoices": _sum_amounts(invoices)}}
+
+    budgets, orders, invoices = (
+        rows(Budget, "budget_number"),
+        rows(Order, "order_number"),
+        rows(Invoice, "invoice_number"),
+    )
+    return {
+        "budgets": budgets,
+        "orders": orders,
+        "invoices": invoices,
+        "totals": {
+            "budget": _sum_amounts(budgets),
+            "orders": _sum_amounts(orders),
+            "invoices": _sum_amounts(invoices),
+        },
+    }
 
 
-def get_project_products(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+def get_project_products(
+    db: Session, project_id: int, *, access_scope: AccessScope | None
+) -> list[dict[str, Any]]:
     project = db.get(Project, project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
     require_project_access(db, project, access_scope)
     ids = _visible_document_ids(db, project_id, access_scope)
     from app.models.business import Budget, BudgetLine, Order, OrderLine
+
     products: list[dict[str, Any]] = []
-    for model, line_model, parent_key in ((Budget, BudgetLine, "budget_id"), (Order, OrderLine, "order_id")):
-        stmt = select(line_model, model).join(model, getattr(line_model, parent_key) == model.id).where(model.document_id.in_(ids))
+    for model, line_model, parent_key in (
+        (Budget, BudgetLine, "budget_id"),
+        (Order, OrderLine, "order_id"),
+    ):
+        stmt = (
+            select(line_model, model)
+            .join(model, getattr(line_model, parent_key) == model.id)
+            .where(model.document_id.in_(ids))
+        )
         for line, parent in db.execute(stmt).all():
-            products.append({"reference": line.reference, "description": line.description, "quantity": line.quantity, "unit": line.unit, "unit_price": float(line.unit_price) if line.unit_price is not None and access_scope.can_view_prices else None, "total_price": float(line.total_price) if line.total_price is not None and access_scope.can_view_prices else None, "source_document_id": parent.document_id})
+            products.append(
+                {
+                    "reference": line.reference,
+                    "description": line.description,
+                    "quantity": line.quantity,
+                    "unit": line.unit,
+                    "unit_price": float(line.unit_price)
+                    if line.unit_price is not None and access_scope.can_view_prices
+                    else None,
+                    "total_price": float(line.total_price)
+                    if line.total_price is not None and access_scope.can_view_prices
+                    else None,
+                    "source_document_id": parent.document_id,
+                }
+            )
     return products
 
 
 def _visible_document_ids(db: Session, project_id: int, scope: AccessScope) -> list[int]:
-    stmt = apply_access_predicates(select(DocumentOccurrence.document_id).join(Document).where(DocumentOccurrence.project_id == project_id), scope, document_column=Document.id)
+    stmt = apply_access_predicates(
+        select(DocumentOccurrence.document_id)
+        .join(Document)
+        .where(DocumentOccurrence.project_id == project_id),
+        scope,
+        document_column=Document.id,
+    )
     return list(db.scalars(stmt).all())
 
 
@@ -438,52 +539,133 @@ def _sum_amounts(rows: list[dict[str, Any]]) -> float | None:
     return round(sum(amounts), 2) if amounts else None
 
 
-def get_project_people(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+def get_project_people(
+    db: Session, project_id: int, *, access_scope: AccessScope | None
+) -> list[dict[str, Any]]:
     project = db.get(Project, project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
     require_project_access(db, project, access_scope)
     from app.models.communication import Contact, ProjectParticipant
-    stmt = select(ProjectParticipant, Contact).outerjoin(Contact, ProjectParticipant.contact_id == Contact.id).where(ProjectParticipant.project_id == project_id)
+
+    stmt = (
+        select(ProjectParticipant, Contact)
+        .outerjoin(Contact, ProjectParticipant.contact_id == Contact.id)
+        .where(ProjectParticipant.project_id == project_id)
+    )
     people = []
     for participant, contact in db.execute(stmt).all():
-        payload = redact_for_scope({"name": contact.name if contact else None, "email": contact.email if contact else participant.email, "phone": contact.phone if contact else None}, access_scope.can_view_prices, access_scope.is_admin)
-        people.append({**payload, "role": participant.role, "confidence": participant.role_confidence, "source": {"project_id": project_id}})
+        payload = redact_for_scope(
+            {
+                "name": contact.name if contact else None,
+                "email": contact.email if contact else participant.email,
+                "phone": contact.phone if contact else None,
+            },
+            access_scope.can_view_prices,
+            access_scope.is_admin,
+        )
+        people.append(
+            {
+                **payload,
+                "role": participant.role,
+                "confidence": participant.role_confidence,
+                "source": {"project_id": project_id},
+            }
+        )
     return people
 
 
-def get_project_communications(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+def get_project_communications(
+    db: Session, project_id: int, *, access_scope: AccessScope | None
+) -> list[dict[str, Any]]:
     project = db.get(Project, project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
     require_project_access(db, project, access_scope)
     ids = _visible_document_ids(db, project_id, access_scope)
     from app.models.communication import CommunicationMessage, CommunicationThread
-    stmt = select(CommunicationMessage, CommunicationThread).join(CommunicationThread).where(CommunicationThread.project_id == project_id, CommunicationMessage.document_id.in_(ids)).order_by(CommunicationMessage.sent_at)
+
+    stmt = (
+        select(CommunicationMessage, CommunicationThread)
+        .join(CommunicationThread)
+        .where(
+            CommunicationThread.project_id == project_id, CommunicationMessage.document_id.in_(ids)
+        )
+        .order_by(CommunicationMessage.sent_at)
+    )
     out = []
     for message, thread in db.execute(stmt).all():
-        payload = redact_for_scope({"subject": message.subject, "from": message.from_email, "body": message.body_text}, access_scope.can_view_prices, access_scope.is_admin)
-        out.append({"thread_id": thread.id, "message_id": message.id, "sent_at": str(message.sent_at) if message.sent_at else None, **payload, "source_document_id": message.document_id})
+        payload = redact_for_scope(
+            {"subject": message.subject, "from": message.from_email, "body": message.body_text},
+            access_scope.can_view_prices,
+            access_scope.is_admin,
+        )
+        out.append(
+            {
+                "thread_id": thread.id,
+                "message_id": message.id,
+                "sent_at": str(message.sent_at) if message.sent_at else None,
+                **payload,
+                "source_document_id": message.document_id,
+            }
+        )
     return out
 
 
-def get_project_issues(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+def get_project_issues(
+    db: Session, project_id: int, *, access_scope: AccessScope | None
+) -> list[dict[str, Any]]:
     project = db.get(Project, project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
     require_project_access(db, project, access_scope)
     ids = _visible_document_ids(db, project_id, access_scope)
     from app.models.communication import ProjectIssue
-    rows = db.scalars(select(ProjectIssue).where(ProjectIssue.project_id == project_id, ProjectIssue.source_document_id.in_(ids)).order_by(ProjectIssue.created_at)).all()
-    return [{"id": row.id, "title": row.title, "description": redact_for_scope({"description": row.description}, access_scope.can_view_prices, access_scope.is_admin)["description"], "severity": row.severity, "status": row.status, "source_document_id": row.source_document_id} for row in rows]
+
+    rows = db.scalars(
+        select(ProjectIssue)
+        .where(ProjectIssue.project_id == project_id, ProjectIssue.source_document_id.in_(ids))
+        .order_by(ProjectIssue.created_at)
+    ).all()
+    return [
+        {
+            "id": row.id,
+            "title": row.title,
+            "description": redact_for_scope(
+                {"description": row.description},
+                access_scope.can_view_prices,
+                access_scope.is_admin,
+            )["description"],
+            "severity": row.severity,
+            "status": row.status,
+            "source_document_id": row.source_document_id,
+        }
+        for row in rows
+    ]
 
 
-def get_project_timeline(db: Session, project_id: int, *, access_scope: AccessScope | None) -> list[dict[str, Any]]:
+def get_project_timeline(
+    db: Session, project_id: int, *, access_scope: AccessScope | None
+) -> list[dict[str, Any]]:
     project = db.get(Project, project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
     require_project_access(db, project, access_scope)
     ids = _visible_document_ids(db, project_id, access_scope)
     from app.models.communication import ProjectEvent
-    rows = db.scalars(select(ProjectEvent).where(ProjectEvent.project_id == project_id, ProjectEvent.source_document_id.in_(ids)).order_by(ProjectEvent.event_date, ProjectEvent.created_at)).all()
-    return [{"type": row.event_type, "title": row.title, "date": str(row.event_date or row.created_at), "source_document_id": row.source_document_id, "source_message_id": row.source_message_id} for row in rows]
+
+    rows = db.scalars(
+        select(ProjectEvent)
+        .where(ProjectEvent.project_id == project_id, ProjectEvent.source_document_id.in_(ids))
+        .order_by(ProjectEvent.event_date, ProjectEvent.created_at)
+    ).all()
+    return [
+        {
+            "type": row.event_type,
+            "title": row.title,
+            "date": str(row.event_date or row.created_at),
+            "source_document_id": row.source_document_id,
+            "source_message_id": row.source_message_id,
+        }
+        for row in rows
+    ]

@@ -60,8 +60,9 @@ class GoldenQA:
             ``plano``, ``exploratory`` — used to break down metrics.
         question: the exact text the user would type.
         expected_document_ids: document ids the top-k retrieval should
-            surface. Empty list = the question is exploratory and we
-            only check that *some* document is returned.
+            surface. Empty list is valid only for an explicitly exploratory
+            or intentionally unscored question; otherwise it is reported as
+            an uncurated benchmark case instead of a false green result.
         expected_keywords: literal substrings the answer is expected to
             mention (importes, NIFs, dates, room names, etc.). Used to
             score answer_relevancy without an LLM.
@@ -75,6 +76,11 @@ class GoldenQA:
     expected_document_ids: list[int] = field(default_factory=list)
     expected_keywords: list[str] = field(default_factory=list)
     min_context_recall: float = 0.5
+    allow_empty_expected: bool = False
+
+    @property
+    def has_ground_truth(self) -> bool:
+        return bool(self.expected_document_ids) or self.category == "exploratory" or self.allow_empty_expected
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GoldenQA:
@@ -86,6 +92,7 @@ class GoldenQA:
                 expected_document_ids=[int(x) for x in data.get("expected_document_ids", []) or []],
                 expected_keywords=[str(x) for x in data.get("expected_keywords", []) or []],
                 min_context_recall=float(data.get("min_context_recall", 0.5)),
+                allow_empty_expected=bool(data.get("allow_empty_expected", False)),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"Malformed golden Q&A row: {data!r} ({exc})") from exc
@@ -185,7 +192,10 @@ def citation_accuracy(
     if not expected:
         return 1.0
     expected_set = set(expected)
-    top = retrieved_doc_ids[:top_n]
+    # A document can contribute several chunks. Citation quality is about
+    # distinct documents, so duplicated pages must neither inflate the score
+    # nor make the metric exceed 1.0.
+    top = list(dict.fromkeys(retrieved_doc_ids))[:top_n]
     if not top:
         return 0.0
     hits = sum(1 for doc_id in top if doc_id in expected_set)
@@ -331,6 +341,21 @@ def evaluate_retrieval(
     """
     results: list[QuestionResult] = []
     for q in questions:
+        if not q.has_ground_truth:
+            results.append(
+                QuestionResult(
+                    id=q.id,
+                    category=q.category,
+                    question=q.question,
+                    context_recall=0.0,
+                    answer_relevancy=0.0,
+                    citation_accuracy=0.0,
+                    retrieved_document_ids=[],
+                    passed=False,
+                    detail="uncurated golden case: expected_document_ids is required",
+                )
+            )
+            continue
         try:
             hits = list(search_fn(q.question))[:k]
         except Exception as exc:  # pragma: no cover - defensive

@@ -103,7 +103,9 @@ def _process_plan_data(
             dimensions = list(
                 db.scalars(select(PlanDimension).where(PlanDimension.plan_id == plan.id)).all()
             )
-            symbols = list(db.scalars(select(PlanSymbol).where(PlanSymbol.plan_id == plan.id)).all())
+            symbols = list(
+                db.scalars(select(PlanSymbol).where(PlanSymbol.plan_id == plan.id)).all()
+            )
             result.plan_id = plan.id
             result.rooms_extracted = len(rooms)
             result.dimensions_extracted = len(dimensions)
@@ -116,10 +118,7 @@ def _process_plan_data(
                 "scale": plan.scale_text or "",
                 "phase": plan.project_phase or "",
                 "revision": plan.revision or "",
-                "rooms": [
-                    {"name": room.name or "", "area_m2": room.area_m2}
-                    for room in rooms
-                ],
+                "rooms": [{"name": room.name or "", "area_m2": room.area_m2} for room in rooms],
                 "dimensions": [
                     {"label": dimension.raw_text or "", "value_m": dimension.value_m}
                     for dimension in dimensions
@@ -138,8 +137,7 @@ def _process_plan_data(
             continue
         bbox = getattr(block, "bbox", None)
         if bbox is None and all(
-            hasattr(block, attr)
-            for attr in ("bbox_x1", "bbox_y1", "bbox_x2", "bbox_y2")
+            hasattr(block, attr) for attr in ("bbox_x1", "bbox_y1", "bbox_x2", "bbox_y2")
         ):
             coordinates = (block.bbox_x1, block.bbox_y1, block.bbox_x2, block.bbox_y2)
             bbox = coordinates if all(value is not None for value in coordinates) else None
@@ -166,9 +164,7 @@ def _process_plan_data(
             "scale": extracted.plan.scale_text or "",
             "phase": phase or "",
             "revision": revision or "",
-            "rooms": [
-                {"name": room.name, "area_m2": room.area_m2} for room in extracted.rooms
-            ],
+            "rooms": [{"name": room.name, "area_m2": room.area_m2} for room in extracted.rooms],
             "dimensions": [
                 {"label": dimension.raw_text, "value_m": dimension.value_m}
                 for dimension in extracted.dimensions
@@ -237,22 +233,14 @@ def _persist_work_items(
 
     existing_item_ids = list(
         db.scalars(
-            select(ConstructionWorkItem.id).where(
-                ConstructionWorkItem.document_id == document_id
-            )
+            select(ConstructionWorkItem.id).where(ConstructionWorkItem.document_id == document_id)
         ).all()
     )
     if existing_item_ids:
         db.execute(
-            delete(WorkItemBreakdown).where(
-                WorkItemBreakdown.work_item_id.in_(existing_item_ids)
-            )
+            delete(WorkItemBreakdown).where(WorkItemBreakdown.work_item_id.in_(existing_item_ids))
         )
-    db.execute(
-        delete(ConstructionWorkItem).where(
-            ConstructionWorkItem.document_id == document_id
-        )
-    )
+    db.execute(delete(ConstructionWorkItem).where(ConstructionWorkItem.document_id == document_id))
     db.execute(delete(WorkChapter).where(WorkChapter.document_id == document_id))
     project_id = db.scalar(
         select(DocumentOccurrence.project_id)

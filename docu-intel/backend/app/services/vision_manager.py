@@ -83,7 +83,12 @@ class VisionManager:
     @classmethod
     def _lm_studio_url(cls) -> str:
         from app.core.config import settings
-        return (settings.vision_base_url or settings.ai_base_url or "http://host.docker.internal:1234").rstrip("/").rstrip("/v1")
+
+        return (
+            (settings.vision_base_url or settings.ai_base_url or "http://host.docker.internal:1234")
+            .rstrip("/")
+            .rstrip("/v1")
+        )
 
     @classmethod
     def _http_call(
@@ -189,13 +194,12 @@ class VisionManager:
         try:
             import json as _json
             import urllib.request
+
             url = f"{cls._lm_studio_url()}/v1/models"
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=10) as resp:
                 payload = _json.loads(resp.read().decode("utf-8"))
-                loaded = any(
-                    m.get("id") == model for m in payload.get("data", [])
-                )
+                loaded = any(m.get("id") == model for m in payload.get("data", []))
                 cls._loaded_cache = loaded
                 cls._loaded_cache_ts = now
                 return loaded

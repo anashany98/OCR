@@ -7,16 +7,17 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import String, cast, delete, select
 from sqlalchemy.orm import Session
 
 from app.ai.local_client import LocalVisionClient
 from app.api.deps import get_current_user, require_roles
 from app.core.config import settings
 from app.database.session import get_db
-from app.models import Document, Plan, PlanDimension, PlanRoom, PlanSymbol, User
+from app.models import Document, Plan, PlanCadEntity, PlanDimension, PlanRoom, PlanSymbol, User
 from app.schemas.business import (
     PlanBulkUpdate,
+    PlanCadEntityRead,
     PlanDimensionCreate,
     PlanDimensionRead,
     PlanRead,
@@ -31,6 +32,7 @@ from app.schemas.business import (
     PlanVisionSuggestionResponse,
 )
 from app.services.audit import write_audit
+from app.services.search_service import _escape_ilike_wildcards
 from app.services.tenant_access import filter_records_by_document_scope, resolve_user_access_scope
 from app.services.vision_manager import VisionManager
 
@@ -87,6 +89,36 @@ def get_dimensions(
     ):
         raise HTTPException(status_code=404, detail="Plan not found")
     return list(db.scalars(select(PlanDimension).where(PlanDimension.plan_id == plan_id)).all())
+
+
+@router.get("/{plan_id}/cad-entities", response_model=list[PlanCadEntityRead])
+def get_cad_entities(
+    plan_id: int,
+    entity_type: str | None = Query(default=None),
+    layer: str | None = Query(default=None),
+    layout: str | None = Query(default=None),
+    text: str | None = Query(default=None, min_length=1, max_length=120),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[PlanCadEntity]:
+    plan = db.get(Plan, plan_id)
+    if not plan or plan not in filter_records_by_document_scope(
+        db, [plan], resolve_user_access_scope(db, user)
+    ):
+        raise HTTPException(status_code=404, detail="Plan not found")
+    stmt = select(PlanCadEntity).where(PlanCadEntity.plan_id == plan_id)
+    if entity_type:
+        stmt = stmt.where(PlanCadEntity.entity_type == entity_type)
+    if layer:
+        stmt = stmt.where(PlanCadEntity.layer == layer)
+    if layout:
+        stmt = stmt.where(PlanCadEntity.layout == layout)
+    if text:
+        pattern = f"%{_escape_ilike_wildcards(text)}%"
+        stmt = stmt.where(cast(PlanCadEntity.properties_json, String).ilike(pattern))
+    return list(db.scalars(stmt.order_by(PlanCadEntity.id.asc()).offset(offset).limit(limit)).all())
 
 
 # P2 — Plan symbol detection (YOLOv8). The endpoints return what
@@ -308,6 +340,12 @@ def create_dimension(
         bbox_x2=payload.bbox_x2,
         bbox_y2=payload.bbox_y2,
         confidence=payload.confidence or 0.9,
+        source_method="manual",
+        native_value=payload.value,
+        native_unit=payload.unit,
+        unit_source="manual",
+        validation_status="confirmed",
+        needs_review=False,
     )
     db.add(dim)
     write_audit(
@@ -388,7 +426,13 @@ def bulk_update(
                 )
             )
     if data.get("dimensions") is not None:
-        db.execute(delete(PlanDimension).where(PlanDimension.plan_id == plan_id))
+        # The annotation editor owns only manual rows. Native CAD and OCR
+        # dimensions remain source evidence and must survive a canvas save.
+        db.execute(
+            delete(PlanDimension)
+            .where(PlanDimension.plan_id == plan_id)
+            .where(PlanDimension.source_method == "manual")
+        )
         for d in data["dimensions"]:
             if not d:
                 continue
@@ -414,6 +458,12 @@ def bulk_update(
                     bbox_x2=d.get("bbox_x2"),
                     bbox_y2=d.get("bbox_y2"),
                     confidence=d.get("confidence") or 0.9,
+                    source_method="manual",
+                    native_value=d.get("value"),
+                    native_unit=d.get("unit"),
+                    unit_source="manual",
+                    validation_status="confirmed",
+                    needs_review=False,
                 )
             )
     if data.get("scale_text") is not None:
@@ -646,8 +696,10 @@ def update_room(
 # PM7 — Overlays, confirmation, and learning
 # ===========================================================================
 
+
 class OverlayRegion(BaseModel):
     """A labeled region on the plan (cajetín, legend, etc.)."""
+
     region_type: str  # "cajetin", "legend", "notes", "revision_table", "viewport"
     bbox: tuple[float, float, float, float]  # x1, y1, x2, y2 in PDF coords
     label: str
@@ -657,8 +709,63 @@ class OverlayRegion(BaseModel):
     source_kind: str = "derived"
 
 
+def _cad_dimension_overlay_bbox(
+    plan: Plan,
+    coordinates: dict | None,
+) -> tuple[float, float, float, float] | None:
+    """Map persisted native CAD coordinates to the cached preview canvas."""
+    transform = plan.coordinate_transform_json or {}
+    extents = transform.get("extents") or plan.cad_extents_json or {}
+    try:
+        x1, y1 = float(extents["x1"]), float(extents["y1"])
+        x2, y2 = float(extents["x2"]), float(extents["y2"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    points = list((coordinates or {}).get("definition_points") or [])
+    text_point = (coordinates or {}).get("text_point")
+    if isinstance(text_point, (list, tuple)):
+        points.append(text_point)
+    parsed: list[tuple[float, float]] = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        try:
+            parsed.append((float(point[0]), float(point[1])))
+        except (TypeError, ValueError):
+            continue
+    if not parsed:
+        return None
+    width = float(transform.get("canvas_width") or 1400)
+    height = float(transform.get("canvas_height") or 1000)
+    margin = float(transform.get("margin") or 50)
+    scale = transform.get("scale")
+    if not isinstance(scale, (int, float)):
+        scale = min(
+            (width - 2 * margin) / max(x2 - x1, 1e-9),
+            (height - 2 * margin) / max(y2 - y1, 1e-9),
+        )
+
+    def project(point: tuple[float, float]) -> tuple[float, float]:
+        return (
+            (margin + (point[0] - x1) * float(scale)) / width,
+            (height - margin - (point[1] - y1) * float(scale)) / height,
+        )
+
+    projected = [project(point) for point in parsed]
+    xs = [point[0] for point in projected]
+    ys = [point[1] for point in projected]
+    padding = 0.012
+    return (
+        max(0.0, min(xs) - padding),
+        max(0.0, min(ys) - padding),
+        min(1.0, max(xs) + padding),
+        min(1.0, max(ys) + padding),
+    )
+
+
 class ChatFactOverlay(BaseModel):
     """A fact cited by chat that should be highlighted on the plan."""
+
     fact_type: str  # "room", "dimension", "symbol", "material"
     subject: str
     value: str
@@ -670,6 +777,7 @@ class ChatFactOverlay(BaseModel):
 
 class RevisionChange(BaseModel):
     """A change between two revisions of the same plan."""
+
     change_type: str  # "added", "removed", "modified"
     entity_type: str  # "room", "dimension", "symbol", "text"
     description: str
@@ -680,12 +788,14 @@ class RevisionChange(BaseModel):
 
 class ConfirmRequest(BaseModel):
     """Request to confirm/reject an entity."""
+
     action: str  # "confirm" | "reject"
     notes: str | None = None
 
 
 class CorrectRoomRequest(BaseModel):
     """Request to correct a room's name or polygon."""
+
     name: str | None = None
     polygon: list[dict] | None = None  # [{"x": 0, "y": 0}, ...]
     notes: str | None = None
@@ -693,6 +803,7 @@ class CorrectRoomRequest(BaseModel):
 
 class ScaleCalibrationRequest(BaseModel):
     """Request to calibrate scale with two points."""
+
     point1: dict  # {"x": 0, "y": 0}
     point2: dict  # {"x": 100, "y": 0}
     real_distance_m: float
@@ -732,8 +843,13 @@ def get_plan_overlays(
         select(PlanDimension).where(PlanDimension.plan_id == plan_id)
     ).all():
         coordinates = (dimension.bbox_x1, dimension.bbox_y1, dimension.bbox_x2, dimension.bbox_y2)
+        source_kind = "ocr_dimension"
         if any(value is None for value in coordinates):
-            continue
+            cad_bbox = _cad_dimension_overlay_bbox(plan, dimension.coordinates_json)
+            if cad_bbox is None:
+                continue
+            coordinates = cad_bbox
+            source_kind = "cad_dimension"
         regions.append(
             OverlayRegion(
                 region_type="dimension",
@@ -742,13 +858,15 @@ def get_plan_overlays(
                 confidence=dimension.confidence or 0.0,
                 page_number=dimension.page_number or 1,
                 source_document=source_document,
-                source_kind="ocr_dimension",
+                source_kind=source_kind,
             )
         )
 
     for room in db.scalars(select(PlanRoom).where(PlanRoom.plan_id == plan_id)).all():
         points = room.polygon_json if isinstance(room.polygon_json, list) else []
-        coordinates = [(point.get("x"), point.get("y")) for point in points if isinstance(point, dict)]
+        coordinates = [
+            (point.get("x"), point.get("y")) for point in points if isinstance(point, dict)
+        ]
         coordinates = [(x, y) for x, y in coordinates if x is not None and y is not None]
         if not coordinates:
             continue
@@ -797,18 +915,22 @@ def get_plan_chat_facts(
                 xs = [p.get("x", 0) for p in points if isinstance(p, dict)]
                 ys = [p.get("y", 0) for p in points if isinstance(p, dict)]
                 if xs and ys:
-                    facts.append(ChatFactOverlay(
-                        fact_type="room",
-                        subject=room.name or "Sin nombre",
-                        value=f"{room.area_m2:.1f} m²" if room.area_m2 else "",
-                        bbox=(min(xs), min(ys), max(xs), max(ys)),
-                        confidence=room.confidence or 0.8,
-                    ))
+                    facts.append(
+                        ChatFactOverlay(
+                            fact_type="room",
+                            subject=room.name or "Sin nombre",
+                            value=f"{room.area_m2:.1f} m²" if room.area_m2 else "",
+                            bbox=(min(xs), min(ys), max(xs), max(ys)),
+                            confidence=room.confidence or 0.8,
+                        )
+                    )
 
     # Filter by query if provided
     if query:
         query_lower = query.lower()
-        facts = [f for f in facts if query_lower in f.subject.lower() or query_lower in f.value.lower()]
+        facts = [
+            f for f in facts if query_lower in f.subject.lower() or query_lower in f.value.lower()
+        ]
 
     return facts
 
@@ -860,7 +982,8 @@ def confirm_room(
         room.confidence = max(0.0, (room.confidence or 0.5) - 0.3)
 
     write_audit(
-        db, user=user,
+        db,
+        user=user,
         action=f"plan_room_{payload.action}ed",
         entity_type="plan_room",
         entity_id=room_id,
@@ -897,7 +1020,8 @@ def correct_room(
     room.confidence = min(1.0, (room.confidence or 0.5) + 0.3)
 
     write_audit(
-        db, user=user,
+        db,
+        user=user,
         action="plan_room_corrected",
         entity_type="plan_room",
         entity_id=room_id,
@@ -922,6 +1046,7 @@ def confirm_scale(
         raise HTTPException(status_code=404, detail="Plan not found")
 
     import math
+
     dx = payload.point2["x"] - payload.point1["x"]
     dy = payload.point2["y"] - payload.point1["y"]
     pixel_distance = math.sqrt(dx * dx + dy * dy)
@@ -938,7 +1063,8 @@ def confirm_scale(
         plan.scale_confidence = 1.0
 
     write_audit(
-        db, user=user,
+        db,
+        user=user,
         action="plan_scale_calibrated",
         entity_type="plan",
         entity_id=plan_id,
@@ -969,11 +1095,16 @@ def confirm_dimension(
 
     if payload.action == "confirm":
         dim.confidence = min(1.0, (dim.confidence or 0.5) + 0.2)
+        dim.validation_status = "confirmed"
+        dim.needs_review = False
     elif payload.action == "reject":
         dim.confidence = max(0.0, (dim.confidence or 0.5) - 0.3)
+        dim.validation_status = "rejected"
+        dim.needs_review = False
 
     write_audit(
-        db, user=user,
+        db,
+        user=user,
         action=f"plan_dimension_{payload.action}ed",
         entity_type="plan_dimension",
         entity_id=dim_id,

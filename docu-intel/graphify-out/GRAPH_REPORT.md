@@ -1,16 +1,16 @@
 # Graph Report - docu-intel  (2026-07-15)
 
 ## Corpus Check
-- 897 files · ~657,231 words
+- 934 files · ~676,918 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 10299 nodes · 19999 edges · 709 communities (629 shown, 80 thin omitted)
-- Extraction: 79% EXTRACTED · 21% INFERRED · 0% AMBIGUOUS · INFERRED: 4117 edges (avg confidence: 0.77)
+- 10632 nodes · 20543 edges · 722 communities (635 shown, 87 thin omitted)
+- Extraction: 79% EXTRACTED · 21% INFERRED · 0% AMBIGUOUS · INFERRED: 4248 edges (avg confidence: 0.77)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b8fa36e6`
+- Built from commit: `bc69cc5b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -281,7 +281,7 @@
 - Community 264
 - Community 265
 - Community 266
-- Community 267
+- inspect_file_for_ingestion
 - Community 268
 - Community 269
 - Community 270
@@ -305,7 +305,7 @@
 - Community 288
 - Community 289
 - Community 290
-- execute_get_order_by_number
+- OvisOCR2Model
 - Community 292
 - Community 293
 - Community 294
@@ -330,6 +330,7 @@
 - Community 314
 - Community 315
 - Community 316
+- Community 317
 - Community 358
 - Community 359
 - Community 360
@@ -375,13 +376,13 @@
 - Community 400
 - Community 402
 - @radix-ui/react-dialog
-- Community 404
+- calculate_sha256
 - Community 406
 - Community 407
 - Community 408
 - Community 409
 - Community 410
-- Community 411
+- test_pm7_overlays.py
 - Community 412
 - Community 413
 - Community 414
@@ -404,7 +405,7 @@
 - Community 437
 - Community 438
 - Community 439
-- CircuitBreakerConfigError
+- is_allowed_file_path
 - Community 483
 - main
 - Community 485
@@ -441,7 +442,7 @@
 - SPRINT 5: MANTENIBILIDAD (8 hallazgos)
 - Plan integral de optimización de velocidad del chat RAG e IA
 - FASE 12 — E2E real, cobertura y observabilidad
-- bump_knowledge_version
+- execute_integration_tool
 - BLOQUE PM1 — Taxonomía técnica y modelo de datos
 - BLOQUE PM3 — Planos rasterizados y geometría
 - FASE P0 — Medir y desacoplar
@@ -458,7 +459,7 @@
 - select_answer_profile
 - documents.py
 - Structured Extraction — Operators' Guide
-- TesseractOCREngine
+- track_worker_init_failure
 - README.md
 - FASE P4 — OCR adaptativo
 - FASE P5 — Consulta progresiva
@@ -550,7 +551,7 @@
 - chunks_needing_model_migration
 - CR9 · Reparar permisos de renderizado
 - 4. Tests obligatorios
-- BLOQUE PM7 — Visor y revisión humana
+- WatchedFile
 - 11. IA, OCR y embeddings
 - 2. Requisitos
 - 3. Product boundary
@@ -573,31 +574,29 @@
 - 3. Objetivos y SLO
 - extraction-spec.md
 - react-dom
-- @typescript-eslint/eslint-plugin
+- analyze_image_document
 - test_benchmark_ai_pipeline.py
 - db_query_analyzer.py
 - AIAnswerRead
 - find_delivery_note_in_scope
 - admin_helpers.py
-- _extract_lines
+- repair_technical_extractions
 - test_chat_context_size_retry.py
-- PerformanceMonitorMiddleware
+- documentViews.ts
 - clsx
-- @types/react-dom
+- orders.py
 - Handler
 - OcrAttempt
-- track_feedback_vote
-- scan
+- BLOQUE PM7 — Visor y revisión humana
 - TestPreloadWorkerOcrEngine
 - select_answer_profile
-- create_saved_search
+- .to_envelope
 - classification.py
-- ._call_provider
+- ConstructionWorkItem
 - 3. Decisiones arquitectónicas obligatorias
 - FASE 0 — Línea base, contrato y congelación de decisiones
-- FeedbackOutcome
-- TestFullPipelineHojaConfeccion
-- track_feedback_vote
+- class-variance-authority
+- benchmark_tesseract.py
 - FASE 2 — Cliente, parser y contrato interno
 - FASE 7 — Pruebas y certificación comparativa
 - FASE 8 — Despliegue canario y promoción
@@ -605,23 +604,31 @@
 - FASE 3 — Factory y cadena Tier 4 compatible
 - FASE 4 — Routing, comparación y decisión
 - FASE 6 — Docker, GPU, seguridad y operación
-- test_minimax_m3_prompt_contract.py
-- test_watcher_size_cap.py
+- effective_access_payload
+- search_entities
 - FASE 5 — Persistencia, observabilidad y administración
 - FASE 9 — Reprocesado controlado y mejora del corpus existente
 - 6. Arquitectura objetivo
-- 8. Archivos previstos
-- FASE 10 — Documentación, runbook y cierre
-- react-dom
+- Registro de ejecución
+- build_ovisocr2_corpus.py
+- @types/react-dom
+- test_ovisocr2_integration.py
+- test_processing_safety.py
+- README.md
+- entrypoint.sh
+- __init__.py
+- test_first_date_in_text_prefers_labelled_date
+- test_multi_query_reformulations_helper_in_source
+- CAD_DXF_DWG.md
 
 ## God Nodes (most connected - your core abstractions)
-1. `Document` - 214 edges
+1. `Document` - 219 edges
 2. `cn()` - 123 edges
 3. `AccessScope` - 122 edges
-4. `resolve_user_access_scope()` - 97 edges
-5. `ContextItem` - 95 edges
-6. `Base` - 90 edges
-7. `DocumentPage` - 78 edges
+4. `resolve_user_access_scope()` - 98 edges
+5. `ContextItem` - 97 edges
+6. `Base` - 91 edges
+7. `DocumentPage` - 79 edges
 8. `write_audit()` - 78 edges
 9. `IntegrationContext` - 69 edges
 10. `ExtractionJob` - 66 edges
@@ -629,107 +636,107 @@
 ## Surprising Connections (you probably didn't know these)
 - `main()` --calls--> `hash_password()`  [INFERRED]
   scripts/create_admin.py → backend/app/core/security.py
+- `main()` --indirect_call--> `Document`  [INFERRED]
+  scripts/reprocess_cad_documents.py → backend/app/models/document.py
+- `main()` --indirect_call--> `Document`  [INFERRED]
+  scripts/reprocess_ovisocr2.py → backend/app/models/document.py
+- `main()` --indirect_call--> `DocumentPage`  [INFERRED]
+  scripts/reprocess_ovisocr2.py → backend/app/models/document.py
 - `validate_plan()` --calls--> `classify_document()`  [INFERRED]
   scripts/test_corpus_validation.py → backend/app/services/classification.py
-- `test_pm5_plan_validation()` --calls--> `classify_document()`  [INFERRED]
-  scripts/test_pm5_validation.py → backend/app/services/classification.py
-- `test_pm83_e2e_validation()` --calls--> `classify_document()`  [INFERRED]
-  scripts/test_pm8_integration.py → backend/app/services/classification.py
-- `test_pm5_contradictions()` --calls--> `TechnicalSpec`  [INFERRED]
-  scripts/test_pm5_validation.py → backend/app/services/memory_extraction.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (709 total, 80 thin omitted)
+## Communities (722 total, 87 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.03
-Nodes (83): LoadingState(), PageToolbar(), DocStatus, DocumentProgressBar(), getStatusConfig(), StatusBadge(), StatusConfig, statusRegistry (+75 more)
+Cohesion: 0.02
+Nodes (83): EmptyInvoicesIllustration(), Frame(), ConfidenceBadge(), ConfidenceLevel, getConfidenceLevel(), levelConfig, LoadingState(), PageToolbar() (+75 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.07
-Nodes (58): api, formatAge(), LearningHealthCard(), BreadcrumbItem, Breadcrumbs(), EmptyState(), MetricTile(), toneConfig (+50 more)
+Nodes (65): formatAge(), LearningHealthCard(), BreadcrumbItem, Breadcrumbs(), EmptyState(), PageHeader(), StatusBadge(), Badge() (+57 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.05
-Nodes (86): adminApi, buildTodaySnapshot(), formatEta(), TodaySnapshot, workInboxTarget(), AccessGroupsSection(), AccessSimulatorSection(), ChainsHotelsSection() (+78 more)
+Nodes (87): businessApi, documentsApi, buildTodaySnapshot(), formatEta(), TodaySnapshot, workInboxTarget(), AccessGroupsSectionProps, AccessSimulatorSectionProps (+79 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.03
-Nodes (67): setUnauthorizedHandler(), ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState, AppShell(), NAV_ITEMS, CommandItem, CommandPalette() (+59 more)
+Cohesion: 0.04
+Nodes (51): AppShell(), NAV_ITEMS, CommandItem, CommandPalette(), COMMANDS, EXTRA_COMMANDS, Hint(), OnboardingCallout() (+43 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.05
-Nodes (79): Docu-Intel RAG agent — orchestrator.  The agent is split across 5 small module, Stream chunks of the LLM's answer. Yields plain-text deltas, optional     ``("t, _stream_local_ai_answer(), _average_confidence(), budget_context(), _build_friendly_fallback(), build_grounded_response(), _build_multi_source_fallback() (+71 more)
+Cohesion: 0.03
+Nodes (83): _classify_aggregation(), _contains_any(), _contains_word(), _extract_context_document_id(), _extract_document_number(), _extract_document_numbers(), _extract_filenames(), _extract_literal_identifiers() (+75 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.03
-Nodes (89): build_memory_block(), _detect_language(), _extract_known_amounts(), _extract_known_doc_numbers(), _extract_known_reference_numbers(), _filename_is_known(), has_required_sections(), _is_filename_like_reference() (+81 more)
+Cohesion: 0.07
+Nodes (25): _polish_answer_text(), Any, Local AI answer generation: one-shot LLM call with context.  Extracted from ag, Minimal cleanup of model output., One-shot LLM call with the same context as the streaming     path. Returns the, try_local_ai_answer(), Lock the centralised setting. The 8 OCR-related sites that     used to hardcode, The work-inbox endpoints used to default max_ocr_confidence to     0.70. After (+17 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.08
-Nodes (31): aiApi, AIStreamEvent, ChatSessionMessage, authApi, businessApi, ApiError, BatchUploadResult, buildSearchParams() (+23 more)
+Cohesion: 0.05
+Nodes (37): 10. Criterios globales de finalización, 11. Estimación, 12. Orden de entrega, 13. Condiciones de parada, 1. Objetivo, 2. Alcance, 3. Reglas innegociables, 4.1 Prueba real: documento 161483 (+29 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.13
-Nodes (40): AccessGroupMember, access_explain(), apply_folder_rules(), bulk_document_tags(), create_access_group(), create_folder_rule(), create_hotel(), create_hotel_chain() (+32 more)
+Cohesion: 0.15
+Nodes (39): AccessGroupMember, access_explain(), apply_folder_rules(), bulk_document_tags(), create_access_group(), create_folder_rule(), create_hotel(), create_hotel_chain() (+31 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.05
-Nodes (41): EmptyChatIllustration(), EmptyInvoicesIllustration(), Frame(), ScrollArea, ScrollBar, AiHistory, useAiHistory(), activeFilterCount() (+33 more)
+Cohesion: 0.07
+Nodes (32): AutoBreadcrumbs(), AiHistory, useAiHistory(), Breadcrumb, useBreadcrumbs(), item(), notify, Options (+24 more)
 
 ### Community 9 - "ToolCall"
-Cohesion: 0.04
-Nodes (102): ActiveContext, True when the context pins a specific budget (number or id)., The per-session in-conversation state.      Every field is optional: an empty, answer_question(), has_answer_context(), AIAnswer, Session, User (+94 more)
+Cohesion: 0.67
+Nodes (3): main(), Measure the actual prompt size sent to the LLM for a given question.  Replicat, _tok_est()
 
 ### Community 10 - "Community 10"
 Cohesion: 0.10
-Nodes (11): F2-03: Tests that lock query and passage embedding roles.  Granite 311M uses asy, Verify query/passage role separation., Granite R2 must be registered as asymmetric., Granite gets the 'query: ' prompt., Granite gets the 'passage: ' prompt., embed_query calls encode with query prompt prefix., embed_passages calls encode with passage prompt prefix., F2-02: cosine_similarity must fail on dimension mismatch. (+3 more)
+Nodes (18): backfill_user_to_default_group(), ensure_default_permissive_group(), AccessGroup, User, Create (or fetch) the ``default-permissive`` AccessGroup.      The migration `, Idempotently add ``user`` to the default-permissive group.      Returns True i, db_session(), _make_user() (+10 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.08
-Nodes (31): BackfillReport, _get_documents_by_reason(), main(), Document, Session, CR12 — Safe backfill and reprocessing command.  Runs after CR9 (permissions) and, Reprocess a single document. Returns the action taken., Execute the backfill/reprocessing pipeline.      Returns a BackfillReport with b (+23 more)
+Cohesion: 0.06
+Nodes (40): adminApi, aiApi, AIStreamEvent, ChatSessionMessage, authApi, api, ApiError, BatchUploadResult (+32 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.05
-Nodes (47): Plan, PlanDimension, PlanRoom, plansApi, PlanSymbol, PlanSymbolSummary, PlanVisionSuggestion, PlanVisionSuggestionResponse (+39 more)
+Nodes (48): Plan, PlanDimension, PlanRoom, plansApi, PlanSymbol, PlanSymbolSummary, PlanVisionSuggestion, PlanVisionSuggestionResponse (+40 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.43
-Nodes (7): Document, DocumentPage, Session, User, reprocess_document(), reprocess_document_page(), soft_delete_document()
+Cohesion: 0.12
+Nodes (22): StyledSelect, AccessGroupsSection(), AccessSimulatorSection(), ChainsHotelsSection(), FolderRulesSection(), MembersSection(), RedactionPreviewSection(), RulePreviewSection() (+14 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.08
-Nodes (50): _append_dimension_from_match(), _append_room(), _clean_label(), _clean_room_name(), _confidence(), _current_source_model(), _extract_dimensions(), extract_plan() (+42 more)
+Cohesion: 0.07
+Nodes (61): CadExtraction, CadMetadata, Stable provenance for a native CAD extraction., Native CAD entities retained alongside the searchable page text., _append_dimension_from_match(), _append_room(), _cad_coordinate_transform(), _cad_extents_json() (+53 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.05
-Nodes (55): labelMap, normalizePriority(), PriorityBadge(), priorityConfig, PriorityLevel, FormControl, FormDescription, FormField() (+47 more)
+Nodes (53): labelMap, normalizePriority(), PriorityBadge(), priorityConfig, PriorityLevel, FormControl, FormDescription, FormField() (+45 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.16
-Nodes (19): _document(), Path, Session, sessionmaker, A slow webhook (httpx timeout) must be caught by the delivery worker,     retri, _session_factory(), test_actual_enqueue_calls_route_by_document_and_job_type(), test_bulk_reprocess_skips_active_jobs_and_respects_capacity() (+11 more)
+Cohesion: 0.06
+Nodes (54): get_job(), list_jobs(), Session, User, ExtractionJob, AdminAlert, AlertDefinition, build_admin_alerts() (+46 more)
 
 ### Community 17 - "Community 17"
-Cohesion: 0.18
-Nodes (20): Re-run the embedding step for an existing document.      Re-uses the page text, reembed_document(), _embedding_dim_from_settings(), _make_document_with_pages(), _memory_engine(), _n_chunks_for(), Tests for the ``reembed_document`` service function.  The function re-runs the, The DocumentChunk.embedding column has a fixed dimension baked     into the sch (+12 more)
+Cohesion: 0.09
+Nodes (35): OvisOCR2Config, OvisOCR2Engine, OvisOCR2Error, OvisOCR2NotEligible, Any, Client, Path, RuntimeError (+27 more)
 
 ### Community 18 - "hash_password"
-Cohesion: 0.18
-Nodes (40): create_access_token(), hash_password(), AccessGroup, AccessGroupMember, DocumentAccessMetadata, test_admin_health_includes_ai_and_embedding_checks(), _add_budget(), _add_scoped_document() (+32 more)
+Cohesion: 0.15
+Nodes (42): create_access_token(), hash_password(), AccessGroup, AccessGroupMember, DocumentAccessMetadata, test_password_hash_roundtrip_and_token_subject(), _add_budget(), _add_scoped_document() (+34 more)
 
 ### Community 19 - "Budget"
-Cohesion: 0.04
-Nodes (95): Budget, BudgetLine, DeliveryNote, DeliveryNoteLine, InvoiceLine, Order, OrderLine, A single line item from an invoice extraction (Phase 6). (+87 more)
+Cohesion: 0.25
+Nodes (6): _extract_lines(), Legacy single-line regex extractor. Kept for backward compatibility     and as, extract_lines_from_text(), Public alias of the legacy regex extractor.      Kept as a stable entry point, FASE 2.3: _extract_lines accepts rows missing optional columns., TestExtractLinesRelaxed
 
 ### Community 20 - "Community 20"
 Cohesion: 0.12
 Nodes (25): AccessScope, metadata_allows_scope(), db_session(), _make_doc(), _make_metadata(), Document, Session, F0-02: Differential tests for document_access_predicate vs metadata_allows_scope (+17 more)
 
 ### Community 21 - "Document"
-Cohesion: 0.04
-Nodes (58): _classify_aggregation(), _contains_any(), _contains_word(), _extract_context_document_id(), _extract_document_number(), _extract_document_numbers(), _extract_filenames(), _extract_literal_identifiers() (+50 more)
+Cohesion: 0.15
+Nodes (15): _check_internal_contradictions(), Contradiction, detect_contradictions(), format_contradictions_report(), Detect contradictions between plan and memory documents.      Compares materials, Check for contradictions within extracted specifications., A contradiction between two documents or between extracted and expected data., Format contradictions as a report. (+7 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.06
@@ -737,39 +744,39 @@ Nodes (58): Correction, _iban_country_lengths(), _is_numeric_context(), _nif_che
 
 ### Community 23 - "Community 23"
 Cohesion: 0.06
-Nodes (55): _aggregate(), answer_relevancy_from_keywords(), CategoryAggregate, citation_accuracy(), context_recall_at_k(), evaluate_retrieval(), GoldenQA, _hits_to_doc_ids() (+47 more)
+Nodes (57): _aggregate(), answer_relevancy_from_keywords(), CategoryAggregate, citation_accuracy(), context_recall_at_k(), evaluate_retrieval(), GoldenQA, _hits_to_doc_ids() (+49 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.06
-Nodes (55): _format_gate_blocked_answer(), Thin wrapper around :func:`app.ai.confidence_gates.format_gate_blocked_answer`., evaluate_confidence_gates(), _extract_amount_candidates(), format_gate_blocked_answer(), gate_warning_prompt_line(), GateEvaluation, _has_resolved_meta() (+47 more)
+Cohesion: 0.13
+Nodes (15): Any, On-demand vision model manager.  LM Studio can only hold a small number of mod, Call LM Studio API directly to load/unload models., Try LM Studio API directly, then HTTP shim, then lms subprocess., Return True if the vision model is currently loaded in LM Studio., Idempotently load the vision model. Returns True on success., Schedule a delayed unload. Multiple calls reset the timer.          ``delay``, Cancel any pending unload. Used by ``ensure_loaded`` to keep         the model (+7 more)
 
 ### Community 25 - "Community 25"
 Cohesion: 0.06
 Nodes (53): Return the thresholds to use for the current page.          Falls back to the, detect_language(), EngineLangCodes, _ensure_factory_seeded(), LanguageProfile, LanguageThresholds, paddle_lang_for(), O2 — Per-page language detection + adaptive OCR thresholds.  The cascade's esc (+45 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.07
-Nodes (28): _polish_answer_text(), Any, Local AI answer generation: one-shot LLM call with context.  Extracted from ag, Minimal cleanup of model output., One-shot LLM call with the same context as the streaming     path. Returns the, try_local_ai_answer(), Lock the centralised setting. The 8 OCR-related sites that     used to hardcode, The work-inbox endpoints used to default max_ocr_confidence to     0.70. After (+20 more)
+Cohesion: 0.12
+Nodes (23): BackfillReport, _get_documents_by_reason(), main(), Document, Session, CR12 — Safe backfill and reprocessing command.  Runs after CR9 (permissions) and, Reprocess a single document. Returns the action taken., Execute the backfill/reprocessing pipeline.      Returns a BackfillReport with b (+15 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.11
-Nodes (23): Chunk, _emit_prose_lines(), _emit_table(), _emit_text(), _is_heading(), _looks_like_aligned_table_line(), _paragraph_sentences(), E1 — Structure-aware chunking for the embedding pipeline.  The previous implem (+15 more)
+Cohesion: 0.06
+Nodes (29): ChatStageTimer, RAG / chat metrics: query transformer, MMR, prompt-injection, feedback., Record a 👍/👎 vote on an AI answer.      ``vote`` is the string form of ``+1``, Record a chunk-weight adjustment.      ``direction`` is one of ``"up" | "down", Record that an AIAnswerSource was saved with block_id=NULL     because the refe, Record a failure during AI stream answer persistence.      ``stage`` is one of, Record a follow-up question resolution attempt.      ``kind`` is the detected, Record an AI answer persisted without any cited source.      ``reason`` is one (+21 more)
 
 ### Community 28 - "Community 28"
-Cohesion: 0.12
-Nodes (21): create_ocr_revision(), document_timeline(), list_ocr_revisions(), Session, User, can_access_document(), db_session(), _make_user() (+13 more)
+Cohesion: 0.07
+Nodes (34): _detect_language(), _extract_known_amounts(), _extract_known_doc_numbers(), _extract_known_reference_numbers(), has_required_sections(), _normalise_amount(), _normalise_doc_number(), _normalize() (+26 more)
 
 ### Community 29 - "CircuitBreaker"
-Cohesion: 0.05
-Nodes (51): CircuitBreaker, CircuitBreakerConfigError, CircuitBreakerError, BaseException, RuntimeError, T, Thread-safe circuit breaker for external HTTP services.  The breaker wraps any, Return the current breaker state, transitioning OPEN →         HALF_OPEN lazily (+43 more)
+Cohesion: 0.07
+Nodes (33): _chat_completions_endpoint(), _coerce_bbox(), _coerce_confidence(), DotsMOCRConfig, DotsMOCREngine, _encode_image_for_vlm(), _get_dots_mocr_breaker(), _parse_blocks() (+25 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.06
-Nodes (59): _apply_exact_access_scope(), _contains_exact_number(), detect_identifiers(), ExactMatch, _make_boundary_pattern(), _make_exact_pattern(), matches_exact_phrase(), _normalize_number() (+51 more)
+Cohesion: 0.05
+Nodes (70): DocumentEntity, build_document_graph(), _deduplicate_edges(), Session, _apply_exact_access_scope(), _contains_exact_number(), detect_identifiers(), ExactMatch (+62 more)
 
 ### Community 31 - "resolve_user_access_scope"
 Cohesion: 0.08
-Nodes (72): bulk_update(), ChatFactOverlay, confirm_dimension(), confirm_room(), confirm_scale(), ConfirmRequest, correct_room(), CorrectRoomRequest (+64 more)
+Nodes (71): bulk_update(), _cad_dimension_overlay_bbox(), ChatFactOverlay, confirm_dimension(), confirm_room(), confirm_scale(), ConfirmRequest, correct_room() (+63 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.08
@@ -780,40 +787,40 @@ Cohesion: 0.06
 Nodes (47): _aggregate_budget(), build_search_queries(), ChatMessage, ChatResponse, ChatSource, classify_question(), _compare_documents(), execute_tool() (+39 more)
 
 ### Community 34 - "tenant_access.py"
-Cohesion: 0.08
-Nodes (47): FolderAssignmentRule, explain_document_access(), Document, Session, resolve_scope_for_principal(), _scope(), access_scope_cache_key(), apply_folder_rules_to_all_documents() (+39 more)
+Cohesion: 0.11
+Nodes (40): FolderAssignmentRule, access_scope_cache_key(), apply_folder_rules_to_all_documents(), apply_folder_rules_to_document(), _build_access_subquery(), _chain_hotel_from_rule(), count_access_predicates(), document_access_predicate() (+32 more)
 
 ### Community 35 - "Community 35"
 Cohesion: 0.28
-Nodes (24): DocumentPage, ExtractionJob, Document, Path, Session, sessionmaker, TestClient, OPS-1: when the page preview was rendered as JPEG, the     endpoint must advert (+16 more)
+Nodes (23): DocumentPage, Document, Path, Session, sessionmaker, TestClient, OPS-1: when the page preview was rendered as JPEG, the     endpoint must advert, _seed_admin() (+15 more)
 
 ### Community 36 - "Community 36"
-Cohesion: 0.05
-Nodes (48): parse_plain_text(), Path, ExtractedBlock, ExtractedPage, _extract_lines_for_document(), ExtractedLine, _has_table_blocks(), Return True if any page contains a block with     ``block_type == 'table'``. (+40 more)
+Cohesion: 0.08
+Nodes (35): _embedded_images(), parse_docx(), Path, Parser for .docx (OOXML) files — extracts text from the ZIP/XML archive.  Uses, Extract text from a .docx file (ZIP archive of XML)., EmbeddedImage, extract_embedded_image_pages(), Path (+27 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.07
-Nodes (43): get_metrics(), Any, Render the /metrics endpoint and (optionally) the legacy flat dict.  Two surfa, Return the current state of every Prometheus metric in the     default :data:`R, Mount the ``/metrics`` endpoint on ``app``.      Mirrors the original ``servic, Return a flat ``{key: value}`` dict for the admin UI.      The admin UI is not, register_metrics_endpoint(), render_metrics() (+35 more)
+Cohesion: 0.04
+Nodes (67): Embedding metrics: per-model latency and fallback counter.  Keeps the public `, get_metrics(), Any, Render the /metrics endpoint and (optionally) the legacy flat dict.  Two surfa, Return the current state of every Prometheus metric in the     default :data:`R, Mount the ``/metrics`` endpoint on ``app``.      Mirrors the original ``servic, Return a flat ``{key: value}`` dict for the admin UI.      The admin UI is not, register_metrics_endpoint() (+59 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.05
-Nodes (44): IntegrationClient, authenticate_integration_client(), authenticate_integration_client_by_key_id(), authenticate_integration_client_legacy(), generate_api_key(), generate_key_id(), get_integration_context(), hash_integration_api_key() (+36 more)
+Cohesion: 0.06
+Nodes (36): enforce_integration_rate_limit(), authenticate_integration_client(), authenticate_integration_client_by_key_id(), authenticate_integration_client_legacy(), generate_api_key(), generate_key_id(), get_integration_context(), hash_integration_api_key() (+28 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.04
 Nodes (45): autoprefixer, eslint, eslint-plugin-import, eslint-plugin-react, eslint-plugin-react-hooks, devDependencies, autoprefixer, eslint (+37 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.12
-Nodes (36): _ingestion_event_payload(), IngestionEvent, WatchedFile, Return a path that hides the directory layout for non-admin users.      Operat, _redact_path_for_scope(), _watched_file_payload(), _count_documents_allowed_by_scope(), _count_rows_allowed_by_document() (+28 more)
+Cohesion: 0.14
+Nodes (33): _ingestion_event_payload(), IngestionEvent, WatchedFile, Return a path that hides the directory layout for non-admin users.      Operat, _redact_path_for_scope(), _watched_file_payload(), _count_documents_allowed_by_scope(), _count_rows_allowed_by_document() (+25 more)
 
 ### Community 41 - "Community 41"
-Cohesion: 0.07
-Nodes (33): main(), Session, Repair source-backed communication records from already parsed email files., Replay email materialisation from durable document-page text.      Only document, repair_communication_materialization(), Document, DocumentBudgetLink, Explicit link between a document and a budget scope with provenance. (+25 more)
+Cohesion: 0.09
+Nodes (23): _dimension_points(), _drawing_extents(), _entity_handle(), _entity_insert_point(), _extract_dimension(), _extract_dxf(), _extract_geometry(), _extract_text() (+15 more)
 
 ### Community 42 - "Community 42"
 Cohesion: 0.09
-Nodes (40): preview_rule(), _checklist_item(), _normalize_preview_path(), AdminAlertRead, AdminStats, ApiClientBudgetScopeRead, AuditLogRead, BudgetScopeCreate (+32 more)
+Nodes (43): preview_rule(), redaction_preview(), _normalize_preview_path(), AdminAlertRead, AdminStats, ApiClientBudgetScopeRead, ApiClientBudgetScopeUpsert, AuditLogRead (+35 more)
 
 ### Community 43 - "Community 43"
 Cohesion: 0.08
@@ -824,24 +831,24 @@ Cohesion: 0.09
 Nodes (33): _as_bbox(), _is_pp_init_failed(), PPStructureEngine, PP-Structure / layout_parsing engine (GPU-only, PaddleX 3.x).  Heavyweight doc, Lazily build the PaddleX pipeline on first use with timeout protection., Load the PaddleX pipeline with a timeout to prevent indefinite blocking., Coerce a PaddleX bbox ``[x1, y1, x2, y2]`` into a 4-tuple of floats., Check if PP-Structure init is failed. Auto-reset after TTL. (+25 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.10
-Nodes (43): add_work_item_comment(), create_notification_rule(), create_saved_view(), create_user(), create_work_item(), list_notification_rules(), list_saved_views(), list_users() (+35 more)
+Cohesion: 0.26
+Nodes (19): add_work_item_comment(), create_notification_rule(), create_saved_view(), create_user(), create_work_item(), list_notification_rules(), list_saved_views(), list_users() (+11 more)
 
 ### Community 46 - "Community 46"
-Cohesion: 0.07
-Nodes (37): BaseOCREngine, Path, Protocol, Minimum contract every OCR engine must satisfy.      The ``name`` attribute is, Run OCR on a single image file and return the result., _build_cascading_engine(), cache_clear(), clear_ocr_engine_cache() (+29 more)
+Cohesion: 0.09
+Nodes (33): BaseOCREngine, Path, Protocol, Minimum contract every OCR engine must satisfy.      The ``name`` attribute is, Run OCR on a single image file and return the result., _build_cascading_engine(), cache_clear(), clear_ocr_engine_cache() (+25 more)
 
 ### Community 47 - "Community 47"
-Cohesion: 0.11
-Nodes (23): OCRResult, Aggregated output of a single OCR pass over one image.      ``engine`` records, _alnum_count(), Exception, Path, _quality(), Cascading OCR engine.  Strategy:   1. Try the cheap primary engine (Tesseract, Run PP-Structure on the page. Returns the best of the three         results, or (+15 more)
+Cohesion: 0.07
+Nodes (35): OCRBlock, OCRResult, OCR engine abstraction.  Both Tesseract and (optionally) PaddleOCR implement :, A single detected text block from an OCR pass.      ``block_type`` carries the, Aggregated output of a single OCR pass over one image.      ``engine`` records, _alnum_count(), Exception, Path (+27 more)
 
 ### Community 48 - "LocalSentenceTransformerEmbeddingClient"
-Cohesion: 0.06
-Nodes (63): _embed_document_sync(), embed_document_task(), _enqueue_reembed_only(), _enqueue_reocr(), _enqueue_versioned_reocr(), _is_low_ocr_confidence(), Document, Session (+55 more)
+Cohesion: 0.15
+Nodes (21): _embedding_dim_from_settings(), _memory_engine(), Tests for the whole-document embedding feature.  A single ``Document.embedding, Ingestion wires the whole-document embedding onto ``Document``., Provider failure leaves the document without an embedding but flagged     for t, The document-level retrieval branch returns ``VectorSearchMatch``     rows with, Happy path: a whole-document embedding is produced and the     provider label /, Documents whose whole-document embedding is nearly orthogonal to the     query (+13 more)
 
 ### Community 49 - "validation.py"
-Cohesion: 0.06
-Nodes (53): _check_chapters(), _check_classification(), _check_dimensions(), _check_internal_contradictions(), _check_phase_revision(), _check_rooms(), _check_scale(), _check_sheet() (+45 more)
+Cohesion: 0.09
+Nodes (38): _check_chapters(), _check_classification(), _check_dimensions(), _check_phase_revision(), _check_rooms(), _check_scale(), _check_sheet(), _check_specifications() (+30 more)
 
 ### Community 50 - "Community 50"
 Cohesion: 0.09
@@ -856,31 +863,31 @@ Cohesion: 0.07
 Nodes (29): track_stale_jobs_reset(), is_permanent(), is_retryable(), mark_job_as_failed(), notify_failed(), BaseException, Session, Shared worker-task infrastructure (WRK-RETRY-1 / Sprint 2).  The pre-Sprint-2 (+21 more)
 
 ### Community 53 - "test_learning_loop.py"
-Cohesion: 0.09
-Nodes (28): ClassificationSuggestionCreate, ClassificationSuggestionRead, ClassificationSuggestionReview, ImprovementCandidate, ImprovementCandidatesResponse, LearnedPatternRead, LearnedPatternUpdate, Any (+20 more)
+Cohesion: 0.10
+Nodes (24): ClassificationSuggestionCreate, ClassificationSuggestionRead, ClassificationSuggestionReview, ImprovementCandidate, ImprovementCandidatesResponse, LearnedPatternRead, LearnedPatternUpdate, Any (+16 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.12
-Nodes (29): DOCUMENT_TYPE_VALUES, ActiveFiltersBar(), ExportBar(), FilterPanel(), ModeButton(), ModeSelector(), ResultsList(), SavedSearchesCard() (+21 more)
+Cohesion: 0.10
+Nodes (32): DOCUMENT_TYPE_LABELS, DOCUMENT_TYPE_VALUES, DocumentTypeOption, DocumentTypeValue, ActiveFiltersBar(), ExportBar(), FilterPanel(), ModeButton() (+24 more)
 
 ### Community 55 - "dependencies"
 Cohesion: 0.05
-Nodes (39): class-variance-authority, cmdk, dependencies, class-variance-authority, cmdk, @hookform/resolvers, lucide-react, @radix-ui/react-alert-dialog (+31 more)
+Nodes (39): cmdk, dependencies, cmdk, @hookform/resolvers, lucide-react, @radix-ui/react-alert-dialog, @radix-ui/react-dropdown-menu, @radix-ui/react-label (+31 more)
 
 ### Community 56 - "Community 56"
 Cohesion: 0.09
-Nodes (34): retry_dead_letter(), Transactional outbox for reliable webhook delivery.  The application writes a, WebhookOutbox, deliver_pending_webhooks_task(), _get_session(), _headers(), manual_retry(), Celery worker that drains the ``webhook_outbox`` table.  Runs every ``webhook_ (+26 more)
+Nodes (34): Transactional outbox for reliable webhook delivery.  The application writes a, WebhookOutbox, deliver_pending_webhooks_task(), _get_session(), _headers(), manual_retry(), Celery worker that drains the ``webhook_outbox`` table.  Runs every ``webhook_, If ``row.attempts`` has reached ``max_attempts``, move to dead_letter.      Ot (+26 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.11
-Nodes (31): _add_feature(), _char_ngrams(), _configured_dimensions(), embed_many(), embed_many_async(), embed_query_text(), embed_query_text_async(), embed_text() (+23 more)
+Cohesion: 0.06
+Nodes (56): _add_feature(), _char_ngrams(), coerce_embedding_dimensions(), _configured_dimensions(), embed_many(), embed_many_async(), embed_query_text(), embed_query_text_async() (+48 more)
 
 ### Community 58 - "memory_extraction.py"
 Cohesion: 0.07
 Nodes (38): _compute_confidence(), DocumentSection, _extract_first(), extract_specifications(), _extract_specs_from_text(), _extract_thickness(), _format_table(), parse_memory_structure() (+30 more)
 
 ### Community 59 - "Community 59"
-Cohesion: 0.16
+Cohesion: 0.15
 Nodes (31): CascadingOCREngine, Try a cheap primary first, fall back to a heavy secondary on weak results., Path, Tests for the cascade OCR engine and its factory.  These tests cover the casca, Fake OCR engine that records calls and returns a canned result., Conservative heuristic: if the primary is unacceptable but the     fallback doe, The dynamic ``name`` property mirrors the last engine that produced     a winni, When the fallback barely improves the quality score (delta < the     configured (+23 more)
 
 ### Community 60 - "test_operational_resilience.py"
@@ -888,32 +895,32 @@ Cohesion: 0.06
 Nodes (27): LocalSentenceTransformerEmbeddingClient, In-process sentence-transformers embedding client.      Loads the model lazily, Embedding dimensionality. We load the model to query it the         first time;, Bulk embed in passage mode (the indexing pipeline's default)., Verify the prefix is actually passed to the model in     ``_encode_many`` (defen, The bug EMB-PROV-1 closes: a model whose name starts         with the IBM Granit, TestEncodeManyPromptDelivery, fake_sentence_transformers() (+19 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.06
-Nodes (69): AttachmentLink, CommunicationMessage, CommunicationParticipant, CommunicationThread, Contact, ProjectEvent, ProjectIssue, ProjectParticipant (+61 more)
+Cohesion: 0.08
+Nodes (55): AttachmentLink, CommunicationMessage, CommunicationParticipant, CommunicationThread, Contact, ProjectEvent, ProjectIssue, ProjectParticipant (+47 more)
 
 ### Community 62 - "Community 62"
-Cohesion: 0.05
-Nodes (32): OCRBlock, OCR engine abstraction.  Both Tesseract and (optionally) PaddleOCR implement :, A single detected text block from an OCR pass.      ``block_type`` carries the, _format_paddle_device(), _get_gpu_device(), gpu_has_headroom(), _is_init_failed(), paddleocr_init_lock() (+24 more)
+Cohesion: 0.07
+Nodes (19): _format_paddle_device(), _get_gpu_device(), gpu_has_headroom(), _is_init_failed(), _polygon_to_bbox(), PaddleOCR 3.x engine (multi-GPU aware).  Heavyweight GPU-accelerated engine, u, Load the PaddleOCR model with a cross-platform timeout.          H6 (Sprint 3), # NOTE: self.device (e.g. "gpu:0") is already passed as kwargs["device"] (+11 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.13
-Nodes (20): clamp_weight(), compute_weight_delta(), Decay a weight back towards 1.0 the longer it has been     since the last rebal, Clamp a chunk weight to ``[0.1, 5.0]``.      The lower bound prevents a chunk, Compute the new weight after one vote.      The default is **multiplicative**, rebalance_weight(), db_session(), Tests for the R3 feedback loop.  The pure-math parts (clamp_weight, compute_we (+12 more)
+Cohesion: 0.11
+Nodes (20): answer_question(), has_answer_context(), AIAnswer, Session, User, True when the chat has real system context to answer from.      Conversation mem, End-to-end: tool selection, context collection, memory injection,     grounded f, build_memory_block() (+12 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.25
-Nodes (5): _extract_lines(), Legacy single-line regex extractor. Kept for backward compatibility     and as, Tests for FASE 2 extraction improvements: new _total_amount labels, _parse_mark, FASE 2.3: _extract_lines accepts rows missing optional columns., TestExtractLinesRelaxed
+Cohesion: 0.10
+Nodes (28): ExtractedBlock, _block_center(), _block_x_range(), _classify_cell_value(), _cluster_rows(), _detect_header(), _extract_lines_for_page(), extract_lines_from_pages() (+20 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.14
-Nodes (21): _compile(), _get_profiles(), list_profiles(), _load_all_profiles(), _load_yaml(), ProviderProfile, Path, Pattern (+13 more)
+Cohesion: 0.07
+Nodes (35): _compile(), _get_profiles(), list_profiles(), _load_all_profiles(), _load_yaml(), ProviderProfile, Path, Pattern (+27 more)
 
 ### Community 66 - "Community 66"
 Cohesion: 0.07
 Nodes (40): _call_llm_for_hyde(), _call_llm_for_multi_query(), _parse_hyde_response(), _parse_multi_query_response(), QueryTransformation, R1 — Query transformation for the hybrid retriever.  The retriever was embeddi, Parse the LLM's response to a multi-query prompt.      The LLM is asked to ret, The HyDE response is a free-form paragraph. We strip the     most common LLM-in (+32 more)
 
 ### Community 67 - "_query_prompt_for"
-Cohesion: 0.10
-Nodes (44): persist_chunks_without_embeddings(), Persist chunks WITHOUT generating embeddings (P0.2).      Creates chunks with, _apply_classification_and_extraction(), _celery_broker_available(), _emit_document_webhooks(), _enqueue_hyperextract_after_commit(), _facade_attr(), _full_text_from_page_texts() (+36 more)
+Cohesion: 0.09
+Nodes (51): _apply_classification_and_extraction(), _celery_broker_available(), _emit_document_webhooks(), _enqueue_hyperextract_after_commit(), _facade_attr(), _first_page_image_path(), _full_text_from_page_texts(), _get_cached_learned_rules() (+43 more)
 
 ### Community 68 - "Community 68"
 Cohesion: 0.12
@@ -924,68 +931,72 @@ Cohesion: 0.12
 Nodes (24): detect_rooms_from_image(), DetectedRoom, _polygon_regularity(), _px_per_metre(), Path, P3 — Geometric room detection from plan images.  Many plans do not have text l, Convert scale ratio + DPI to pixels per metre.      ``scale_ratio=100`` means, Compute a regularity score for a polygon.      A perfect rectangle has score 1 (+16 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.06
-Nodes (58): downloadUrl(), ConfidenceBadge(), ConfidenceLevel, getConfidenceLevel(), levelConfig, buildLockReason(), PermissionGate(), PermissionGateProps (+50 more)
+Cohesion: 0.04
+Nodes (65): downloadUrl(), buildLockReason(), PermissionGate(), PermissionGateProps, ROLE_LABELS, DocStatus, DocumentProgressBar(), getStatusConfig() (+57 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.16
-Nodes (18): detect_reference(), _normalize(), Lightweight lowercase + accent-strip. Shared with ``tools._normalize``., Return ``(kind, prefer_state_key)`` if ``question`` contains a     follow-up re, CR3 — Tests for elliptical follow-up detection.  Verifies that short questions l, test_cuantas_unidades_detected(), test_de_que_fecha_es_detected(), test_explicit_reference_still_works() (+10 more)
+Cohesion: 0.11
+Nodes (25): get_or_create_session(), load_active_context(), new_session_uuid(), persist_context_after_answer(), Any, Session, User, CTX-2 — Active conversation context: in-memory view of the session state.  The (+17 more)
 
 ### Community 72 - "chunking.py"
-Cohesion: 0.11
-Nodes (26): build_chunks(), Split ``text`` into structure-aware chunks.      Returns a list of :class:`Chu, Tests for the E1 structure-aware chunker.  The chunker is pure (no I/O, no DB,, The table must appear as exactly one chunk, with     chunk_type="table", and th, Even when the table has more rows than fit in the word budget,     the table mu, The ``respect_tables=False`` flag must restore the legacy     behaviour where e, A markdown heading must be prepended to the following chunk     instead of bein, A heading at the end of the document (no following chunk to     attach to) must (+18 more)
+Cohesion: 0.05
+Nodes (56): build_chunks(), Chunk, chunk_metadata_header(), embedding_text_with_metadata(), _emit_prose_lines(), _emit_table(), _emit_text(), _is_heading() (+48 more)
 
 ### Community 73 - "IntegrationContext"
-Cohesion: 0.19
-Nodes (27): IntegrationContext, _allows_budget_search(), _can_access_document_for_context(), _document_id_allowed_for_context(), _document_source(), EntitySearchArgs, _filter_budgets_for_context(), _filter_document_ids_for_context() (+19 more)
+Cohesion: 0.23
+Nodes (17): IntegrationSource, _budget_payload(), _budget_source(), execute_get_accepted_budgets_without_order(), execute_get_budget_by_number(), execute_search_budgets(), Budget, BudgetLine (+9 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.12
-Nodes (24): ActionPanel(), useCountUp(), AlertItem, AlertsCard(), DashboardHero(), DistributionCard(), ICON_MAP, InboxItem (+16 more)
+Cohesion: 0.10
+Nodes (26): ActionPanel(), MetricTile(), toneConfig, useCountUp(), AlertItem, AlertsCard(), DashboardHero(), DistributionCard() (+18 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.04
 Nodes (48): Archivos modificados, Archivos modificados (16), Archivos modificados, Archivos modificados, Archivos modificados, Archivos nuevos, Archivos nuevos, Archivos nuevos (+40 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.07
-Nodes (39): Reclassify all documents using improved classification rules.      This re-eva, reclassify_documents(), main(), Quick smoke test of the FASE 2 multi-dimensional classifier on the real BON PLA, ClassificationResult, LearnedRule, A rule produced by the learning loop, applied BEFORE the built-in RULES., classify_multidim() (+31 more)
+Cohesion: 0.15
+Nodes (24): AdminUserCreate, AdminUserRead, AdminUserUpdate, DocumentTimelineEventRead, InvoiceCreate, InvoiceRead, NotificationRuleCreate, NotificationRuleRead (+16 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.13
 Nodes (4): Tests for PaddleOCREngine.extract() method.      Uses a fully mocked engine via, Create engine with a MagicMock _engine that returns configurable OCR data., When PaddleOCR returns None, should return empty OCRResult., TestPaddleOcrEngineExtract
 
 ### Community 78 - "Community 78"
-Cohesion: 0.07
-Nodes (31): AutoBreadcrumbs(), ConfirmDialog(), ConfirmDialogProps, StyledSelect, TabsContent, TabsList, TabsTrigger, Breadcrumb (+23 more)
+Cohesion: 0.18
+Nodes (17): _budget_by_number_or_id(), get_accepted_budgets_without_order(), get_budget_by_number(), get_budget_lines(), get_budget_total(), get_invoiced_amount_for_budget(), list_recent_accepted_budgets(), Budget (+9 more)
 
 ### Community 79 - "Community 79"
-Cohesion: 0.17
-Nodes (10): HyperExtractResult, HyperExtractService, Any, Path, Provider client for Hyper-Extract.      The class is stateless apart from the, Whether the service is configured to make provider calls., Run a generic extraction and return the canonical envelope.          ``documen, Pull the first JSON object out of the provider response.          Tries three (+2 more)
+Cohesion: 0.13
+Nodes (13): HyperExtractResult, HyperExtractService, Any, Path, Provider client for Hyper-Extract.      The class is stateless apart from the, Whether the service is configured to make provider calls., Run a generic extraction and return the canonical envelope.          ``documen, POST to the OpenAI-compatible chat-completions endpoint.          Returns the (+5 more)
+
+### Community 80 - "LocalVisionClient"
+Cohesion: 0.15
+Nodes (13): _FakePath, Lock the OPS-01 PDF preview MIME fix.  The audit found that ``get_document_pag, ``.jpeg`` (4-letter variant) must also map to image/jpeg., A preview stored with the .png extension must come back     with ``Content-Type, If the page row has no ``image_path`` (e.g. digital page     with no preview) t, If someone re-introduces a hardcoded ``0.70`` (or any     literal) in the work-, Minimal stand-in for ``pathlib.Path`` that exposes only     ``suffix`` and the, A preview stored with the .jpg extension must come back     with ``Content-Type (+5 more)
 
 ### Community 81 - "Community 81"
 Cohesion: 0.11
 Nodes (18): _detect_format(), _extract_dates(), _extract_numbers(), _extract_references(), Any, Structured output formatting for AI responses.  Converts free-text LLM respons, Extract date references from text., Extract document references (invoice numbers, order numbers, etc.). (+10 more)
 
 ### Community 82 - "Community 82"
-Cohesion: 0.06
-Nodes (45): manuscript_likelihood(), Path, Cheap content routing for pages that benefit from vision OCR first., Return a bounded, fail-open manuscript likelihood without a new model., should_route_manuscript_first(), classify_image(), classify_image_multilabel(), Path (+37 more)
+Cohesion: 0.08
+Nodes (36): classify_image(), classify_image_multilabel(), Path, Visual content classifier for image routing.  Uses OpenCV-based heuristics to, Phase 5: Multi-label classification using OpenCV heuristics.      Returns:, Classify an image using visual heuristics.      Returns:         {, classify_content(), ContentClassification (+28 more)
 
 ### Community 83 - "Community 83"
-Cohesion: 0.11
-Nodes (28): _build_metadata(), extract_document(), get_latest_extraction(), hyperextract_status(), list_extractions(), _load_ocr_text(), _persist_result(), Document (+20 more)
+Cohesion: 0.09
+Nodes (33): _build_metadata(), extract_document(), get_latest_extraction(), hyperextract_status(), list_extractions(), _load_ocr_text(), _persist_result(), Document (+25 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.12
-Nodes (21): Return whether a broad answer cites enough of its evidence set.      The halluci, response_covers_retrieved_sources(), admin_scope(), db_session(), _document(), Session, Regression tests for deterministic chat retrieval.  These cases reproduce the fa, test_broad_model_answer_must_cite_three_retrieved_sources() (+13 more)
+Cohesion: 0.10
+Nodes (33): main(), Session, Repair project occurrences for already-ingested hierarchical uploads.  Older upl, Associate unlinked hierarchical uploads idempotently.      ``dry_run`` never ope, repair_upload_occurrences(), DocumentBudgetLink, Explicit link between a document and a budget scope with provenance., _create_occurrence() (+25 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.11
-Nodes (28): clear_preprocess_cache(), _correct_orientation(), _deskew_color(), _deskew_gray(), _detect_osd_rotation(), _enhance_contrast(), _enhance_contrast_color(), _looks_like_scan() (+20 more)
+Cohesion: 0.12
+Nodes (30): clear_preprocess_cache(), _correct_orientation(), _deskew_color(), _deskew_gray(), _detect_osd_rotation(), _enhance_contrast(), _enhance_contrast_color(), _looks_like_scan() (+22 more)
 
 ### Community 86 - "Community 86"
-Cohesion: 0.09
-Nodes (14): _get_vlm_table_breaker(), _parse_vlm_json(), Path, FASE 4: VLM-based table extraction for budgets/invoices.  When PP-Structure pr, Parse the VLM's JSON response into ExtractedLine objects., Safely convert a value to float, handling Spanish number formats., Send a table image to the vision LLM and parse the JSON response.      Returns, _to_float() (+6 more)
+Cohesion: 0.08
+Nodes (19): ExtractedLine, FASE 4: attempt VLM table extraction on pages with table blocks.      Sends th, _try_vlm_table_extraction(), _get_vlm_table_breaker(), _parse_vlm_json(), Path, FASE 4: VLM-based table extraction for budgets/invoices.  When PP-Structure pr, Parse the VLM's JSON response into ExtractedLine objects. (+11 more)
 
 ### Community 87 - "Community 87"
 Cohesion: 0.14
@@ -993,7 +1004,7 @@ Nodes (27): _detect_multicolumn(), _extract_blocks(), extract_layout_aware_text(
 
 ### Community 88 - "Community 88"
 Cohesion: 0.10
-Nodes (19): Embedding metrics: per-model latency and fallback counter.  Keeps the public `, _normalise_doc_type(), _normalise_language(), OCR-specific metrics: durations, tier used, DPI escalation, language.  The fun, Record the number of corrections applied by the OCR     post-processor to a sin, Record that the cascade kept the primary result instead of     replacing it wit, Record the language the parser detected for a page.      ``language`` is the I, Record which per-language threshold the cascade consulted.      ``threshold_ty (+11 more)
+Nodes (31): _classify_column(), extract_all_line_items(), extract_line_items(), find_total_amount(), parse_markdown_table(), _parse_money(), _parse_qty(), Any (+23 more)
 
 ### Community 89 - "Community 89"
 Cohesion: 0.16
@@ -1005,27 +1016,27 @@ Nodes (5): normalize_untrusted_relative_path(), Validate and normalize an untrus
 
 ### Community 91 - "Community 91"
 Cohesion: 0.17
-Nodes (19): _embedding_dim_from_settings(), _memory_engine(), Tests for the whole-document embedding feature.  A single ``Document.embedding, Ingestion wires the whole-document embedding onto ``Document``., Provider failure leaves the document without an embedding but flagged     for t, The document-level retrieval branch returns ``VectorSearchMatch``     rows with, Happy path: a whole-document embedding is produced and the     provider label /, Documents whose whole-document embedding is nearly orthogonal to the     query (+11 more)
+Nodes (16): main(), Export the FastAPI OpenAPI schema to ``openapi.json``.  Usage::      cd docu, _resolve_app(), _embedding_dimension(), hashlib_for(), _make_document_with_chunks(), _memory_engine(), Tests for the ``GET /admin/documents/needs-re-embedding`` endpoint.  The endpo (+8 more)
 
 ### Community 92 - "build_chunks"
 Cohesion: 0.05
 Nodes (39): BLOQUE B — BAJOS (pulido), BLOQUE C — CRÍTICOS (funcionalidad rota / riesgo alto), BLOQUE M — MEDIOS (degradación / fragilidad), Brief de remediación — docu-intel, C1 · Fuga de hilos en `pp_structure.py`, C2 · Confianza inventada `0.8` en `dots_mocr.py`, C3 · Escalas incommensurables en `_quality`, C4 · Rama "photo → vision LLM" compara por longitud (+31 more)
 
 ### Community 93 - "Community 93"
-Cohesion: 0.10
-Nodes (31): classify_document(), test_budget_parent_folder_does_not_turn_uploaded_photo_into_quote(), test_classifies_budget_from_filename_folder_and_text(), test_classifies_plan_from_folder_and_keywords(), test_croquis_medida_from_content_route_with_measure_signals(), test_email_with_furniture_terms_stays_email_not_product_photo(), test_ficha_tecnica_from_keywords(), test_image_inside_planos_folder_stays_image_without_plan_signals() (+23 more)
+Cohesion: 0.12
+Nodes (25): classify_document(), test_budget_parent_folder_does_not_turn_uploaded_photo_into_quote(), test_classifies_budget_from_filename_folder_and_text(), test_classifies_plan_from_folder_and_keywords(), test_croquis_medida_from_content_route_with_measure_signals(), test_email_with_furniture_terms_stays_email_not_product_photo(), test_ficha_tecnica_from_keywords(), test_image_inside_planos_folder_stays_image_without_plan_signals() (+17 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.15
-Nodes (17): fabricate(), _hash(), _now(), _rand_date(), _rand_embedding(), _rand_text(), Fabricate benchmark dataset for Phase 7 performance testing. Usage: python -m t, _fabricate() (+9 more)
+Cohesion: 0.06
+Nodes (63): _embed_document_sync(), embed_document_task(), _enqueue_reembed_only(), _enqueue_reocr(), _enqueue_versioned_reocr(), _is_low_ocr_confidence(), Document, Session (+55 more)
 
 ### Community 95 - "Community 95"
 Cohesion: 0.19
 Nodes (8): _collect(), _header_dict(), Headers the middleware must set on every response, regardless of     path or env, A route handler that wants to set its own header (rare but         possible) mus, CSP strict profile: production-grade baseline., Run the middleware + a passthrough app and return the collector., TestAlwaysOnHeaders, TestCspStrict
 
 ### Community 96 - "Community 96"
-Cohesion: 0.11
-Nodes (27): AIQuestion, answer(), ask(), ask_stream(), cache_stats(), clear_cache(), history(), post_feedback() (+19 more)
+Cohesion: 0.27
+Nodes (6): get_max_file_size_bytes(), is_file_too_large(), Path, Return True if ``path`` exceeds the watcher size cap.      WATCH-1 (Sprint 2):, When cap is 0 (disabled), no file is too large., TestIsFileTooLarge
 
 ### Community 97 - "Community 97"
 Cohesion: 0.10
@@ -1037,7 +1048,7 @@ Nodes (24): compress_chunks(), CompressedChunk, CompressionReport, E6 — Contex
 
 ### Community 99 - "Community 99"
 Cohesion: 0.22
-Nodes (6): is_allowed_file_path(), Unit tests for app.ingestion.stability Tests file path filtering and stability d, Tests for is_allowed_file_path() function., Tests for IGNORED_SUFFIXES constant., TestIgnoredSuffixesConstant, TestIsAllowedFilePath
+Nodes (12): LearnedPattern, _load_active_learned_rules(), process_approved_suggestions(), process_approved_suggestions_task(), Document, Session, # NOTE: invalidacion amplia porque las claves de cache no indexan, Reclasifica un documento concreto usando las learned rules activas. (+4 more)
 
 ### Community 100 - "Community 100"
 Cohesion: 0.08
@@ -1048,16 +1059,16 @@ Cohesion: 0.25
 Nodes (8): _get_nuextract_semaphore(), NuExtractClient, NuExtractError, Any, Path, RuntimeError, Raised when the NuExtract3 provider call fails or returns unusable data., BoundedSemaphore
 
 ### Community 102 - "Community 102"
-Cohesion: 0.09
-Nodes (49): answer_cache_key(), cache_answer(), cache_answer_async(), _cache_isolation_key(), _cache_key(), _cache_ttl(), _cosine(), _embed_question() (+41 more)
+Cohesion: 0.07
+Nodes (59): answer_cache_key(), cache_answer(), cache_answer_async(), _cache_isolation_key(), _cache_key(), _cache_ttl(), _cosine(), _embed_question() (+51 more)
 
 ### Community 103 - "test_operational_hardening.py"
 Cohesion: 0.26
 Nodes (21): _admin_token(), _document(), Session, sessionmaker, TestClient, User, Create a non-admin user with a single AccessGroup that grants     access to ``h, _scoped_user_token() (+13 more)
 
 ### Community 104 - "Community 104"
-Cohesion: 0.07
-Nodes (24): ChatStageTimer, RAG / chat metrics: query transformer, MMR, prompt-injection, feedback., Record that an AIAnswerSource was saved with block_id=NULL     because the refe, Record a failure during AI stream answer persistence.      ``stage`` is one of, Record a follow-up question resolution attempt.      ``kind`` is the detected, Record an AI answer persisted without any cited source.      ``reason`` is one, Return a context manager that records the wall-clock duration     of ``stage``, Record a retrieval sub-path. ``strategy`` is one of the bounded     set documen (+16 more)
+Cohesion: 0.38
+Nodes (9): _load_checkpoint(), main(), _new_checkpoint(), Any, Session, Load only a checkpoint that belongs to this exact corpus root., Run the corpus backfill.      Args:         dry_run: If True, don't write to DB., run_backfill() (+1 more)
 
 ### Community 105 - "Community 105"
 Cohesion: 0.12
@@ -1068,76 +1079,76 @@ Cohesion: 0.15
 Nodes (13): ContextSizeExceededError, _get_llm_semaphore(), LocalVisionClient, Path, RuntimeError, Yield text chunks as the LLM produces them.          Yields one of:, The prompt exceeded the model's loaded context_length.      Raised when the LL, Return (data_url, mime_type) for a local image, downscaling if         needed. (+5 more)
 
 ### Community 107 - "Community 107"
-Cohesion: 0.14
-Nodes (27): _document_operation_payload(), _ocr_review_payload(), Document, DocumentPage, duplicates(), ocr_automation_metrics(), ocr_errors(), ocr_review() (+19 more)
+Cohesion: 0.17
+Nodes (23): _ocr_review_payload(), DocumentPage, duplicates(), ocr_automation_metrics(), ocr_errors(), ocr_review(), Document, Session (+15 more)
 
 ### Community 108 - "integrations.py"
-Cohesion: 0.08
-Nodes (19): _passage_prompt_for(), _query_prompt_for(), Return the query-side prompt for asymmetric models, or ``None``     for symmetr, Unit tests for EMB-PROV-1 (Sprint 2).  The previous implementation of ``_query_p, ``_passage_prompt_for`` mirrors the query helper., The whitelist is exact., ``_query_prompt_for`` returns the query prefix for listed     asymmetric models,, BGE-M3 is a SYMMETRIC model. The legacy heuristic         (prefix-match on ``ibm (+11 more)
+Cohesion: 0.05
+Nodes (30): _passage_prompt_for(), _query_prompt_for(), Return the query-side prompt for asymmetric models, or ``None``     for symmetr, Unit tests for EMB-PROV-1 (Sprint 2).  The previous implementation of ``_query_p, ``_passage_prompt_for`` mirrors the query helper., The whitelist is exact., ``_query_prompt_for`` returns the query prefix for listed     asymmetric models,, BGE-M3 is a SYMMETRIC model. The legacy heuristic         (prefix-match on ``ibm (+22 more)
 
 ### Community 109 - "Community 109"
-Cohesion: 0.40
-Nodes (5): main(), Session, Backfill durable technical facts for documents already in the corpus., Replay deterministic plan/memory/measurement extraction idempotently., repair_technical_extractions()
+Cohesion: 0.27
+Nodes (11): ingest_path_if_ready(), main(), process_pending_paths(), Path, Session, Return roots owned by the live watcher.      The immutable corpus is deliberat, _record_path_status(), run_watch_loop() (+3 more)
 
 ### Community 110 - "Community 110"
 Cohesion: 0.14
-Nodes (23): BudgetLineRead, BudgetRead, OrderLineRead, OrderRead, PlanBulkUpdate, PlanDimensionCreate, PlanDimensionRead, PlanRead (+15 more)
+Nodes (24): BudgetLineRead, BudgetRead, OrderLineRead, OrderRead, PlanBulkUpdate, PlanCadEntityRead, PlanDimensionCreate, PlanDimensionRead (+16 more)
 
 ### Community 111 - "Community 111"
 Cohesion: 0.11
 Nodes (21): export_annotations_to_dxf(), Path, X3 — Export plan annotations to DXF format.  When a technician annotates rooms, Export plan annotations to a DXF file.      Args:         rooms: list of room, DxfExtraction, parse_dxf(), Path, X2 — DXF/DWG ingestion via ezdxf.  Construction architects and engineers deliv (+13 more)
 
 ### Community 112 - "Community 112"
-Cohesion: 0.16
-Nodes (20): AdminLearningPage(), CountBadge(), InfoItem(), LearningStatusBadge(), HistoryCard(), ImpactSimulatorPlaceholder(), LearningSummaryCard(), PatternsCard() (+12 more)
+Cohesion: 0.11
+Nodes (30): formatDate(), formatMoney(), AdminLearningPage(), CountBadge(), InfoItem(), LearningStatusBadge(), HistoryCard(), ImpactSimulatorPlaceholder() (+22 more)
 
 ### Community 113 - "BudgetScope"
-Cohesion: 0.11
-Nodes (21): True when ``answer`` is plausibly in Spanish.      Layered detection, tuned to, response_looks_spanish(), test_response_looks_spanish_basic(), CHAT (tanda de naturalidad) — tests del nuevo tono del chat IA.  Cubre los tre, El nombre del archivo debe aparecer dentro de la respuesta, idealmente     cita, Una respuesta corta en español sin diacríticos debe aceptarse.     Antes se rec, La puerta sigue rechazando respuestas claramente en otro idioma., Las puertas de importes/doc-numbers siguen estrictas: un importe     que no est (+13 more)
+Cohesion: 0.33
+Nodes (9): BulkReprocessRequest, BulkReprocessResponse, DocumentBlockRead, DocumentEntityRead, DocumentPageRead, DocumentRead, BaseModel, UploadResponse (+1 more)
 
 ### Community 114 - "OCRBlock"
-Cohesion: 0.07
-Nodes (35): _chat_completions_endpoint(), _coerce_bbox(), _coerce_confidence(), DotsMOCRConfig, DotsMOCREngine, _encode_image_for_vlm(), _get_dots_mocr_breaker(), _parse_blocks() (+27 more)
+Cohesion: 0.20
+Nodes (4): check_indexes(), get_slow_queries_postgres(), QueryStats, Database Query Analyzer Helps identify N+1 queries and slow queries.  Run wit
 
 ### Community 115 - "Community 115"
-Cohesion: 0.21
-Nodes (8): AIAnswerRead, AIAnswerSourceRead, AIQuestionRead, Any, BaseModel, Build structured response on-the-fly from the answer text., Test that API responses include structured output., TestAPISchemaStructured
+Cohesion: 0.16
+Nodes (10): AIAnswerRead, AIAnswerSourceRead, AIQuestionRead, Any, BaseModel, Build structured response on-the-fly from the answer text., End-to-end demo: complete pipeline with a real invoice document., run_e2e_demo() (+2 more)
 
 ### Community 116 - "Community 116"
-Cohesion: 0.13
-Nodes (22): _build_filter_clauses(), _is_postgres(), _post_filter_chunk_clauses(), Any, SearchResult, Session, _rank_normalisation_flags(), E2 — BM25-style full-text search via PostgreSQL ``tsvector`` / ``ts_rank_cd``. (+14 more)
+Cohesion: 0.21
+Nodes (6): is_file_stable(), Return True if ``path`` is a regular file whose size and     mtime have not cha, Tests for is_file_stable() function., TestIsFileStable, If the file size changes between the two stat() calls,         the file is not s, TestIsFileStableDoubleCheck
 
 ### Community 117 - "Community 117"
 Cohesion: 0.16
 Nodes (22): Record which tier won the cascade for a page.      ``tier`` is one of ``"tesse, track_ocr_tier_used(), Record a swallowed exception in a parser fallback path.      OPS-2: the standa, track_parser_fallback_failure(), _parser_fallback_count(), Tests for S0.2 — Prometheus metrics by document type and OCR tier.  These test, A typo or new label value must not create a fresh Prometheus     series; the al, The counter must show up in ``/metrics`` so the on-call can     alert on a sust (+14 more)
 
 ### Community 118 - "Community 118"
-Cohesion: 0.14
-Nodes (19): Session, CR1 — Sanitize AI answer source references before persistence.  The problem: ``A, Sanitize a batch of source dicts (from ``sources_payload``).      Each dict must, A source reference ready for safe DB persistence., Validate a single source reference before DB persistence.      If ``block_id`` i, sanitize_source_reference(), sanitize_sources_batch(), SanitizedSource (+11 more)
+Cohesion: 0.10
+Nodes (38): DocumentBlock, Session, CR1 — Sanitize AI answer source references before persistence.  The problem: ``A, Sanitize a batch of source dicts (from ``sources_payload``).      Each dict must, A source reference ready for safe DB persistence., Validate a single source reference before DB persistence.      If ``block_id`` i, sanitize_source_reference(), sanitize_sources_batch() (+30 more)
 
 ### Community 119 - "Community 119"
-Cohesion: 0.19
-Nodes (12): _build_digital_pdf(), _build_mixed_pdf(), _clean_fitz_lock(), Path, Tests for the per-page ocr_engine tracking and the admin stats endpoint., Create a 3-page PDF with real digital text on every page., Create a 2-page PDF: one page with text, one rendered as an image (no text)., PaddleOCR holds a global lock; we don't want it lingering across tests. (+4 more)
+Cohesion: 0.11
+Nodes (19): ocr_stats(), Session, User, Admin endpoints for OCR engine visibility.  Mounted at ``/admin/ocr-stats`` so, Counts of pages grouped by OCR engine and the share per backend.      Useful f, _build_digital_pdf(), _build_mixed_pdf(), _clean_fitz_lock() (+11 more)
 
 ### Community 120 - "budget_scope.py"
 Cohesion: 0.06
 Nodes (35): 0. Mapa del flujo real, 🔴 1.1 — `_looks_like_scan` clasifica mal → Tesseract pierde binarización, 🟠 1.2 — PP-Structure se salta el caché de preprocesado, 🔴 1.3 — El caché `_preprocess_cache` es inefectivo entre motores, 🟡 1.4 — No hay retroalimentación de `_quality` al preprocesado, 1. Preprocesado — problemas de calibración (la causa del 60% de los `needs_review`), 🟠 2.1 — `_try_tier3` mezcla longitud y calidad, 🟡 2.2 — `_finalize` evalúa Tier 4 con `_is_better` pero el gate es `_quality` (+27 more)
 
 ### Community 121 - "Community 121"
-Cohesion: 0.05
-Nodes (70): get_document_preview(), get_document_thumbnail(), Session, User, Return a full-size generated preview for mail and CAD documents., _convert_dwg_to_dxf(), _convert_through_windows_bridge(), _converter_path() (+62 more)
+Cohesion: 0.10
+Nodes (43): get_document_preview(), get_document_thumbnail(), Session, User, Return a full-size generated preview for mail and CAD documents., Close the keep-alive HTTP client. Called by the worker         shutdown hook so, _eml_fields(), ensure_preview_dir() (+35 more)
 
 ### Community 122 - "Community 122"
-Cohesion: 0.13
-Nodes (8): get_settings(), Path, Fall back to /app/source/2025 if the configured path doesn't exist., Cross-setting guards for non-local environments.          These run after ever, F2-01: validate model/dimension combination at startup., Settings, BaseSettings, ValidationInfo
+Cohesion: 0.12
+Nodes (9): get_settings(), Path, Reject unsafe Ovis settings before a worker sends a page.          Validation, Fall back to /app/source/2025 if the configured path doesn't exist., Cross-setting guards for non-local environments.          These run after ever, F2-01: validate model/dimension combination at startup., Settings, BaseSettings (+1 more)
 
 ### Community 123 - "TestEmbeddingRoles"
-Cohesion: 0.25
-Nodes (12): ingest_path_if_ready(), main(), process_pending_paths(), Path, Session, Return roots owned by the live watcher.      The immutable corpus is deliberat, _record_path_status(), run_watch_loop() (+4 more)
+Cohesion: 0.06
+Nodes (28): ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState, ConfirmDialog(), ConfirmDialogProps, ConfirmContext, ConfirmDialogHost(), ConfirmFn (+20 more)
 
 ### Community 124 - "Community 124"
-Cohesion: 0.16
-Nodes (21): AIAnswer, AIAnswerFeedback, AIAnswerSource, AIQuestion, R3 — single 👍/👎 vote on an answer, optionally tagged     with a reason + a free, Persist a vote and, when the loop has enough votes on     this answer, adjust t, Periodic sweep: decay every non-1.0 weight back towards     1.0. Returns the nu, rebalance_all_chunk_weights() (+13 more)
+Cohesion: 0.38
+Nodes (6): get_learned_rules(), main(), Reclassify all documents using the improved classification rules.  This script, Fetch learned rules from the database., Reclassify documents and report changes.      By default only ``desconocido``, reclassify_all()
 
 ### Community 125 - "Community 125"
 Cohesion: 0.13
@@ -1148,23 +1159,23 @@ Cohesion: 0.21
 Nodes (14): cosine_similarity(), _coerce_embedding(), _doc_excerpt(), _is_postgres(), PgvectorStore, Any, Session, QdrantStore (+6 more)
 
 ### Community 127 - "Community 127"
-Cohesion: 0.12
-Nodes (20): LearnedPattern, invalidate_all_ai_cache(), Invalidate all cached AI answers., _load_active_learned_rules(), process_approved_suggestions(), process_approved_suggestions_task(), Document, Session (+12 more)
+Cohesion: 0.07
+Nodes (36): main(), Quick smoke test of the FASE 2 multi-dimensional classifier on the real BON PLA, ClassificationResult, _has_strong_plan_signal(), LearnedRule, _match_keyword(), _normalize(), A rule produced by the learning loop, applied BEFORE the built-in RULES. (+28 more)
 
 ### Community 128 - "Community 128"
 Cohesion: 0.33
 Nodes (12): _check_backups(), _check_database(), _check_directory(), _check_manifest(), _check_redis(), _check_watcher(), _check_workers(), production_readiness() (+4 more)
 
 ### Community 129 - "Community 129"
-Cohesion: 0.13
-Nodes (20): _all_suggestions(), _count_stmt(), _make_suggestion(), ClassificationSuggestion, datetime, Tests for the learning loop health monitoring and stale auto-rejection., Stale rows are flipped to status='rejected' with a reason suffix., The 'remaining' field reflects how many pending rows are left after the run. (+12 more)
+Cohesion: 0.11
+Nodes (25): backoff_for_attempt(), Return the delay to apply before the next retry of a row that just failed., _all_suggestions(), _count_stmt(), _make_suggestion(), ClassificationSuggestion, datetime, Tests for the learning loop health monitoring and stale auto-rejection. (+17 more)
 
 ### Community 130 - "Community 130"
-Cohesion: 0.06
-Nodes (41): DOCUMENT_TYPE_LABELS, DOCUMENT_TYPES, DocumentTypeOption, DocumentTypeValue, ADMIN_TABS, AdminAccessPage(), AdminIntegrationsPage(), AdminOperationalPage() (+33 more)
+Cohesion: 0.16
+Nodes (15): AdminOperationalPage(), AlertsSection(), AuditRelationsSection(), BulkReprocessSection(), IngestionControlSection(), ProblemDocumentsSection(), AdminOperationalData, AdminReprocessConfirmDialog() (+7 more)
 
 ### Community 131 - "Community 131"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (20): build_query_plan(), expand_numbered_query(), generate_query_variations(), QueryPlan, QueryVariation, Multi-query expansion for improved RAG recall.  Generates N query variations f, Return the original query plus N variations.      The original always comes fi, Handle queries with numbers (NIF, invoice numbers, etc.) by     generating numb (+12 more)
 
 ### Community 132 - "Community 132"
@@ -1172,12 +1183,12 @@ Cohesion: 0.13
 Nodes (10): _estimate_tokens(), Rough token estimate using word count × multiplier.      This deliberately ove, _make_item(), M11 (Sprint 4): Tests for AI context token budget clipping.  Verifies that ``b, When settings object lacks the attribute, getattr default kicks in., When ai_max_context_tokens is 0 (disabled), all items are included., Items beyond the token budget are dropped., When budget is too small for even one item, zero items are included. (+2 more)
 
 ### Community 133 - "Community 133"
-Cohesion: 0.18
-Nodes (22): _can_access_integration_document(), create_budget_session(), document_status(), execute_tool(), job_status(), manifest(), Document, Session (+14 more)
+Cohesion: 0.20
+Nodes (19): _can_access_integration_document(), create_budget_session(), document_status(), execute_tool(), job_status(), manifest(), Document, Session (+11 more)
 
 ### Community 134 - "Community 134"
-Cohesion: 0.21
-Nodes (21): DocumentBlock, DocumentChunk, test_persisted_document_block_exposes_complete_bbox_only(), _configure_pipeline(), Document, Path, Session, sessionmaker (+13 more)
+Cohesion: 0.17
+Nodes (9): _mark_used_throttled(), Update ``client.last_used_at`` at most once per minute per id.      The thrott, Test helper: forget all throttled timestamps., reset_last_used_throttle(), The throttle is per-client; updates to client A must not         block updates t, After the throttle window elapses, the next call updates         again. We verif, The throttle prevents a write per request on a hot table.      The throttle is p, Verify the private ``_mark_used_throttled`` sets the         timestamp and updat (+1 more)
 
 ### Community 135 - "Community 135"
 Cohesion: 0.06
@@ -1192,16 +1203,16 @@ Cohesion: 0.27
 Nodes (19): ClassificationSuggestion, IntegrationToolExecuteResponse, _response(), execute_get_improvement_candidates(), execute_propose_classification_correction(), execute_propose_classification_rule(), execute_propose_entity_link(), execute_submit_quality_feedback() (+11 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.15
-Nodes (19): merge_hybrid_results(), Fuse ranked lists from the available retrieval strategies.      Each strategy, SearchResult, Tests for the E2 BM25 retrieval module.  The BM25 wrapper is mostly a thin SQL, k=0 would make the RRF score blow up (1/0). The function     must not crash; we, Callers that do not pass ``bm25_results`` must still get the     legacy 2-sourc, _result(), test_merge_hybrid_results_backward_compatible_without_bm25() (+11 more)
+Cohesion: 0.11
+Nodes (24): merge_hybrid_results(), Fuse ranked lists from the available retrieval strategies.      Each strategy, SearchResult, Tests for the E2 BM25 retrieval module.  The BM25 wrapper is mostly a thin SQL, k=0 would make the RRF score blow up (1/0). The function     must not crash; we, No DB needed: the empty-query short-circuit runs first., The function must not crash on a non-Postgres session. It     returns an empty, The metric helper must accept any string without raising;     Prometheus label (+16 more)
 
 ### Community 139 - "Community 139"
-Cohesion: 0.08
-Nodes (23): 2026-07-13 — Fases 1, 4, 5 y 10, 2026-07-13 — Fases 2 y 3, 2026-07-13 — Fases 6 y 7, 2026-07-13 — Fases 8, 9 y 10, 2026-07-15 — reparación integral de datos, OCR y certificación, Fase 0 — baseline y contrato de validación, Fase 11 — calidad y operación, Fase 12 — certificación y rollout (+15 more)
+Cohesion: 0.11
+Nodes (18): Anexo operativo â€” OvisOCR2, Fase 0 — baseline y contrato de validación, Fase 11 — calidad y operación, Fase 12 — certificación y rollout, Fase 1 — seguridad y aislamiento, Fase 2 — identidad contextual, Fase 3 — ingesta jerárquica, Fase 4 — escáner separado del corpus (+10 more)
 
 ### Community 140 - "Community 140"
 Cohesion: 0.10
-Nodes (9): Full pipeline test with REAL data — simulates end-to-end processing.  Tests th, Complete pipeline test for invoices., Complete pipeline test for delivery notes., Complete pipeline test for budgets., Test with real pedido OCR text from production., TestFullPipelineAlbaran, TestFullPipelineFactura, TestFullPipelinePresupuesto (+1 more)
+Nodes (10): Full pipeline test with REAL data — simulates end-to-end processing.  Tests th, Complete pipeline test for delivery notes., Complete pipeline test for budgets., Complete pipeline test for confection sheets., Hojas de confección are hand-drawn — extraction returns minimal data., Test with real pedido OCR text from production., TestFullPipelineAlbaran, TestFullPipelineHojaConfeccion (+2 more)
 
 ### Community 141 - "Community 141"
 Cohesion: 0.07
@@ -1212,8 +1223,8 @@ Cohesion: 0.26
 Nodes (16): approve_classification_suggestion(), classification_suggestion_counts(), disable_learned_pattern(), enable_learned_pattern(), learning_health(), list_classification_suggestions(), list_learned_patterns(), ClassificationSuggestion (+8 more)
 
 ### Community 143 - "Community 143"
-Cohesion: 0.11
-Nodes (24): EmbeddedImage, extract_embedded_image_pages(), Path, Shared, bounded OCR for images embedded in digital documents., OCR embedded image payloads without turning decorative media into errors.      T, _clean_body(), _extract_html_tables_markdown(), _html_to_markdown() (+16 more)
+Cohesion: 0.24
+Nodes (10): _fabricate(), Phase 7 performance benchmarks using synthetic dataset., Verify document pages query accepts limit to avoid loading all pages for large d, Verify SQLAlchemy models define indexes on performance-critical columns., Quick inline fabricator for benchmarks., test_admin_listing_uses_pagination(), test_document_pages_endpoint_has_pagination_guard(), test_postgres_indexes_defined_on_critical_columns() (+2 more)
 
 ### Community 144 - "Community 144"
 Cohesion: 0.18
@@ -1240,28 +1251,28 @@ Cohesion: 0.16
 Nodes (21): PerformanceMonitorMiddleware, BaseHTTPMiddleware, Request, Verify the prometheus_client exposition format includes the     full set of met, Cache hit on the semantic path: the metric must still     record the call (othe, Sum of all ``docuintel_search_duration_seconds_count``     observations across, Read the per-label-set that the search histogram has     recorded so far. We it, _search_seen_labels() (+13 more)
 
 ### Community 150 - "Community 150"
-Cohesion: 0.14
-Nodes (28): BatchUploadItem, BatchUploadResponse, delete_document(), download_document(), get_document(), get_document_blocks(), get_document_entities(), get_document_page_image() (+20 more)
+Cohesion: 0.08
+Nodes (46): create_ocr_revision(), document_timeline(), list_ocr_revisions(), Session, User, BatchUploadItem, BatchUploadResponse, delete_document() (+38 more)
 
 ### Community 151 - "Community 151"
 Cohesion: 0.11
 Nodes (3): Unit tests for app.workers.celery_app Tests Celery app configuration and task r, Tests for celery_app configuration., TestCeleryAppConfig
 
 ### Community 152 - "Community 152"
-Cohesion: 0.13
-Nodes (14): Session, FASE 6.1: did-you-mean suggestions when no answer context found.  Searches for, Search for documents similar to the user's question.      Returns a suggestion, suggest_similar_documents(), _JsonFormatter, Return ISO 8601 UTC timestamp with millisecond precision., Configure stdlib logging and structlog for the application.      - Production:, Stdlib formatter that emits JSON lines for production. (+6 more)
+Cohesion: 0.04
+Nodes (115): Docu-Intel RAG orchestrator and backward-compatible AI facade., Stream chunks of the LLM's answer. Yields plain-text deltas, optional     ``("th, _stream_local_ai_answer(), _average_confidence(), budget_context(), _build_friendly_fallback(), build_grounded_response(), _build_multi_source_fallback() (+107 more)
 
 ### Community 153 - "Community 153"
-Cohesion: 0.11
-Nodes (28): _extract_table_markdown(), _get_dpi_ladder(), _guess_document_type_for_metrics(), is_digital_pdf(), _maybe_vision_table(), _ocr_scanned_page_by_index(), _ocr_with_dpi_ladder(), parse_pdf() (+20 more)
+Cohesion: 0.16
+Nodes (19): _extract_table_markdown(), _guess_document_type_for_metrics(), is_digital_pdf(), _maybe_vision_table(), _ocr_scanned_page_by_index(), _ocr_with_dpi_ladder(), parse_pdf(), _process_scanned_page() (+11 more)
 
 ### Community 154 - "Community 154"
-Cohesion: 0.20
-Nodes (17): _addresses(), _attachment_names(), _first_address(), _get_or_create_contact(), _headers(), _link_named_attachments(), _looks_like_issue(), materialize_communication() (+9 more)
+Cohesion: 0.07
+Nodes (35): main(), Session, Reclassify legacy image documents using their persisted folder context., Repair images previously classified from a parent budget folder.      The normal, repair_contextual_classifications(), DocumentOccurrence, Phase 3 — Hierarchical project model and document occurrences.  Brand / Hotel al, Each row is one appearance of a document in a specific path/budget.      The sam (+27 more)
 
 ### Community 155 - "detect_contradictions"
-Cohesion: 0.19
-Nodes (17): _as_naive_utc(), auto_reject_stale_suggestions(), client_recent_pending_count(), health_snapshot(), mark_stale_suggestions(), Any, datetime, Session (+9 more)
+Cohesion: 0.15
+Nodes (18): manuscript_likelihood(), ovisocr2_eligibility(), Path, Cheap content routing for pages that benefit from vision OCR first., Return a bounded, fail-open manuscript likelihood without a new model., Return a stable canary assignment without high-cardinality state., Select only hard OCR pages, keeping native/cheap paths untouched.      The funct, should_route_manuscript_first() (+10 more)
 
 ### Community 156 - "Community 156"
 Cohesion: 0.07
@@ -1272,20 +1283,20 @@ Cohesion: 0.19
 Nodes (18): extract_plan_phase(), Detect the building phase and revision from the plan text.      Returns ``(pro, Tests for P5 — multi-sheet plan phase detection.  The phase detector is pure (, test_extract_plan_phase_detects_alzado(), test_extract_plan_phase_detects_cubierta(), test_extract_plan_phase_detects_planta_baja(), test_extract_plan_phase_detects_planta_number(), test_extract_plan_phase_detects_planta_primera() (+10 more)
 
 ### Community 158 - "Community 158"
-Cohesion: 0.22
-Nodes (17): backoff_for_attempt(), build_webhook_test_payload(), emit_classification_low_confidence(), emit_document_needs_review(), emit_integration_webhook(), emit_new_pattern_detected(), enqueue_webhook(), Any (+9 more)
+Cohesion: 0.24
+Nodes (16): test_webhook(), build_webhook_test_payload(), emit_classification_low_confidence(), emit_document_needs_review(), emit_integration_webhook(), emit_new_pattern_detected(), enqueue_webhook(), Any (+8 more)
 
 ### Community 159 - "Community 159"
 Cohesion: 0.15
 Nodes (19): aggregate_work_items(), extract_work_items_from_text(), ExtractedBreakdown, ExtractedWorkChapter, ExtractedWorkItem, _get_parent_code(), _parse_number(), _parse_work_item_line() (+11 more)
 
 ### Community 160 - "Community 160"
-Cohesion: 0.16
-Nodes (27): audit_logs(), audit_logs_export_csv(), audit_logs_export_json(), cancel_job(), AuditLog, Session, User, retry_job() (+19 more)
+Cohesion: 0.30
+Nodes (17): _headers(), Path, Session, sessionmaker, TestClient, _seed_integration_data(), test_authorized_policy_can_receive_budget_prices(), test_budget_tool_redacts_prices_for_default_policy_and_uses_exact_lookup() (+9 more)
 
 ### Community 161 - "Community 161"
-Cohesion: 0.39
-Nodes (15): _business_result(), csv_safe_cell(), exact_search(), export_search_csv(), export_search_json(), _filters_with_scope_cache(), guided_search(), hybrid_search_endpoint() (+7 more)
+Cohesion: 0.23
+Nodes (21): _business_result(), csv_safe_cell(), exact_search(), export_search_csv(), export_search_json(), _filters_with_scope_cache(), guided_search(), hybrid_search_endpoint() (+13 more)
 
 ### Community 162 - "extract_specifications"
 Cohesion: 0.17
@@ -1296,8 +1307,8 @@ Cohesion: 0.16
 Nodes (16): _detect_header_row(), _embedded_images(), _escape_md(), _frame_to_markdown(), parse_excel(), Path, Escape characters that would break a markdown table cell., Pick the row that most likely holds the column headers. Strategy:     take the (+8 more)
 
 ### Community 164 - "Community 164"
-Cohesion: 0.10
-Nodes (39): accepted_without_order(), get_budget(), get_budget_lines(), list_budgets(), Session, User, get_order(), get_order_lines() (+31 more)
+Cohesion: 0.14
+Nodes (27): accepted_without_order(), get_budget(), get_budget_lines(), list_budgets(), Session, User, get_order(), get_order_lines() (+19 more)
 
 ### Community 165 - "Community 165"
 Cohesion: 0.17
@@ -1308,20 +1319,20 @@ Cohesion: 0.07
 Nodes (28): Aislamiento por Cadena/Hotel, Aislamiento por Presupuesto, API Segura para IA Intermedia, Arranque con Docker Compose, Arranque Producción, Backups y Restore, Bucle de Mejora (Learning Loop), CI (+20 more)
 
 ### Community 167 - "Community 167"
-Cohesion: 0.10
-Nodes (28): apply_document_embedding(), compute_document_embedding(), embed_many_with_metadata(), prepare_document_chunks(), Session, Compute a single embedding for the whole document.      Concatenates the (sani, Populate ``Document.embedding`` for ``document_id``.      Returns ``True`` whe, Embed a batch of texts, returning one ``(embedding, provider, fallback)``     t (+20 more)
+Cohesion: 0.07
+Nodes (51): DocumentChunk, apply_document_embedding(), compute_document_embedding(), embed_many_with_metadata(), persist_chunks_without_embeddings(), prepare_document_chunks(), Session, Compute a single embedding for the whole document.      Concatenates the (sani (+43 more)
 
 ### Community 168 - "Community 168"
-Cohesion: 0.09
-Nodes (34): Expose persisted geometry through the parser-block contract.          Extraction, _count_sections(), _persist_work_items(), PipelineResult, _process_budget_data(), _process_memory_data(), _process_plan_data(), process_technical_document() (+26 more)
+Cohesion: 0.15
+Nodes (23): Expose persisted geometry through the parser-block contract.          Extracti, ConstructionWorkItem, PM4.3 — Partida de mediciones/presupuesto., _count_sections(), _persist_work_items(), PipelineResult, _process_budget_data(), _process_memory_data() (+15 more)
 
 ### Community 169 - "Community 169"
-Cohesion: 0.13
-Nodes (9): Document, queue_for_document(), queue_for_probe_result(), Map a P1.1 probe result to a Celery queue.      ``route`` is one of "digital",, main(), main(), test_queue_selection_splits_heavy_text_and_embedding_work(), Tests for queue_for_document() function. (+1 more)
+Cohesion: 0.06
+Nodes (27): Document, DocumentPage, Session, User, reprocess_document(), reprocess_document_page(), soft_delete_document(), Document (+19 more)
 
 ### Community 170 - "Community 170"
-Cohesion: 0.15
-Nodes (17): Render a structured-tool payload as a :class:`ContextItem`.      The payload i, Natural-language "not found" sentence for a structured tool that     reported `, Convert a structured-tool JSON payload into human-readable text.      This is, _render_structured_payload(), _structured_context_item(), _structured_not_found_text(), CHAT — los resultados de tools estructurados (get_invoice_origin_order, get_bud, An unknown tool must still produce a clean sentence, never the     raw snake_ca (+9 more)
+Cohesion: 0.19
+Nodes (13): Natural-language "not found" sentence for a structured tool that     reported `, Convert a structured-tool JSON payload into human-readable text.      This is, _render_structured_payload(), _structured_not_found_text(), CHAT — los resultados de tools estructurados (get_invoice_origin_order, get_bud, An unknown tool must still produce a clean sentence, never the     raw snake_ca, The internal ``[Estructurado]`` prefix must remain on the title     (agent.has_, test_budget_total_not_found_is_natural() (+5 more)
 
 ### Community 171 - "Community 171"
 Cohesion: 0.13
@@ -1356,36 +1367,36 @@ Cohesion: 0.19
 Nodes (13): login(), logout(), me(), Request, Response, Session, User, Return a short, non-reversible identifier for a user-provided     email. L-6: f (+5 more)
 
 ### Community 179 - "Community 179"
-Cohesion: 0.22
-Nodes (17): AdminAlert, AlertDefinition, build_admin_alerts(), build_processing_metrics(), bulk_reprocess_documents(), BulkReprocessFilters, BulkReprocessResult, _clean() (+9 more)
+Cohesion: 0.18
+Nodes (18): decide_structured_answer(), _decision(), _delivery_notes(), Fast, cited answers for trusted structured facts., Return unique delivery-note number/type pairs in their source order., Create a source-carrying decision after a field has passed validation., Return a deterministic answer only when its source is explicit.      This intent, StructuredAnswerDecision (+10 more)
 
 ### Community 180 - "Community 180"
 Cohesion: 0.06
-Nodes (37): _api_key_hmac_secret(), _b64(), decode_access_token(), decode_integration_token(), _encode_jwt(), _integration_jwt_secret(), Any, Decode a JWT signed with the integration secret.      Verifies the signature a (+29 more)
+Nodes (36): _api_key_hmac_secret(), _b64(), decode_access_token(), decode_integration_token(), _encode_jwt(), _integration_jwt_secret(), Any, Decode a JWT signed with the integration secret.      Verifies the signature a (+28 more)
 
 ### Community 181 - "Community 181"
 Cohesion: 0.15
 Nodes (11): CSPNonceMiddleware, get_request_nonce(), _mint_nonce(), ASGIApp, Receive, Scope, Send, S3.2 (Sprint 3) — CSP nonce per request.  The previous security-headers middle (+3 more)
 
 ### Community 182 - "Community 182"
-Cohesion: 0.18
-Nodes (12): Pure ASGI middleware that injects security headers into every     HTTP response, SecurityHeadersMiddleware, _build_scope(), _HeaderCollector, Unit tests for SEC-HEADERS-1 (Sprint 1).  The previous middleware only set ``X-C, CSP must be omitted on the third-party-content bypass paths., ASGI app shim that captures the response start message.      Returns the headers, The middleware must NOT buffer the response body. SSE endpoints     on /ai/ask/s (+4 more)
+Cohesion: 0.13
+Nodes (15): Receive, Scope, Send, Pure ASGI middleware that injects security headers into every     HTTP response, SecurityHeadersMiddleware, _build_scope(), _HeaderCollector, Unit tests for SEC-HEADERS-1 (Sprint 1).  The previous middleware only set ``X-C (+7 more)
 
 ### Community 183 - "Community 183"
-Cohesion: 0.14
-Nodes (25): main(), Session, Repair project occurrences for already-ingested hierarchical uploads.  Older upl, Associate unlinked hierarchical uploads idempotently.      ``dry_run`` never ope, repair_upload_occurrences(), _create_occurrence(), _default_occurrence_year(), _document_budget_code() (+17 more)
+Cohesion: 0.25
+Nodes (9): main(), Session, Repair source-backed communication records from already parsed email files., Replay email materialisation from durable document-page text.      Only document, repair_communication_materialization(), _factory(), test_communication_repair_replays_only_source_backed_email_documents(), test_orphan_communication_cleanup_keeps_source_backed_messages() (+1 more)
 
 ### Community 184 - "Community 184"
 Cohesion: 0.18
 Nodes (14): character_error_rate(), keyword_recall(), Character error rate using ``difflib.SequenceMatcher``.      Returns a float i, Fraction of expected keywords present in the hypothesis.      Case-insensitive, Tests for the S0.1 golden OCR scorer.  These tests are deliberately determinis, The default gates are the contract the CI uses. Pin them so an     accidental ', test_character_error_rate_empty_inputs(), test_character_error_rate_normalises_whitespace() (+6 more)
 
 ### Community 185 - "Community 185"
-Cohesion: 0.27
-Nodes (10): bump_knowledge_version(), current_knowledge_version(), get_knowledge_version_snapshot(), KnowledgeVersion, Session, MiniMax M3 — knowledge version counter.  The AI cache key includes a ``knowledge, Single-row counter for the AI cache knowledge version.      The row id is always, Return the current version (0 if the row has not been seeded). (+2 more)
+Cohesion: 0.14
+Nodes (17): clean_truncated_repeats(), _normalise_bbox(), OvisOCR2ParsedOutput, parse_ovisocr2_output(), Safe conversion of OvisOCR2 Markdown into Docu-Intel OCR blocks.  OvisOCR2 retur, Parse an OvisOCR2 response without trusting its structure blindly., Trim the repeating tail pattern documented by the model authors., Remove executable/remote HTML while retaining document tables.      Markdown is (+9 more)
 
 ### Community 186 - "Community 186"
-Cohesion: 0.13
-Nodes (23): OcrAttempt, Immutable evidence for each OCR candidate considered for a page., _mark_non_ocr_page(), _page_status_from_confidence(), DocumentPage, Persist the selected candidate as durable OCR evidence.      Parsers currently e, Persist searchable non-OCR content without assigning a fake score., Keep a previously selected result unless the new one is at least as good.      R (+15 more)
+Cohesion: 0.17
+Nodes (19): Keep a previously selected result unless the new one is at least as good., _should_select_ocr_candidate(), _agreement(), decide_ocr_result(), _has_numeric_conflict(), _has_table_structure_conflict(), OCRDecision, Deterministic, auditable acceptance policy for OCR candidates. (+11 more)
 
 ### Community 187 - "Community 187"
 Cohesion: 0.17
@@ -1403,41 +1414,45 @@ Nodes (10): _create_partition(), ensure_monthly_partitions_task(), _month_bounds
 Cohesion: 0.34
 Nodes (14): _add_budget(), _admin_token(), _create_session(), _headers(), Budget, Session, sessionmaker, TestClient (+6 more)
 
+### Community 191 - "Community 191"
+Cohesion: 0.11
+Nodes (11): _looks_numeric(), _parse_markdown_table(), Parse a markdown table into :class:`ExtractedLine` rows.      The vision LLM e, Heuristic: does ``value`` look like a number or currency?, Tests for FASE 2 extraction improvements: new _total_amount labels, _parse_mark, FASE 2.2: a table block whose parsed rows have NO numeric price must     not be, FASE 2.1: _total_amount should cover IMPORTE / A PAGAR / SUBTOTAL /     SUMA /, TestParseMarkdownTableQualityGate (+3 more)
+
 ### Community 192 - "Community 192"
 Cohesion: 0.17
 Nodes (15): LocalAICircuitOpen, LocalOpenAICompatibleClient, reset_local_ai_circuit_breakers(), The first connection attempt returns 500; the second     succeeds and streams a, Once the upstream has produced a chunk, mid-stream     failures must propagate, A persistent 5xx must surface the error to the caller     after ``max_retries``, LM Studio's transient 400 ``terminated`` response is retryable.      The local s, test_local_ai_chat_retries_lm_studio_termination() (+7 more)
 
 ### Community 193 - "Community 193"
-Cohesion: 0.10
-Nodes (20): upsert_budget_scope_client_permission(), ApiClientBudgetScope, BudgetScope, ApiClientBudgetScopeUpsert, _BytesStream, _integration_headers(), Session, sessionmaker (+12 more)
+Cohesion: 0.11
+Nodes (12): _BytesStream, Session, sessionmaker, TestClient, The admin marker is the explicit exception to budget-scoped vectors., test_ai_cache_key_includes_access_scope_signature(), test_auth_cookie_is_secure_in_production_and_samesite_lax(), _test_client() (+4 more)
 
 ### Community 194 - "Community 194"
 Cohesion: 0.18
 Nodes (9): _build_csp(), _inject_headers(), ASGIApp, Security headers middleware (SEC-HEADERS-1 / Sprint 1).  Adds the security hea, Add the security headers to ``headers`` in place.      Existing headers (e.g., Build the Content-Security-Policy header value for ``mode``.      The strict p, ``local_dev`` mode relaxes ``connect-src`` to allow Vite HMR., Disabled mode should not emit a CSP at all; the middleware         branch handle (+1 more)
 
 ### Community 195 - "Community 195"
-Cohesion: 0.16
-Nodes (21): aggregate_by_supplier(), aggregate_monthly(), aggregate_yearly(), create_invoice(), list_invoices(), MonthlyAggregation, BaseModel, Session (+13 more)
+Cohesion: 0.26
+Nodes (14): aggregate_by_supplier(), aggregate_monthly(), aggregate_yearly(), create_invoice(), list_invoices(), MonthlyAggregation, BaseModel, Session (+6 more)
 
 ### Community 196 - "Community 196"
-Cohesion: 0.19
-Nodes (17): normalise_filters(), Normalise every supported filter key into a canonical     Python type. Unknown, Tests for the E3 shared search filters.  The filters are pure SQLAlchemy expre, A defensive test: any input we might see from the API     should normalise with, test_normalise_filters_coerces_budget_scope_id_to_int(), test_normalise_filters_coerces_dates_from_iso(), test_normalise_filters_coerces_dates_from_strings(), test_normalise_filters_coerces_extension_with_leading_dot() (+9 more)
+Cohesion: 0.08
+Nodes (27): _build_engine(), create_app_engine(), get_db(), get_engine(), get_session_factory(), Session, _SessionFactoryProxy, OvisOCR2InputTooLarge (+19 more)
 
 ### Community 197 - "execute_integration_tool"
-Cohesion: 0.27
-Nodes (6): get_max_file_size_bytes(), is_file_too_large(), Path, Return True if ``path`` exceeds the watcher size cap.      WATCH-1 (Sprint 2):, When cap is 0 (disabled), no file is too large., TestIsFileTooLarge
+Cohesion: 0.18
+Nodes (11): _clean_body(), _extract_html_tables_markdown(), _html_to_markdown(), _HTMLToMarkdown, _image_attachment(), _looks_like_mapi_blob(), parse_msg(), Path (+3 more)
 
 ### Community 198 - "Community 198"
-Cohesion: 0.31
-Nodes (14): _new_api_key(), _normalize_scopes(), create_budget_scope(), create_integration_client(), integration_sandbox_execute(), list_budget_scope_client_permissions(), list_budget_scopes(), list_integration_clients() (+6 more)
+Cohesion: 0.24
+Nodes (20): _new_api_key(), _normalize_scopes(), create_budget_scope(), create_integration_client(), integration_sandbox_execute(), list_budget_scope_client_permissions(), list_budget_scopes(), list_integration_clients() (+12 more)
 
 ### Community 199 - "Community 199"
 Cohesion: 0.06
-Nodes (33): main(), Any, Test 3: Sensitive data detection and redaction., Test 4: Database entities created by backfill., Test 5: Corpus integrity (31,323 files, 456 brands)., Test 1: Path resolution for 20 real corpus paths., Test 2: Brand and hotel detection., run_all_tests() (+25 more)
+Nodes (33): main(), Any, Test 2: Brand and hotel detection., Test 3: Sensitive data detection and redaction., Test 4: Database entities created by backfill., Test 5: Corpus integrity (31,323 files, 456 brands)., Test 1: Path resolution for 20 real corpus paths., run_all_tests() (+25 more)
 
 ### Community 200 - "Community 200"
-Cohesion: 0.15
-Nodes (13): _FakePath, Lock the OPS-01 PDF preview MIME fix.  The audit found that ``get_document_pag, ``.jpeg`` (4-letter variant) must also map to image/jpeg., A preview stored with the .png extension must come back     with ``Content-Type, If the page row has no ``image_path`` (e.g. digital page     with no preview) t, If someone re-introduces a hardcoded ``0.70`` (or any     literal) in the work-, Minimal stand-in for ``pathlib.Path`` that exposes only     ``suffix`` and the, A preview stored with the .jpg extension must come back     with ``Content-Type (+5 more)
+Cohesion: 0.23
+Nodes (14): _as_naive_utc(), auto_reject_stale_suggestions(), client_recent_pending_count(), health_snapshot(), mark_stale_suggestions(), Any, datetime, Session (+6 more)
 
 ### Community 201 - "Community 201"
 Cohesion: 0.23
@@ -1448,12 +1463,12 @@ Cohesion: 0.23
 Nodes (12): _contains_expected_token(), _font(), golden_images(), GoldenCase, Path, OCR regression test on the synthetic golden set.  Runs the OCR cascade on each, Accept OCR tokens that lost an internal separator or space.      Tesseract can e, Every must_contain token must appear in the OCR output. (+4 more)
 
 ### Community 203 - "Community 203"
-Cohesion: 0.31
-Nodes (13): _fake_ocr_engine(), _make_pdf_with_pages(), Path, Test the per-page digital / OCR decision in parse_pdf.  The parser must:   -, Pages with < 30 chars of embedded text go to OCR (better     confidence than tr, Write a PDF with the given list of page texts. Empty string = scanned page., Mock cascade that returns a canned OCRResult only when called., A mixed PDF (digital + scanned pages) must use the fast path on     digital pag (+5 more)
+Cohesion: 0.27
+Nodes (15): _get_dpi_ladder(), Build the DPI ladder dynamically from the configured base DPI.      The final, _fake_ocr_engine(), _make_pdf_with_pages(), Path, Test the per-page digital / OCR decision in parse_pdf.  The parser must:   -, Pages with < 30 chars of embedded text go to OCR (better     confidence than tr, Write a PDF with the given list of page texts. Empty string = scanned page. (+7 more)
 
 ### Community 204 - "FastAPI"
-Cohesion: 0.33
-Nodes (9): BulkReprocessRequest, BulkReprocessResponse, DocumentBlockRead, DocumentEntityRead, DocumentPageRead, DocumentRead, BaseModel, UploadResponse (+1 more)
+Cohesion: 0.05
+Nodes (71): _build_filter_clauses(), _is_postgres(), _post_filter_chunk_clauses(), Any, SearchResult, Session, _rank_normalisation_flags(), E2 — BM25-style full-text search via PostgreSQL ``tsvector`` / ``ts_rank_cd``. (+63 more)
 
 ### Community 205 - "Community 205"
 Cohesion: 0.14
@@ -1468,20 +1483,20 @@ Cohesion: 0.09
 Nodes (21): 10. Limitaciones conocidas, 11. Próximos pasos, 12. Files added / modified, 1. What it does, 2. What it does NOT do, 3. Variables de entorno, 4. How to activate it, 5. How to test it (+13 more)
 
 ### Community 208 - "Community 208"
-Cohesion: 0.16
-Nodes (15): _ocr_is_usable(), A page result is usable when it has enough text and the     confidence is above, Record that the OCR DPI ladder escalated from one DPI to     another because Ti, track_ocr_dpi_escalation(), _dpi_count(), Tests for O1 — DPI adaptativo escalonado (300→400→600).  The DPI ladder is a t, Read the current value of the (from, to) cell of the     prometheus_client Coun, test_ocr_is_usable_false_when_confidence_too_low() (+7 more)
+Cohesion: 0.15
+Nodes (16): _ocr_is_usable(), A page result is usable when it has enough text and the     confidence is above, Record that the OCR DPI ladder escalated from one DPI to     another because Ti, track_ocr_dpi_escalation(), _dpi_count(), Tests for O1 — DPI adaptativo escalonado (300→400→600).  The DPI ladder is a t, Read the current value of the (from, to) cell of the     prometheus_client Coun, test_dpi_ladder_contains_expected_values() (+8 more)
 
 ### Community 209 - "Community 209"
-Cohesion: 0.27
-Nodes (14): _active_job_count(), build_queue_control_status(), cancel_pending_job(), _count_jobs(), _get_flag(), is_ingestion_paused(), pause_ingestion(), Document (+6 more)
+Cohesion: 0.16
+Nodes (16): _authorise(), _blocks(), _json_log(), lifespan(), ocr(), FastAPI, Image, Request (+8 more)
 
 ### Community 210 - "Community 210"
 Cohesion: 0.28
 Nodes (5): ChatSingleFlight, _Flight, FlightLease, In-process single-flight coordination for isolated chat cache keys., Serialize identical cold cache keys inside one backend process.      Keys are al
 
 ### Community 211 - "Community 211"
-Cohesion: 0.21
-Nodes (6): is_file_stable(), Return True if ``path`` is a regular file whose size and     mtime have not cha, Tests for is_file_stable() function., TestIsFileStable, If the file size changes between the two stat() calls,         the file is not s, TestIsFileStableDoubleCheck
+Cohesion: 0.32
+Nodes (12): aggregate_business(), _budget_aggregate(), _filters_for_price_scope(), _invoice_aggregate(), _money_filters(), _order_aggregate(), Any, Session (+4 more)
 
 ### Community 212 - "Community 212"
 Cohesion: 0.21
@@ -1492,16 +1507,16 @@ Cohesion: 0.21
 Nodes (12): _font(), golden_images(), GoldenCase, Path, Synthetic golden fixtures for OCR regression testing.  Real customer PDFs cann, Return a small sans-serif font that ships with PIL.      Falls back to the def, Render ``case.lines`` to a 600x800 PNG with high contrast.      The renderer u, Render every :data:`GOLDEN_CASES` entry to a PNG and return     a ``{name: path (+4 more)
 
 ### Community 214 - "Community 214"
-Cohesion: 0.08
-Nodes (29): create_initial_admin(), disable_legacy_bootstrap_admin(), Any, Session, User, Deactivate legacy fixed-admin accounts.      Parameters     ----------     d, User, main() (+21 more)
+Cohesion: 0.06
+Nodes (37): get_current_user(), Session, User, create_initial_admin(), disable_legacy_bootstrap_admin(), Any, Session, User (+29 more)
 
 ### Community 215 - "Community 215"
-Cohesion: 0.10
-Nodes (19): _first_page_image_path(), _maybe_run_hyperextract(), Optionally invoke Hyper-Extract after the OCR is done.      Four short-circuit, _bucket_size(), ExtractionFingerprintTimer, MiniMax M3 — extraction fingerprint and classification instrumentation.  This mo, Record that an extraction was skipped because the fingerprint     matched a prio, Record which layer produced the final label for a given     classification dimen (+11 more)
+Cohesion: 0.11
+Nodes (16): _bucket_size(), ExtractionFingerprintTimer, MiniMax M3 — extraction fingerprint and classification instrumentation.  This mo, Record that an extraction was skipped because the fingerprint     matched a prio, Record which layer produced the final label for a given     classification dimen, Record a reclassification attempt and whether it kicked off     new OCR or extra, Bucket a document's text length into a bounded size class.      The class bounda, Context manager that records one extraction attempt.      Usage::          with (+8 more)
 
 ### Community 216 - "Community 216"
-Cohesion: 0.11
-Nodes (35): Session, User, scan(), _iter_files(), Path, Session, User, Scan only the dynamic inbox.      ``limit`` retains its historical meaning (ma (+27 more)
+Cohesion: 0.07
+Nodes (52): Session, User, scan(), _iter_files(), Path, Session, User, Scan only the dynamic inbox.      ``limit`` retains its historical meaning (ma (+44 more)
 
 ### Community 217 - "Community 217"
 Cohesion: 0.15
@@ -1513,27 +1528,27 @@ Nodes (15): Handler, _lms(), main(), _parse_ps(), Any, BaseHTTPRequestHandler, R
 
 ### Community 219 - "Community 219"
 Cohesion: 0.18
-Nodes (14): _coerce_datetime(), _coerce_float(), _coerce_str_list(), Any, datetime, E3 — Shared search filters for the three retrieval strategies.  The retriever, Coerce a list / set / comma-separated string to a list of     non-empty trimmed, The split of the user's filter dict between the document     table and the chun (+6 more)
+Nodes (11): find_delivery_note_in_scope(), find_shipping_cost_in_scope(), Session, Shipping and delivery note tools for the AI agent.  Used to find delivery note, Find the shipping cost inside the active scope.      The search is restricted, Search for a delivery note (albaran) inside the active scope.      The search, db_session_like(), _make_db_session() (+3 more)
 
 ### Community 220 - "Community 220"
-Cohesion: 0.05
-Nodes (50): _estimate_vision_confidence(), _get_vision_prompt(), parse_image(), Path, Return the appropriate vision prompt based on content classification., Estimate per-fact confidence from VLM response characteristics.      Instead o, _classify_column(), extract_all_line_items() (+42 more)
+Cohesion: 0.38
+Nodes (12): _ensure_issue(), _filter_issues_for_scope(), generate_issues(), _issue_allowed_for_scope(), list_issues(), ReconciliationIssue, Session, User (+4 more)
 
 ### Community 221 - "Community 221"
-Cohesion: 0.38
-Nodes (11): _budget_payload(), _budget_source(), execute_get_accepted_budgets_without_order(), execute_get_budget_by_number(), execute_search_budgets(), Budget, BudgetLine, Session (+3 more)
+Cohesion: 0.16
+Nodes (21): _allows_budget_search(), build_manifest(), GetBudgetByNumberArgs, GetImprovementCandidatesArgs, OrderNumberArgs, _parse_arguments(), ProposeClassificationCorrectionArgs, ProposeClassificationRuleArgs (+13 more)
 
 ### Community 222 - "Community 222"
 Cohesion: 0.21
-Nodes (15): apply_document_filters(), Select, Apply the document-level subset of the filters to a     ``SELECT`` statement., _count_wheres(), Count the number of WHERE clauses attached to a Select., The original filter keys (budget_scope_id, document_type,     status, quality_s, test_apply_document_filters_adds_created_from_to_clauses(), test_apply_document_filters_adds_created_to_to_clauses() (+7 more)
+Nodes (17): _convert_dwg_to_dxf(), _convert_through_windows_bridge(), _converter_path(), DwgConversionError, parse_dwg(), Path, ValueError, Safe DWG -> DXF conversion before technical-plan extraction.  DWG is a binary Au (+9 more)
 
 ### Community 223 - "Community 223"
-Cohesion: 0.21
-Nodes (21): AdminStats, _ai_llm_health(), alerts(), _database_health(), _disk_health(), _embedding_health(), maintenance_report(), processing_metrics() (+13 more)
+Cohesion: 0.17
+Nodes (24): AdminStats, _checklist_item(), _ai_llm_health(), alerts(), _database_health(), _disk_health(), _embedding_health(), maintenance_report() (+16 more)
 
 ### Community 224 - "Community 224"
-Cohesion: 0.14
-Nodes (13): 10. Riesgos y mitigaciones, 11. Exclusiones explícitas, 12. Estrategia Git para la implementación, 13. Orden de ejecución operativo, 14. Estimación y complejidad, 15. Primer paso al abrir la rama nueva, 1. Objetivo, 2. Resultado esperado (+5 more)
+Cohesion: 0.11
+Nodes (19): 10. Riesgos y mitigaciones, 11. Exclusiones explícitas, 12. Estrategia Git para la implementación, 13. Orden de ejecución operativo, 14. Estimación y complejidad, 15. Primer paso al abrir la rama nueva, 1. Objetivo, 2. Resultado esperado (+11 more)
 
 ### Community 225 - "Community 225"
 Cohesion: 0.16
@@ -1548,8 +1563,8 @@ Cohesion: 0.17
 Nodes (11): parse_value(), PM0.2 — Test integral del pipeline de planos. Valida extracción DXF y PDF contra, Test PDF vector text extraction (PM2.1)., Test plan extraction capabilities from DXF parsed output., Validate manifest has all required fields (PM0.2)., Parse Spanish-format number: 5,00 → 5.0., Test DXF parser extraction., test_dxf() (+3 more)
 
 ### Community 228 - "Community 228"
-Cohesion: 0.17
-Nodes (11): PM7 — Test overlays del visor + confirmación + aprendizaje., PM7.2: Test confirmation/correction logic., PM7.3: Validate learning pipeline structure., PM7: Full overlay + confirmation workflow., PM7.1: Generate overlay regions for cajetín., PM7.1: Generate chat fact overlays from extracted data., test_pm71_chat_facts(), test_pm71_overlay_regions() (+3 more)
+Cohesion: 0.30
+Nodes (11): _can_access_document_for_context(), DocumentIdArgs, Document, _block_payload(), _document_payload(), execute_get_document(), execute_get_document_blocks(), execute_get_related_documents() (+3 more)
 
 ### Community 229 - "Community 229"
 Cohesion: 0.25
@@ -1564,28 +1579,28 @@ Cohesion: 0.20
 Nodes (14): AccessPolicy, TechnicianAccessProfile, ensure_default_access_policies(), policy_allows_budget_search(), policy_allows_prices(), Session, resolve_access_policy(), _allowed_document_types() (+6 more)
 
 ### Community 232 - "Community 232"
-Cohesion: 0.22
-Nodes (9): detect_lines(), DetectedLine, Path, P4 — Line detection from plan images for snap-to-line support.  When a technic, A single line segment detected in the plan image.      Attributes:         x1, Detect prominent lines in a plan image.      Args:         image_path: path t, test_detect_lines_returns_empty_for_missing_file(), test_detect_lines_returns_empty_without_opencv() (+1 more)
+Cohesion: 0.14
+Nodes (13): PM8 — Tests de integración completa: pipeline, BD, métricas., PM8.2: Pipeline integration for memory documents., PM8.2: Pipeline integration for budget documents., PM8.4: Validate Prometheus metrics structure., PM8.5: Validate deploy configuration., PM8.1: Validate migration file exists and is valid., PM8.2: Pipeline integration for plan documents., test_pm81_migrations() (+5 more)
 
 ### Community 233 - "Community 233"
-Cohesion: 0.15
-Nodes (18): Base, Organization, An external organization (client, supplier, etc.)., ConstructionWorkItem, DocumentTimelineEvent, NotificationRule, OcrRevision, PlanMeasurement (+10 more)
+Cohesion: 0.27
+Nodes (10): _case(), FASE 2 — multi-dimensional classifier regression tests.  These tests exercise ``, test_content_tags_dedup_and_cap(), test_docx_keeps_word_source_format(), test_image_ppto_keeps_image_source_format(), test_msg_keeps_email_source_format(), test_pdf_incidencia_keeps_pdf_source_format(), test_pdf_with_ppto_kept_as_presupuesto() (+2 more)
 
 ### Community 234 - "Community 234"
-Cohesion: 0.21
-Nodes (12): _bbox_dimensions_m(), _expected_dimension_m_from_bbox(), Return the longer side of the bbox in metres, given the page     DPI. Returns `, Apply the scale to a bbox-derived on-paper length to get a     real-world lengt, PL1 — usar la escala (1:N) y el DPI del rasterizado para validar las cotas extr, A caption whose OCR'd value does not match the bbox+scale     derived value is, test_bbox_longer_side_in_metres_at_300_dpi(), test_bbox_returns_none_when_components_missing() (+4 more)
+Cohesion: 0.22
+Nodes (10): _estimate_vision_confidence(), _get_vision_prompt(), parse_image(), Path, Return the appropriate vision prompt based on content classification., Estimate per-fact confidence from VLM response characteristics.      Instead o, _T, Run an awaitable from a synchronous call site.      The vision-table fallback (+2 more)
 
 ### Community 235 - "Community 235"
 Cohesion: 0.22
 Nodes (10): _normalise(), S0.1 — Golden OCR fixture scoring.  The point of this module is to give us a d, Collapse whitespace and strip. Keeps unicode letters/digits/punct., Fraction of ground-truth words that appear in the hypothesis.      Words are n, _tokenise(), word_recall(), test_word_recall_empty_hypothesis_is_zero(), test_word_recall_empty_reference_is_one() (+2 more)
 
 ### Community 236 - "Community 236"
-Cohesion: 0.54
-Nodes (7): build_maintenance_report(), build_operations_overview(), build_operations_status(), _disk_usage(), _group_count(), Path, Session
+Cohesion: 0.33
+Nodes (5): enqueue_existing_files(), PendingFileRegistry, Walk ``root`` and add every allowed file to ``pending``.      WATCH-1 (Sprint, Evict oldest half of entries when at capacity., TestEnqueueExistingFiles
 
 ### Community 237 - "Community 237"
-Cohesion: 0.06
-Nodes (44): _find_libreoffice(), parse_doc(), Path, Parser for legacy .doc (OLE2) files.  Converts .doc → .docx using LibreOffice, Locate libreoffice binary on the system., Convert .doc to .docx via LibreOffice, then parse the result.      Args:, _embedded_images(), parse_docx() (+36 more)
+Cohesion: 0.12
+Nodes (20): _find_libreoffice(), parse_doc(), Path, Parser for legacy .doc (OLE2) files.  Converts .doc → .docx using LibreOffice, Locate libreoffice binary on the system., Convert .doc to .docx via LibreOffice, then parse the result.      Args:, parse_document(), Path (+12 more)
 
 ### Community 238 - "Community 238"
 Cohesion: 0.31
@@ -1600,16 +1615,16 @@ Cohesion: 0.18
 Nodes (5): Unit tests for app.workers.tasks Tests Celery task definitions and behavior., Tests for process_document_task Celery task., Tests for scan_input_folders_task Celery task., TestProcessDocumentTask, TestScanInputFoldersTask
 
 ### Community 241 - "Community 241"
-Cohesion: 0.20
-Nodes (4): upgrade(), upgrade(), upgrade(), Vector()
+Cohesion: 0.15
+Nodes (6): upgrade(), upgrade(), upgrade(), OcrAttempt, Immutable evidence for each OCR candidate considered for a page., Vector()
 
 ### Community 242 - "Community 242"
-Cohesion: 0.14
-Nodes (16): backfill_ocr_page_roles(), infer_ocr_content_kind(), is_probably_decorative_embedded_media(), ocr_applicable_clause(), ocr_meets_threshold_clause(), ColumnElement, Session, One policy for deciding when an OCR score is meaningful.  ``document_pages`` als (+8 more)
+Cohesion: 0.15
+Nodes (15): backfill_ocr_page_roles(), infer_ocr_content_kind(), is_probably_decorative_embedded_media(), ocr_applicable_clause(), ocr_meets_threshold_clause(), ColumnElement, Session, One policy for deciding when an OCR score is meaningful.  ``document_pages`` als (+7 more)
 
 ### Community 243 - "Community 243"
-Cohesion: 0.29
-Nodes (9): list_dead_letter(), list_outbox(), outbox_stats(), BaseModel, Session, User, Admin endpoints for inspecting and managing the webhook outbox.  Mounted by th, Counts of outbox rows grouped by status, plus oldest pending age. (+1 more)
+Cohesion: 0.27
+Nodes (10): list_dead_letter(), list_outbox(), outbox_stats(), BaseModel, Session, User, Admin endpoints for inspecting and managing the webhook outbox.  Mounted by th, Counts of outbox rows grouped by status, plus oldest pending age. (+2 more)
 
 ### Community 244 - "Community 244"
 Cohesion: 0.11
@@ -1624,40 +1639,36 @@ Cohesion: 0.11
 Nodes (18): Acciones Recomendadas, Archivos del Proyecto, Bottlenecks Potenciales Identificados en Código, Conclusión: NO SE REQUIERE REFACTORIZACIÓN, Endpoints Principales Identificados, Evaluación, Fase 1: Definir Métricas Baseline ✅, Fase 2: Tests de Carga ✅ CREADOS (+10 more)
 
 ### Community 247 - "Community 247"
-Cohesion: 0.20
-Nodes (6): Test with actual golden OCR fixtures from the repo., Real pedido OCR text from production., Real pedido should classify correctly., Hoja de confeccion manifest exists., Albaran manifest exists., TestGoldenFixtures
+Cohesion: 0.12
+Nodes (9): Tests with REAL OCR data from production documents.  Uses actual OCR text from, Test extraction functions with real OCR text., Test with actual golden OCR fixtures from the repo., Real pedido OCR text from production., Real pedido should classify correctly., Hoja de confeccion manifest exists., Albaran manifest exists., TestBusinessExtractionRealData (+1 more)
 
 ### Community 248 - "Community 248"
-Cohesion: 0.29
-Nodes (8): dangerStates, infoStates, neutralStates, normalize(), severityTone(), statusTone, successStates, warningStates
+Cohesion: 0.25
+Nodes (10): _bbox_dimensions_m(), _expected_dimension_m_from_bbox(), Return the longer side of the bbox in metres, given the page     DPI. Returns `, Apply the scale to a bbox-derived on-paper length to get a     real-world lengt, PL1 — usar la escala (1:N) y el DPI del rasterizado para validar las cotas extr, test_bbox_longer_side_in_metres_at_300_dpi(), test_bbox_returns_none_when_components_missing(), test_bbox_too_small_is_ignored() (+2 more)
 
 ### Community 249 - "Community 249"
 Cohesion: 0.47
 Nodes (9): api(), check_containers(), check_search(), login(), main(), monitor_processing(), query_ai(), select_files() (+1 more)
 
 ### Community 250 - "Community 250"
-Cohesion: 0.15
-Nodes (5): Tests with REAL OCR data from production documents.  Uses actual OCR text from, Test extraction functions with real OCR text., Test document classification with real text., TestBusinessExtractionRealData, TestClassificationRealData
+Cohesion: 0.04
+Nodes (66): _filename_is_known(), _is_filename_like_reference(), _looks_like_currency_amount(), Return True if ``ref`` plausibly matches any of the known     filenames or base, Heuristic: is ``ref`` shaped like a real document filename we     should valida, Stricter filter on top of ``_AMOUNT_PATTERN`` to avoid flagging     identifier-, Reject the response if it fabricates a document reference,     document number,, response_fabricates_documents() (+58 more)
 
 ### Community 251 - "Community 251"
-Cohesion: 0.06
-Nodes (31): get_current_user(), Session, User, enforce_integration_rate_limit(), test_integration_rate_limit_blocks_after_configured_threshold(), db_session(), Session, Non-existent legacy email returns not_found. (+23 more)
+Cohesion: 0.15
+Nodes (12): AnswerProfile, Bounded context and output budgets for chat intent classes., select_answer_profile(), ChatModelRoute, Small, deterministic model router for chat latency., Select the fast model only for small factual requests.      The router is intent, select_chat_model(), test_exact_reference_uses_smallest_budget() (+4 more)
 
 ### Community 252 - "Community 252"
 Cohesion: 0.31
 Nodes (3): ``csp_mode`` setting overrides the environment-derived default.      These tests, Defensive: if the validator runs without environment in         ``info.data`` (t, TestCspModeOverride
 
 ### Community 253 - "Community 253"
-Cohesion: 0.17
-Nodes (12): detect_symbols(), _ensure_model_loaded(), Path, Load the YOLO model on first use. Returns the model or ``None``.      The mode, Detect symbols in a plan image.      The function is **fail-safe**: on any err, With a mocked model returning a known detections tensor, the     detector shoul, A broken model (e.g. corrupt weights) should not crash the     pipeline — the d, When the YOLO model is missing or its import fails, the     detector must repor (+4 more)
-
-### Community 254 - "Community 254"
-Cohesion: 0.43
-Nodes (6): _extract_page_with_pipeline(), _format_diff(), main(), Path, S0.1 — Refresh the golden OCR ground truth from the live pipeline.  By default, Run the project's real OCR cascade on a single page.      We try PyMuPDF first
-
-### Community 255 - "Community 255"
 Cohesion: 0.22
 Nodes (9): auto_select_method(), Pick HyDE vs multi-query based on the query shape.      Long natural-language, A long question with at least one long word -> HyDE., A short or code-like query -> multi_query (multiple     reformulations catch mo, HyDE / multi-query decision is on word count + long-word     count; punctuation, test_auto_select_method_handles_empty_input(), test_auto_select_method_picks_hyde_for_natural_language(), test_auto_select_method_picks_multi_query_for_terse() (+1 more)
+
+### Community 254 - "Community 254"
+Cohesion: 0.17
+Nodes (17): detect_reference(), _normalize(), Lightweight lowercase + accent-strip. Shared with ``tools._normalize``., Return ``(kind, prefer_state_key)`` if ``question`` contains a     follow-up re, CR3 — Tests for elliptical follow-up detection.  Verifies that short questions l, test_cuantas_unidades_detected(), test_de_que_fecha_es_detected(), test_explicit_reference_still_works() (+9 more)
 
 ### Community 256 - "Community 256"
 Cohesion: 0.33
@@ -1672,24 +1683,24 @@ Cohesion: 0.27
 Nodes (9): dashboard_activity(), dashboard_stats(), dashboard_workers(), Session, User, Admin dashboard endpoint.  Provides a structured JSON response with aggregated, Daily activity breakdown for the last N days., Worker status from Celery inspect. (+1 more)
 
 ### Community 259 - "Community 259"
+Cohesion: 0.25
+Nodes (8): 4. Plan de ejecución, Deduplicación, FASE 3 — Ingestión jerárquica atómica, FASE 4 — Escaneo controlado del corpus, Flujo en una transacción, Pruebas, Pruebas y aceptación, Tareas
+
+### Community 260 - "Community 260"
 Cohesion: 0.22
 Nodes (7): Unit tests for H6 (Sprint 3): PaddleOCR init timeout.  Verifies that: 1. ``_P, Operators can override _PADDLE_INIT_TIMEOUT_SECONDS via env., If PaddleOCR constructor blocks forever, the engine must raise     ``RuntimeErr, When PaddleOCR loads quickly, the engine returns the instance., test_init_completes_within_timeout(), test_init_timeout_raises_runtime_error_on_hang(), test_timeout_constant_can_be_patched()
 
-### Community 260 - "Community 260"
-Cohesion: 0.43
-Nodes (6): check_services(), generate_combined_report(), main(), run_test(), The previous code crashed when the sync wrapper was called     from inside a ru, test_run_coro_sync_works_inside_running_loop()
-
 ### Community 261 - "test_workflow_enhancements.py"
-Cohesion: 0.29
-Nodes (18): Hotel, _admin_token(), _document(), _gestor_token(), Session, sessionmaker, TestClient, User (+10 more)
+Cohesion: 0.21
+Nodes (23): Budget, Hotel, HotelChain, test_budget_uses_verified_occurrence_code_when_body_has_no_number(), Seed 2 hotels in 2 chains, plus docs in each + a doc in quarantine., seeded(), _admin_token(), _document() (+15 more)
 
 ### Community 262 - "Community 262"
 Cohesion: 0.46
 Nodes (7): health_db(), health_disk(), health_full(), health_redis(), Session, User, _redis_client()
 
 ### Community 264 - "Community 264"
-Cohesion: 0.17
-Nodes (10): Tests for P2 — YOLOv8 plan symbol detection.  The tests cover three layers:, The pipeline-level helper should:     1. Iterate every DocumentPage that has an, If the detector raises mid-loop, the helper should not propagate     the except, The summary endpoint should return one row per class plus a     total. We patch, The list endpoint must honour ``symbol_class`` and     ``min_confidence`` query, test_api_plan_symbols_404_for_missing_plan(), test_api_plan_symbols_list_filters_by_class_and_confidence(), test_api_plan_symbols_summary_aggregates() (+2 more)
+Cohesion: 0.39
+Nodes (3): is_ignored_path(), Tests for is_ignored_path() function., TestIsIgnoredPath
 
 ### Community 265 - "Community 265"
 Cohesion: 0.12
@@ -1699,9 +1710,9 @@ Nodes (16): M10. MIME Validation en Upload, M11. Token Limit en AI Agent, M12. M
 Cohesion: 0.25
 Nodes (9): ConflictError, DomainError, ForbiddenError, NotFoundError, Exception, Domain exception hierarchy + HTTP mapping., ValidationError, Non-local environments must have METRICS_TOKEN set. (+1 more)
 
-### Community 267 - "Community 267"
-Cohesion: 0.33
-Nodes (5): enqueue_existing_files(), PendingFileRegistry, Walk ``root`` and add every allowed file to ``pending``.      WATCH-1 (Sprint, Evict oldest half of entries when at capacity., TestEnqueueExistingFiles
+### Community 267 - "inspect_file_for_ingestion"
+Cohesion: 0.19
+Nodes (12): _check_zip_for_macros(), FileSecurityResult, inspect_file_for_ingestion(), Path, Inspect a ZIP-based Office file for embedded VBA macros.      Returns a reason, test_file_security_validates_magic_signatures_and_permits_safe_office_docs(), test_file_security_blocks_renamed_executable(), A .doc file with a real OLE signature must pass inspection. (+4 more)
 
 ### Community 268 - "Community 268"
 Cohesion: 0.61
@@ -1716,8 +1727,8 @@ Cohesion: 0.13
 Nodes (14): 10. Ingesta documental, 14. Actualizaciones, 15. Rollback, 16. Monitorización, 17. Seguridad, 1. Arquitectura, 20. Checklist final de producción, 21. Comandos de referencia (+6 more)
 
 ### Community 272 - "Community 272"
-Cohesion: 0.29
-Nodes (7): find_delivery_note_in_scope(), find_shipping_cost_in_scope(), Session, Shipping and delivery note tools for the AI agent.  Used to find delivery note, Find the shipping cost inside the active scope.      The search is restricted, Search for a delivery note (albaran) inside the active scope.      The search, test_find_delivery_note_in_scope_filters_by_source_path()
+Cohesion: 0.17
+Nodes (12): detect_symbols(), _ensure_model_loaded(), Path, Load the YOLO model on first use. Returns the model or ``None``.      The mode, Detect symbols in a plan image.      The function is **fail-safe**: on any err, With a mocked model returning a known detections tensor, the     detector shoul, A broken model (e.g. corrupt weights) should not crash the     pipeline — the d, When the YOLO model is missing or its import fails, the     detector must repor (+4 more)
 
 ### Community 273 - "Community 273"
 Cohesion: 0.43
@@ -1728,16 +1739,16 @@ Cohesion: 0.36
 Nodes (7): enqueue_reocr(), find_escalation_candidates(), main(), Session, FASE 3.4: Re-OCR pages that now fail the raised cascade thresholds.  Selects t, Return document IDs whose tesseract pages fail the new thresholds., Enqueue reprocess:ocr jobs for the given documents.
 
 ### Community 275 - "Community 275"
-Cohesion: 0.20
-Nodes (4): check_indexes(), get_slow_queries_postgres(), QueryStats, Database Query Analyzer Helps identify N+1 queries and slow queries.  Run wit
+Cohesion: 0.17
+Nodes (10): Tests for P2 — YOLOv8 plan symbol detection.  The tests cover three layers:, The pipeline-level helper should:     1. Iterate every DocumentPage that has an, If the detector raises mid-loop, the helper should not propagate     the except, The summary endpoint should return one row per class plus a     total. We patch, The list endpoint must honour ``symbol_class`` and     ``min_confidence`` query, test_api_plan_symbols_404_for_missing_plan(), test_api_plan_symbols_list_filters_by_class_and_confidence(), test_api_plan_symbols_summary_aggregates() (+2 more)
 
 ### Community 276 - "Community 276"
 Cohesion: 0.13
 Nodes (14): 1.1 Hardware, 1.2 Modelos y servicios, 1.3 Servicios Docker, 1. Inventario operativo, 2.1 Distribución por formato y clasificación, 2. Corpus BON PLA SOCIEDAD ANONIMA, 3. Conjunto dorado de preguntas, 4.1 Herramienta (+6 more)
 
 ### Community 277 - "Community 277"
-Cohesion: 0.18
-Nodes (11): _check_migration_head(), _domain_error_handler(), healthz(), lifespan(), Exception, Request, Readiness real: DB + Redis., Verify the database schema matches the latest Alembic migration.      F7-01: r (+3 more)
+Cohesion: 0.17
+Nodes (12): _check_migration_head(), _domain_error_handler(), healthz(), lifespan(), Exception, FastAPI, Request, Readiness real: DB + Redis. (+4 more)
 
 ### Community 278 - "Community 278"
 Cohesion: 0.23
@@ -1772,8 +1783,8 @@ Cohesion: 0.19
 Nodes (11): _CircuitState, get_local_ai_config(), get_local_vision_config(), _is_retryable_ai_error(), LocalAIConfig, LocalVisionConfig, _looks_like_context_size_error(), _looks_like_transient_termination() (+3 more)
 
 ### Community 286 - "Community 286"
-Cohesion: 0.29
-Nodes (4): Run an async NuExtract call from sync OCR / service code., run_async_blocking(), NuExtractOCREngine, Path
+Cohesion: 0.06
+Nodes (59): AIAnswerFeedback, AIAnswerSource, R3 — single 👍/👎 vote on an answer, optionally tagged     with a reason + a free, apply_chunk_weights(), clamp_weight(), compute_weight_delta(), FeedbackOutcome, Session (+51 more)
 
 ### Community 287 - "Community 287"
 Cohesion: 0.33
@@ -1791,9 +1802,9 @@ Nodes (13): _document(), Path, Session, sessionmaker, TestClient, test_bulk_tags
 Cohesion: 0.47
 Nodes (4): GoldenSample, load_manifest(), Any, One entry in the golden manifest.      Fields:         id: stable identifier
 
-### Community 291 - "execute_get_order_by_number"
-Cohesion: 0.25
-Nodes (7): ocr_stats(), Session, User, Admin endpoints for OCR engine visibility.  Mounted at ``/admin/ocr-stats`` so, Counts of pages grouped by OCR engine and the share per backend.      Useful f, The stats endpoint returns counts and share per engine., test_ocr_stats_endpoint_groups_by_engine()
+### Community 291 - "OvisOCR2Model"
+Cohesion: 0.17
+Nodes (5): ModelOutput, OvisOCR2Model, Image, Single-load, bounded OvisOCR2 vLLM runtime., Own one vLLM instance for the lifetime of this service process.
 
 ### Community 292 - "Community 292"
 Cohesion: 0.26
@@ -1820,8 +1831,8 @@ Cohesion: 0.40
 Nodes (5): _get_source_for_route(), S1.10 (Sprint 1) — defensive contract test for ``AccessScope`` enforcement on t, Every public search route must call both the scope     resolver and the result, Return the source of the named function in the named file.      Uses ``inspect, test_search_route_enforces_access_scope()
 
 ### Community 298 - "Community 298"
-Cohesion: 0.33
-Nodes (7): Density, DensityContext, DensityContextValue, DensityProvider(), getInitialDensity(), useDensity(), useDensityClasses()
+Cohesion: 0.29
+Nodes (4): Run an async NuExtract call from sync OCR / service code., run_async_blocking(), NuExtractOCREngine, Path
 
 ### Community 299 - "Community 299"
 Cohesion: 0.28
@@ -1875,6 +1886,10 @@ Nodes (3): dependencies, playwright, playwright
 Cohesion: 0.83
 Nodes (3): api(), login(), main()
 
+### Community 317 - "Community 317"
+Cohesion: 0.18
+Nodes (10): fixture_simple.dxf, dimensions, geometry_types, inserts, layers, texts, 0, circle (+2 more)
+
 ### Community 358 - "Community 358"
 Cohesion: 0.21
 Nodes (11): _build_ground_truth_text(), _expected_mapping(), _gather_text(), main(), Path, MiniMax M3 — FASE 2 macro F1 audit on the 27-doc corpus.  Loads the sanitized ma, Map synthetic_id -> expected document_type from the manifest., Map synthetic_id -> real filename from the corpus root.      The manifest is san (+3 more)
@@ -1892,52 +1907,48 @@ Cohesion: 0.17
 Nodes (12): Aceptación, Aceptación, Aceptación, Archivos candidatos, Archivos candidatos, Cambio requerido, Cambio requerido, Cambio requerido (+4 more)
 
 ### Community 377 - "_admin_token"
-Cohesion: 0.18
-Nodes (20): _escape_ilike_wildcards(), aggregate_business(), _budget_aggregate(), _filters_for_price_scope(), _invoice_aggregate(), _money_filters(), _order_aggregate(), Any (+12 more)
+Cohesion: 0.15
+Nodes (26): PlanCadEntity, PlanDimension, Native CAD entity retained for grounding and visual overlays., _escape_ilike_wildcards(), _cad_dimension_anchor(), _cad_entity_anchor(), _cad_entity_search_text(), _cad_identifiers() (+18 more)
 
 ### Community 402 - "Community 402"
 Cohesion: 0.17
 Nodes (11): Brief de trabajo — Fixes prioritarios, Checklist de aceptación global, FIX-1 · Migración `plans.project_phase` (DESBLOQUEA 45 FALLOS) 🔴, FIX-2 · Preprocesado OCR real, específico por motor (O1 + O2) 🔴, FIX-3 · Score de calidad en la cascada, no longitud (O3) 🟠, FIX-4 · Logging y métricas de la cascada (O4) 🟠, FIX-5 · Bug de regex `invoice_date_missing` (1 línea) 🟠, FIX-6 · Re-OCR + re-embed de documentos de baja confianza (A7) 🟡 (+3 more)
 
-### Community 404 - "Community 404"
-Cohesion: 0.28
-Nodes (8): analyze_image_document(), Document, Path, Session, Persisted, versioned image analysis used by the document pipeline., Upsert visual facts; repeated processing with identical bytes is a cache hit., _sha256_file(), test_image_analysis_keeps_per_label_confidence()
+### Community 404 - "calculate_sha256"
+Cohesion: 0.29
+Nodes (3): Handler, BaseHTTPRequestHandler, End-to-end smoke test for the webhook outbox.  Starts a tiny HTTP server, enqu
 
 ### Community 406 - "Community 406"
-Cohesion: 0.39
-Nodes (6): _search_filters_for_context(), execute_hybrid_search(), execute_search_documents(), Session, _search_response(), redact_sensitive_text()
+Cohesion: 0.18
+Nodes (8): CertificaciÃ³n y promociÃ³n, ConstrucciÃ³n y arranque aislado, Matriz de activaciÃ³n, Observabilidad y parada, Prevuelo y baseline, PropÃ³sito y lÃ­mites, Rollback y reprocesado, Runbook de OvisOCR2
 
 ### Community 409 - "Community 409"
 Cohesion: 0.18
 Nodes (11): 2. Bloque OCR / Pipeline, Estado general, Hallazgos, ✅ HECHO — Caches thread-local + paralelismo de páginas, ✅ HECHO — DPI threshold 0.40 → 0.55, ✅ HECHO — Preprocesado específico por motor (`O1/O2 AGENTS.md`), ✅ HECHO — `processing_time_ms` poblado en path PDF, ✅ HECHO — Score de calidad, no longitud (`O3`) (+3 more)
 
-### Community 411 - "Community 411"
-Cohesion: 0.39
-Nodes (3): is_ignored_path(), Tests for is_ignored_path() function., TestIsIgnoredPath
+### Community 411 - "test_pm7_overlays.py"
+Cohesion: 0.17
+Nodes (11): PM7 — Test overlays del visor + confirmación + aprendizaje., PM7.2: Test confirmation/correction logic., PM7.3: Validate learning pipeline structure., PM7: Full overlay + confirmation workflow., PM7.1: Generate overlay regions for cajetín., PM7.1: Generate chat fact overlays from extracted data., test_pm71_chat_facts(), test_pm71_overlay_regions() (+3 more)
 
 ### Community 418 - "Community 418"
 Cohesion: 0.18
 Nodes (11): 3. Bloque IA / Conversacional, Estado general, Hallazgos, ⚠️ PENDIENTE — `config.py:262` `embedding_fallback_to_hash` huérfano ⚪, ⚠️ PENDIENTE — `local_client.py:162` respuesta malformada sin validar 🟠, ⚠️ PENDIENTE — `local_client.py:184` timeout escalar en streaming 🟡, ⚠️ PENDIENTE — `LocalVisionClient` sin reintento/breaker 🟡, ⚠️ PENDIENTE — `prompts.py:140-146` budget de tokens descarta items enteros 🟡 (+3 more)
 
-### Community 482 - "CircuitBreakerConfigError"
-Cohesion: 0.20
-Nodes (12): get_source_highlight(), Session, R4 — Backend support for highlighting cited sources in the document viewer.  W, The information the frontend needs to highlight a cited     source in the docum, Return the highlight information for a cited source.      Args:         db: S, SourceHighlight, Tests for R4 — source highlight backend support.  The highlight module is a re, test_get_source_highlight_returns_none_for_missing_answer() (+4 more)
+### Community 482 - "is_allowed_file_path"
+Cohesion: 0.22
+Nodes (6): is_allowed_file_path(), Unit tests for app.ingestion.stability Tests file path filtering and stability d, Tests for is_allowed_file_path() function., Tests for IGNORED_SUFFIXES constant., TestIgnoredSuffixesConstant, TestIsAllowedFilePath
 
 ### Community 483 - "Community 483"
-Cohesion: 0.50
-Nodes (3): Receive, Scope, Send
-
-### Community 484 - "main"
-Cohesion: 0.40
-Nodes (5): cleanup_orphan_communications(), main(), Session, Remove legacy communication records that have no immutable source document., Delete only messages with no source document and their empty threads.      Docu-
+Cohesion: 0.22
+Nodes (9): detect_lines(), DetectedLine, Path, P4 — Line detection from plan images for snap-to-line support.  When a technic, A single line segment detected in the plan image.      Attributes:         x1, Detect prominent lines in a plan image.      Args:         image_path: path t, test_detect_lines_returns_empty_for_missing_file(), test_detect_lines_returns_empty_without_opencv() (+1 more)
 
 ### Community 485 - "Community 485"
 Cohesion: 0.31
 Nodes (9): _ask(), _grade(), _login(), FASE 5 — deterministic grounded-answer evaluation.  The evaluation tool consumes, Citations must come from real documents the corpus     actually contains. An emp, Call the non-streaming endpoint. The cache is intentionally     cleared per scen, _scenario_fixtures(), test_citation_uses_known_documents() (+1 more)
 
 ### Community 486 - "clsx"
-Cohesion: 0.40
-Nodes (5): main(), Session, Backfill structured business records after occurrence association repair., Fill missing structured budget identity from verified occurrence data.      The, repair_contextual_business_extractions()
+Cohesion: 0.06
+Nodes (85): BudgetLine, DeliveryNote, DeliveryNoteLine, InvoiceLine, Order, OrderLine, A single line item from an invoice extraction (Phase 6)., _add_entities_for_budget() (+77 more)
 
 ### Community 487 - "BLOQUE B — Búsqueda universal"
 Cohesion: 0.18
@@ -1976,8 +1987,8 @@ Cohesion: 0.20
 Nodes (10): 5. Bloque Extracción de negocio / Planos, Estado general, Hallazgos, ⚠️ PENDIENTE — Campos ORM muertos en planos ⚪, ⚠️ PENDIENTE — Factura pierde base/IVA/NIF/nº pedido al persistir 🔴, ⚠️ PENDIENTE — Facturas no extraen líneas 🔴, ⚠️ PENDIENTE — `_parse_number` de planos ambiguo 🟠, ⚠️ PENDIENTE — `scale_ratio` apenas calcula nada 🟠 (+2 more)
 
 ### Community 496 - "OdaBridgeHandler"
-Cohesion: 0.38
-Nodes (6): ExportFormat, HybridSearchRequest, BaseModel, str, SearchResultRead, SemanticSearchRequest
+Cohesion: 0.27
+Nodes (6): client_and_session(), Session, sessionmaker, TestClient, Integration contract for deny-by-default access across business resources.  The, two_tenants()
 
 ### Community 497 - "Pre-existing test failures (not caused by the A7 / PL1 / F4b / F8 work)"
 Cohesion: 0.20
@@ -1992,8 +2003,8 @@ Cohesion: 0.20
 Nodes (10): Aceptación, Aceptación, Archivos, BLOQUE A — Reparar fuentes y sesión, Cambio requerido, Cambio requerido, CR1 · No abortar respuesta por `block_id` obsoleto, CR2 · Persistencia tolerante y orden correcto (+2 more)
 
 ### Community 500 - "BRIEF_MIMO_COMPRENSION_PLANOS_Y_MEMORIAS_OBRA.md"
-Cohesion: 0.14
-Nodes (13): 0.1 Alerta operativa previa, 0. Reglas de ejecución, 3. Arquitectura objetivo, 5. Métricas, 6. Orden de implementación, 7. MVP, 8. Checklist final, 9. Entrega esperada por tarea (+5 more)
+Cohesion: 0.20
+Nodes (9): 0.1 Alerta operativa previa, 0. Reglas de ejecución, 3. Arquitectura objetivo, 5. Métricas, 6. Orden de implementación, 7. MVP, 8. Checklist final, 9. Entrega esperada por tarea (+1 more)
 
 ### Community 501 - "BLOQUE PM2 — Planos vectoriales"
 Cohesion: 0.20
@@ -2067,9 +2078,9 @@ Nodes (8): 14. Estrategia de despliegue, 15. Rollback, 16. Secuencia de commits 
 Cohesion: 0.22
 Nodes (9): Cobertura frontend, Comandos finales, E2E, Escenarios, FASE 12 — E2E real, cobertura y observabilidad, Integración PostgreSQL, Métricas/SLO iniciales, Niveles (+1 more)
 
-### Community 519 - "bump_knowledge_version"
-Cohesion: 0.29
-Nodes (7): chunk_metadata_header(), embedding_text_with_metadata(), _metadata_value(), Build the ``[tipo=... | fichero=... | pág=...]`` prefix that     is prepended t, Prepend :func:`chunk_metadata_header` to the chunk text., test_chunk_metadata_header_unchanged(), test_embedding_text_with_metadata_prepends_header()
+### Community 519 - "execute_integration_tool"
+Cohesion: 0.14
+Nodes (31): IntegrationContext, _can_access_plan(), _document_id_allowed_for_context(), EntitySearchArgs, _filter_document_ids_for_context(), _filter_records_for_context(), _filter_search_results_for_context(), HybridSearchArgs (+23 more)
 
 ### Community 520 - "BLOQUE PM1 — Taxonomía técnica y modelo de datos"
 Cohesion: 0.25
@@ -2116,8 +2127,8 @@ Cohesion: 0.25
 Nodes (8): Archivos principales, Commit sugerido, Criterio de cierre, FASE 6 — Velocidad percibida y control en frontend, Objetivo, Pruebas, Tareas, Verificación
 
 ### Community 531 - "4. Plan de ejecución"
-Cohesion: 0.25
-Nodes (8): 4. Plan de ejecución, Aceptación, Archivos, FASE 11 — Overlays y revisión humana, FASE 4 — Escaneo controlado del corpus, Pruebas, Tareas, Tareas
+Cohesion: 0.50
+Nodes (4): Aceptación, Archivos, FASE 11 — Overlays y revisión humana, Tareas
 
 ### Community 532 - "Análisis profundo del proyecto Docu-Intel — Mejoras y soluciones"
 Cohesion: 0.29
@@ -2128,16 +2139,16 @@ Cohesion: 0.44
 Nodes (8): _accessible_plan(), create_plan_measurement(), _has_discrepancy(), list_plan_measurements(), Plan, Session, User, PlanMeasurement
 
 ### Community 534 - "documents.py"
-Cohesion: 0.40
-Nodes (5): main(), Session, Reclassify legacy image documents using their persisted folder context., Repair images previously classified from a parent budget folder.      The normal, repair_contextual_classifications()
+Cohesion: 0.06
+Nodes (45): AIQuestion, Result of a streaming call. ``text`` is the concatenated LLM     output; ``ok``, StreamOutcome, _try_local_ai_answer(), answer(), ask(), ask_stream(), cache_stats() (+37 more)
 
 ### Community 535 - "Structured Extraction — Operators' Guide"
 Cohesion: 0.29
 Nodes (6): Adding a new supplier profile, Backward compatibility, File map, Locale handling, Structured Extraction — Operators' Guide, Validation & coherence
 
-### Community 536 - "TesseractOCREngine"
-Cohesion: 0.33
-Nodes (7): count_by_class(), DetectedSymbol, Return a ``{symbol_class: count}`` mapping for a list of detections.      Used, A single symbol detected in the plan image.      Attributes:         symbol_c, test_detected_symbol_defaults(), test_count_by_class_empty(), test_count_by_class_groups_detections()
+### Community 536 - "track_worker_init_failure"
+Cohesion: 0.43
+Nodes (6): _extract_page_with_pipeline(), _format_diff(), main(), Path, S0.1 — Refresh the golden OCR ground truth from the live pipeline.  By default, Run the project's real OCR cascade on a single page.      We try PyMuPDF first
 
 ### Community 537 - "README.md"
 Cohesion: 0.29
@@ -2464,8 +2475,8 @@ Cohesion: 0.40
 Nodes (5): Entregable y aceptación, FASE 0 — Línea base reproducible, Objetivo, Tareas, Áreas
 
 ### Community 619 - "test_paddle_init_timeout.py"
-Cohesion: 0.50
-Nodes (4): Aceptación, BLOQUE C — Respuestas con evidencia, Cambio requerido, CR8 · Fuentes obligatorias para afirmaciones documentales
+Cohesion: 0.13
+Nodes (14): Session, FASE 6.1: did-you-mean suggestions when no answer context found.  Searches for, Search for documents similar to the user's question.      Returns a suggestion, suggest_similar_documents(), _JsonFormatter, Return ISO 8601 UTC timestamp with millisecond precision., Configure stdlib logging and structlog for the application.      - Production:, Stdlib formatter that emits JSON lines for production. (+6 more)
 
 ### Community 620 - "graphify reference: add a URL and watch a folder"
 Cohesion: 0.50
@@ -2499,9 +2510,9 @@ Nodes (4): Aceptación, Archivos, Cambio requerido, CR9 · Reparar permisos de r
 Cohesion: 0.50
 Nodes (4): 4. Tests obligatorios, Chat E2E, Memorias, Planos
 
-### Community 628 - "BLOQUE PM7 — Visor y revisión humana"
-Cohesion: 0.16
-Nodes (19): _load_checkpoint(), main(), _new_checkpoint(), Any, Session, Load only a checkpoint that belongs to this exact corpus root., Run the corpus backfill.      Args:         dry_run: If True, don't write to DB., run_backfill() (+11 more)
+### Community 628 - "WatchedFile"
+Cohesion: 0.33
+Nodes (5): count_where(), _document_operation_payload(), _normalized_tags(), Document, _severity_rank()
 
 ### Community 629 - "11. IA, OCR y embeddings"
 Cohesion: 0.50
@@ -2544,12 +2555,12 @@ Cohesion: 0.50
 Nodes (4): 13. FASE 8 — Certificación integral, Escenarios obligatorios, Gate final, Suite obligatoria
 
 ### Community 639 - "FASE 3 — Ingestión jerárquica atómica"
-Cohesion: 0.30
-Nodes (11): DocumentIdArgs, _block_payload(), _document_payload(), execute_get_document(), execute_get_document_blocks(), execute_get_related_documents(), Document, DocumentBlock (+3 more)
+Cohesion: 0.40
+Nodes (5): ChatMessage, datetime, CTX-2 — Per-user chat session state for grounded, scope-aware answers.  A ``Ch, A single turn inside a :class:`ChatSession`.      The ``intent`` column record, _utcnow()
 
 ### Community 645 - "load_manifest"
-Cohesion: 0.08
-Nodes (24): coerce_embedding_dimensions(), _embedding_endpoint(), EmbeddingProviderError, _get_embedding_breaker(), OpenAICompatibleEmbeddingClient, Client, RuntimeError, Execute request with exponential backoff retries for transient errors. (+16 more)
+Cohesion: 0.05
+Nodes (53): Render a PDF page and atomically leave the bytes on disk     at ``image_file``, _render_page_to_image(), CircuitBreaker, CircuitBreakerConfigError, CircuitBreakerError, CircuitBreakerOpen, BaseException, RuntimeError (+45 more)
 
 ### Community 648 - "12. Escalado"
 Cohesion: 0.67
@@ -2579,69 +2590,61 @@ Nodes (3): 3.1 Latencia objetivo, 3.2 Calidad objetivo, 3. Objetivos y SLO
 Cohesion: 0.40
 Nodes (12): _admin_token(), _document(), Session, sessionmaker, TestClient, _test_client(), test_invoice_endpoint_feeds_reconciliation(), test_ocr_revision_updates_page_text_and_document_timeline_records_event() (+4 more)
 
-### Community 656 - "@typescript-eslint/eslint-plugin"
-Cohesion: 0.14
-Nodes (14): _try_local_ai_answer(), _many_items(), CHAT — cuando el prompt supera el ``context_length`` cargado del modelo, el ser, Enough long context items that halving the token budget actually     drops some, test_context_size_detection_helper(), test_one_shot_retries_with_smaller_budget_on_context_size_error(), test_stream_retries_with_smaller_budget_on_context_size_error(), CHAT — Qwen3 con ``/no_think`` puede devolver una respuesta VACÍA (0 tokens, `` (+6 more)
+### Community 656 - "analyze_image_document"
+Cohesion: 0.32
+Nodes (7): analyze_image_document(), Document, Path, Session, Persisted, versioned image analysis used by the document pipeline., Upsert visual facts; repeated processing with identical bytes is a cache hit., _sha256_file()
 
 ### Community 668 - "test_benchmark_ai_pipeline.py"
 Cohesion: 0.36
 Nodes (7): Regression tests for the live AI benchmark harness.  The harness is deliberately, _scenario(), test_quality_compares_document_ids_independently_of_json_number_type(), test_quality_requires_every_declared_fact_and_required_cache_hit(), test_request_plan_rejects_dependency_missing_from_selection(), test_request_plan_reuses_dependency_session_and_mode_for_cache_hit(), test_sse_request_carries_isolated_session_mode_and_cache_status()
 
 ### Community 670 - "AIAnswerRead"
-Cohesion: 0.30
-Nodes (10): _can_access_plan(), _model_dict(), PlanIdArgs, execute_search_entities(), Session, execute_get_plan_dimensions(), execute_get_plan_rooms(), execute_get_room_measurements() (+2 more)
+Cohesion: 0.53
+Nodes (5): explain_document_access(), Document, Session, resolve_scope_for_principal(), _scope()
 
 ### Community 671 - "find_delivery_note_in_scope"
-Cohesion: 0.24
-Nodes (5): _get_effective_ocr_engine_class(), _instantiate_effective_ocr_engine(), _LazyOCREngine, Defer heavy OCR model construction until a parser calls extract()., Return an OCR object, never the factory function itself.      In cascading mode
+Cohesion: 0.29
+Nodes (8): dangerStates, infoStates, neutralStates, normalize(), severityTone(), statusTone, successStates, warningStates
 
 ### Community 672 - "admin_helpers.py"
-Cohesion: 0.29
-Nodes (7): build_chunk_filter_clause(), ColumnElement, Return a SQL ``WHERE`` fragment that restricts a chunk-level     query to the r, test_build_chunk_filter_clause_combines_block_type_and_ocr_floor(), test_build_chunk_filter_clause_handles_block_type(), test_build_chunk_filter_clause_handles_min_ocr_confidence(), test_build_chunk_filter_clause_returns_none_when_no_relevant_filter()
+Cohesion: 0.18
+Nodes (17): audit_logs(), audit_logs_export_csv(), audit_logs_export_json(), cancel_job(), AuditLog, Session, User, retry_job() (+9 more)
 
-### Community 673 - "_extract_lines"
-Cohesion: 0.09
-Nodes (41): _amount_from_label(), _classify_status_value(), _confidence(), _currency(), _date_from_label(), DeliveryNoteExtraction, _detect_company_name(), _detect_second_company() (+33 more)
+### Community 673 - "repair_technical_extractions"
+Cohesion: 0.40
+Nodes (5): main(), Session, Backfill durable technical facts for documents already in the corpus., Replay deterministic plan/memory/measurement extraction idempotently., repair_technical_extractions()
 
 ### Community 674 - "test_chat_context_size_retry.py"
 Cohesion: 0.50
-Nodes (4): Deduplicación, FASE 3 — Ingestión jerárquica atómica, Flujo en una transacción, Pruebas y aceptación
+Nodes (3): Unit tests for WATCH-1 (Sprint 2).  Verifies:  1. ``is_file_too_large`` rejects, The fixed corpus belongs to explicit backfill, never to the watcher., test_live_watcher_observes_only_dynamic_input()
 
-### Community 675 - "PerformanceMonitorMiddleware"
-Cohesion: 0.67
-Nodes (3): Response, Build an httpx ``Response`` that streams the given SSE     chunks as ``aiter_li, _sse_response()
+### Community 675 - "documentViews.ts"
+Cohesion: 0.50
+Nodes (4): Aceptación, BLOQUE C — Respuestas con evidencia, Cambio requerido, CR8 · Fuentes obligatorias para afirmaciones documentales
 
-### Community 679 - "Handler"
-Cohesion: 0.29
-Nodes (4): Handler, main(), BaseHTTPRequestHandler, End-to-end smoke test for the webhook outbox.  Starts a tiny HTTP server, enqu
+### Community 677 - "orders.py"
+Cohesion: 0.50
+Nodes (4): get_order_by_number(), Session, Order-related tools for the AI agent.  Used to answer questions about orders,, search_orders()
 
 ### Community 680 - "OcrAttempt"
-Cohesion: 0.29
-Nodes (3): Unit tests for app.workers.routing Tests the queue routing logic based on docum, Tests for routing constants., TestRoutingConstants
+Cohesion: 0.40
+Nodes (5): cleanup_orphan_communications(), main(), Session, Remove legacy communication records that have no immutable source document., Delete only messages with no source document and their empty threads.      Docu-
 
-### Community 681 - "track_feedback_vote"
-Cohesion: 0.53
-Nodes (5): execute_get_order_by_number(), execute_search_orders(), _order_payload(), Order, Session
+### Community 682 - "BLOQUE PM7 — Visor y revisión humana"
+Cohesion: 0.50
+Nodes (4): BLOQUE PM7 — Visor y revisión humana, PM7.1 · Overlays, PM7.2 · Confirmación, PM7.3 · Aprendizaje controlado
 
 ### Community 684 - "TestPreloadWorkerOcrEngine"
-Cohesion: 0.09
-Nodes (28): get_or_create_session(), load_active_context(), new_session_uuid(), persist_context_after_answer(), Any, Session, User, CTX-2 — Active conversation context: in-memory view of the session state.  The (+20 more)
+Cohesion: 0.43
+Nodes (6): check_services(), generate_combined_report(), main(), run_test(), The previous code crashed when the sync wrapper was called     from inside a ru, test_run_coro_sync_works_inside_running_loop()
 
 ### Community 685 - "select_answer_profile"
-Cohesion: 0.15
-Nodes (12): AnswerProfile, Bounded context and output budgets for chat intent classes., select_answer_profile(), ChatModelRoute, Small, deterministic model router for chat latency., Select the fast model only for small factual requests.      The router is intent, select_chat_model(), test_exact_reference_uses_smallest_budget() (+4 more)
+Cohesion: 0.03
+Nodes (106): ActiveContext, True when the context pins a specific budget (number or id)., The per-session in-conversation state.      Every field is optional: an empty, _format_gate_blocked_answer(), Backward-compatible wrapper for the confidence-gate formatter., evaluate_confidence_gates(), evaluate_gates_for_turn(), _extract_amount_candidates() (+98 more)
 
-### Community 686 - "create_saved_search"
-Cohesion: 0.53
-Nodes (5): create_saved_search(), list_saved_searches(), Session, User, SavedSearch
-
-### Community 687 - "classification.py"
-Cohesion: 0.40
-Nodes (5): _has_strong_plan_signal(), _match_keyword(), _normalize(), Match a keyword with word boundaries to avoid substring false positives., Require strong evidence before classifying as plano.      For images, we need
-
-### Community 688 - "._call_provider"
-Cohesion: 0.33
-Nodes (3): POST to the OpenAI-compatible chat-completions endpoint.          Returns the, Return the per-call ``max_tokens`` budget for a prompt.          The budget is, Probe the provider for ``response_format`` support.          The probe runs on
+### Community 686 - ".to_envelope"
+Cohesion: 0.67
+Nodes (3): Response, Build an httpx ``Response`` that streams the given SSE     chunks as ``aiter_li, _sse_response()
 
 ### Community 689 - "3. Decisiones arquitectónicas obligatorias"
 Cohesion: 0.33
@@ -2651,17 +2654,9 @@ Nodes (6): 3.1 Servicio de inferencia separado, 3.2 Adaptador HTTP compatible co
 Cohesion: 0.33
 Nodes (6): Corpus mínimo, Entregables, FASE 0 — Línea base, contrato y congelación de decisiones, Objetivo, Puerta de salida, Tareas
 
-### Community 691 - "FeedbackOutcome"
-Cohesion: 0.50
-Nodes (4): get_order_by_number(), Session, Order-related tools for the AI agent.  Used to answer questions about orders,, search_orders()
-
-### Community 692 - "TestFullPipelineHojaConfeccion"
-Cohesion: 0.40
-Nodes (3): Complete pipeline test for confection sheets., Hojas de confección are hand-drawn — extraction returns minimal data., TestFullPipelineHojaConfeccion
-
-### Community 693 - "track_feedback_vote"
-Cohesion: 0.14
-Nodes (15): apply_chunk_weights(), FeedbackOutcome, Session, R3 — Feedback loop: 👍/👎 on AI answers → chunk weight adjustment.  The chat exp, The result of recording a single vote.      Attributes:         accepted: ``T, Adjust the ``weight`` column on every cited source of     ``answer_id`` based o, Decay the weight of a single source row back towards     1.0. Returns the new w, rebalance_chunk_weight() (+7 more)
+### Community 692 - "benchmark_tesseract.py"
+Cohesion: 0.22
+Nodes (8): Tesseract 5 OCR engine.  CPU only, no GPU dependency. ~1.5 GB lighter Docker i, Tesseract 5 OCR engine via the ``pytesseract`` Python binding.      The engine, TesseractOCREngine, _arguments(), main(), _pages(), Namespace, Benchmark the existing Tesseract engine over an approved image manifest.  This p
 
 ### Community 694 - "FASE 2 — Cliente, parser y contrato interno"
 Cohesion: 0.40
@@ -2691,9 +2686,13 @@ Nodes (5): FASE 4 — Routing, comparación y decisión, Objetivo, Política ini
 Cohesion: 0.40
 Nodes (5): FASE 6 — Docker, GPU, seguridad y operación, Objetivo, Puerta de salida, Tareas de seguridad, Tareas Docker/GPU
 
-### Community 702 - "test_watcher_size_cap.py"
+### Community 701 - "effective_access_payload"
+Cohesion: 0.33
+Nodes (7): count_by_class(), DetectedSymbol, Return a ``{symbol_class: count}`` mapping for a list of detections.      Used, A single symbol detected in the plan image.      Attributes:         symbol_c, test_detected_symbol_defaults(), test_count_by_class_empty(), test_count_by_class_groups_detections()
+
+### Community 702 - "search_entities"
 Cohesion: 0.50
-Nodes (3): Unit tests for WATCH-1 (Sprint 2).  Verifies:  1. ``is_file_too_large`` rejects, The fixed corpus belongs to explicit backfill, never to the watcher., test_live_watcher_observes_only_dynamic_input()
+Nodes (4): hybrid_search(), Session, Search tools for the AI agent.  Used to perform text, semantic, and hybrid sea, search_entities()
 
 ### Community 703 - "FASE 5 — Persistencia, observabilidad y administración"
 Cohesion: 0.50
@@ -2707,33 +2706,41 @@ Nodes (4): FASE 9 — Reprocesado controlado y mejora del corpus existente, Obje
 Cohesion: 0.67
 Nodes (3): 6.1 Contrato HTTP interno, 6.2 Conversión al dominio OCR, 6. Arquitectura objetivo
 
-### Community 706 - "8. Archivos previstos"
-Cohesion: 0.67
-Nodes (3): 8.1 Archivos nuevos, 8.2 Archivos a modificar, 8. Archivos previstos
+### Community 710 - "Registro de ejecución"
+Cohesion: 0.33
+Nodes (6): 2026-07-13 — Fases 1, 4, 5 y 10, 2026-07-13 — Fases 2 y 3, 2026-07-13 — Fases 6 y 7, 2026-07-13 — Fases 8, 9 y 10, 2026-07-15 — reparación integral de datos, OCR y certificación, Registro de ejecución
 
-### Community 707 - "FASE 10 — Documentación, runbook y cierre"
-Cohesion: 0.67
-Nodes (3): Definition of Done global, Entregables, FASE 10 — Documentación, runbook y cierre
+### Community 717 - "test_processing_safety.py"
+Cohesion: 0.40
+Nodes (5): main(), Session, Backfill structured business records after occurrence association repair., Fill missing structured budget identity from verified occurrence data.      The, repair_contextual_business_extractions()
+
+### Community 728 - "test_first_date_in_text_prefers_labelled_date"
+Cohesion: 0.29
+Nodes (3): Unit tests for EMB-DIM-1 (Sprint 2).  The default EMBEDDING_DIMENSIONS is 768 (m, ``EMBEDDING_DIMENSIONS`` must default to 768 (the pgvector column)., TestEmbeddingDimensionsDefault
+
+### Community 729 - "test_multi_query_reformulations_helper_in_source"
+Cohesion: 0.09
+Nodes (26): create_saved_search(), list_saved_searches(), Session, User, Base, Organization, An external organization (client, supplier, etc.)., DocumentTimelineEvent (+18 more)
 
 ## Knowledge Gaps
-- **1605 isolated node(s):** `AlertDefinition`, `ChatMessage`, `entrypoint-migrate.sh script`, `load_vision_gpu1.sh script`, `test_shim.sh script` (+1600 more)
+- **1658 isolated node(s):** `AlertDefinition`, `ChatMessage`, `entrypoint-migrate.sh script`, `load_vision_gpu1.sh script`, `test_shim.sh script` (+1653 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **80 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **87 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Document` connect `Community 41` to `Community 128`, `Community 4`, `Community 133`, `Community 134`, `Community 7`, `test_workflow_enhancements.py`, `Community 137`, `Community 11`, `Community 13`, `react-dom`, `Community 272`, `Community 17`, `Community 274`, `Budget`, `Community 404`, `Community 20`, `Community 150`, `documents.py`, `Community 152`, `Community 16`, `Community 154`, `Community 149`, `Community 28`, `Community 30`, `resolve_user_access_scope`, `Community 160`, `Community 161`, `tenant_access.py`, `Community 35`, `Community 289`, `Community 36`, `Community 167`, `Community 40`, `Community 169`, `Community 168`, `Community 45`, `Community 173`, `LocalSentenceTransformerEmbeddingClient`, `Community 50`, `Community 179`, `Community 52`, `Community 183`, `Community 61`, `Community 190`, `Community 193`, `Community 195`, `_query_prompt_for`, `Community 76`, `Community 209`, `Community 83`, `Community 84`, `Community 214`, `Community 216`, `Community 91`, `Community 220`, `Community 221`, `Community 94`, `hash_password`, `clsx`, `test_operational_hardening.py`, `Community 233`, `_admin_token`, `Community 107`, `Community 236`, `Community 109`, `Community 251`, `BLOQUE PM7 — Visor y revisión humana`, `Community 121`, `TestEmbeddingRoles`, `Community 127`, `Community 126`, `FASE 3 — Ingestión jerárquica atómica`?**
-  _High betweenness centrality (0.100) - this node is a cross-community bridge._
-- **Why does `Base` connect `Community 233` to `test_workflow_enhancements.py`, `Community 134`, `Community 7`, `Community 137`, `hash_password`, `Budget`, `Community 20`, `Community 28`, `resolve_user_access_scope`, `Community 160`, `tenant_access.py`, `Community 35`, `Community 164`, `Community 38`, `Community 41`, `TestPreloadWorkerOcrEngine`, `Community 45`, `Community 52`, `Community 56`, `Community 185`, `Community 186`, `Community 61`, `Community 193`, `Community 83`, `Community 214`, `Community 216`, `Community 231`, `Community 124`, `Community 127`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
-- **Why does `ContextItem` connect `Community 24` to `Community 4`, `Community 5`, `Community 132`, `ToolCall`, `Community 170`, `@typescript-eslint/eslint-plugin`, `BudgetScope`, `Community 20`, `Community 84`, `Document`, `Community 26`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
-- **Are the 213 inferred relationships involving `Document` (e.g. with `budget_context()` and `collect_context()`) actually correct?**
-  _`Document` has 213 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `Document` connect `Community 150` to `Community 128`, `Community 133`, `test_workflow_enhancements.py`, `Community 7`, `Community 137`, `Community 143`, `Community 16`, `react-dom`, `Community 274`, `hash_password`, `Community 20`, `Community 149`, `Community 152`, `Community 154`, `Community 26`, `Community 30`, `resolve_user_access_scope`, `admin_helpers.py`, `Community 161`, `repair_technical_extractions`, `tenant_access.py`, `Community 160`, `Community 35`, `Community 289`, `Community 167`, `Community 40`, `Community 169`, `Community 36`, `Community 168`, `Community 45`, `Community 173`, `select_answer_profile`, `LocalSentenceTransformerEmbeddingClient`, `Community 50`, `Community 52`, `Community 183`, `Community 61`, `Community 190`, `Community 193`, `Community 65`, `Community 195`, `_query_prompt_for`, `Community 198`, `IntegrationContext`, `test_processing_safety.py`, `Community 83`, `Community 84`, `Community 216`, `test_multi_query_reformulations_helper_in_source`, `Community 88`, `Community 219`, `Community 91`, `Community 94`, `Community 99`, `Community 228`, `clsx`, `test_operational_hardening.py`, `Community 104`, `_admin_token`, `test_paddle_init_timeout.py`, `Community 107`, `Community 109`, `OdaBridgeHandler`, `Community 241`, `WatchedFile`, `Community 118`, `Community 121`, `Community 124`, `Community 126`, `Community 127`?**
+  _High betweenness centrality (0.103) - this node is a cross-community bridge._
+- **Why does `Base` connect `test_multi_query_reformulations_helper_in_source` to `test_workflow_enhancements.py`, `Community 134`, `Community 7`, `Community 137`, `Community 10`, `Community 16`, `hash_password`, `Community 20`, `Community 150`, `Community 154`, `Community 30`, `resolve_user_access_scope`, `admin_helpers.py`, `Community 286`, `tenant_access.py`, `Community 35`, `Community 38`, `Community 167`, `Community 168`, `Community 45`, `Community 52`, `Community 56`, `Community 61`, `Community 63`, `Community 193`, `Community 198`, `Community 71`, `Community 83`, `Community 84`, `Community 214`, `Community 216`, `Community 220`, `Community 99`, `clsx`, `Community 231`, `Community 102`, `Community 241`, `Community 118`, `_admin_token`, `FASE 3 — Ingestión jerárquica atómica`?**
+  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+- **Why does `ContextItem` connect `Community 152` to `Community 4`, `Community 5`, `Community 132`, `select_answer_profile`, `Community 179`, `Community 20`, `documents.py`, `Community 250`, `Community 28`, `Community 63`?**
+  _High betweenness centrality (0.029) - this node is a cross-community bridge._
+- **Are the 218 inferred relationships involving `Document` (e.g. with `budget_context()` and `collect_context()`) actually correct?**
+  _`Document` has 218 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 18 inferred relationships involving `AccessScope` (e.g. with `ContextItem` and `GroundedResponse`) actually correct?**
   _`AccessScope` has 18 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 89 inferred relationships involving `resolve_user_access_scope()` (e.g. with `answer_question()` and `redaction_preview()`) actually correct?**
-  _`resolve_user_access_scope()` has 89 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 41 inferred relationships involving `ContextItem` (e.g. with `StreamOutcome` and `GateEvaluation`) actually correct?**
-  _`ContextItem` has 41 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 90 inferred relationships involving `resolve_user_access_scope()` (e.g. with `answer_question()` and `redaction_preview()`) actually correct?**
+  _`resolve_user_access_scope()` has 90 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 42 inferred relationships involving `ContextItem` (e.g. with `StreamOutcome` and `GateEvaluation`) actually correct?**
+  _`ContextItem` has 42 INFERRED edges - model-reasoned connections that need verification._

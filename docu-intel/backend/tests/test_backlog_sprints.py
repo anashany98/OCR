@@ -395,7 +395,7 @@ def test_backup_and_restore_scripts_copy_data_files_and_verify_manifest():
 
 
 def test_ci_workflow_runs_backend_frontend_and_migrations():
-    workflow = Path(__file__).resolve().parents[2].parent / ".github" / "workflows" / "ci.yml"
+    workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
     content = workflow.read_text(encoding="utf-8")
 
     assert "pytest" in content

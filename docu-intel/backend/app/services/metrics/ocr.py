@@ -26,6 +26,10 @@ from __future__ import annotations
 from prometheus_client import Counter
 
 from ._registry import (
+    DOCLING_DURATION,
+    DOCLING_FALLBACK,
+    DOCLING_PAGES,
+    DOCLING_REQUESTS,
     OCR_CASCADE_FALLBACK,
     OCR_DPI_ESCALATION,
     OCR_DURATION,
@@ -34,10 +38,13 @@ from ._registry import (
     OCR_POSTPROCESS_CORRECTIONS,
     OCR_RENDER_PERMISSION_FAILURES,
     OCR_SKIP_TIER2,
-    OCR_TIER_AVAILABLE,
     OCR_TIER4_INVOKED,
+    OCR_TIER_AVAILABLE,
     OCR_TIER_BY_DOC_TYPE,
     OCR_TIER_USED,
+    OVISOCR2_DURATION,
+    OVISOCR2_OUTPUT_FEATURES,
+    OVISOCR2_REQUESTS,
 )
 from .labels import escape_label
 
@@ -146,7 +153,7 @@ def track_ocr_skip_tier2(reason: str) -> None:
 # buckets under ``"other"`` so the cardinality stays bounded (the
 # reason is set by the cascade in two well-defined places today; new
 # callers must add their reason here).
-_TIER4_REASONS = frozenset({"under_threshold", "circuit_open", "explicit_call"})
+_TIER4_REASONS = frozenset({"under_threshold", "circuit_open", "explicit_call", "canary"})
 
 
 def track_ocr_tier4_invoked(reason: str) -> None:
@@ -167,6 +174,47 @@ def track_ocr_tier4_invoked(reason: str) -> None:
     if clean not in _TIER4_REASONS:
         clean = "other"
     OCR_TIER4_INVOKED.labels(reason=clean).inc()
+
+
+_OVISOCR2_OUTCOMES = frozenset({"success", "failure", "circuit_open", "not_eligible"})
+_OVISOCR2_REASONS = frozenset(
+    {
+        "stable_canary",
+        "tier4_primary",
+        "complex_route",
+        "empty_or_missing_ocr",
+        "low_ocr_confidence",
+        "table_structure",
+        "formula_structure",
+        "filename_complexity_hint",
+        "quality_control",
+        "native_control",
+        "unknown",
+    }
+)
+_OVISOCR2_FEATURES = frozenset(
+    {"text", "table", "formula", "figure", "truncated", "repetitive", "empty", "invalid_region"}
+)
+
+
+def track_ovisocr2_request(outcome: str, reason: str, duration: float | None = None) -> None:
+    """Track a single OvisOCR2 request without document-specific labels."""
+    clean_outcome = (outcome or "unknown").lower().strip()
+    if clean_outcome not in _OVISOCR2_OUTCOMES:
+        clean_outcome = "failure"
+    clean_reason = (reason or "unknown").lower().strip().split(":", 1)[0]
+    if clean_reason not in _OVISOCR2_REASONS:
+        clean_reason = "unknown"
+    OVISOCR2_REQUESTS.labels(outcome=clean_outcome, reason=clean_reason).inc()
+    if duration is not None and duration >= 0:
+        OVISOCR2_DURATION.labels(outcome=clean_outcome).observe(duration)
+
+
+def track_ovisocr2_output_feature(feature: str) -> None:
+    clean = (feature or "unknown").lower().strip()
+    if clean not in _OVISOCR2_FEATURES:
+        return
+    OVISOCR2_OUTPUT_FEATURES.labels(feature=clean).inc()
 
 
 def track_ocr_language_detected(language: str, document_type: str) -> None:
@@ -228,3 +276,71 @@ def set_ocr_tier_available(tier: str, available: bool) -> None:
     """
     clean_tier = (tier or "unknown").lower().strip() or "unknown"
     OCR_TIER_AVAILABLE.labels(tier=clean_tier).set(1.0 if available else 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Docling PDF parser — bounded outcome vocabulary that mirrors OvisOCR2.
+# ---------------------------------------------------------------------------
+_DOCLING_OUTCOMES = frozenset({"success", "failure", "timeout", "circuit_open"})
+_DOCLING_FALLBACK_REASONS = frozenset(
+    {
+        "not_configured",
+        "not_eligible",
+        "circuit_open",
+        "timeout",
+        "failure",
+        "exception",
+        "non_pdf",
+    }
+)
+_DOCLING_PAGE_KINDS = frozenset({"digital", "scanned"})
+
+
+def track_docling_request(outcome: str, reason: str, duration: float | None = None) -> None:
+    """Record a single Docling request without document-specific labels.
+
+    ``outcome`` is the bounded enum above; anything else buckets under
+    ``"failure"`` so a typo in the caller cannot explode the label
+    cardinality. ``reason`` is a free-form string the operator can use
+    for debugging (URL, exception class, …) and is truncated to 64
+    characters so a chatty exception message cannot either.
+    """
+    clean_outcome = (outcome or "unknown").lower().strip()
+    if clean_outcome not in _DOCLING_OUTCOMES:
+        clean_outcome = "failure"
+    clean_reason = (reason or "n/a").lower().strip()[:64] or "n/a"
+    DOCLING_REQUESTS.labels(outcome=clean_outcome, reason=clean_reason).inc()
+    if duration is not None and duration >= 0:
+        DOCLING_DURATION.labels(outcome=clean_outcome).observe(duration)
+
+
+def track_docling_pages(*, digital: int, scanned: int) -> None:
+    """Record the per-request digital/scanned page split.
+
+    Counters are incremented (not set) so a request that sees 5
+    digital + 2 scanned pages contributes ``+5`` to ``digital`` and
+    ``+2`` to ``scanned``. The split is intentionally a separate
+    counter from the request outcome: it lets the operator see
+    "Docling returned a successful request that was 80% scanned"
+    without having to dissect the JSON payload.
+    """
+    if digital > 0:
+        DOCLING_PAGES.labels(kind="digital").inc(digital)
+    if scanned > 0:
+        DOCLING_PAGES.labels(kind="scanned").inc(scanned)
+
+
+def track_docling_fallback(reason: str) -> None:
+    """Record that the parser router fell back from Docling to legacy.
+
+    The label set is the bounded enum above; a free-form reason is
+    intentionally not accepted to keep the cardinality predictable.
+    The reason ``"non_pdf"`` is reserved for the router short-circuit
+    (a non-PDF extension that should never have reached Docling in
+    the first place — useful for spotting a future regression in the
+    router dispatch order).
+    """
+    clean = (reason or "unknown").lower().strip()
+    if clean not in _DOCLING_FALLBACK_REASONS:
+        clean = "failure"
+    DOCLING_FALLBACK.labels(reason=clean).inc()

@@ -79,6 +79,7 @@ def create_invoice(
 # Aggregation endpoints
 # ---------------------------------------------------------------------------
 
+
 class MonthlyAggregation(BaseModel):
     year: int
     month: int
@@ -154,8 +155,7 @@ def aggregate_by_supplier(
         stmt = apply_access_predicates(stmt, scope, document_column=Invoice.document_id)
     rows = db.execute(stmt).all()
     return [
-        {"supplier_name": r.supplier_name, "total": float(r.total), "count": r.count}
-        for r in rows
+        {"supplier_name": r.supplier_name, "total": float(r.total), "count": r.count} for r in rows
     ]
 
 
@@ -178,7 +178,4 @@ def aggregate_yearly(
     if not scope.is_admin:
         stmt = apply_access_predicates(stmt, scope, document_column=Invoice.document_id)
     rows = db.execute(stmt).all()
-    return [
-        {"year": int(r.year), "total": float(r.total), "count": r.count}
-        for r in rows
-    ]
+    return [{"year": int(r.year), "total": float(r.total), "count": r.count} for r in rows]

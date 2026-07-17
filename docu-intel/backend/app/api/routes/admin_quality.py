@@ -48,7 +48,9 @@ def ocr_automation_metrics(
     ).all()
     pending = int(
         db.scalar(
-            select(func.count()).select_from(DocumentPage).where(
+            select(func.count())
+            .select_from(DocumentPage)
+            .where(
                 DocumentPage.ocr_decision == "review_required",
                 DocumentPage.review_status != "approved",
             )

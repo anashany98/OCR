@@ -20,16 +20,13 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.database.session import SessionLocal
 from app.models.budget_scope import BudgetScope
-from app.models.document import Document
 from app.models.project import DocumentOccurrence, Project
-from app.models.tenant import Hotel, HotelChain
+from app.models.tenant import HotelChain
 from app.services.project_path_resolver import classify_category, resolve_corpus_path
-from app.services.project_dossier import get_project_dossier, resolve_project
 from app.services.sensitive_data import detect_sensitive_data, redact_text
 
 logger = logging.getLogger("app.commands.test_e2e")
@@ -43,14 +40,26 @@ TEST_PATHS = [
     ("2025/ABIEL JARED SALAS GARCIA VILLARACO/Presupuesto 252234/PDF/doc.pdf", "presupuestos"),
     ("2025/AGGIL MATRIZ SL/Presupuesto 250001/PDF/presupuesto.pdf", "presupuestos"),
     # Brand → hotel → budget
-    ("2025/AGUAS DE IBIZA-BONITO IBIZA HOTEL/Hotel Bonito/Presupuesto 250200/PDF/factura.pdf", "presupuestos"),
+    (
+        "2025/AGUAS DE IBIZA-BONITO IBIZA HOTEL/Hotel Bonito/Presupuesto 250200/PDF/factura.pdf",
+        "presupuestos",
+    ),
     ("2025/ARABELLA HOTELS SL/Hotel Bella/Presupuesto 250400/IMAGENES/tejido.jpg", "imagenes"),
-    ("2025/APARTHOTEL CAN PICAFORT PALACE S.L.U/Hotel Can Picafort/Presupuesto 251100/EXCEL/detalle.xlsx", "pedidos"),
+    (
+        "2025/APARTHOTEL CAN PICAFORT PALACE S.L.U/Hotel Can Picafort/Presupuesto 251100/EXCEL/detalle.xlsx",
+        "pedidos",
+    ),
     # Various brands with different structures
-    ("2025/ALVARO SANS ARQUITECTURA HOTELERA S.L.P/Presupuesto 250300/PDF/plano.pdf", "presupuestos"),
+    (
+        "2025/ALVARO SANS ARQUITECTURA HOTELERA S.L.P/Presupuesto 250300/PDF/plano.pdf",
+        "presupuestos",
+    ),
     ("2025/AZULINE HOTELS-HOTEL BERGANTIN(BERG)/Presupuesto 250500/PDF/pedido.pdf", "presupuestos"),
     ("2025/APTOS C'AS SABONERS(SABO)/Presupuesto 250600/CORREOS/correo.msg", "correos"),
-    ("2025/AVANTE GESTION DE PROYECTOS Y OBRAS SOCIEDAD LIMITADA/Presupuesto 250700/EXCEL/presupuesto.xlsx", "pedidos"),
+    (
+        "2025/AVANTE GESTION DE PROYECTOS Y OBRAS SOCIEDAD LIMITADA/Presupuesto 250700/EXCEL/presupuesto.xlsx",
+        "pedidos",
+    ),
     ("2025/ART-DOLLUM SL/Presupuesto 250800/PDF/albaran.pdf", "presupuestos"),
     ("2025/AGROTURISMO POLLENSA(AGRO)/Presupuesto 250900/IMAGENES/croquis.png", "imagenes"),
     ("2025/ANTONIO NADAL DESTIL.LERIES SL/Presupuesto 251000/PDF/factura.pdf", "presupuestos"),
@@ -67,11 +76,11 @@ def test_path_resolution() -> dict[str, Any]:
     logger.info("=== Test 1: Path Resolution ===")
     results = {"passed": 0, "failed": 0, "errors": []}
 
-    for path_suffix, expected_category in TEST_PATHS:
+    for path_suffix, _expected_category in TEST_PATHS:
         full_path = f"/app/source/2025/{path_suffix}"
         try:
             resolution = resolve_corpus_path(full_path, "/app/source/2025")
-            category = classify_category(path_suffix.split("/")[-1], resolution.category)
+            _ = classify_category(path_suffix.split("/")[-1], resolution.category)
 
             # Validate
             assert resolution.brand, f"No brand for {path_suffix}"
@@ -94,14 +103,22 @@ def test_brand_hotel_detection() -> dict[str, Any]:
 
     # Test cases: (path, expected_brand, expected_hotel_or_none)
     cases = [
-        ("2025/AGUAS DE IBIZA-BONITO IBIZA HOTEL/Hotel Bonito/Presupuesto 250200/PDF/f.pdf",
-         "AGUAS DE IBIZA-BONITO IBIZA HOTEL", "Hotel Bonito"),
-        ("2025/ARABELLA HOTELS SL/Hotel Bella/Presupuesto 250400/IMAGENES/t.jpg",
-         "ARABELLA HOTELS SL", "Hotel Bella"),
-        ("2025/ABIEL JARED SALAS GARCIA VILLARACO/Presupuesto 252234/PDF/d.pdf",
-         "ABIEL JARED SALAS GARCIA VILLARACO", None),
-        ("2025/AGGIL MATRIZ SL/Presupuesto 250001/PDF/p.pdf",
-         "AGGIL MATRIZ SL", None),
+        (
+            "2025/AGUAS DE IBIZA-BONITO IBIZA HOTEL/Hotel Bonito/Presupuesto 250200/PDF/f.pdf",
+            "AGUAS DE IBIZA-BONITO IBIZA HOTEL",
+            "Hotel Bonito",
+        ),
+        (
+            "2025/ARABELLA HOTELS SL/Hotel Bella/Presupuesto 250400/IMAGENES/t.jpg",
+            "ARABELLA HOTELS SL",
+            "Hotel Bella",
+        ),
+        (
+            "2025/ABIEL JARED SALAS GARCIA VILLARACO/Presupuesto 252234/PDF/d.pdf",
+            "ABIEL JARED SALAS GARCIA VILLARACO",
+            None,
+        ),
+        ("2025/AGGIL MATRIZ SL/Presupuesto 250001/PDF/p.pdf", "AGGIL MATRIZ SL", None),
     ]
 
     for path_suffix, exp_brand, exp_hotel in cases:
@@ -138,8 +155,9 @@ def test_sensitive_data_detection() -> dict[str, Any]:
         try:
             findings = detect_sensitive_data(text)
             if expected_type:
-                assert any(f["type"] == expected_type for f in findings), \
+                assert any(f["type"] == expected_type for f in findings), (
                     f"Expected {expected_type} in '{text}', got {[f['type'] for f in findings]}"
+                )
                 # Test redaction
                 redacted = redact_text(text)
                 assert redacted != text, f"Redaction didn't change '{text}'"
@@ -267,7 +285,12 @@ def run_all_tests() -> dict[str, Any]:
     logger.info("=" * 60)
     logger.info("E2E TEST RESULTS")
     logger.info("=" * 60)
-    logger.info("Total: %d tests, %d passed, %d failed", total, all_results["total_passed"], all_results["total_failed"])
+    logger.info(
+        "Total: %d tests, %d passed, %d failed",
+        total,
+        all_results["total_passed"],
+        all_results["total_failed"],
+    )
     logger.info("Duration: %.2f seconds", all_results["duration_seconds"])
 
     if all_results["total_errors"]:

@@ -756,10 +756,8 @@ def _tag_overlap_subquery(dam, denied_list: list[str]) -> ColumnElement[bool]:
     and uses ``LIKE`` with quoted tag names to avoid partial matches.
     """
     from sqlalchemy import Text as SAText
-    conditions = [
-        dam.tags_json.cast(SAText).like(f'%"{tag}"%')
-        for tag in denied_list
-    ]
+
+    conditions = [dam.tags_json.cast(SAText).like(f'%"{tag}"%') for tag in denied_list]
     if not conditions:
         return false()
     return or_(*conditions)
@@ -794,9 +792,7 @@ def apply_access_predicates(
         return stmt
 
     column = document_column if document_column is not None else Document.id
-    return stmt.where(column.in_(
-        select(DocumentAccessMetadata.document_id).where(pred)
-    ))
+    return stmt.where(column.in_(select(DocumentAccessMetadata.document_id).where(pred)))
 
 
 def count_access_predicates(
@@ -820,6 +816,4 @@ def count_access_predicates(
         return count_stmt
 
     column = document_column if document_column is not None else Document.id
-    return count_stmt.where(column.in_(
-        select(DocumentAccessMetadata.document_id).where(pred)
-    ))
+    return count_stmt.where(column.in_(select(DocumentAccessMetadata.document_id).where(pred)))

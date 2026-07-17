@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, Navigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ExternalLink, FlaskConical, Ruler, Save } from "lucide-react"
+import { ExternalLink, FlaskConical, Ruler, Save } from "lucide-react"
 
 import { api } from "@/api/client"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
@@ -107,7 +107,9 @@ export function PlansPage() {
       <div className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--amber-light)] bg-[var(--amber-light)]/40 p-3">
         <FlaskConical className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--amber)]" />
         <div>
-          <p className="text-[13px] font-semibold text-[var(--text-on-warning)]">Funcionalidad en fase Beta</p>
+          <p className="text-[13px] font-semibold text-[var(--text-on-warning)]">
+            Funcionalidad en fase Beta
+          </p>
           <p className="mt-0.5 text-[12px] text-[var(--text-on-warning)]/80">
             La extracción de planos está en desarrollo. Los datos de escala, habitaciones y cotas
             pueden no ser precisos. Verifica siempre las mediciones manualmente antes de usarlas en
@@ -182,7 +184,9 @@ export function PlansPage() {
             {selectedPlan ? (
               <>
                 <div className="grid gap-2 rounded-md border p-3">
-                  <label className="text-xs font-medium text-[var(--text-muted)]">Escala manual</label>
+                  <label className="text-xs font-medium text-[var(--text-muted)]">
+                    Escala manual
+                  </label>
                   <div className="flex gap-2">
                     <Input
                       value={scaleText}

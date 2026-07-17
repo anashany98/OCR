@@ -201,22 +201,50 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorElement />,
     children: [
       { index: true, element: page(pages.DashboardPage), handle: { breadcrumb: "Inicio" } },
-      { path: "documents", element: page(pages.DocumentsPage), handle: { breadcrumb: "Documentos" } },
-      { path: "documents/:id", element: page(pages.DocumentDetailPage), handle: { breadcrumb: (p: Record<string, string>) => `Doc #${p.id}` } },
+      {
+        path: "documents",
+        element: page(pages.DocumentsPage),
+        handle: { breadcrumb: "Documentos" },
+      },
+      {
+        path: "documents/:id",
+        element: page(pages.DocumentDetailPage),
+        handle: { breadcrumb: (p: Record<string, string>) => `Doc #${p.id}` },
+      },
       {
         path: "documents/:id/annotate-plan",
         element: protectedPage(pages.PlanoAnnotationPage, MANAGER_ROLES),
         handle: { breadcrumb: "Anotar plano" },
       },
-      { path: "work-inbox", element: page(pages.WorkInboxPage), handle: { breadcrumb: "Bandeja de trabajo" } },
-      { path: "ocr-review", element: page(pages.OcrReviewPage), handle: { breadcrumb: "Revisión OCR" } },
+      {
+        path: "work-inbox",
+        element: page(pages.WorkInboxPage),
+        handle: { breadcrumb: "Bandeja de trabajo" },
+      },
+      {
+        path: "ocr-review",
+        element: page(pages.OcrReviewPage),
+        handle: { breadcrumb: "Revisión OCR" },
+      },
       { path: "search", element: page(pages.SearchPage), handle: { breadcrumb: "Búsqueda" } },
-      { path: "jobs", element: protectedPage(pages.JobsPage, ADMIN_ROLES), handle: { breadcrumb: "Trabajos" } },
+      {
+        path: "jobs",
+        element: protectedPage(pages.JobsPage, ADMIN_ROLES),
+        handle: { breadcrumb: "Trabajos" },
+      },
       { path: "budgets", element: page(pages.BudgetsPage), handle: { breadcrumb: "Presupuestos" } },
       { path: "orders", element: page(pages.OrdersPage), handle: { breadcrumb: "Pedidos" } },
       { path: "invoices", element: page(pages.InvoicesPage), handle: { breadcrumb: "Facturas" } },
-      { path: "reconciliation", element: page(pages.ReconciliationPage), handle: { breadcrumb: "Conciliación" } },
-      { path: "plans", element: protectedPage(pages.PlansPage, MANAGER_ROLES), handle: { breadcrumb: "Planos" } },
+      {
+        path: "reconciliation",
+        element: page(pages.ReconciliationPage),
+        handle: { breadcrumb: "Conciliación" },
+      },
+      {
+        path: "plans",
+        element: protectedPage(pages.PlansPage, MANAGER_ROLES),
+        handle: { breadcrumb: "Planos" },
+      },
       { path: "chat", element: page(pages.ChatPage), handle: { breadcrumb: "Chat IA" } },
       {
         path: "admin",

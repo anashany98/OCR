@@ -13,6 +13,15 @@ proyecto, sus documentos, datos económicos, personas, comunicaciones,
 incidencias, imágenes y planos mediante chat con fuentes; un usuario no
 autorizado no debe poder inferir que esos datos existen.
 
+## Anexo operativo â€” OvisOCR2
+
+La integraciÃ³n opcional de `ATH-MaaS/OvisOCR2` se ejecuta como servicio GPU
+aislado, con adaptador compatible con `BaseOCREngine`, canario determinista,
+fallback Tier 4 y rollback mediante feature flag. El contrato, los gates de
+calidad y el procedimiento de operaciÃ³n estÃ¡n en
+[`runbooks/ovisocr2.md`](runbooks/ovisocr2.md); el plan detallado permanece en
+[`PLAN_IMPLEMENTACION_OVISOCR2.md`](PLAN_IMPLEMENTACION_OVISOCR2.md).
+
 ## Principios no negociables
 
 1. Preservar cambios locales ajenos y no usar operaciones Git destructivas.

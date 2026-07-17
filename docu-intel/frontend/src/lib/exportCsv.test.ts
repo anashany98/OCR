@@ -13,7 +13,10 @@ describe("exportCsv", () => {
     const appendChild = vi.spyOn(document.body, "appendChild")
     const removeChild = vi.spyOn(document.body, "removeChild")
     vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
-      const node = document.createElementNS("http://www.w3.org/1999/xhtml", tag) as HTMLAnchorElement
+      const node = document.createElementNS(
+        "http://www.w3.org/1999/xhtml",
+        tag,
+      ) as HTMLAnchorElement
       node.click = click
       return node
     }) as typeof document.createElement)

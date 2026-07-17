@@ -148,6 +148,7 @@ services:
     networks:
       - default
       - ovisocr2_internal
+      - docling_internal
     # M-5: instead of a ``pgrep`` (which passes even when the worker
     # cannot reach the broker), ask Celery for the registered task
     # names. The worker must be up, registered with Redis, and
@@ -197,8 +198,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 180s
-
-  # GPU-accelerated OCR workers. One per physical GPU. PaddleOCR's
+    networks:
+      - default
+      - docling_internal
   # PaddleOCREngine auto-detects CUDA via CUDA_VISIBLE_DEVICES, so each
   # worker only sees its assigned card. The CPU worker above stays as
   # fallback if the GPU workers fail to start.
@@ -228,6 +230,7 @@ services:
     networks:
       - default
       - ovisocr2_internal
+      - docling_internal
     runtime: nvidia
     deploy:
       resources:
@@ -278,6 +281,7 @@ services:
     networks:
       - default
       - ovisocr2_internal
+      - docling_internal
     runtime: nvidia
     deploy:
       resources:
@@ -467,6 +471,56 @@ services:
       retries: 5
       start_period: 300s
 
+  # Docling PDF parser. Isolated behind an internal network the same
+  # way OvisOCR2 is. Off by default; enable with
+  #   docker compose --profile docling up -d
+  # and set ``PDF_PARSER=docling`` + ``DOCLING_ENABLED=true`` in
+  # the backend ``.env``. The backend never imports ``docling`` /
+  # ``torch``; it only talks to this service over HTTP via
+  # :class:`app.services.docling_client.DoclingClient`.
+  docling-serve:
+    profiles: ["docling"]
+    image: ghcr.io/docling-project/docling-serve:latest
+    env_file: .env
+    restart: unless-stopped
+    mem_limit: ${DOCLING_MEM_LIMIT:-8g}
+    shm_size: ${DOCLING_SHM_SIZE:-2g}
+    environment:
+      # docling-serve rejects an empty ``api_key`` (pydantic-settings
+      # coerces "" to None and validation fails). When the operator
+      # does not set DOCLING_API_KEY we pass a non-empty internal
+      # default — the service sits on an internal-only network, so a
+      # shared secret is sufficient. The backend mirrors this value
+      # via settings.docling_api_key (default empty = no auth header).
+      - DOCLING_SERVE_API_KEY=${DOCLING_API_KEY:-docling-internal-default-key}
+      - HF_HOME=/models/huggingface
+    # GPU is optional but recommended: layout + table extraction is
+    # significantly faster on Tensor-Core GPUs. The image also runs
+    # on CPU at a much higher latency; operators without a GPU can
+    # drop the ``runtime`` and ``deploy.resources`` blocks below.
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${DOCLING_GPU_DEVICE:-0}"]
+              capabilities: [gpu]
+    volumes:
+      - docling_model_cache:/models/huggingface
+    networks:
+      - docling_internal
+      # Same pattern as OvisOCR2: this bridge has no other attached
+      # service, so it permits the initial Hugging Face model
+      # download without exposing the inference API.
+      - docling_egress
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; r=urllib.request.urlopen('http://localhost:5001/health'); exit(0 if r.status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
   pgadmin:
     image: dpage/pgadmin4:8
     environment:
@@ -534,9 +588,14 @@ volumes:
   postgres_data:
   glitchtip_data:
   ovisocr2_model_cache:
+  docling_model_cache:
 
 networks:
   ovisocr2_internal:
     internal: true
   ovisocr2_egress:
+    internal: false
+  docling_internal:
+    internal: true
+  docling_egress:
     internal: false

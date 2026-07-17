@@ -3,8 +3,6 @@ import { Link } from "react-router-dom"
 import { Check, ExternalLink, FileText, RefreshCcw, RotateCw, Sparkles, X } from "lucide-react"
 
 import { pageImageUrl } from "@/api/client"
-import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
-import { PageHeader } from "@/components/layout/PageHeader"
 import { StatusBadge } from "@/components/layout/StatusBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,8 +22,6 @@ import { DOCUMENT_TYPES } from "@/lib/documentTypes"
 import { reviewKey, type OcrReviewData } from "./useOcrReviewPage"
 
 type SelectedPage = NonNullable<OcrReviewData["data"]["selected"]>
-type OcrBlock = SelectedPage["blocks"][number] | undefined
-
 // ---------------------------------------------------------------------------
 // F8 - OCR review page section components.
 // F8b - Spaced: layout switched to 2-col (queue + details) with tabs
@@ -244,7 +240,9 @@ export function OcrDetails({ data }: { data: OcrReviewData }) {
               <span className="text-[var(--text-muted)]/60">·</span>
               <span className="tabular-nums">OCR {formatPercent(selected.ocr_confidence)}</span>
               {selected.ocr_calibrated_confidence != null && (
-                <span className="tabular-nums">Verificada {formatPercent(selected.ocr_calibrated_confidence)}</span>
+                <span className="tabular-nums">
+                  Verificada {formatPercent(selected.ocr_calibrated_confidence)}
+                </span>
               )}
               <span className="text-[var(--text-muted)]/60">·</span>
               <span>{formatDate(selected.created_at)}</span>
@@ -464,19 +462,36 @@ function BlocksPane({ selected }: { selected: SelectedPage }) {
 function AttemptsPane({ selected }: { selected: SelectedPage }) {
   const attempts = selected.attempts ?? []
   if (!attempts.length) {
-    return <div className="p-6 text-sm text-[var(--text-muted)]">Sin historial de intentos para esta pÃ¡gina.</div>
+    return (
+      <div className="p-6 text-sm text-[var(--text-muted)]">
+        Sin historial de intentos para esta pÃ¡gina.
+      </div>
+    )
   }
   return (
     <div className="h-full max-h-[480px] overflow-auto">
       <Table>
-        <TableHeader><TableRow><TableHead>Motor</TableHead><TableHead>Confianza</TableHead><TableHead>Decisión</TableHead><TableHead>Texto</TableHead></TableRow></TableHeader>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Motor</TableHead>
+            <TableHead>Confianza</TableHead>
+            <TableHead>Decisión</TableHead>
+            <TableHead>Texto</TableHead>
+          </TableRow>
+        </TableHeader>
         <TableBody>
           {attempts.map((attempt) => (
             <TableRow key={attempt.id} className={attempt.selected ? "bg-muted/40" : undefined}>
-              <TableCell><Badge variant="outline">{attempt.engine}</Badge></TableCell>
-              <TableCell>{formatPercent(attempt.calibrated_confidence ?? attempt.raw_confidence)}</TableCell>
+              <TableCell>
+                <Badge variant="outline">{attempt.engine}</Badge>
+              </TableCell>
+              <TableCell>
+                {formatPercent(attempt.calibrated_confidence ?? attempt.raw_confidence)}
+              </TableCell>
               <TableCell>{attempt.decision ?? "pendiente"}</TableCell>
-              <TableCell className="max-w-[360px] whitespace-pre-wrap text-xs">{attempt.text || attempt.error_message || "-"}</TableCell>
+              <TableCell className="max-w-[360px] whitespace-pre-wrap text-xs">
+                {attempt.text || attempt.error_message || "-"}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

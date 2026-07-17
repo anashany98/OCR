@@ -22,6 +22,7 @@ The result keeps every winning signal so the audit trail in
 ``Document.classification_evidence`` can be regenerated from the
 return value without re-running the classifier.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -35,7 +36,6 @@ from app.services.classification import (
     LearnedRule,
     classify_document,
 )
-
 
 # ---------------------------------------------------------------------------
 # Bounded source_format vocabulary
@@ -224,9 +224,7 @@ def detect_source_format(
             "message/rfc822",
             "text/x-eml",
         }:
-            decisions.append(
-                SourceFormatDecision("mime", "email", 0.7)
-            )
+            decisions.append(SourceFormatDecision("mime", "email", 0.7))
         elif normalised in {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.ms-excel",
@@ -296,9 +294,7 @@ def detect_subtype(filename: str | None, text: str | None) -> str | None:
     The function only inspects the lowercase text, so the caller must
     pass the same string the rule engine will see.
     """
-    haystack = " ".join(
-        part for part in (filename or "", text or "") if part
-    ).lower()
+    haystack = " ".join(part for part in (filename or "", text or "") if part).lower()
     if not haystack:
         return None
     for label, keywords in SUBTYPE_RULES:
@@ -314,9 +310,7 @@ def detect_content_tags(
     max_tags: int = 8,
 ) -> list[str]:
     """Return a deduplicated list of content tags ordered by first hit."""
-    haystack = " ".join(
-        part for part in (filename or "", text or "") if part
-    ).lower()
+    haystack = " ".join(part for part in (filename or "", text or "") if part).lower()
     if not haystack:
         return []
     seen: set[str] = set()
@@ -380,10 +374,7 @@ def classify_multidim(
     evidence: dict[str, Any] = {
         "source_format": {
             "winner": source_format,
-            "votes": [
-                {"layer": d.layer, "value": d.value, "weight": d.weight}
-                for d in decisions
-            ],
+            "votes": [{"layer": d.layer, "value": d.value, "weight": d.weight} for d in decisions],
         },
         "document_type": {
             "winner": business.document_type,

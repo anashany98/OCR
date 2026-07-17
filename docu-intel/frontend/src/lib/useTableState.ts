@@ -83,7 +83,9 @@ export function useTableState(tableId: string, initialState?: TableState) {
   const reset = useCallback(() => {
     skipNextPersist.current = true
     setState(initialState ?? {})
-    try { localStorage.removeItem(storageKey) } catch {
+    try {
+      localStorage.removeItem(storageKey)
+    } catch {
       // Persistence is best-effort.
     }
   }, [storageKey, initialState])

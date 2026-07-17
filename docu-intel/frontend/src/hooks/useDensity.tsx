@@ -31,7 +31,9 @@ export function DensityProvider({ children }: { children: ReactNode }) {
 
   const setDensity = (d: Density) => {
     setDensityState(d)
-    try { localStorage.setItem(STORAGE_KEY, d) } catch {
+    try {
+      localStorage.setItem(STORAGE_KEY, d)
+    } catch {
       // Persistence is best-effort.
     }
   }

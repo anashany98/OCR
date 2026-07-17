@@ -6,7 +6,7 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -14,10 +14,12 @@ from app.models import (
     DocumentBlock,
     DocumentPage,
     Plan,
+    PlanCadEntity,
     PlanDimension,
     PlanRoom,
     PlanSymbol,
 )
+from app.parsers.types import CadExtraction, CadMetadata
 
 logger = logging.getLogger("app.services.plan_extraction")
 
@@ -162,12 +164,16 @@ def extract_plan(
     return result
 
 
-def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanExtractionResult:
-    if document.document_type != "plano" and not _looks_like_plan(text):
+def persist_plan_extraction(
+    db: Session,
+    document: Document,
+    text: str,
+    *,
+    cad_extraction: CadExtraction | None = None,
+    preserve_existing_cad: bool = False,
+) -> PlanExtractionResult:
+    if document.document_type != "plano" and not _looks_like_plan(text) and cad_extraction is None:
         return PlanExtractionResult(plan=None)
-
-    db.execute(delete(Plan).where(Plan.document_id == document.id))
-    db.flush()
 
     dpi = _load_plan_page_dpi(db, document.id)
     result = extract_plan(
@@ -177,23 +183,77 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
         text_blocks=_load_plan_text_blocks(db, document.id),
         dpi=dpi,
     )
-    if not result.plan:
+    if not result.plan and cad_extraction is None:
         return result
 
     project_phase, revision = extract_plan_phase(text)
-    plan = Plan(
+    extracted_plan = result.plan or ExtractedPlan(
         document_id=document.id,
-        project_name=result.plan.project_name,
-        scale_text=result.plan.scale_text,
-        scale_ratio=result.plan.scale_ratio,
-        scale_confidence=result.plan.scale_confidence,
-        unit=result.plan.unit,
-        has_valid_scale=result.plan.has_valid_scale,
-        project_phase=project_phase,
-        revision=revision,
+        project_name=None,
+        scale_text=None,
+        scale_ratio=None,
+        scale_confidence=None,
+        unit=cad_extraction.metadata.unit if cad_extraction else None,
+        has_valid_scale=False,
+        dpi=dpi,
     )
-    db.add(plan)
+    plan = db.scalar(select(Plan).where(Plan.document_id == document.id))
+    if plan is None:
+        plan = Plan(document_id=document.id)
+        db.add(plan)
+    plan.project_name = extracted_plan.project_name
+    plan.scale_text = extracted_plan.scale_text
+    plan.scale_ratio = extracted_plan.scale_ratio
+    plan.scale_confidence = extracted_plan.scale_confidence
+    plan.unit = extracted_plan.unit
+    plan.has_valid_scale = extracted_plan.has_valid_scale
+    plan.project_phase = project_phase
+    plan.revision = revision
+    if cad_extraction is not None:
+        metadata = cad_extraction.metadata
+        plan.source_format = metadata.source_format
+        plan.cad_unit = metadata.unit
+        plan.cad_extents_json = _cad_extents_json(metadata.extents)
+        plan.cad_metadata_json = {
+            "unit_code": metadata.unit_code,
+            "layers": list(metadata.layers),
+            "layout": metadata.layout,
+            "converter": metadata.converter,
+            "dxf_version": metadata.dxf_version,
+            "converter_version": metadata.converter_version,
+        }
+        plan.coordinate_transform_json = _cad_coordinate_transform(metadata)
+        plan.conversion_provenance_json = {
+            "source_format": metadata.source_format,
+            "converter": metadata.converter,
+            "converter_version": metadata.converter_version,
+        }
     db.flush()
+
+    # Keep future manual entries intact. CAD evidence is only replaced after a
+    # new native extraction succeeded; a disabled feature flag or a transient
+    # parser failure must never erase the last usable CAD representation.
+    db.execute(
+        delete(PlanRoom)
+        .where(PlanRoom.plan_id == plan.id)
+        .where(or_(PlanRoom.source.is_(None), PlanRoom.source != "manual"))
+    )
+    automatic_dimension_sources = ["ocr_text"]
+    if cad_extraction is not None and not preserve_existing_cad:
+        automatic_dimension_sources.append("cad_dxf")
+    db.execute(
+        delete(PlanDimension)
+        .where(PlanDimension.plan_id == plan.id)
+        .where(
+            or_(
+                PlanDimension.source_method.is_(None),
+                PlanDimension.source_method.in_(automatic_dimension_sources),
+            )
+        )
+        .where(PlanDimension.validation_status != "confirmed")
+    )
+    if cad_extraction is not None and not preserve_existing_cad:
+        db.execute(delete(PlanCadEntity).where(PlanCadEntity.plan_id == plan.id))
 
     for room in result.rooms:
         db.add(
@@ -224,8 +284,17 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
                 bbox_x2=dimension.bbox_x2,
                 bbox_y2=dimension.bbox_y2,
                 confidence=dimension.confidence,
+                source_method="ocr_text",
+                native_value=dimension.value,
+                native_unit=dimension.unit,
+                unit_source="ocr_text",
+                validation_status="auto",
+                needs_review=False,
             )
         )
+
+    if cad_extraction is not None:
+        _persist_cad_entities(db, plan, cad_extraction)
 
     # P2 — YOLO symbol detection. Runs after dimensions are persisted
     # so the symbol rows do not block the cheaper text-based extraction
@@ -235,6 +304,145 @@ def persist_plan_extraction(db: Session, document: Document, text: str) -> PlanE
     _persist_plan_symbols(db, plan, document.id)
 
     return result
+
+
+def _cad_extents_json(
+    extents: tuple[float, float, float, float] | None,
+) -> dict[str, float] | None:
+    if extents is None:
+        return None
+    x1, y1, x2, y2 = extents
+    return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+
+def _cad_coordinate_transform(metadata: CadMetadata) -> dict:
+    """Persist the deterministic CAD-to-preview transform used by overlays."""
+    transform = {
+        "source": "cad_native",
+        "axis": "x_right_y_up",
+        "unit": metadata.unit,
+        "extents": _cad_extents_json(metadata.extents),
+        "canvas_width": 1400,
+        "canvas_height": 1000,
+        "margin": 50,
+    }
+    if metadata.extents is None:
+        return transform
+    x1, y1, x2, y2 = metadata.extents
+    span_x = max(x2 - x1, 1e-9)
+    span_y = max(y2 - y1, 1e-9)
+    transform["scale"] = min(
+        (transform["canvas_width"] - 2 * transform["margin"]) / span_x,
+        (transform["canvas_height"] - 2 * transform["margin"]) / span_y,
+    )
+    return transform
+
+
+def _persist_cad_entities(db: Session, plan: Plan, cad: CadExtraction) -> None:
+    """Persist native entities before any text-based fallback can flatten them."""
+
+    for geometry in cad.geometry:
+        db.add(
+            PlanCadEntity(
+                plan_id=plan.id,
+                entity_handle=geometry.entity_handle,
+                entity_type=geometry.entity_type,
+                layer=geometry.layer,
+                layout=cad.metadata.layout,
+                geometry_json=geometry.geometry,
+                properties_json={"closed": geometry.closed},
+                source_method="cad_dxf",
+                confidence=1.0,
+                validation_status="auto",
+            )
+        )
+    for insert in cad.inserts:
+        db.add(
+            PlanCadEntity(
+                plan_id=plan.id,
+                entity_handle=insert.entity_handle,
+                entity_type="insert",
+                layer=insert.layer,
+                layout=cad.metadata.layout,
+                geometry_json={
+                    "insertion_point": list(insert.insertion_point),
+                },
+                properties_json={
+                    "block_name": insert.block_name,
+                    "attributes": insert.attributes,
+                    "rotation": insert.rotation,
+                    "scale": list(insert.scale) if insert.scale is not None else None,
+                },
+                source_method="cad_dxf",
+                confidence=1.0,
+                validation_status="auto",
+            )
+        )
+    for text in cad.texts:
+        db.add(
+            PlanCadEntity(
+                plan_id=plan.id,
+                entity_handle=text.entity_handle,
+                entity_type="text",
+                layer=text.layer,
+                layout=cad.metadata.layout,
+                geometry_json=(
+                    {"insertion_point": list(text.insertion_point)}
+                    if text.insertion_point is not None
+                    else None
+                ),
+                properties_json={"text": text.text},
+                source_method="cad_dxf",
+                confidence=1.0,
+                validation_status="auto",
+            )
+        )
+    for dimension in cad.dimensions:
+        review_required = dimension.normalized_value_m is None
+        coordinates = {
+            "definition_points": [list(point) for point in dimension.definition_points],
+            "text_point": list(dimension.text_point) if dimension.text_point else None,
+        }
+        db.add(
+            PlanCadEntity(
+                plan_id=plan.id,
+                entity_handle=dimension.entity_handle,
+                entity_type="dimension",
+                layer=dimension.layer,
+                layout=cad.metadata.layout,
+                geometry_json=coordinates,
+                properties_json={
+                    "value": dimension.value,
+                    "displayed_text": dimension.displayed_text,
+                    "native_unit": dimension.native_unit,
+                    "unit_source": dimension.unit_source,
+                    "normalized_value_m": dimension.normalized_value_m,
+                },
+                source_method="cad_dxf",
+                confidence=dimension.confidence,
+                validation_status="needs_review" if review_required else "auto",
+            )
+        )
+        db.add(
+            PlanDimension(
+                plan_id=plan.id,
+                raw_text=dimension.displayed_text,
+                value=dimension.value,
+                unit=dimension.native_unit,
+                value_m=dimension.normalized_value_m,
+                page_number=1,
+                confidence=dimension.confidence,
+                source_method="cad_dxf",
+                source_entity_handle=dimension.entity_handle,
+                layer=dimension.layer,
+                native_value=dimension.value,
+                native_unit=dimension.native_unit,
+                unit_source=dimension.unit_source,
+                coordinates_json=coordinates,
+                validation_status="needs_review" if review_required else "auto",
+                needs_review=review_required,
+            )
+        )
 
 
 def _persist_plan_symbols(db: Session, plan: Plan, document_id: int) -> int:

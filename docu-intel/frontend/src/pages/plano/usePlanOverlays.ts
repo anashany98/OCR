@@ -57,7 +57,7 @@ export type OverlayVisibility = {
 // Hook: usePlanOverlays
 // ---------------------------------------------------------------------------
 
-export function usePlanOverlays(planId: number | null, documentId: number | null) {
+export function usePlanOverlays(planId: number | null, _documentId: number | null) {
   const qc = useQueryClient()
   const [visibility, setVisibility] = useState<OverlayVisibility>({
     cajetin: true,
@@ -92,7 +92,15 @@ export function usePlanOverlays(planId: number | null, documentId: number | null
 
   // Confirm room
   const confirmRoom = useMutation({
-    mutationFn: async ({ roomId, action, notes }: { roomId: number; action: "confirm" | "reject"; notes?: string }) => {
+    mutationFn: async ({
+      roomId,
+      action,
+      notes,
+    }: {
+      roomId: number
+      action: "confirm" | "reject"
+      notes?: string
+    }) => {
       return request(`/plans/${planId}/rooms/${roomId}/confirm`, {
         method: "POST",
         body: JSON.stringify({ action, notes }),
@@ -105,7 +113,12 @@ export function usePlanOverlays(planId: number | null, documentId: number | null
 
   // Correct room
   const correctRoom = useMutation({
-    mutationFn: async ({ roomId, name, polygon, notes }: {
+    mutationFn: async ({
+      roomId,
+      name,
+      polygon,
+      notes,
+    }: {
       roomId: number
       name?: string
       polygon?: Array<{ x: number; y: number }>
@@ -136,7 +149,11 @@ export function usePlanOverlays(planId: number | null, documentId: number | null
 
   // Calibrate scale
   const calibrateScale = useMutation({
-    mutationFn: async ({ point1, point2, realDistanceM }: {
+    mutationFn: async ({
+      point1,
+      point2,
+      realDistanceM,
+    }: {
       point1: { x: number; y: number }
       point2: { x: number; y: number }
       realDistanceM: number
@@ -144,7 +161,9 @@ export function usePlanOverlays(planId: number | null, documentId: number | null
       return request(`/plans/${planId}/confirm-scale`, {
         method: "POST",
         body: JSON.stringify({
-          point1, point2, real_distance_m: realDistanceM,
+          point1,
+          point2,
+          real_distance_m: realDistanceM,
         }),
       })
     },

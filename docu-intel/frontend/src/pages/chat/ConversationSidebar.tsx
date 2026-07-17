@@ -1,14 +1,5 @@
 import { useState } from "react"
-import {
-  AlertTriangle,
-  History,
-  Pin,
-  PinOff,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react"
+import { AlertTriangle, History, Pin, PinOff, Plus, Search, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/hooks/useConfirm"
@@ -163,7 +154,8 @@ export function ConversationSidebar({ chat }: { chat: Chat }) {
                                 e.stopPropagation()
                                 const ok = await confirm({
                                   title: "Eliminar conversación",
-                                  description: "¿Estás seguro de que quieres eliminar esta conversación?",
+                                  description:
+                                    "¿Estás seguro de que quieres eliminar esta conversación?",
                                   confirmLabel: "Eliminar",
                                   tone: "danger",
                                 })

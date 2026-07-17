@@ -419,8 +419,7 @@ def _post_filter_chunk_clauses(
             ).all()
             # Build lookup: (doc_id, page_num) -> ocr_confidence
             confidence_map = {
-                (row.document_id, row.page_number): row.ocr_confidence
-                for row in page_rows
+                (row.document_id, row.page_number): row.ocr_confidence for row in page_rows
             }
             # Filter: keep results where at least one page meets the threshold
             filtered = []

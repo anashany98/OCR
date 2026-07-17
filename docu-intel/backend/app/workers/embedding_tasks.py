@@ -66,9 +66,7 @@ def _select_reembed_candidates(db: Session, limit: int) -> list[Document]:
                 # re-OCR is enabled.  When its per-tick cap is explicitly
                 # zero, re-embedding it again cannot improve OCR and would
                 # starve chunks that are actually pending.
-                (
-                    Document.confidence < settings.reembed_low_confidence_threshold
-                )
+                (Document.confidence < settings.reembed_low_confidence_threshold)
                 & (settings.reembed_reocr_per_tick > 0),
                 Document.needs_reembedding.is_(True),
             )
@@ -310,12 +308,9 @@ def _embed_document_sync(db: Session, document_id: int) -> dict:
 
         for chunk in chunks:
             chunk_tokens = chunk.token_count or 200
-            if (
-                current_batch
-                and (
-                    current_tokens + chunk_tokens > max_tokens_per_batch
-                    or len(current_batch) >= max_chunks_per_batch
-                )
+            if current_batch and (
+                current_tokens + chunk_tokens > max_tokens_per_batch
+                or len(current_batch) >= max_chunks_per_batch
             ):
                 batches.append(current_batch)
                 current_batch = []
@@ -329,9 +324,7 @@ def _embed_document_sync(db: Session, document_id: int) -> dict:
         total_failed = 0
 
         for batch in batches:
-            texts = [
-                chunk.chunk_text for chunk in batch
-            ]
+            texts = [chunk.chunk_text for chunk in batch]
             try:
                 results = embed_many_with_metadata(texts)
                 for chunk, (embedding, provider, fallback) in zip(batch, results, strict=True):

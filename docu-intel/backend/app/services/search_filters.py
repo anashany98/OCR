@@ -54,8 +54,8 @@ from sqlalchemy.sql import Select
 
 from app.core.config import settings
 from app.models import Document, DocumentChunk, DocumentPage
-from app.services.ocr_page_roles import ocr_meets_threshold_clause
 from app.models.project import DocumentOccurrence
+from app.services.ocr_page_roles import ocr_meets_threshold_clause
 
 logger = logging.getLogger("app.services.search_filters")
 

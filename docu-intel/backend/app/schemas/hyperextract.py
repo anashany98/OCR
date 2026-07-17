@@ -12,9 +12,7 @@ class HyperExtractEnvelope(BaseModel):
     """The canonical envelope returned by the service and the routes."""
 
     enabled: bool
-    status: Literal[
-        "disabled", "pending", "success", "failed", "skipped"
-    ] = "disabled"
+    status: Literal["disabled", "pending", "success", "failed", "skipped"] = "disabled"
     document_id: int | str | None = None
     document_type: str | None = None
     fields: dict[str, Any] = Field(default_factory=dict)

@@ -1,4 +1,5 @@
 """Verify FASE 2 classification persistence on the real corpus."""
+
 from app.database.session import SessionLocal
 from app.models.document import Document
 

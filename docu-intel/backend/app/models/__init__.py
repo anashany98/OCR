@@ -10,6 +10,7 @@ from app.models.business import (
     Order,
     OrderLine,
     Plan,
+    PlanCadEntity,
     PlanDimension,
     PlanRoom,
     PlanSymbol,
@@ -26,16 +27,24 @@ from app.models.communication import (
     ProjectIssue,
     ProjectParticipant,
 )
-from app.models.project import DocumentBudgetLink, DocumentOccurrence, Project
 from app.models.document import (
     Document,
     DocumentBlock,
     DocumentChunk,
     DocumentEntity,
     DocumentPage,
-    OcrAttempt,
     ExtractionJob,
     ImageAnalysis,
+    OcrAttempt,
+)
+from app.models.graph import (
+    GraphEntity,
+    GraphEntityMention,
+    GraphExtractionError,
+    GraphExtractionJob,
+    GraphRelation,
+    GraphRelationEvidence,
+    GraphReviewQueue,
 )
 from app.models.hyperextract import DocumentExtraction
 from app.models.integration import AccessPolicy, IntegrationClient, TechnicianAccessProfile
@@ -56,6 +65,7 @@ from app.models.professional import (
     WorkItemBreakdown,
     WorkItemComment,
 )
+from app.models.project import DocumentBudgetLink, DocumentOccurrence, Project
 from app.models.tenant import (
     AccessGroup,
     AccessGroupMember,
@@ -96,6 +106,13 @@ __all__ = [
     "DocumentExtraction",
     "DocumentPage",
     "OcrAttempt",
+    "GraphEntity",
+    "GraphEntityMention",
+    "GraphExtractionError",
+    "GraphExtractionJob",
+    "GraphRelation",
+    "GraphRelationEvidence",
+    "GraphReviewQueue",
     "DocumentTimelineEvent",
     "ExtractionJob",
     "FolderAssignmentRule",
@@ -112,6 +129,7 @@ __all__ = [
     "Order",
     "OrderLine",
     "Plan",
+    "PlanCadEntity",
     "PlanDimension",
     "PlanMeasurement",
     "PlanRoom",
@@ -130,4 +148,13 @@ __all__ = [
     "WorkItemBreakdown",
     "WorkItemComment",
     "ConstructionWorkItem",
+    "AttachmentLink",
+    "CommunicationMessage",
+    "CommunicationParticipant",
+    "CommunicationThread",
+    "Contact",
+    "Organization",
+    "ProjectEvent",
+    "ProjectIssue",
+    "ProjectParticipant",
 ]

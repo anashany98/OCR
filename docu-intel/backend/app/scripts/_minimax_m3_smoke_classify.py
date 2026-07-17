@@ -2,6 +2,7 @@
 real BON PLA SOCIEDAD ANONIMA corpus. The script is run via
 ``docker exec`` so we can use the live database without exposing the
 network to the host."""
+
 from __future__ import annotations
 
 from app.database.session import SessionLocal

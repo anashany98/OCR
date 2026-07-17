@@ -84,11 +84,13 @@ def disable_legacy_bootstrap_admin(
             continue
 
         if dry_run:
-            results.append({
-                "email": email,
-                "user_id": user.id,
-                "action": "would_deactivate",
-            })
+            results.append(
+                {
+                    "email": email,
+                    "user_id": user.id,
+                    "action": "would_deactivate",
+                }
+            )
         else:
             user.is_active = False
             db.add(

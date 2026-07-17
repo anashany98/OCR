@@ -88,7 +88,9 @@ def repair_technical_extractions(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Repair technical extractions")
-    parser.add_argument("--execute", action="store_true", help="Persist changes; default is dry-run")
+    parser.add_argument(
+        "--execute", action="store_true", help="Persist changes; default is dry-run"
+    )
     parser.add_argument("--limit", type=int, help="Maximum documents to inspect")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)

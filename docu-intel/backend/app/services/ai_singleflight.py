@@ -1,4 +1,5 @@
 """In-process single-flight coordination for isolated chat cache keys."""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +17,7 @@ class FlightLease:
     key: str
     waited: bool
     _flight: _Flight
-    _owner: "ChatSingleFlight"
+    _owner: ChatSingleFlight
     _released: bool = False
 
     async def release(self) -> None:

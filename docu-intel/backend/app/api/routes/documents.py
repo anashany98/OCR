@@ -18,14 +18,23 @@ from app.schemas.documents import (
     BulkReprocessResponse,
     DocumentBlockRead,
     DocumentEntityRead,
+    DocumentGraphRelationsResponse,
     DocumentPageRead,
     DocumentRead,
+    GraphRelationEvidenceRead,
+    GraphRelationRead,
     UploadResponse,
 )
 from app.schemas.jobs import ExtractionJobRead
 from app.services.audit import write_audit
 from app.services.document_registration_service import normalize_untrusted_relative_path
 from app.services.document_service import register_upload, reprocess_document, soft_delete_document
+from app.services.graph_query import (
+    RelationEvidenceRow,
+    RelationRow,
+    list_evidence_quotes,
+    list_relations_for_document,
+)
 from app.services.operations import BulkReprocessFilters, bulk_reprocess_documents
 from app.services.tenant_access import (
     apply_access_predicates,
@@ -453,6 +462,106 @@ def get_document_blocks(
     if page_number:
         stmt = stmt.where(DocumentBlock.page_number == page_number)
     return list(db.scalars(stmt.offset(offset).limit(limit)).all())
+
+
+def _relation_row_to_read(row: RelationRow) -> GraphRelationRead:
+    """Translate the service dataclass into the API schema."""
+    return GraphRelationRead(
+        relation_id=row.relation_id,
+        relation_type=row.relation_type,
+        polarity=row.polarity,
+        confidence=row.confidence,
+        status=row.status,
+        source_entity_id=row.source_entity_id,
+        source_entity_type=row.source_entity_type,
+        source_entity_value=row.source_entity_value,
+        target_entity_id=row.target_entity_id,
+        target_entity_type=row.target_entity_type,
+        target_entity_value=row.target_entity_value,
+        evidence=[
+            GraphRelationEvidenceRead(
+                evidence_id=item.evidence_id,
+                relation_id=item.relation_id,
+                document_id=item.document_id,
+                page_number=item.page_number,
+                quote=item.quote,
+                confidence=item.confidence,
+                extractor_version=item.extractor_version,
+                created_at=item.created_at,
+            )
+            for item in row.evidence
+        ],
+    )
+
+
+@router.get(
+    "/{document_id}/graph-relations",
+    response_model=DocumentGraphRelationsResponse,
+)
+@limiter.limit("60/minute")
+def get_document_graph_relations(
+    request: Request,
+    document_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> DocumentGraphRelationsResponse:
+    """Return the relational graph that touches ``document_id``.
+
+    The traversal is two-hop: the document's entity mentions, then
+    every relation whose source or target is one of those entities.
+    Each relation comes with the verbatim evidence quotes that
+    back it (``graph_relation_evidence.quote``) so the UI can
+    render a fully-auditable citation. The response is the
+    read-only counterpart of the write path in
+    ``app.services.graph_extraction``.
+    """
+    document = db.get(Document, document_id)
+    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+        raise HTTPException(status_code=404, detail="Document not found")
+    rows = list_relations_for_document(db, document_id, limit=limit)
+    return DocumentGraphRelationsResponse(
+        document_id=document_id,
+        relations=[_relation_row_to_read(row) for row in rows],
+    )
+
+
+@router.get(
+    "/{document_id}/graph-evidence",
+    response_model=list[GraphRelationEvidenceRead],
+)
+@limiter.limit("60/minute")
+def get_document_graph_evidence(
+    request: Request,
+    document_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[GraphRelationEvidenceRead]:
+    """Return only the evidence quotes that originate in ``document_id``.
+
+    This is the lightweight surface the chat agent uses to
+    surface audit-trail citations without exposing the full
+    relation graph. The endpoint honours the same access scope
+    as the rest of the document routes.
+    """
+    document = db.get(Document, document_id)
+    if not can_access_document(db, document, resolve_user_access_scope(db, user)):
+        raise HTTPException(status_code=404, detail="Document not found")
+    rows = list_evidence_quotes(db, document_id, limit=limit)
+    return [
+        GraphRelationEvidenceRead(
+            evidence_id=item.evidence_id,
+            relation_id=item.relation_id,
+            document_id=item.document_id,
+            page_number=item.page_number,
+            quote=item.quote,
+            confidence=item.confidence,
+            extractor_version=item.extractor_version,
+            created_at=item.created_at,
+        )
+        for item in rows
+    ]
 
 
 @router.get("/{document_id}/entities", response_model=list[DocumentEntityRead])

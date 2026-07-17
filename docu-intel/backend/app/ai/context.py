@@ -1511,6 +1511,150 @@ def collect_context(
                     )
                 )
 
+        # ------------------------------------------------------------------
+        # Dossier / aggregation tools (added for the eval questionnaire).
+        # These produce structured context items with a stable title prefix
+        # so the structured_answer renderer can branch on them and the
+        # UI can render them as tables.
+        # ------------------------------------------------------------------
+        elif tool.name == "list_distinct_budget_codes":
+            from app.tools import dossiers
+
+            codes = dossiers.list_distinct_budget_codes(
+                db, access_scope=access_scope
+            )
+            if codes:
+                context.append(
+                    ContextItem(
+                        title="[Dossier] presupuestos distintos",
+                        summary=",".join(codes),
+                        excerpt=json.dumps(codes, ensure_ascii=False),
+                        document_id=None,
+                        document_filename=None,
+                        page_number=None,
+                        relevance_score=1.0,
+                        confidence=None,
+                        source_path=None,
+                    )
+                )
+            else:
+                warnings.append(
+                    "No se encontraron presupuestos registrados en el sistema."
+                )
+
+        elif tool.name == "list_documents_by_budget_code":
+            from app.tools import dossiers
+
+            docs = dossiers.list_documents_by_budget_code(
+                db,
+                budget_code=tool.arguments.get("budget_code", ""),
+                document_type=tool.arguments.get("document_type"),
+                quality_status=tool.arguments.get("quality_status"),
+                extension=tool.arguments.get("extension"),
+                limit=tool.arguments.get("limit", 50),
+                access_scope=access_scope,
+            )
+            budget = tool.arguments.get("budget_code", "")
+            type_label = tool.arguments.get("document_type") or "documentos"
+            ext_label = tool.arguments.get("extension")
+            qual_label = tool.arguments.get("quality_status")
+            label_parts = [type_label]
+            if ext_label:
+                label_parts.append(f"({ext_label})")
+            if qual_label:
+                label_parts.append(f"[{qual_label}]")
+            label = " ".join(label_parts)
+            context.append(
+                ContextItem(
+                    title=f"[Dossier] {label} del presupuesto {budget}",
+                    summary=f"{len(docs)} documentos",
+                    excerpt=json.dumps(docs, default=str, ensure_ascii=False),
+                    document_id=None,
+                    document_filename=None,
+                    page_number=None,
+                    relevance_score=1.0,
+                    confidence=None,
+                    source_path=None,
+                )
+            )
+            if not docs:
+                warnings.append(
+                    f"No se encontraron {label} en el presupuesto {budget} con esos filtros."
+                )
+
+        elif tool.name == "get_budget_summary":
+            from app.tools import dossiers
+
+            summary = dossiers.get_budget_summary(
+                db,
+                budget_code=tool.arguments.get("budget_code", ""),
+                access_scope=access_scope,
+            )
+            context.append(
+                ContextItem(
+                    title=f"[Dossier] resumen ejecutivo {tool.arguments.get('budget_code', '')}",
+                    summary=f"{summary.get('document_count', 0)} documentos",
+                    excerpt=json.dumps(summary, default=str, ensure_ascii=False),
+                    document_id=None,
+                    document_filename=None,
+                    page_number=None,
+                    relevance_score=1.0,
+                    confidence=None,
+                    source_path=None,
+                )
+            )
+            if not summary.get("found"):
+                warnings.append(
+                    f"No se encontro el presupuesto {tool.arguments.get('budget_code', '')}."
+                )
+
+        elif tool.name == "find_nearest_budget":
+            from app.tools import dossiers
+
+            near = dossiers.find_nearest_budget(
+                db, budget_code=tool.arguments.get("budget_code", "")
+            )
+            context.append(
+                ContextItem(
+                    title=f"[Dossier] nearest_budget {tool.arguments.get('budget_code', '')}",
+                    summary=json.dumps(near or {}, ensure_ascii=False),
+                    excerpt=json.dumps(near or {}, ensure_ascii=False),
+                    document_id=None,
+                    document_filename=None,
+                    page_number=None,
+                    relevance_score=1.0,
+                    confidence=None,
+                    source_path=None,
+                )
+            )
+
+        elif tool.name == "find_documents_by_reference":
+            from app.tools import dossiers
+
+            refs = dossiers.find_documents_by_reference(
+                db,
+                reference=tool.arguments.get("reference", ""),
+                include_duplicates=tool.arguments.get("include_duplicates", True),
+                access_scope=access_scope,
+            )
+            context.append(
+                ContextItem(
+                    title=f"[Dossier] reference_search {tool.arguments.get('reference', '')}",
+                    summary=f"{len(refs)} matches",
+                    excerpt=json.dumps(refs, default=str, ensure_ascii=False),
+                    document_id=None,
+                    document_filename=None,
+                    page_number=None,
+                    relevance_score=1.0,
+                    confidence=None,
+                    source_path=None,
+                )
+            )
+            if not refs:
+                warnings.append(
+                    f"No se encontraron documentos que mencionen {tool.arguments.get('reference', '')}."
+                )
+
     if not context and any(
         tool.name == "hybrid_search"
         and tool.arguments.get("filters", {}).get("document_type") == "plano"

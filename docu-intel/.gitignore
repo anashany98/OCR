@@ -29,6 +29,13 @@ data/minimax-m3-performance/
 # MiniMax M3 corpus snapshots (local-only, never commit raw document dumps)
 data/minimax-m3-corpus-snapshot.txt
 
+# OvisOCR2 benchmark/certification outputs may contain document-derived metadata.
+artifacts/ovisocr2/*
+!artifacts/ovisocr2/README.md
+
+# Graphify's per-file AST cache is a local rebuild artifact.
+graphify-out/cache/ast/
+
 # Local PostgreSQL backups can contain documents, chats, contacts and users.
 # Keep migration safety copies on the host; never publish them to Git.
 data/backups/*.dump

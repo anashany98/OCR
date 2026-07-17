@@ -5,7 +5,14 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 
 import { Button } from "@/components/ui/button"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { AutoBreadcrumbs } from "@/components/layout/AutoBreadcrumbs"
@@ -16,7 +23,6 @@ import {
   PriorityGroup,
   WorkInboxFiltersToolbar,
   WorkInboxSummaryCards,
-  WorkInboxTopBar,
 } from "./components"
 import { useWorkInbox } from "./useWorkInbox"
 
@@ -29,7 +35,10 @@ type TaskForm = z.infer<typeof taskSchema>
 export function WorkInboxPage() {
   const w = useWorkInbox()
   const [sheetOpen, setSheetOpen] = useState(false)
-  const form = useForm<TaskForm>({ resolver: zodResolver(taskSchema), defaultValues: { title: "", priority: "normal" } })
+  const form = useForm<TaskForm>({
+    resolver: zodResolver(taskSchema),
+    defaultValues: { title: "", priority: "normal" },
+  })
 
   function onSubmit(data: TaskForm) {
     w.setNewTaskTitle(data.title)
@@ -45,41 +54,83 @@ export function WorkInboxPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-[18px] font-semibold text-[var(--text-primary)]">Bandeja de trabajo</h1>
-          <p className="text-[12px] text-[var(--text-muted)]">Tareas pendientes y acciones masivas.</p>
+          <h1 className="text-[18px] font-semibold text-[var(--text-primary)]">
+            Bandeja de trabajo
+          </h1>
+          <p className="text-[12px] text-[var(--text-muted)]">
+            Tareas pendientes y acciones masivas.
+          </p>
         </div>
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetTrigger asChild>
-            <Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" /> Nueva tarea</Button>
+            <Button size="sm" className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" /> Nueva tarea
+            </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[360px] sm:w-[400px]">
-            <SheetHeader><SheetTitle>Crear tarea</SheetTitle></SheetHeader>
+            <SheetHeader>
+              <SheetTitle>Crear tarea</SheetTitle>
+            </SheetHeader>
             <Form {...form}>
               <form className="mt-6 space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-                <FormField control={form.control} name="title" render={({ field }) => (
-                  <FormItem><FormLabel>Descripción</FormLabel><FormControl><Input {...field} placeholder="Describe la tarea..." /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="priority" render={({ field }) => (
-                  <FormItem><FormLabel>Prioridad</FormLabel><FormControl>
-                    <select className="flex h-9 w-full rounded-md border border-[var(--border-2)] bg-[var(--bg-surface)] px-3 text-[13px] text-[var(--text-primary)]" {...field}>
-                      <option value="normal">Normal</option><option value="high">Alta</option><option value="critical">Crítica</option><option value="low">Baja</option>
-                    </select>
-                  </FormControl><FormMessage /></FormItem>
-                )} />
-                <Button type="submit" className="w-full" disabled={w.createTask.isPending}>{w.createTask.isPending ? "Creando..." : "Crear tarea"}</Button>
+                <FormField
+                  control={form.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Descripción</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Describe la tarea..." />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="priority"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Prioridad</FormLabel>
+                      <FormControl>
+                        <select
+                          className="flex h-9 w-full rounded-md border border-[var(--border-2)] bg-[var(--bg-surface)] px-3 text-[13px] text-[var(--text-primary)]"
+                          {...field}
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="high">Alta</option>
+                          <option value="critical">Crítica</option>
+                          <option value="low">Baja</option>
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" className="w-full" disabled={w.createTask.isPending}>
+                  {w.createTask.isPending ? "Creando..." : "Crear tarea"}
+                </Button>
               </form>
             </Form>
           </SheetContent>
         </Sheet>
       </div>
 
-      <WorkInboxSummaryCards counts={w.counts} expandedGroups={w.expandedGroups} toggleGroup={w.toggleGroup} />
+      <WorkInboxSummaryCards
+        counts={w.counts}
+        expandedGroups={w.expandedGroups}
+        toggleGroup={w.toggleGroup}
+      />
 
       <WorkInboxFiltersToolbar
-        kindFilter={w.kindFilter} setKindFilter={w.setKindFilter}
-        priorityFilter={w.priorityFilter} setPriorityFilter={w.setPriorityFilter}
-        searchTerm={w.searchTerm} setSearchTerm={w.setSearchTerm}
-        availableKinds={w.availableKinds} onClear={w.clearFilters}
+        kindFilter={w.kindFilter}
+        setKindFilter={w.setKindFilter}
+        priorityFilter={w.priorityFilter}
+        setPriorityFilter={w.setPriorityFilter}
+        searchTerm={w.searchTerm}
+        setSearchTerm={w.setSearchTerm}
+        availableKinds={w.availableKinds}
+        onClear={w.clearFilters}
       />
 
       {w.priorityKeys.length === 0 ? (
@@ -108,13 +159,20 @@ export function WorkInboxPage() {
         <BatchActionsCard
           onAction={(action) => {
             if (action === "retry_failed_jobs") w.action.mutate({ action, limit: 100 })
-            else if (action === "approve_high_confidence_ocr") w.action.mutate({ action, min_confidence: 0.85, limit: 200 })
+            else if (action === "approve_high_confidence_ocr")
+              w.action.mutate({ action, min_confidence: 0.85, limit: 200 })
             else if (action === "reprocess_low_quality") w.action.mutate({ action, limit: 100 })
           }}
-          isPending={w.action.isPending} result={w.action.data} error={w.action.error as Error | null}
+          isPending={w.action.isPending}
+          result={w.action.data}
+          error={w.action.error as Error | null}
         />
         <KindSummaryCard
-          kindCounts={(() => { const c: Record<string, number> = {}; for (const t of w.allTasks) c[t.kind] = (c[t.kind] ?? 0) + 1; return c })()}
+          kindCounts={(() => {
+            const c: Record<string, number> = {}
+            for (const t of w.allTasks) c[t.kind] = (c[t.kind] ?? 0) + 1
+            return c
+          })()}
           activeKind={w.kindFilter}
           onPick={(kind) => w.setKindFilter(w.kindFilter === kind ? "" : kind)}
         />

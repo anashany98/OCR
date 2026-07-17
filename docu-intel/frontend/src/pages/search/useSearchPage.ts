@@ -143,18 +143,18 @@ export function useSearchPage() {
   const [filterDateFrom, setFilterDateFrom] = useState("")
   const [filterDateTo, setFilterDateTo] = useState("")
 
-  const filters = {
-    type: filterType,
-    status: filterStatus,
-    supplier: filterSupplier,
-    client: filterClient,
-    minConfidencePercent: filterMinConf,
-    sourcePath: filterSourcePath,
-    dateFrom: filterDateFrom,
-    dateTo: filterDateTo,
-  }
   const activeFilters = useMemo(
-    () => buildActiveFilters(filters),
+    () =>
+      buildActiveFilters({
+        type: filterType,
+        status: filterStatus,
+        supplier: filterSupplier,
+        client: filterClient,
+        minConfidencePercent: filterMinConf,
+        sourcePath: filterSourcePath,
+        dateFrom: filterDateFrom,
+        dateTo: filterDateTo,
+      }),
     [
       filterType,
       filterStatus,

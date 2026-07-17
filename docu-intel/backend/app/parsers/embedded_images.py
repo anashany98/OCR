@@ -66,7 +66,9 @@ def extract_embedded_image_pages(
         try:
             document: ExtractedDocument = parse_image(stored_image, media_dir, ocr_engine)
         except Exception as exc:
-            logger.warning("Embedded image OCR failed for %s: %s", image.filename, type(exc).__name__)
+            logger.warning(
+                "Embedded image OCR failed for %s: %s", image.filename, type(exc).__name__
+            )
             continue
         if not document.pages or not document.text.strip():
             continue

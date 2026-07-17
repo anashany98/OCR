@@ -103,8 +103,15 @@ def vlm_tabla_a_json(
 
     image_b64 = base64.b64encode(image_bytes).decode("ascii")
     suffix = image_path.suffix.lower().lstrip(".") or "png"
-    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "tif": "tiff",
-            "tiff": "tiff", "bmp": "bmp", "webp": "webp"}.get(suffix, "png")
+    mime = {
+        "jpg": "jpeg",
+        "jpeg": "jpeg",
+        "png": "png",
+        "tif": "tiff",
+        "tiff": "tiff",
+        "bmp": "bmp",
+        "webp": "webp",
+    }.get(suffix, "png")
 
     payload = {
         "model": model,
@@ -193,11 +200,7 @@ def _parse_vlm_json(content: str) -> list[ExtractedLine] | None:
             continue
         lines.append(
             ExtractedLine(
-                reference=(
-                    item.get("ref")
-                    or item.get("reference")
-                    or item.get("referencia")
-                ),
+                reference=(item.get("ref") or item.get("reference") or item.get("referencia")),
                 description=str(desc),
                 quantity=_to_float(
                     item.get("cant")
@@ -245,10 +248,7 @@ def _to_float(value) -> float | None:
     elif "," in s:
         # Could be 1234,56 (decimal) or 1,234 (thousands)
         parts = s.split(",")
-        if len(parts) == 2 and len(parts[1]) <= 2:
-            s = s.replace(",", ".")
-        else:
-            s = s.replace(",", "")
+        s = s.replace(",", ".") if len(parts) == 2 and len(parts[1]) <= 2 else s.replace(",", "")
     try:
         return float(s)
     except ValueError:

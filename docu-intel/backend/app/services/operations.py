@@ -169,9 +169,7 @@ def bulk_reprocess_documents(
         stmt = stmt.where(Document.source_path.ilike(f"%{normalized.source_path_contains}%"))
     if normalized.quality_flags:
         for flag in normalized.quality_flags:
-            stmt = stmt.where(
-                text("quality_flags_json::jsonb ? :flag")
-            ).params(flag=flag)
+            stmt = stmt.where(text("quality_flags_json::jsonb ? :flag")).params(flag=flag)
 
     documents = list(db.scalars(stmt).all())
     job_ids: list[int] = []

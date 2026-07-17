@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import case, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -23,6 +23,7 @@ from app.models import (
     Order,
     OrderLine,
     Plan,
+    PlanCadEntity,
     PlanDimension,
     PlanRoom,
 )
@@ -191,6 +192,18 @@ def _attach_entity_payload(details: dict, document: Document, db: Session) -> No
         dimensions = list(
             db.scalars(select(PlanDimension).where(PlanDimension.plan_id == plan.id)).all()
         )
+        cad_entities = list(
+            db.scalars(
+                select(PlanCadEntity)
+                .where(PlanCadEntity.plan_id == plan.id)
+                .order_by(PlanCadEntity.id.asc())
+                .limit(120)
+            ).all()
+        )
+        cad_entity_count = (
+            db.scalar(select(func.count(PlanCadEntity.id)).where(PlanCadEntity.plan_id == plan.id))
+            or 0
+        )
         entities["plan"] = {
             "project_name": plan.project_name,
             "scale_text": plan.scale_text,
@@ -210,6 +223,41 @@ def _attach_entity_payload(details: dict, document: Document, db: Session) -> No
                 for r in rooms[:10]
             ],
             "dimension_count": len(dimensions),
+            "dimensions": [
+                {
+                    "raw_text": d.raw_text,
+                    "value": d.value,
+                    "unit": d.unit,
+                    "value_m": d.value_m,
+                    "source_method": d.source_method,
+                    "source_entity_handle": d.source_entity_handle,
+                    "layer": d.layer,
+                    "unit_source": d.unit_source,
+                    "validation_status": d.validation_status,
+                    "needs_review": d.needs_review,
+                    "coordinates": d.coordinates_json,
+                }
+                for d in dimensions[:100]
+            ],
+            "source_format": plan.source_format,
+            "cad_unit": plan.cad_unit,
+            "cad_layers": (plan.cad_metadata_json or {}).get("layers", []),
+            "cad_entity_count": int(cad_entity_count),
+            "cad_entity_types": sorted({e.entity_type for e in cad_entities}),
+            "cad_entities_preview": [
+                {
+                    "handle": e.entity_handle,
+                    "type": e.entity_type,
+                    "layer": e.layer,
+                    "geometry": e.geometry_json,
+                    "properties": e.properties_json,
+                    "source_method": e.source_method,
+                    "validation_status": e.validation_status,
+                }
+                for e in cad_entities[:60]
+            ],
+            "coordinate_transform": plan.coordinate_transform_json,
+            "conversion_provenance": plan.conversion_provenance_json,
         }
 
     ents = list(

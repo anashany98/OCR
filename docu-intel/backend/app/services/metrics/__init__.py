@@ -47,6 +47,9 @@ from .labels import escape_label, metric_key
 # change anything.
 from .ocr import (
     set_ocr_tier_available,
+    track_docling_fallback,
+    track_docling_pages,
+    track_docling_request,
     track_ocr_cascade_fallback,
     track_ocr_dpi_escalation,
     track_ocr_duration,
@@ -57,6 +60,8 @@ from .ocr import (
     track_ocr_skip_tier2,
     track_ocr_tier4_invoked,
     track_ocr_tier_used,
+    track_ovisocr2_output_feature,
+    track_ovisocr2_request,
     track_preprocess_path_chosen,
 )
 from .pipeline import (
@@ -133,11 +138,16 @@ __all__ = [
     "track_ocr_tier_used",
     "track_ocr_skip_tier2",
     "track_ocr_tier4_invoked",
+    "track_ovisocr2_request",
+    "track_ovisocr2_output_feature",
     "track_ocr_language_detected",
     "track_ocr_language_threshold_used",
     "track_preprocess_path_chosen",
     "track_ocr_render_permission_failure",
     "set_ocr_tier_available",
+    "track_docling_request",
+    "track_docling_pages",
+    "track_docling_fallback",
     # Embedding
     "track_embedding_latency",
     "track_embedding_duration",

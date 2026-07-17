@@ -40,6 +40,10 @@ class AIAnswer(Base):
     # JSON snapshot of the document the agent resolved (entities + relations).
     # Only filled when the user mentions a specific file in the question.
     resolved_document_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Why the answer did not use the primary LLM path. Kept separately from
+    # ``model_name`` so operators can distinguish a safe abstention from a
+    # timeout, validation rejection or lack of evidence.
+    fallback_reason: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )

@@ -56,19 +56,37 @@ class ExactMatch:
 
 _IDENTIFIER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Budget number: "presupuesto 260025", "presup. 260025", "P-260025"
-    (re.compile(r"(?:presup(?:uesto)?|presup\.)\s*(?:n[°oº]?\s*)?(\d[\d\.\-\/\s]{2,})", re.I), "budget"),
+    (
+        re.compile(r"(?:presup(?:uesto)?|presup\.)\s*(?:n[°oº]?\s*)?(\d[\d\.\-\/\s]{2,})", re.I),
+        "budget",
+    ),
     # Order number: "pedido 12345", "orden 12345", "order 12345"
-    (re.compile(r"(?:pedido|orden(?:\s+de\s+trabajo)?|order)\s*(?:n[°oº]?\s*)?(\d[\d\.\-\/\s]{2,})", re.I), "order"),
+    (
+        re.compile(
+            r"(?:pedido|orden(?:\s+de\s+trabajo)?|order)\s*(?:n[°oº]?\s*)?(\d[\d\.\-\/\s]{2,})",
+            re.I,
+        ),
+        "order",
+    ),
     # Invoice number: "factura F-2025-001", "invoice INV-001"
-    (re.compile(r"(?:factura|invoice)\s*(?:n[°oº]?\s*)?([A-Z]?\-?[\d\.\-\/\s]{2,})", re.I), "invoice"),
+    (
+        re.compile(r"(?:factura|invoice)\s*(?:n[°oº]?\s*)?([A-Z]?\-?[\d\.\-\/\s]{2,})", re.I),
+        "invoice",
+    ),
     # Delivery note: "albaran 12345"
-    (re.compile(r"(?:albar(?:an|én))\s*(?:n[°oº]?\s*)?(\d[\d\.\-\/\s]{2,})", re.I), "delivery_note"),
+    (
+        re.compile(r"(?:albar(?:an|én))\s*(?:n[°oº]?\s*)?(\d[\d\.\-\/\s]{2,})", re.I),
+        "delivery_note",
+    ),
     # CIF/NIF: "CIF B12345678", "NIF 12345678Z"
     (re.compile(r"(?:CIF|NIF|cif|nif)\s*([A-Z]?\d{5,9}[A-Z]?)", re.I), "tax_id"),
     # Reference: "referencia REF-12345", "ref. 12345"
     (re.compile(r"(?:referencia?|ref\.?)\s*([A-Z]?\-?[\w\.\-\/]{2,})", re.I), "reference"),
     # Generic number in quotes or after "numero": "numero 260025", "nº 260025"
-    (re.compile(r"(?:n[°oº]|numero|num(?:ero)?)\s*[:\s]?\s*(\d[\d\.\-\/\s]{2,})", re.I), "document_number"),
+    (
+        re.compile(r"(?:n[°oº]|numero|num(?:ero)?)\s*[:\s]?\s*(\d[\d\.\-\/\s]{2,})", re.I),
+        "document_number",
+    ),
 ]
 
 
@@ -269,20 +287,24 @@ def search_exact_phrase(
         if matches_exact_phrase(entity.entity_value, phrase):
             candidates.append(("entity", document, entity.page_number))
 
-    document_rows = db.execute(
-        _apply_exact_access_scope(
-            select(Document)
-            .where(Document.deleted_at.is_(None))
-            .where(
-                or_(
-                    Document.original_filename.ilike(pattern),
-                    Document.source_path.ilike(pattern),
+    document_rows = (
+        db.execute(
+            _apply_exact_access_scope(
+                select(Document)
+                .where(Document.deleted_at.is_(None))
+                .where(
+                    or_(
+                        Document.original_filename.ilike(pattern),
+                        Document.source_path.ilike(pattern),
+                    )
                 )
+                .limit(limit * 3),
+                access_scope,
             )
-            .limit(limit * 3),
-            access_scope,
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for document in document_rows:
         if matches_exact_phrase(document.original_filename, phrase):
             candidates.append(("filename", document, None))
@@ -359,7 +381,13 @@ def _search_entities(
         "tax_id": ["tax_id", "cif", "nif"],
         "reference": ["reference", "document_number"],
         "document_number": ["budget_number", "order_number", "invoice_number", "document_number"],
-        "generic": ["budget_number", "order_number", "invoice_number", "document_number", "reference"],
+        "generic": [
+            "budget_number",
+            "order_number",
+            "invoice_number",
+            "document_number",
+            "reference",
+        ],
     }
     entity_types = entity_type_map.get(kind, ["budget_number", "order_number", "invoice_number"])
 

@@ -35,6 +35,7 @@ class AIAnswerRead(BaseModel):
     answer: str
     confidence: float | None
     model_name: str | None
+    fallback_reason: str | None = None
     # Optional structured snapshot of the document the agent resolved
     # for this answer (entities + relations). Parsed from
     # `resolved_document_json` by the model_validator below.
@@ -74,13 +75,17 @@ class AIAnswerRead(BaseModel):
             context_items = []
             for src in self.sources:
                 context_items.append(
-                    type("CtxItem", (), {
-                        "document_id": src.document_id,
-                        "document_filename": None,
-                        "page_number": src.page_number,
-                        "relevance_score": src.relevance_score or 0.0,
-                        "summary": src.excerpt or "",
-                    })()
+                    type(
+                        "CtxItem",
+                        (),
+                        {
+                            "document_id": src.document_id,
+                            "document_filename": None,
+                            "page_number": src.page_number,
+                            "relevance_score": src.relevance_score or 0.0,
+                            "summary": src.excerpt or "",
+                        },
+                    )()
                 )
             structured = to_structured_response(
                 self.answer,

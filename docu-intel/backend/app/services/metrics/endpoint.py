@@ -23,9 +23,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi import Header, HTTPException
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY
 from prometheus_client.exposition import generate_latest as _gen
-from fastapi import Header, HTTPException
 from starlette.responses import Response
 
 from app.core.config import settings

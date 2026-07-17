@@ -3,9 +3,21 @@ import { cn } from "@/lib/utils"
 type ConfidenceLevel = "high" | "medium" | "low" | "unknown"
 
 const levelConfig: Record<ConfidenceLevel, { color: string; textColor: string; label: string }> = {
-  high: { color: "bg-[var(--success-light)]", textColor: "text-[var(--text-on-success)]", label: "Alta" },
-  medium: { color: "bg-[var(--warning-light)]", textColor: "text-[var(--text-on-warning)]", label: "Media" },
-  low: { color: "bg-[var(--danger-light)]", textColor: "text-[var(--text-on-danger)]", label: "Baja" },
+  high: {
+    color: "bg-[var(--success-light)]",
+    textColor: "text-[var(--text-on-success)]",
+    label: "Alta",
+  },
+  medium: {
+    color: "bg-[var(--warning-light)]",
+    textColor: "text-[var(--text-on-warning)]",
+    label: "Media",
+  },
+  low: {
+    color: "bg-[var(--danger-light)]",
+    textColor: "text-[var(--text-on-danger)]",
+    label: "Baja",
+  },
   unknown: { color: "bg-[var(--bg-surface-2)]", textColor: "text-[var(--text-muted)]", label: "—" },
 }
 

@@ -63,7 +63,13 @@ export function ConfirmDialog({
           </p>
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
-          <Button ref={cancelRef} type="button" variant="outline" onClick={onCancel} disabled={busy}>
+          <Button
+            ref={cancelRef}
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={busy}
+          >
             {cancelLabel}
           </Button>
           <Button

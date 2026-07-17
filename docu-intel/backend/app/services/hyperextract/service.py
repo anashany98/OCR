@@ -25,6 +25,7 @@ typed :class:`HyperExtractResult`).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -126,7 +127,9 @@ class HyperExtractService:
         output_dir: str | None = None,
         persist_raw_output: bool | None = None,
     ) -> None:
-        self._base_url = (base_url if base_url is not None else settings.hyperextract_base_url).rstrip("/")
+        self._base_url = (
+            base_url if base_url is not None else settings.hyperextract_base_url
+        ).rstrip("/")
         self._model = model if model is not None else settings.hyperextract_model
         self._api_key = api_key if api_key is not None else settings.hyperextract_api_key
         # MiniMax M3 (FASE 3) — split the per-request budget into
@@ -135,7 +138,9 @@ class HyperExtractService:
         # budget. Defaults are derived from ``hyperextract_timeout_seconds``
         # so the operator keeps a single knob.
         base_timeout = float(
-            timeout_seconds if timeout_seconds is not None else settings.hyperextract_timeout_seconds
+            timeout_seconds
+            if timeout_seconds is not None
+            else settings.hyperextract_timeout_seconds
         )
         self._timeout = base_timeout
         self._connect_timeout = min(10.0, base_timeout / 6.0)
@@ -143,7 +148,9 @@ class HyperExtractService:
         self._provider_name = (
             provider_name if provider_name is not None else settings.hyperextract_provider
         )
-        self._output_dir = output_dir if output_dir is not None else settings.hyperextract_output_dir
+        self._output_dir = (
+            output_dir if output_dir is not None else settings.hyperextract_output_dir
+        )
         self._persist_raw_output = (
             bool(persist_raw_output)
             if persist_raw_output is not None
@@ -158,12 +165,8 @@ class HyperExtractService:
         # per-call state is the input prompt and the response,
         # both of which are handled inside ``_call_provider``.
         limits = httpx.Limits(
-            max_connections=int(
-                getattr(settings, "hyperextract_max_connections", 32)
-            ),
-            max_keepalive_connections=int(
-                getattr(settings, "hyperextract_max_keepalive", 8)
-            ),
+            max_connections=int(getattr(settings, "hyperextract_max_connections", 32)),
+            max_keepalive_connections=int(getattr(settings, "hyperextract_max_keepalive", 8)),
             keepalive_expiry=30.0,
         )
         timeout = httpx.Timeout(
@@ -216,7 +219,9 @@ class HyperExtractService:
             result.status = "disabled"
             return result.to_dict()
 
-        resolved_type = (document_type or settings.hyperextract_default_type or "").strip().lower() or None
+        resolved_type = (
+            document_type or settings.hyperextract_default_type or ""
+        ).strip().lower() or None
         result.document_type = resolved_type
         result.provider = self._provider_name
         result.model = self._model
@@ -245,7 +250,9 @@ class HyperExtractService:
             result.warnings.append(result.error_message)
             return result.to_dict()
 
-        return self._run_extraction(result=result, text=text or "", metadata=metadata, template=template)
+        return self._run_extraction(
+            result=result, text=text or "", metadata=metadata, template=template
+        )
 
     def extract_invoice(
         self,
@@ -598,9 +605,10 @@ class HyperExtractService:
         try:
             probe = self._client.post(
                 f"{self._base_url}/chat/completions",
-                headers={"Content-Type": "application/json", **(
-                    {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
-                )},
+                headers={
+                    "Content-Type": "application/json",
+                    **({"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}),
+                },
                 json={
                     "model": self._model,
                     "temperature": 0,
@@ -621,10 +629,8 @@ class HyperExtractService:
         """Close the keep-alive HTTP client. Called by the worker
         shutdown hook so the connection pool does not leak between
         worker restarts."""
-        try:
+        with contextlib.suppress(Exception):
             self._client.close()
-        except Exception:  # pragma: no cover - defensive
-            pass
 
     # ------------------------------------------------------------------
     # Parsing helpers

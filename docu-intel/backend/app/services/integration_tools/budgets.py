@@ -158,11 +158,17 @@ def _budget_payload(budget: Budget, lines: list[BudgetLine], context: Integratio
         # JSON clients consume authorised amounts as numbers. Pydantic's
         # default Decimal encoder produces strings, which breaks arithmetic
         # on integration consumers despite the access policy allowing it.
-        payload["total_amount"] = float(budget.total_amount) if budget.total_amount is not None else None
+        payload["total_amount"] = (
+            float(budget.total_amount) if budget.total_amount is not None else None
+        )
         payload["currency"] = budget.currency
         for line_payload, line in zip(payload["lines"], lines, strict=False):
-            line_payload["unit_price"] = float(line.unit_price) if line.unit_price is not None else None
-            line_payload["total_price"] = float(line.total_price) if line.total_price is not None else None
+            line_payload["unit_price"] = (
+                float(line.unit_price) if line.unit_price is not None else None
+            )
+            line_payload["total_price"] = (
+                float(line.total_price) if line.total_price is not None else None
+            )
     return payload
 
 
