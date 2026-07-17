@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.database.session import get_db
-from app.services.ocr_page_roles import ocr_applicable_clause
 from app.models import (
     AIAnswer,
     AIQuestion,
@@ -25,6 +24,7 @@ from app.models import (
     ExtractionJob,
     User,
 )
+from app.services.ocr_page_roles import ocr_applicable_clause
 
 router = APIRouter(tags=["admin"])
 
@@ -40,7 +40,9 @@ def dashboard_stats(
     week_start = today_start - timedelta(days=7)
 
     # ── Document stats ──────────────────────────────────────────
-    total_docs = db.scalar(select(func.count(Document.id)).where(Document.deleted_at.is_(None))) or 0
+    total_docs = (
+        db.scalar(select(func.count(Document.id)).where(Document.deleted_at.is_(None))) or 0
+    )
     docs_today = (
         db.scalar(
             select(func.count(Document.id)).where(
@@ -61,23 +63,19 @@ def dashboard_stats(
     )
 
     # Status breakdown
-    status_rows = (
-        db.execute(
-            select(Document.status, func.count(Document.id)).where(
-                Document.deleted_at.is_(None)
-            ).group_by(Document.status)
-        ).all()
-    )
+    status_rows = db.execute(
+        select(Document.status, func.count(Document.id))
+        .where(Document.deleted_at.is_(None))
+        .group_by(Document.status)
+    ).all()
     docs_by_status = {row[0]: row[1] for row in status_rows}
 
     # Document types breakdown
-    type_rows = (
-        db.execute(
-            select(Document.document_type, func.count(Document.id)).where(
-                Document.deleted_at.is_(None)
-            ).group_by(Document.document_type)
-        ).all()
-    )
+    type_rows = db.execute(
+        select(Document.document_type, func.count(Document.id))
+        .where(Document.deleted_at.is_(None))
+        .group_by(Document.document_type)
+    ).all()
     docs_by_type = {row[0]: row[1] for row in type_rows}
 
     # Average OCR confidence
@@ -85,7 +83,7 @@ def dashboard_stats(
         db.scalar(
             select(func.avg(DocumentPage.ocr_confidence)).where(
                 ocr_applicable_clause(DocumentPage.ocr_content_kind),
-                DocumentPage.ocr_confidence.is_not(None)
+                DocumentPage.ocr_confidence.is_not(None),
             )
         )
         or 0.0
@@ -94,9 +92,7 @@ def dashboard_stats(
     # ── Processing stats ────────────────────────────────────────
     total_jobs = db.scalar(select(func.count(ExtractionJob.id))) or 0
     jobs_processing = (
-        db.scalar(
-            select(func.count(ExtractionJob.id)).where(ExtractionJob.status == "processing")
-        )
+        db.scalar(select(func.count(ExtractionJob.id)).where(ExtractionJob.status == "processing"))
         or 0
     )
     jobs_failed_today = (
@@ -130,9 +126,7 @@ def dashboard_stats(
     # ── AI / Chat stats ─────────────────────────────────────────
     total_questions = db.scalar(select(func.count(AIQuestion.id))) or 0
     questions_today = (
-        db.scalar(
-            select(func.count(AIQuestion.id)).where(AIQuestion.created_at >= today_start)
-        )
+        db.scalar(select(func.count(AIQuestion.id)).where(AIQuestion.created_at >= today_start))
         or 0
     )
     total_answers = db.scalar(select(func.count(AIAnswer.id))) or 0
@@ -156,10 +150,7 @@ def dashboard_stats(
 
     # ── Storage ─────────────────────────────────────────────────
     total_file_size = (
-        db.scalar(
-            select(func.sum(Document.file_size)).where(Document.deleted_at.is_(None))
-        )
-        or 0
+        db.scalar(select(func.sum(Document.file_size)).where(Document.deleted_at.is_(None))) or 0
     )
 
     return {
@@ -203,94 +194,76 @@ def dashboard_activity(
     start_date = now - timedelta(days=days)
 
     # Documents per day
-    docs_per_day = (
-        db.execute(
-            select(
-                func.date(Document.created_at).label("day"),
-                func.count(Document.id),
-            )
-            .where(Document.created_at >= start_date)
-            .group_by(func.date(Document.created_at))
-            .order_by(func.date(Document.created_at))
-        ).all()
-    )
+    docs_per_day = db.execute(
+        select(
+            func.date(Document.created_at).label("day"),
+            func.count(Document.id),
+        )
+        .where(Document.created_at >= start_date)
+        .group_by(func.date(Document.created_at))
+        .order_by(func.date(Document.created_at))
+    ).all()
 
     # Questions per day
-    questions_per_day = (
-        db.execute(
-            select(
-                func.date(AIQuestion.created_at).label("day"),
-                func.count(AIQuestion.id),
-            )
-            .where(AIQuestion.created_at >= start_date)
-            .group_by(func.date(AIQuestion.created_at))
-            .order_by(func.date(AIQuestion.created_at))
-        ).all()
-    )
+    questions_per_day = db.execute(
+        select(
+            func.date(AIQuestion.created_at).label("day"),
+            func.count(AIQuestion.id),
+        )
+        .where(AIQuestion.created_at >= start_date)
+        .group_by(func.date(AIQuestion.created_at))
+        .order_by(func.date(AIQuestion.created_at))
+    ).all()
 
     # Jobs per day
-    jobs_per_day = (
-        db.execute(
-            select(
-                func.date(ExtractionJob.finished_at).label("day"),
-                func.count(ExtractionJob.id),
-            )
-            .where(
-                ExtractionJob.finished_at >= start_date,
-                ExtractionJob.status == "processed",
-            )
-            .group_by(func.date(ExtractionJob.finished_at))
-            .order_by(func.date(ExtractionJob.finished_at))
-        ).all()
-    )
+    jobs_per_day = db.execute(
+        select(
+            func.date(ExtractionJob.finished_at).label("day"),
+            func.count(ExtractionJob.id),
+        )
+        .where(
+            ExtractionJob.finished_at >= start_date,
+            ExtractionJob.status == "processed",
+        )
+        .group_by(func.date(ExtractionJob.finished_at))
+        .order_by(func.date(ExtractionJob.finished_at))
+    ).all()
 
     # OCR confidence trend (average per day)
-    confidence_trend = (
-        db.execute(
-            select(
-                func.date(DocumentPage.created_at).label("day"),
-                func.avg(DocumentPage.ocr_confidence),
-            )
-            .where(
-                DocumentPage.created_at >= start_date,
-                ocr_applicable_clause(DocumentPage.ocr_content_kind),
-                DocumentPage.ocr_confidence.is_not(None),
-            )
-            .group_by(func.date(DocumentPage.created_at))
-            .order_by(func.date(DocumentPage.created_at))
-        ).all()
-    )
+    confidence_trend = db.execute(
+        select(
+            func.date(DocumentPage.created_at).label("day"),
+            func.avg(DocumentPage.ocr_confidence),
+        )
+        .where(
+            DocumentPage.created_at >= start_date,
+            ocr_applicable_clause(DocumentPage.ocr_content_kind),
+            DocumentPage.ocr_confidence.is_not(None),
+        )
+        .group_by(func.date(DocumentPage.created_at))
+        .order_by(func.date(DocumentPage.created_at))
+    ).all()
 
     # Failed jobs per day
-    failed_per_day = (
-        db.execute(
-            select(
-                func.date(ExtractionJob.finished_at).label("day"),
-                func.count(ExtractionJob.id),
-            )
-            .where(
-                ExtractionJob.finished_at >= start_date,
-                ExtractionJob.status == "failed",
-            )
-            .group_by(func.date(ExtractionJob.finished_at))
-            .order_by(func.date(ExtractionJob.finished_at))
-        ).all()
-    )
+    failed_per_day = db.execute(
+        select(
+            func.date(ExtractionJob.finished_at).label("day"),
+            func.count(ExtractionJob.id),
+        )
+        .where(
+            ExtractionJob.finished_at >= start_date,
+            ExtractionJob.status == "failed",
+        )
+        .group_by(func.date(ExtractionJob.finished_at))
+        .order_by(func.date(ExtractionJob.finished_at))
+    ).all()
 
     return {
         "period_days": days,
-        "documents_per_day": [
-            {"date": str(row[0]), "count": row[1]} for row in docs_per_day
-        ],
-        "questions_per_day": [
-            {"date": str(row[0]), "count": row[1]} for row in questions_per_day
-        ],
-        "jobs_per_day": [
-            {"date": str(row[0]), "count": row[1]} for row in jobs_per_day
-        ],
-        "failed_per_day": [
-            {"date": str(row[0]), "count": row[1]} for row in failed_per_day
-        ],
+        "documents_per_day": [{"date": str(row[0]), "count": row[1]} for row in docs_per_day],
+        "questions_per_day": [{"date": str(row[0]), "count": row[1]} for row in questions_per_day],
+        "jobs_per_day": [{"date": str(row[0]), "count": row[1]} for row in jobs_per_day],
+        "failed_per_day": [{"date": str(row[0]), "count": row[1]} for row in failed_per_day],
         "confidence_trend": [
             {"date": str(row[0]), "confidence": round(float(row[1]), 3)}
             for row in confidence_trend
@@ -314,14 +287,16 @@ def dashboard_workers(
         workers = []
         for worker_name, worker_stats in stats.items():
             pool = worker_stats.get("pool", {})
-            workers.append({
-                "name": worker_name,
-                "status": "online",
-                "pid": worker_stats.get("pid"),
-                "pool_processes": pool.get("max-concurrency"),
-                "active_tasks": len(active.get(worker_name, [])),
-                "cpu_usage": worker_stats.get("rusage", {}),
-            })
+            workers.append(
+                {
+                    "name": worker_name,
+                    "status": "online",
+                    "pid": worker_stats.get("pid"),
+                    "pool_processes": pool.get("max-concurrency"),
+                    "active_tasks": len(active.get(worker_name, [])),
+                    "cpu_usage": worker_stats.get("rusage", {}),
+                }
+            )
 
         return {"workers": workers, "total": len(workers)}
     except Exception:

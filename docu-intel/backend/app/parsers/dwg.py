@@ -13,6 +13,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -34,7 +35,9 @@ def _converter_path() -> str:
         candidate = Path(configured)
         if candidate.is_file():
             return str(candidate)
-        raise DwgConversionError("El conversor DWG configurado no existe o no es un archivo ejecutable.")
+        raise DwgConversionError(
+            "El conversor DWG configurado no existe o no es un archivo ejecutable."
+        )
 
     discovered = shutil.which("ODAFileConverter")
     if discovered:
@@ -84,7 +87,9 @@ def _convert_dwg_to_dxf(source: Path, destination: Path) -> None:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise DwgConversionError("La conversión DWG superó el tiempo máximo permitido.") from exc
+            raise DwgConversionError(
+                "La conversión DWG superó el tiempo máximo permitido."
+            ) from exc
         except OSError as exc:
             raise DwgConversionError("No se pudo iniciar el conversor DWG configurado.") from exc
 
@@ -106,9 +111,7 @@ def _convert_through_windows_bridge(source: Path, destination: Path) -> None:
     base_url = settings.dwg_converter_bridge_url.rstrip("/")
     token = settings.dwg_converter_bridge_token.strip()
     if not token:
-        raise DwgConversionError(
-            "El puente ODA está configurado sin DWG_CONVERTER_BRIDGE_TOKEN."
-        )
+        raise DwgConversionError("El puente ODA está configurado sin DWG_CONVERTER_BRIDGE_TOKEN.")
 
     try:
         with source.open("rb") as handle:
@@ -126,7 +129,10 @@ def _convert_through_windows_bridge(source: Path, destination: Path) -> None:
     if response.status_code != 200:
         detail = response.text.strip()[:300]
         logger.warning("DWG bridge conversion failed for %s: %s", source.name, detail)
-        raise DwgConversionError("El puente ODA no pudo convertir el plano DWG a DXF.")
+        raise DwgConversionError(
+            "El puente ODA no pudo convertir el plano DWG a DXF. "
+            "Configure DWG_CONVERTER_PATH o revise el puente ODA."
+        )
     if not response.content:
         raise DwgConversionError("El puente ODA devolvió un DXF vacío.")
     destination.write_bytes(response.content)
@@ -139,4 +145,17 @@ def parse_dwg(path: Path, output_dir: Path) -> ExtractedDocument:
     with tempfile.TemporaryDirectory(prefix="docu_intel_dwg_dxf_") as temp_dir:
         converted = Path(temp_dir) / f"{path.stem}.dxf"
         _convert_dwg_to_dxf(path, converted)
-        return parse_dxf(converted, output_dir)
+        extracted = parse_dxf(converted, output_dir)
+        if extracted.cad is not None:
+            extracted.cad = replace(
+                extracted.cad,
+                metadata=replace(
+                    extracted.cad.metadata,
+                    source_format="dwg",
+                    converter="oda_bridge"
+                    if settings.dwg_converter_bridge_url.strip()
+                    else "oda_file_converter",
+                    converter_version=settings.dwg_converter_version,
+                ),
+            )
+        return extracted

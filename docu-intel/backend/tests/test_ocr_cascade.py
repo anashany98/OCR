@@ -207,7 +207,7 @@ def test_cascade_uses_tier4_vlm_when_prior_quality_is_low(tmp_path: Path):
     result = cascade.extract(image)
 
     assert result.engine == "dots_mocr"
-    assert cascade.name == "fake_vlm"
+    assert cascade.name == "dots_mocr"
     assert vlm.calls == 1
 
 

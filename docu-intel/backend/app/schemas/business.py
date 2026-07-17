@@ -73,6 +73,12 @@ class PlanRead(BaseModel):
     scale_confidence: float | None
     unit: str | None
     has_valid_scale: bool
+    source_format: str | None = None
+    cad_unit: str | None = None
+    cad_extents_json: dict[str, Any] | None = None
+    cad_metadata_json: dict[str, Any] | None = None
+    coordinate_transform_json: dict[str, Any] | None = None
+    conversion_provenance_json: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -106,6 +112,31 @@ class PlanDimensionRead(BaseModel):
     bbox_x2: float | None
     bbox_y2: float | None
     confidence: float | None
+    source_method: str | None = None
+    source_entity_handle: str | None = None
+    layer: str | None = None
+    native_value: float | None = None
+    native_unit: str | None = None
+    unit_source: str | None = None
+    coordinates_json: dict[str, Any] | None = None
+    validation_status: str = "auto"
+    needs_review: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class PlanCadEntityRead(BaseModel):
+    id: int
+    plan_id: int
+    entity_handle: str | None
+    entity_type: str
+    layer: str | None
+    layout: str | None
+    geometry_json: dict[str, Any] | None
+    properties_json: dict[str, Any] | None
+    source_method: str
+    confidence: float | None
+    validation_status: str
 
     model_config = {"from_attributes": True}
 

@@ -93,6 +93,54 @@ OCR_TIER4_INVOKED = Counter(
     labelnames=("reason",),
 )
 
+# OvisOCR2 is a separate GPU service.  Its document/page identifiers belong
+# in structured logs, never in Prometheus labels; these bounded labels keep
+# its operational signals safe to scrape at production scale.
+OVISOCR2_REQUESTS = Counter(
+    "docuintel_ovisocr2_requests_total",
+    "OvisOCR2 requests by bounded outcome and eligibility reason.",
+    labelnames=("outcome", "reason"),
+)
+OVISOCR2_DURATION = Histogram(
+    "docuintel_ovisocr2_duration_seconds",
+    "OvisOCR2 end-to-end request duration in seconds.",
+    labelnames=("outcome",),
+    buckets=(0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 180.0),
+)
+OVISOCR2_OUTPUT_FEATURES = Counter(
+    "docuintel_ovisocr2_output_features_total",
+    "OvisOCR2 parsed output features and warnings.",
+    labelnames=("feature",),
+)
+
+# Docling PDF parser. Same bounded label vocabulary as OvisOCR2 so the
+# two external services share a metric style and stay easy to compare.
+DOCLING_REQUESTS = Counter(
+    "docuintel_docling_requests_total",
+    "Docling PDF parser requests by bounded outcome.",
+    labelnames=("outcome", "reason"),
+)
+DOCLING_DURATION = Histogram(
+    "docuintel_docling_duration_seconds",
+    "Docling end-to-end request duration in seconds.",
+    labelnames=("outcome",),
+    buckets=(0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0),
+)
+DOCLING_PAGES = Counter(
+    "docuintel_docling_pages_total",
+    "Docling page split between digital text and scanned image, per request.",
+    labelnames=("kind",),
+)
+# Tracks when the parser router had to fall back from the Docling
+# service to the legacy ``parse_pdf`` so an operator can see the
+# degradation in /metrics. Each ``reason`` value is one of the
+# bounded enum constants the helper accepts.
+DOCLING_FALLBACK = Counter(
+    "docuintel_docling_fallback_total",
+    "Docling-to-legacy fallback events, by reason.",
+    labelnames=("reason",),
+)
+
 # Cascade fallback (O4 — error visibility).
 OCR_CASCADE_FALLBACK = Counter(
     "docuintel_ocr_cascade_fallback_total",

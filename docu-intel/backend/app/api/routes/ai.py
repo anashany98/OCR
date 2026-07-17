@@ -137,6 +137,7 @@ async def ask(
             answer=str(cached.get("answer") or ""),
             confidence=cached.get("confidence"),
             model_name=cached.get("model_name") or "cache",
+            fallback_reason=cached.get("fallback_reason") or "cache",
         )
         db.add(answer_row)
         for src in cached.get("sources") or []:
@@ -262,11 +263,7 @@ async def _build_stream_response(
             # Emit the answer as a single delta so the streaming UI
             # still grows the bubble. The end event is the
             # authoritative source of the full text.
-            yield (
-                b"event: delta\ndata: "
-                + json.dumps({"text": cached_answer}).encode()
-                + b"\n\n"
-            )
+            yield (b"event: delta\ndata: " + json.dumps({"text": cached_answer}).encode() + b"\n\n")
             _record_session_turn(
                 db,
                 user=user,
@@ -316,7 +313,9 @@ async def _build_stream_response(
     tools = scope_outcome.tools
     if mode == "semantic":
         tools = [t for t in tools if t.name != "hybrid_search"] + [
-            ToolCall("hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}})
+            ToolCall(
+                "hybrid_search", {"query": question, "filters": {"limit": 8, "prefer": "semantic"}}
+            )
         ]
     context_items, warnings, resolved_doc_id = collect_context(
         db, tools, question, access_scope=access_scope
@@ -359,7 +358,16 @@ async def _build_stream_response(
     )
     answer_context_available = has_answer_context(context_items)
     structured_decision = None
-    if settings.ai_structured_answer_enabled:
+    gate_blocked_answer: str | None = None
+    fallback_reason: str | None = None
+    if gate_eval.is_blocked:
+        from app.ai.confidence_gates import format_gate_blocked_answer
+
+        gate_blocked_answer = format_gate_blocked_answer(gate_eval, active_context)
+        fallback_reason = "confidence_gate:" + ",".join(
+            getattr(gate_eval, "gates_open", []) or ["unsafe_evidence"]
+        )
+    elif settings.ai_structured_answer_enabled:
         structured_decision = decide_structured_answer(
             question,
             context_items,
@@ -423,6 +431,9 @@ async def _build_stream_response(
             )
 
     async def event_stream() -> AsyncIterator[bytes]:
+        # The stream may refine the reason after an LLM validation failure.
+        # Keep that outcome for persistence outside the generator.
+        nonlocal fallback_reason
         # MiniMax M3 (FASE 4/6) — emit a status event before the
         # ``start`` so the UI can show "retrieving…" while we are
         # still building the snapshot. The event is the same
@@ -435,17 +446,15 @@ async def _build_stream_response(
         )
         # start event: announce the model + that the LLM is running
         start_model = (
-            "backend_structured"
+            "backend_confidence_gate"
+            if gate_blocked_answer is not None
+            else "backend_structured"
             if structured_decision is not None
             else model_route.model
             if answer_context_available and settings.ai_base_url and settings.ai_model
             else "backend_grounded_fallback"
         )
-        yield (
-            b"event: start\ndata: "
-            + json.dumps({"model": start_model}).encode()
-            + b"\n\n"
-        )
+        yield (b"event: start\ndata: " + json.dumps({"model": start_model}).encode() + b"\n\n")
         yield (
             b"event: status\ndata: "
             + json.dumps({"state": "context", "items": len(context_items)}).encode()
@@ -462,15 +471,17 @@ async def _build_stream_response(
         confidence = grounded.confidence
         use_fallback = True
 
-        if structured_decision is not None:
+        if gate_blocked_answer is not None:
+            full_text = gate_blocked_answer
+            model_name = "backend_confidence_gate"
+            confidence = min(confidence, 0.2)
+            use_fallback = False
+            yield (b"event: delta\ndata: " + json.dumps({"text": full_text}).encode() + b"\n\n")
+        elif structured_decision is not None:
             full_text = structured_decision.answer
             model_name = "backend_structured"
             use_fallback = False
-            yield (
-                b"event: delta\ndata: "
-                + json.dumps({"text": full_text}).encode()
-                + b"\n\n"
-            )
+            yield (b"event: delta\ndata: " + json.dumps({"text": full_text}).encode() + b"\n\n")
         elif answer_context_available and settings.ai_base_url and settings.ai_model:
             try:
                 # Real token-by-token streaming: each plain-text piece the
@@ -506,6 +517,8 @@ async def _build_stream_response(
                                 )
                             model_name = model_route.model
                             use_fallback = False
+                        else:
+                            fallback_reason = chunk.reason or "llm_fallback"
                         break
                     if isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == "thinking":
                         # Forward reasoning trace so the frontend can show
@@ -518,11 +531,7 @@ async def _build_stream_response(
                         continue
                     # Plain-text incremental token.
                     full_text += chunk
-                    yield (
-                        b"event: delta\ndata: "
-                        + json.dumps({"text": chunk}).encode()
-                        + b"\n\n"
-                    )
+                    yield (b"event: delta\ndata: " + json.dumps({"text": chunk}).encode() + b"\n\n")
             except Exception as exc:
                 logger.exception("Streaming failed: %s", exc)
 
@@ -533,6 +542,9 @@ async def _build_stream_response(
             # streamed text with this final answer.
             full_text = grounded.answer
             model_name = grounded.model_name
+            fallback_reason = fallback_reason or (
+                "no_answer_context" if not answer_context_available else "llm_fallback"
+            )
 
         # Build the suggested follow-ups (best-effort, fast heuristic).
         from app.ai.agent import _suggest_followups
@@ -556,9 +568,12 @@ async def _build_stream_response(
             resolved_document_json=json.dumps(resolved_json, default=str, ensure_ascii=False)
             if resolved_json
             else None,
-            prompt_version=getattr(__import__(
-                "app.ai.prompts", fromlist=["CHAT_PROMPT_VERSION"]
-            ), "CHAT_PROMPT_VERSION", None),
+            prompt_version=getattr(
+                __import__("app.ai.prompts", fromlist=["CHAT_PROMPT_VERSION"]),
+                "CHAT_PROMPT_VERSION",
+                None,
+            ),
+            fallback_reason=fallback_reason,
         )
         db.add(answer_row)
         db.flush()
@@ -636,6 +651,7 @@ async def _build_stream_response(
                     "answer": full_text,
                     "confidence": confidence,
                     "model_name": model_name,
+                    "fallback_reason": fallback_reason,
                     "sources": sources_payload,
                 },
                 mode=mode,
@@ -657,6 +673,7 @@ async def _build_stream_response(
             "model": model_name,
             "confidence": confidence,
             "fallback": use_fallback,
+            "fallback_reason": fallback_reason,
             "resolved_document": resolved_json,
             "answer_id": answer_row.id,
             "sources": [
@@ -745,8 +762,12 @@ async def ask_stream(
                 yield (
                     b"event: status\ndata: "
                     + json.dumps(
-                        {"state": "cache", "cache_hit": False, "waiting": True,
-                         "elapsed_ms": round((perf_counter() - started) * 1000.0, 1)}
+                        {
+                            "state": "cache",
+                            "cache_hit": False,
+                            "waiting": True,
+                            "elapsed_ms": round((perf_counter() - started) * 1000.0, 1),
+                        }
                     ).encode()
                     + b"\n\n"
                 )

@@ -74,7 +74,9 @@ def cleanup_orphan_communications(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Clean untraceable legacy communications")
-    parser.add_argument("--execute", action="store_true", help="Persist changes; default is dry-run")
+    parser.add_argument(
+        "--execute", action="store_true", help="Persist changes; default is dry-run"
+    )
     parser.add_argument("--limit", type=int, help="Maximum messages to inspect")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)

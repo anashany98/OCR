@@ -68,9 +68,7 @@ def sanitize_source_reference(
             excerpt=excerpt,
         )
 
-    exists = db.scalar(
-        select(DocumentBlock.id).where(DocumentBlock.id == block_id).limit(1)
-    )
+    exists = db.scalar(select(DocumentBlock.id).where(DocumentBlock.id == block_id).limit(1))
     if exists is not None:
         return SanitizedSource(
             document_id=document_id,

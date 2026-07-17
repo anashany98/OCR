@@ -7,9 +7,11 @@ describe("useTableState", () => {
   beforeEach(() => localStorage.clear())
 
   it("persists filters and resets pagination when filters change", () => {
-    const { result } = renderHook(() => useTableState("documents", {
-      pagination: { pageIndex: 3, pageSize: 25 },
-    }))
+    const { result } = renderHook(() =>
+      useTableState("documents", {
+        pagination: { pageIndex: 3, pageSize: 25 },
+      }),
+    )
 
     act(() => result.current.setFilter("status", "processed"))
 

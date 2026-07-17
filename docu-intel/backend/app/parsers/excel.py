@@ -57,7 +57,9 @@ def _frame_to_markdown(frame, sheet_name: str) -> str:
         else:
             # Drop columns whose header ended up empty/duplicated.
             keep = [
-                i for i, c in enumerate(frame.columns) if c and c.strip() and c.strip().lower() != "nan"
+                i
+                for i, c in enumerate(frame.columns)
+                if c and c.strip() and c.strip().lower() != "nan"
             ]
             frame = frame.iloc[:, keep]
             frame.columns = [c.strip() for c in frame.columns]

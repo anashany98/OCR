@@ -63,7 +63,7 @@ export function useOcrReviewPage() {
   // would re-fire the effect and clobber the user's input.
   useEffect(() => {
     setReviewNotes(selected?.review_notes ?? "")
-  }, [selected?.page_id])
+  }, [selected?.page_id, selected?.review_notes])
 
   const reprocess = useMutation({
     mutationFn: (pageId: number) => api.reprocessOcrPage(pageId),

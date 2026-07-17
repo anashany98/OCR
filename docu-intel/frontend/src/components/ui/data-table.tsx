@@ -59,9 +59,7 @@ export function DataTable<TData, TValue>({
   className,
 }: DataTableProps<TData, TValue>) {
   const saved = useTableState(tableId ?? "default")
-  const [sorting, setSorting] = useState<SortingState>(
-    saved.sort ? [saved.sort] : [],
-  )
+  const [sorting, setSorting] = useState<SortingState>(saved.sort ? [saved.sort] : [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
     saved.columnVisibility ?? {},
@@ -147,7 +145,9 @@ export function DataTable<TData, TValue>({
 
   if (loading) {
     return (
-      <div className={cn("rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]", className)}>
+      <div
+        className={cn("rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]", className)}
+      >
         <div className="p-4 space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className={cn("w-full", isCompact ? "h-8" : "h-12")} />
@@ -160,7 +160,9 @@ export function DataTable<TData, TValue>({
   const tableRows = table.getRowModel().rows
 
   return (
-    <div className={cn("rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]", className)}>
+    <div
+      className={cn("rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]", className)}
+    >
       <div className="overflow-x-auto">
         <table className="w-full caption-bottom text-[13px]">
           <thead className="border-b border-[var(--border)]">
@@ -171,10 +173,13 @@ export function DataTable<TData, TValue>({
                     key={header.id}
                     className={cn(
                       "h-10 px-3 text-left font-medium text-[var(--text-muted)]",
-                      header.column.getCanSort() && "cursor-pointer select-none hover:text-[var(--text-primary)]",
+                      header.column.getCanSort() &&
+                        "cursor-pointer select-none hover:text-[var(--text-primary)]",
                       isCompact && "h-8",
                     )}
-                    style={{ width: header.column.getSize() !== 150 ? header.column.getSize() : undefined }}
+                    style={{
+                      width: header.column.getSize() !== 150 ? header.column.getSize() : undefined,
+                    }}
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <div className="flex items-center gap-1">
@@ -214,10 +219,7 @@ export function DataTable<TData, TValue>({
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className={cn(
-                        "px-3 py-2 text-[var(--text-primary)]",
-                        isCompact && "py-1",
-                      )}
+                      className={cn("px-3 py-2 text-[var(--text-primary)]", isCompact && "py-1")}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>

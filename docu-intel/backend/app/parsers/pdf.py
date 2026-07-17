@@ -479,6 +479,8 @@ def _process_scanned_page(
     # FASE 5: set content_route so the cascade can skip unnecessary tiers.
     with contextlib.suppress(Exception):
         ocr_engine.current_content_route = content_route
+    with contextlib.suppress(Exception):
+        ocr_engine.current_page_number = page_index_0 + 1
 
     rect_w, rect_h = rect_wh
     page_number = page_index_0 + 1
@@ -544,6 +546,8 @@ def _process_scanned_page(
         ocr_confidence=ocr_confidence,
         ocr_content_kind=ocr.content_kind or "ocr",
         ocr_engine=page_engine,
+        ocr_engine_version=ocr.engine_version,
+        ocr_warnings=list(ocr.warnings),
         blocks=blocks,
     )
     # Stash the per-page timing so the caller can persist it. The
@@ -752,6 +756,7 @@ def parse_pdf(
     output_dir.mkdir(parents=True, exist_ok=True)
     # Ensure the directory is writable by the current user (fixes root-owned dirs)
     import os as _os
+
     try:
         _os.chmod(str(output_dir), 0o755)
         _os.chmod(str(output_dir.parent), 0o755)

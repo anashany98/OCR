@@ -48,23 +48,27 @@ def detect_sensitive_data(text: str) -> list[dict[str, Any]]:
         (_ACCOUNT_PATTERN, "account_number", 0.6),
     ]:
         for m in pattern.finditer(text):
-            findings.append({
-                "type": label,
-                "value": m.group(),
-                "start": m.start(),
-                "end": m.end(),
-                "confidence": conf,
-            })
+            findings.append(
+                {
+                    "type": label,
+                    "value": m.group(),
+                    "start": m.start(),
+                    "end": m.end(),
+                    "confidence": conf,
+                }
+            )
 
     # Amount patterns
     for m in _AMOUNT_PATTERN.finditer(text):
-        findings.append({
-            "type": "amount",
-            "value": m.group(),
-            "start": m.start(),
-            "end": m.end(),
-            "confidence": 0.85,
-        })
+        findings.append(
+            {
+                "type": "amount",
+                "value": m.group(),
+                "start": m.start(),
+                "end": m.end(),
+                "confidence": 0.85,
+            }
+        )
 
     findings.sort(key=lambda x: x["start"])
     return findings
@@ -91,7 +95,7 @@ def redact_text(text: str, *, redact_amounts: bool = True, redact_pii: bool = Tr
         if ftype in ("iban", "nif_cif", "phone", "email", "account_number") and not redact_pii:
             continue
         replacement = f"[{ftype.upper()}_REDACTED]"
-        result = result[:f["start"]] + replacement + result[f["end"]:]
+        result = result[: f["start"]] + replacement + result[f["end"] :]
 
     return result
 
@@ -141,6 +145,8 @@ def redact_for_scope(
         for key in list(result.keys()):
             if isinstance(result[key], str):
                 result[key] = redact_text(result[key], redact_amounts=True, redact_pii=False)
-            elif isinstance(result[key], (int, float)) and key.endswith(("_amount", "_price", "_total", "_cost")):
+            elif isinstance(result[key], (int, float)) and key.endswith(
+                ("_amount", "_price", "_total", "_cost")
+            ):
                 result[key] = None
     return result

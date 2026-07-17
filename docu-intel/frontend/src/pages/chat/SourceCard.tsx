@@ -1,8 +1,7 @@
 import { useState } from "react"
-import { FileText, ImageIcon, ExternalLink } from "lucide-react"
+import { FileText, ExternalLink } from "lucide-react"
 
 import { thumbnailUrl } from "@/api/core"
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 interface SourceCardProps {
@@ -46,7 +45,9 @@ export function SourceCard({
   className,
 }: SourceCardProps) {
   const [imgError, setImgError] = useState(false)
-  const typeClass = documentType ? TYPE_COLORS[documentType] ?? "bg-[var(--bg-surface-2)] text-[var(--text-muted)]" : ""
+  const typeClass = documentType
+    ? (TYPE_COLORS[documentType] ?? "bg-[var(--bg-surface-2)] text-[var(--text-muted)]")
+    : ""
 
   return (
     <a
@@ -91,10 +92,16 @@ export function SourceCard({
             <span className="text-[9px] text-[var(--text-muted)]">Pág. {pageNumber}</span>
           )}
           {confidence != null && (
-            <span className={cn(
-              "text-[9px] font-medium",
-              confidence >= 0.85 ? "text-[var(--success)]" : confidence >= 0.7 ? "text-[var(--warning)]" : "text-[var(--danger)]",
-            )}>
+            <span
+              className={cn(
+                "text-[9px] font-medium",
+                confidence >= 0.85
+                  ? "text-[var(--success)]"
+                  : confidence >= 0.7
+                    ? "text-[var(--warning)]"
+                    : "text-[var(--danger)]",
+              )}
+            >
               {Math.round(confidence * 100)}%
             </span>
           )}

@@ -54,6 +54,7 @@ Invalidation
 * Any change to ``prompt_version`` or ``model`` is a key change,
   not an invalidation — old entries naturally expire.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -114,7 +115,7 @@ def _cache_key(
         knowledge_version=knowledge_version,
     )
     normalized_question = question.strip().lower()
-    payload = f"{isolation}\u0001q={normalized_question}".encode("utf-8")
+    payload = f"{isolation}\u0001q={normalized_question}".encode()
     digest = hashlib.sha256(payload).hexdigest()
     return f"{AI_CACHE_PREFIX}{user_id}:{digest}"
 

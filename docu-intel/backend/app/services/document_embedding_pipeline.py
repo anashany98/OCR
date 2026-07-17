@@ -126,9 +126,7 @@ def compute_document_embedding(
     if not _should_create_embeddings():
         return (None, None, False)
 
-    doc_text = _truncate_to_token_budget(
-        "\n".join(parts), settings.document_embedding_max_tokens
-    )
+    doc_text = _truncate_to_token_budget("\n".join(parts), settings.document_embedding_max_tokens)
     if not doc_text.strip():
         return (None, "empty", False)
 
@@ -412,8 +410,7 @@ def reembed_document(db: Session, document_id: int) -> dict:
     # retrieval.
     has_chunks = bool(new_chunks)
     chunks_ready = has_chunks and all(
-        chunk.embedding is not None and not chunk.needs_reembedding
-        for chunk in new_chunks
+        chunk.embedding is not None and not chunk.needs_reembedding for chunk in new_chunks
     )
     document.needs_reembedding = has_chunks and not chunks_ready
     document.semantic_search_ready = chunks_ready

@@ -15,9 +15,27 @@ describe("usePlanOverlays", () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
       const body = url.endsWith("/overlays")
-        ? [{ region_type: "cajetin", bbox: [1, 2, 3, 4], label: "A-01", confidence: 0.9, page_number: 1 }]
+        ? [
+            {
+              region_type: "cajetin",
+              bbox: [1, 2, 3, 4],
+              label: "A-01",
+              confidence: 0.9,
+              page_number: 1,
+            },
+          ]
         : url.endsWith("/chat-facts")
-          ? [{ fact_type: "room", subject: "Sala", value: "101", bbox: null, page_number: 1, source_document: "a.pdf", confidence: 0.8 }]
+          ? [
+              {
+                fact_type: "room",
+                subject: "Sala",
+                value: "101",
+                bbox: null,
+                page_number: 1,
+                source_document: "a.pdf",
+                confidence: 0.8,
+              },
+            ]
           : []
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
     })

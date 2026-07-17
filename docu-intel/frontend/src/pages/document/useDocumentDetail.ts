@@ -9,6 +9,9 @@ import type {
   DocumentTimelineEvent,
 } from "@/types/api"
 
+const EMPTY_DOCUMENT_PAGES: DocumentPage[] = []
+const EMPTY_DOCUMENT_ENTITIES: DocumentEntity[] = []
+
 // ---------------------------------------------------------------------------
 // F8b-cont2 - document detail hook
 // ---------------------------------------------------------------------------
@@ -82,11 +85,22 @@ export function shortHash(hash: string | null | undefined): string {
 export function hasThumbnailExt(extension: string | null | undefined): boolean {
   if (!extension) return false
   return [
-    ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
-    ".msg", ".eml", ".doc", ".docx", ".odt", ".rtf", ".dxf", ".dwg",
-  ].includes(
-    extension.toLowerCase(),
-  )
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".tif",
+    ".tiff",
+    ".bmp",
+    ".webp",
+    ".msg",
+    ".eml",
+    ".doc",
+    ".docx",
+    ".odt",
+    ".rtf",
+    ".dxf",
+    ".dwg",
+  ].includes(extension.toLowerCase())
 }
 
 export function useDocumentDetail(documentId: number) {
@@ -156,8 +170,8 @@ export function useDocumentDetail(documentId: number) {
   })
 
   const doc = docQ.data
-  const pages = pagesQ.data ?? []
-  const entities = entitiesQ.data ?? []
+  const pages = pagesQ.data ?? EMPTY_DOCUMENT_PAGES
+  const entities = entitiesQ.data ?? EMPTY_DOCUMENT_ENTITIES
 
   const selectedPage = useMemo<DocumentPage | undefined>(() => {
     if (!pages.length) return undefined

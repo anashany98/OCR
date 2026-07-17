@@ -20,6 +20,7 @@ The tasks delegate to the same :func:`_maybe_run_hyperextract`
 helper so the idempotence contract (fingerprint, success-only
 reuse, no-reuse-on-failure) is preserved.
 """
+
 from __future__ import annotations
 
 import logging
@@ -75,7 +76,7 @@ def enqueue_hyperextract_task(self, document_id: int) -> dict:
             self.request.retries,
             exc,
         )
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
     finally:
         db.close()
 
@@ -87,9 +88,7 @@ def enqueue_hyperextract_task(self, document_id: int) -> dict:
     default_retry_delay=120,
     acks_late=True,
 )
-def replay_failed_extractions_task(
-    self, *, max_age_minutes: int = 60, limit: int = 50
-) -> dict:
+def replay_failed_extractions_task(self, *, max_age_minutes: int = 60, limit: int = 50) -> dict:
     """Replay recent failed extractions on a low-priority schedule.
 
     The task reads the last ``max_age_minutes`` of
@@ -127,6 +126,6 @@ def replay_failed_extractions_task(
         return {"replayed": len(rows)}
     except Exception as exc:
         logger.warning("replay_failed_extractions_failed error=%s", exc)
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
     finally:
         db.close()

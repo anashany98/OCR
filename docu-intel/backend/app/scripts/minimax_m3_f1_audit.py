@@ -9,24 +9,27 @@ expected document_type in the manifest.
 The script exits non-zero if the macro F1 is below the plan's
 0.90 threshold so it can be wired into CI.
 """
+
 from __future__ import annotations
 
 import json
-import sys
-from collections import Counter
 from pathlib import Path
 
-from app.services.classification import classify_document
 from app.services.classification_v2 import classify_multidim
 
-
-MANIFEST_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "minimax_m3_eval" / "manifest.sanitized.json"
+MANIFEST_PATH = (
+    Path(__file__).parent.parent
+    / "tests"
+    / "fixtures"
+    / "minimax_m3_eval"
+    / "manifest.sanitized.json"
+)
 CORPUS_PATH = Path(r"D:\TEST2025\2025\BON PLA SOCIEDAD ANONIMA")
 
 
 def _expected_mapping() -> dict[str, dict]:
     """Map synthetic_id -> expected document_type from the manifest."""
-    with open(MANIFEST_PATH, "r", encoding="utf-8") as fh:
+    with open(MANIFEST_PATH, encoding="utf-8") as fh:
         data = json.load(fh)
     return {entry["synthetic_id"]: entry for entry in data["documents"]}
 
@@ -41,7 +44,7 @@ def _resolve_real_paths() -> dict[str, str]:
     built in the same order as ``ls`` on the corpus root).
     """
     real_files = sorted(p.name for p in CORPUS_PATH.rglob("*") if p.is_file())
-    with open(MANIFEST_PATH, "r", encoding="utf-8") as fh:
+    with open(MANIFEST_PATH, encoding="utf-8") as fh:
         data = json.load(fh)
     return {
         entry["synthetic_id"]: real_files[i]
@@ -132,8 +135,10 @@ def main() -> int:
 
     # Compute macro F1.
     f1s = []
-    for label, stats in per_type.items():
-        precision = stats["tp"] / (stats["tp"] + stats["fp"]) if (stats["tp"] + stats["fp"]) else 0.0
+    for _label, stats in per_type.items():
+        precision = (
+            stats["tp"] / (stats["tp"] + stats["fp"]) if (stats["tp"] + stats["fp"]) else 0.0
+        )
         recall = stats["tp"] / (stats["tp"] + stats["fn"]) if (stats["tp"] + stats["fn"]) else 0.0
         f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
         f1s.append(f1)
@@ -144,7 +149,9 @@ def main() -> int:
     print(f"Correct: {correct}/{total}  ({correct / total * 100:.1f}%)")
     print(f"Macro F1: {macro_f1:.3f}")
     print()
-    print(f"{'type':<20s} {'support':>7s} {'tp':>3s} {'fp':>3s} {'fn':>3s} {'P':>6s} {'R':>6s} {'F1':>6s}")
+    print(
+        f"{'type':<20s} {'support':>7s} {'tp':>3s} {'fp':>3s} {'fn':>3s} {'P':>6s} {'R':>6s} {'F1':>6s}"
+    )
     print("-" * 70)
     for label, stats in sorted(per_type.items(), key=lambda kv: -kv[1]["support"]):
         print(
@@ -155,7 +162,9 @@ def main() -> int:
         print()
         print("Confusion cases:")
         for c in confusion:
-            print(f"  {c['id']:8s} {c['filename'][:40]:40s} expected={c['expected']:18s} predicted={c['predicted']}")
+            print(
+                f"  {c['id']:8s} {c['filename'][:40]:40s} expected={c['expected']:18s} predicted={c['predicted']}"
+            )
     if macro_f1 < 0.90:
         print(f"\nFAIL: macro F1 {macro_f1:.3f} is below the 0.90 threshold.")
         return 1

@@ -71,8 +71,12 @@ def repair_contextual_classifications(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Repair classification of hierarchical upload images")
-    parser.add_argument("--execute", action="store_true", help="Persist classifications; default is dry-run")
+    parser = argparse.ArgumentParser(
+        description="Repair classification of hierarchical upload images"
+    )
+    parser.add_argument(
+        "--execute", action="store_true", help="Persist classifications; default is dry-run"
+    )
     parser.add_argument("--limit", type=int, help="Maximum documents to inspect")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)

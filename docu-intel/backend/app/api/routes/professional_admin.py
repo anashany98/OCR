@@ -63,7 +63,9 @@ def list_work_items(
         doc_ids = [item.document_id for item in items if item.document_id is not None]
         if doc_ids:
             allowed = filter_document_ids_for_scope(db, doc_ids, scope)
-            items = [item for item in items if item.document_id in allowed or item.document_id is None]
+            items = [
+                item for item in items if item.document_id in allowed or item.document_id is None
+            ]
         return items
     return list(db.scalars(stmt.limit(200)).all())
 

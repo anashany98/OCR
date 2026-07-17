@@ -17,7 +17,6 @@ import { composeQuestion } from "./composeQuestion"
 
 const CONVERSATIONS_KEY = "docu-intel:chat:conversations"
 const ACTIVE_CONV_KEY = "docu-intel:chat:active-conv"
-const SESSION_KEY = "docu-intel:chat:session-id"
 
 export type ChatMessage = {
   id: string
@@ -38,6 +37,8 @@ export type Conversation = {
   pinned?: boolean
 }
 
+const EMPTY_MESSAGES: ChatMessage[] = []
+
 // F8-05: metadata-only type for localStorage persistence
 type ConversationMetadata = Omit<Conversation, "messages"> & { messageCount: number }
 
@@ -45,15 +46,6 @@ function generateId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : `conv-${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-function getActiveSessionId(): string {
-  let value = localStorage.getItem(SESSION_KEY)
-  if (!value) {
-    value = generateId()
-    localStorage.setItem(SESSION_KEY, value)
-  }
-  return value
 }
 
 function loadConversations(): Conversation[] {
@@ -67,7 +59,9 @@ function loadConversations(): Conversation[] {
         return parsed.map((conversation) => ({ ...conversation, messages: [] }))
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return []
 }
 
@@ -79,7 +73,9 @@ function saveConversations(convs: Conversation[]) {
       messageCount: messages.length,
     }))
     localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(metadata))
-  } catch { /* quota / private mode */ }
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 function extractTitle(messages: ChatMessage[]): string {
@@ -147,31 +143,36 @@ export function useChat() {
   useEffect(() => {
     if (!hydrated || !activeConvId) return
     let cancelled = false
-    api.chatSessionMessages(activeConvId)
+    api
+      .chatSessionMessages(activeConvId)
       .then((serverMessages) => {
         if (cancelled) return
-        setConversations((prev) => prev.map((conversation) => {
-          if (conversation.id !== activeConvId) return conversation
-          return {
-            ...conversation,
-            messages: serverMessages.map((message) => ({
-              id: message.id,
-              role: message.role,
-              content: message.content,
-              createdAt: message.created_at,
-            })),
-          }
-        }))
+        setConversations((prev) =>
+          prev.map((conversation) => {
+            if (conversation.id !== activeConvId) return conversation
+            return {
+              ...conversation,
+              messages: serverMessages.map((message) => ({
+                id: message.id,
+                role: message.role,
+                content: message.content,
+                createdAt: message.created_at,
+              })),
+            }
+          }),
+        )
       })
       // A browser can hold a locally-created conversation before its first
       // request. A 404 is expected in that state and should leave it empty.
       .catch(() => undefined)
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [activeConvId, hydrated])
 
   // Active conversation.
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null
-  const messages = activeConv?.messages ?? []
+  const messages = activeConv?.messages ?? EMPTY_MESSAGES
 
   // Auto-scroll.
   useLayoutEffect(() => {
@@ -246,9 +247,7 @@ export function useChat() {
 
   // Pin/unpin conversation.
   const togglePin = useCallback((convId: string) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === convId ? { ...c, pinned: !c.pinned } : c)),
-    )
+    setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, pinned: !c.pinned } : c)))
   }, [])
 
   // Filtered conversations for search.
@@ -256,9 +255,7 @@ export function useChat() {
     ? conversations.filter(
         (c) =>
           c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.messages.some((m) =>
-            m.content.toLowerCase().includes(searchQuery.toLowerCase()),
-          ),
+          c.messages.some((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase())),
       )
     : conversations
 
@@ -281,7 +278,9 @@ export function useChat() {
         const id = generateId()
         const conv: Conversation = {
           id,
-          title: extractTitle([{ id: "tmp", role: "user", content: trimmed, createdAt: new Date().toISOString() }]),
+          title: extractTitle([
+            { id: "tmp", role: "user", content: trimmed, createdAt: new Date().toISOString() },
+          ]),
           messages: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -423,12 +422,24 @@ export function useChat() {
 
       history.refetch()
       if (usedFallback) {
-        notify.info("Respuesta fundamentada", "Se ha usado el contexto recuperado de tus documentos.")
+        notify.info(
+          "Respuesta fundamentada",
+          "Se ha usado el contexto recuperado de tus documentos.",
+        )
       } else if (confidence != null && confidence < 0.5) {
         notify.warning("Respuesta con baja confianza", "Verifica las fuentes.")
       }
     },
-    [activeConvId, conversations, history, isStreaming, mode, supplier, documentType, updateConvMessages],
+    [
+      activeConvId,
+      conversations,
+      history,
+      isStreaming,
+      mode,
+      supplier,
+      documentType,
+      updateConvMessages,
+    ],
   )
 
   const stop = useCallback(() => {
@@ -476,7 +487,11 @@ export function useChat() {
 
   const exportConversation = useCallback(() => {
     if (!activeConv) return
-    const lines: string[] = [`# ${activeConv.title}`, `_${new Date(activeConv.createdAt).toLocaleString()}_`, ""]
+    const lines: string[] = [
+      `# ${activeConv.title}`,
+      `_${new Date(activeConv.createdAt).toLocaleString()}_`,
+      "",
+    ]
     for (const m of activeConv.messages) {
       if (m.role === "user") {
         lines.push(`**Tú:** ${m.content}`, "")

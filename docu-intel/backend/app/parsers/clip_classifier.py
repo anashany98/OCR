@@ -79,8 +79,9 @@ def classify_image(image_path: Path) -> dict:
         # Feature 3: Text-like regions
         # Documents have many small, regular text blocks
         # Use adaptive threshold to find text regions
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY_INV, 11, 2)
+        thresh = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+        )
         # Dilate to connect text characters into blocks
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
         dilated = cv2.dilate(thresh, kernel, iterations=1)
@@ -102,7 +103,9 @@ def classify_image(image_path: Path) -> dict:
         # Feature 4: Color channels
         # Photos have balanced color channels, documents are mostly gray/white
         b, g, r = cv2.split(image)
-        color_balance = float(min(b.std(), g.std(), r.std())) / max(float(max(b.std(), g.std(), r.std())), 1)
+        color_balance = float(min(b.std(), g.std(), r.std())) / max(
+            float(max(b.std(), g.std(), r.std())), 1
+        )
 
         # Feature 5: Contour regularity
         # Documents have more rectangular contours, photos have irregular ones
@@ -176,11 +179,7 @@ def classify_image(image_path: Path) -> dict:
         if best_score < 0.3:
             return {"category": "unknown", "confidence": best_score, "scores": scores}
 
-        return {
-            "category": best_category,
-            "confidence": best_score,
-            "scores": scores
-        }
+        return {"category": best_category, "confidence": best_score, "scores": scores}
 
     except Exception as exc:
         logger.warning("Image classification failed for %s: %s", image_path.name, exc)

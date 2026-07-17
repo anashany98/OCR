@@ -8,11 +8,12 @@ next to a measurement sketch could be both "muestra_material" and
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ImageLabel(str, Enum):
+class ImageLabel(StrEnum):
     """Possible labels for an image in the corpus taxonomy."""
+
     FOTO_PRODUCTO = "foto_producto"
     FOTO_INSTALACION = "foto_instalacion"
     MUESTRA_MATERIAL = "muestra_material"
@@ -30,44 +31,106 @@ class ImageLabel(str, Enum):
 # Keywords that hint at each label (used in filename/folder heuristics)
 LABEL_KEYWORDS: dict[ImageLabel, list[str]] = {
     ImageLabel.FOTO_PRODUCTO: [
-        "producto", "mueble", "silla", "sofa", "mesa", "lampara", "cama",
-        "armario", "estanteria", "muebles", "catalogo", "collection",
+        "producto",
+        "mueble",
+        "silla",
+        "sofa",
+        "mesa",
+        "lampara",
+        "cama",
+        "armario",
+        "estanteria",
+        "muebles",
+        "catalogo",
+        "collection",
     ],
     ImageLabel.FOTO_INSTALACION: [
-        "instalacion", "instalado", "resultado", "final", "terminado",
-        "colocado", "ambiente", "room", "hotel",
+        "instalacion",
+        "instalado",
+        "resultado",
+        "final",
+        "terminado",
+        "colocado",
+        "ambiente",
+        "room",
+        "hotel",
     ],
     ImageLabel.MUESTRA_MATERIAL: [
-        "tejido", "tela", "muestra", "fabric", "material", "color",
-        "textura", "tapiceria", "upholstery", "lino", "algodon",
+        "tejido",
+        "tela",
+        "muestra",
+        "fabric",
+        "material",
+        "color",
+        "textura",
+        "tapiceria",
+        "upholstery",
+        "lino",
+        "algodon",
     ],
     ImageLabel.CROQUIS_MEDICION: [
-        "croquis", "medicion", "medida", "dimension", "cota", "plano_mano",
-        "boceto", "sketch", "dibujo_tecnico",
+        "croquis",
+        "medicion",
+        "medida",
+        "dimension",
+        "cota",
+        "plano_mano",
+        "boceto",
+        "sketch",
+        "dibujo_tecnico",
     ],
     ImageLabel.PLANO_TECNICO: [
-        "plano", "blueprint", "layout", "distribucion", " planta",
-        "electricidad", "fontaneria", "structural",
+        "plano",
+        "blueprint",
+        "layout",
+        "distribucion",
+        " planta",
+        "electricidad",
+        "fontaneria",
+        "structural",
     ],
     ImageLabel.DOCUMENTO_FOTOGRAFIADO: [
-        "documento", "escaneado", "scan", "fotografiado", "photo_doc",
+        "documento",
+        "escaneado",
+        "scan",
+        "fotografiado",
+        "photo_doc",
     ],
     ImageLabel.COMPROBANTE_PAGO: [
-        "pago", "recibo", "justificante", "transferencia", "factura_foto",
-        "ticket", "receipt",
+        "pago",
+        "recibo",
+        "justificante",
+        "transferencia",
+        "factura_foto",
+        "ticket",
+        "receipt",
     ],
     ImageLabel.INCIDENCIA: [
-        "incidencia", "dano", "problema", "averia", "rotura", "fallo",
+        "incidencia",
+        "dano",
+        "problema",
+        "averia",
+        "rotura",
+        "fallo",
         "reclamacion",
     ],
     ImageLabel.RENDER: [
-        "render", "3d", "visualizacion", "visualization", "cgi",
+        "render",
+        "3d",
+        "visualizacion",
+        "visualization",
+        "cgi",
     ],
     ImageLabel.CAPTURA_PANTALLA: [
-        "screenshot", "captura", "screen",
+        "screenshot",
+        "captura",
+        "screen",
     ],
     ImageLabel.LOGO_GRAFICO: [
-        "logo", "icono", "brand", "marca_grafica",
+        "logo",
+        "icono",
+        "brand",
+        "marca_grafica",
     ],
 }
 
@@ -85,13 +148,16 @@ FOLDER_LABEL_MAP: dict[str, ImageLabel] = {
     "croquis": ImageLabel.CROQUIS_MEDICION,
 }
 
+
 # Processing strategy per label
-class ProcessingStrategy(str, Enum):
+class ProcessingStrategy(StrEnum):
     """How to process an image based on its primary label."""
-    OCR_FIRST = "ocr_first"           # Document, payment, screenshot
-    VISION_ONLY = "vision_only"       # Product, installation, material
+
+    OCR_FIRST = "ocr_first"  # Document, payment, screenshot
+    VISION_ONLY = "vision_only"  # Product, installation, material
     OCR_PLUS_VISION = "ocr_plus_vision"  # Sketch, plan, photo document
     VISION_PLUS_LIGHT_OCR = "vision_plus_light_ocr"  # Fabric, material
+
 
 PROCESSING_STRATEGY: dict[ImageLabel, ProcessingStrategy] = {
     ImageLabel.FOTO_PRODUCTO: ProcessingStrategy.VISION_ONLY,
@@ -140,7 +206,9 @@ def get_processing_strategy(labels: list[ImageLabel]) -> ProcessingStrategy:
     if not labels:
         return ProcessingStrategy.OCR_PLUS_VISION
     # Priority: OCR_FIRST > OCR_PLUS_VISION > VISION_PLUS_LIGHT_OCR > VISION_ONLY
-    strategies = [PROCESSING_STRATEGY.get(l, ProcessingStrategy.OCR_PLUS_VISION) for l in labels]
+    strategies = [
+        PROCESSING_STRATEGY.get(label, ProcessingStrategy.OCR_PLUS_VISION) for label in labels
+    ]
     if ProcessingStrategy.OCR_FIRST in strategies:
         return ProcessingStrategy.OCR_FIRST
     if ProcessingStrategy.OCR_PLUS_VISION in strategies:

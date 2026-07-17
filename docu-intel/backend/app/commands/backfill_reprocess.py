@@ -26,11 +26,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
-import time
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database.session import get_engine
@@ -92,18 +90,11 @@ def _get_documents_by_reason(
         )
         docs = list(db.execute(stmt).scalars().all())
         # Filter to those with page_without_text flag
-        return [
-            d for d in docs
-            if "page_without_text" in (d.quality_flags_json or [])
-        ]
+        return [d for d in docs if "page_without_text" in (d.quality_flags_json or [])]
 
     elif reason == "ocr_engine_empty":
         # Documents with pages using empty OCR engine
-        subq = (
-            select(DocumentPage.document_id)
-            .where(DocumentPage.ocr_engine == "empty")
-            .distinct()
-        )
+        subq = select(DocumentPage.document_id).where(DocumentPage.ocr_engine == "empty").distinct()
         stmt = (
             select(Document)
             .where(Document.deleted_at.is_(None))
@@ -121,10 +112,7 @@ def _get_documents_by_reason(
             .limit(limit)
         )
         docs = list(db.execute(stmt).scalars().all())
-        return [
-            d for d in docs
-            if "page_failed" in (d.quality_flags_json or [])
-        ]
+        return [d for d in docs if "page_failed" in (d.quality_flags_json or [])]
 
     elif reason == "quality_recalculate":
         # Documents with text that need quality recalculation
@@ -145,12 +133,16 @@ def _get_documents_by_reason(
             select(Document)
             .where(Document.deleted_at.is_(None))
             .where(Document.status == "processed")
-            .where(Document.quality_status.in_([
-                "needs_review",
-                "processed_low_quality",
-                "processed_missing_fields",
-                "needs_human_review",
-            ]))
+            .where(
+                Document.quality_status.in_(
+                    [
+                        "needs_review",
+                        "processed_low_quality",
+                        "processed_missing_fields",
+                        "needs_human_review",
+                    ]
+                )
+            )
             .limit(limit)
         )
         return list(db.execute(stmt).scalars().all())
@@ -163,8 +155,6 @@ def _reprocess_document(db: Session, doc: Document, *, dry_run: bool = False) ->
     from app.services.quality import refresh_quality_from_existing_pages
 
     old_status = doc.quality_status
-    old_flags = doc.quality_flags_json or []
-
     if dry_run:
         return f"dry_run: would reprocess {doc.id} ({old_status})"
 
@@ -176,7 +166,10 @@ def _reprocess_document(db: Session, doc: Document, *, dry_run: bool = False) ->
         if result.status != old_status:
             logger.info(
                 "Doc %d: quality %s -> %s (flags: %s)",
-                doc.id, old_status, result.status, result.flags,
+                doc.id,
+                old_status,
+                result.status,
+                result.flags,
             )
 
         return result.status
@@ -199,6 +192,7 @@ def run_backfill(
     engine = get_engine()
 
     from sqlalchemy.orm import sessionmaker
+
     SessionLocal = sessionmaker(bind=engine)
 
     with SessionLocal() as db:
@@ -219,7 +213,9 @@ def run_backfill(
 
         logger.info(
             "CR12 backfill: found %d documents for reason '%s' (dry_run=%s)",
-            len(docs), reason, dry_run,
+            len(docs),
+            reason,
+            dry_run,
         )
 
         for doc in docs:
@@ -248,9 +244,7 @@ def run_backfill(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="CR12: Safe backfill and reprocessing pipeline"
-    )
+    parser = argparse.ArgumentParser(description="CR12: Safe backfill and reprocessing pipeline")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -264,7 +258,13 @@ def main():
     )
     parser.add_argument(
         "--reason",
-        choices=["page_without_text", "ocr_engine_empty", "page_failed", "quality_recalculate", "all"],
+        choices=[
+            "page_without_text",
+            "ocr_engine_empty",
+            "page_failed",
+            "quality_recalculate",
+            "all",
+        ],
         default="all",
         help="Which documents to reprocess",
     )

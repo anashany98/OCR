@@ -83,7 +83,9 @@ export function DocumentRow({ document, selected, onToggle, onReprocess }: Docum
           <StatusBadge status={document.quality_status ?? "-"} />
         </div>
       </TableCell>
-      <TableCell className="py-3 text-xs text-[var(--text-muted)]">{document.document_type}</TableCell>
+      <TableCell className="py-3 text-xs text-[var(--text-muted)]">
+        {document.document_type}
+      </TableCell>
       <TableCell className="py-3 text-right tabular-nums">
         <span className="inline-flex items-center gap-1.5">
           <span className={cn("h-1.5 w-1.5 rounded-full", confidenceTone)} aria-hidden="true" />

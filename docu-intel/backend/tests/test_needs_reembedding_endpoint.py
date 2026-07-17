@@ -13,6 +13,12 @@ from unittest.mock import patch
 import pytest
 
 
+def _embedding_dimension() -> int:
+    from app.core.config import settings
+
+    return int(settings.embedding_dimensions)
+
+
 def _make_document_with_chunks(
     db,
     *,
@@ -46,7 +52,7 @@ def _make_document_with_chunks(
                 document_id=document.id,
                 page_number=1,
                 chunk_text=f"chunk {i}",
-                embedding=None if i < n_needing else [0.0] * 1024,
+                embedding=None if i < n_needing else [0.0] * _embedding_dimension(),
                 needs_reembedding=(i < n_needing),
                 token_count=2,
             )

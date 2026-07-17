@@ -67,9 +67,7 @@ class Document(Base):
     # AND ``extraction_fingerprint_at`` is recent enough, the
     # extraction pipeline can skip the provider call.
     extraction_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
-    extraction_fingerprint_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
+    extraction_fingerprint_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # MiniMax M3 (FASE 3) — the route the last extraction took
     # (text LLM vs VLM). Computed from source_format and OCR
     # confidence and persisted for the admin panel.
@@ -92,13 +90,19 @@ class Document(Base):
     needs_reembedding: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     # P0.3 — Pipeline stage tracking
     pipeline_stage: Mapped[str | None] = mapped_column(
-        String(40), nullable=True, index=True,
+        String(40),
+        nullable=True,
+        index=True,
         comment="Current pipeline stage: probing|text_processing|text_ready|metadata_ready|embedding_pending|searchable|fully_processed|needs_review|failed",
     )
     pages_completed: Mapped[int | None] = mapped_column(Integer, comment="Pages processed so far")
     pages_total: Mapped[int | None] = mapped_column(Integer, comment="Total pages in document")
-    text_search_ready: Mapped[bool] = mapped_column(default=False, nullable=False, comment="Text available for lexical search")
-    semantic_search_ready: Mapped[bool] = mapped_column(default=False, nullable=False, comment="Embeddings available for semantic search")
+    text_search_ready: Mapped[bool] = mapped_column(
+        default=False, nullable=False, comment="Text available for lexical search"
+    )
+    semantic_search_ready: Mapped[bool] = mapped_column(
+        default=False, nullable=False, comment="Embeddings available for semantic search"
+    )
     page_count: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(Text)
     duplicate_of_document_id: Mapped[int | None] = mapped_column(
@@ -260,12 +264,28 @@ class DocumentBlock(Base):
     document = relationship("Document", back_populates="blocks")
     page = relationship("DocumentPage", back_populates="blocks")
 
-    _ALLOWED_BLOCK_TYPES = frozenset({
-        "text", "table", "figure", "header", "footer", "list",
-        "doc_title", "reference", "seal", "table_title", "figure_title",
-        "table_footnote", "text_region", "formula", "chart", "equation",
-        "code", "caption",
-    })
+    _ALLOWED_BLOCK_TYPES = frozenset(
+        {
+            "text",
+            "table",
+            "figure",
+            "header",
+            "footer",
+            "list",
+            "doc_title",
+            "reference",
+            "seal",
+            "table_title",
+            "figure_title",
+            "table_footnote",
+            "text_region",
+            "formula",
+            "chart",
+            "equation",
+            "code",
+            "caption",
+        }
+    )
 
     @validates("block_type")
     def _sanitize_block_type(self, key, value):
@@ -389,14 +409,19 @@ class ImageAnalysis(Base):
     Stores multi-label classification, visible text, objects, materials,
     measurements, and per-fact confidence. One row per document.
     """
+
     __tablename__ = "image_analyses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     document_id: Mapped[int] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), unique=True, index=True, nullable=False,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
     )
     occurrence_id: Mapped[int | None] = mapped_column(
-        ForeignKey("document_occurrences.id", ondelete="SET NULL"), index=True,
+        ForeignKey("document_occurrences.id", ondelete="SET NULL"),
+        index=True,
     )
     # Multi-label taxonomy
     labels_json: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
@@ -422,11 +447,15 @@ class ImageAnalysis(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
     document = relationship("Document", back_populates="image_analysis")

@@ -74,6 +74,7 @@ from .validation import (
     looks_like_followup,
     question_is_spanish,
     response_covers_retrieved_sources,
+    response_fabricates_content_not_in_sources,
     response_fabricates_documents,
     response_looks_spanish,
     suggest_followups,
@@ -351,8 +352,21 @@ async def answer_question(
         # honest model_name ("backend_grounded_fallback") instead of crediting
         # the LLM for content it did not produce.
         if ai_answer and ai_answer != grounded.answer:
-            answer_text = ai_answer
-            model_name = model_route.model or grounded.model_name
+            # Anti-hallucination: reject the LLM output when it attributes
+            # invented content to a real document (Q13 in the eval: "el
+            # proyecto de piscina costó 2.385 € según OC_0114" - the PDF
+            # exists, the claim does not). The function is cheap (token
+            # overlap) and pure so it runs on every AI turn.
+            if response_fabricates_content_not_in_sources(ai_answer, context_items):
+                logger.warning(
+                    "LLM response rejected: fabricates content not in cited sources"
+                )
+                fallback_reason = "validation_fabricated_content"
+                answer_text = grounded.answer
+                model_name = grounded.model_name
+            else:
+                answer_text = ai_answer
+                model_name = model_route.model or grounded.model_name
         else:
             fallback_reason = llm_fallback_reason[0] if llm_fallback_reason else "llm_fallback"
     elif not has_answer_context(context_items):

@@ -534,7 +534,9 @@ def test_admin_needs_reembedding_filters_by_scope():
                         document_id=document.id,
                         page_number=1,
                         chunk_text=f"chunk {i}",
-                        embedding=None if i < n_needing else [0.0] * 1024,
+                        embedding=None
+                        if i < n_needing
+                        else [0.0] * int(settings.embedding_dimensions),
                         needs_reembedding=(i < n_needing),
                         token_count=2,
                     )

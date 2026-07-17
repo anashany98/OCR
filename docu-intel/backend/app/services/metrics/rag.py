@@ -227,7 +227,7 @@ _ALLOWED_STAGES = frozenset(
 )
 
 
-def track_chat_stage(stage: str) -> "ChatStageTimer":
+def track_chat_stage(stage: str) -> ChatStageTimer:
     """Return a context manager that records the wall-clock duration
     of ``stage`` and tags the outcome on exit.
 
@@ -254,7 +254,7 @@ class ChatStageTimer:
     def set_outcome(self, outcome: str) -> None:
         self.outcome = (outcome or "unknown").lower().strip() or "unknown"
 
-    def __enter__(self) -> "ChatStageTimer":
+    def __enter__(self) -> ChatStageTimer:
         import time as _time
 
         self._t0 = _time.perf_counter()

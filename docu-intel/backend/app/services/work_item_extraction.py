@@ -16,6 +16,7 @@ logger = logging.getLogger("app.services.work_item_extraction")
 @dataclass
 class ExtractedWorkChapter:
     """A chapter in a construction budget/measurements."""
+
     code: str
     title: str
     order_index: int = 0
@@ -25,6 +26,7 @@ class ExtractedWorkChapter:
 @dataclass
 class ExtractedWorkItem:
     """A work item (partida) from mediciones/presupuesto."""
+
     code: str
     description: str
     unit: str
@@ -42,6 +44,7 @@ class ExtractedWorkItem:
 @dataclass
 class ExtractedBreakdown:
     """Measurement breakdown for a work item."""
+
     work_item_code: str
     length_m: float | None = None
     width_m: float | None = None

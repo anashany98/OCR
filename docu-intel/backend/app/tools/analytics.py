@@ -96,7 +96,6 @@ def _budget_aggregate(
     """Build aggregate results for `kind` in {total, count, top, period}
     restricted to `Budget` records with the given filters.
     F5-05: uses SQL aggregation for count/total instead of Python sum."""
-    from app.models import Document
 
     stmt = select(Budget)
     if filters.get("client"):

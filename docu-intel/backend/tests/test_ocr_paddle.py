@@ -60,7 +60,7 @@ class TestGpuHeadroom:
         monkeypatch.setattr(
             subprocess,
             "run",
-            lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "4096\\n", ""),
+            lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "4096\n", ""),
         )
         assert gpu_has_headroom(2048) is True
 
@@ -69,7 +69,7 @@ class TestGpuHeadroom:
         monkeypatch.setattr(
             subprocess,
             "run",
-            lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "1024\\n", ""),
+            lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "1024\n", ""),
         )
         assert gpu_has_headroom(2048) is False
 

@@ -848,6 +848,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/plans/{id}/cad-entities",
+      "name": "get_cad_entities"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/plans/{id}/chat-facts",
       "name": "get_plan_chat_facts"
     },

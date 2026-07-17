@@ -117,6 +117,7 @@ def get_local_reranker() -> LocalSentenceTransformerReranker:
         if device == "cuda":
             try:
                 import torch
+
                 if not torch.cuda.is_available():
                     device = "cpu"
                     logger.info("CUDA not available for reranker, using CPU")

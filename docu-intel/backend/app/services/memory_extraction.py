@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 
 logger = logging.getLogger("app.services.memory_extraction")
 
@@ -23,20 +22,25 @@ logger = logging.getLogger("app.services.memory_extraction")
 # PM4.1 — Hierarchical document structure
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DocumentSection:
     """A section in a hierarchical document structure."""
+
     heading: str
     level: int  # 1=chapter, 2=subchapter, 3=sub-subchapter
     page_number: int | None = None
     children: list[DocumentSection] = field(default_factory=list)
     paragraphs: list[str] = field(default_factory=list)
-    tables: list[list[list[str]]] = field(default_factory=list)  # list of rows, each row is list of cells
+    tables: list[list[list[str]]] = field(
+        default_factory=list
+    )  # list of rows, each row is list of cells
 
 
 @dataclass
 class StructuredChunk:
     """A chunk with hierarchical context for embedding."""
+
     text: str
     token_count: int
     chunk_type: str = "text"
@@ -100,7 +104,6 @@ def parse_memory_structure(text: str, document_type: str | None = None) -> list[
     current_section: DocumentSection | None = None
     current_paragraphs: list[str] = []
     current_tables: list[list[list[str]]] = []
-    current_level = 0
 
     i = 0
     while i < len(lines):
@@ -141,7 +144,6 @@ def parse_memory_structure(text: str, document_type: str | None = None) -> list[
                 sections.append(new_section)
                 current_section = new_section
 
-            current_level = level
             i += 1
             continue
 
@@ -165,7 +167,6 @@ def parse_memory_structure(text: str, document_type: str | None = None) -> list[
                 )
                 sections.append(new_section)
                 current_section = new_section
-                current_level = 1
                 i += 1
                 continue
 
@@ -243,15 +244,17 @@ def sections_to_chunks(
             word_count = len(paragraph_text.split())
 
             if word_count <= max_words:
-                chunks.append(StructuredChunk(
-                    text=paragraph_text,
-                    token_count=word_count,
-                    chunk_type="text",
-                    chapter_path=current_path,
-                    chapter_number=chapter_num,
-                    document_type=document_type,
-                    filename=filename,
-                ))
+                chunks.append(
+                    StructuredChunk(
+                        text=paragraph_text,
+                        token_count=word_count,
+                        chunk_type="text",
+                        chapter_path=current_path,
+                        chapter_number=chapter_num,
+                        document_type=document_type,
+                        filename=filename,
+                    )
+                )
             else:
                 # Split long paragraphs
                 sentences = re.split(r"(?<=[.!?])\s+", paragraph_text)
@@ -260,7 +263,24 @@ def sections_to_chunks(
                 for sent in sentences:
                     sent_words = len(sent.split())
                     if current_words + sent_words > max_words and current_chunk:
-                        chunks.append(StructuredChunk(
+                        chunks.append(
+                            StructuredChunk(
+                                text=" ".join(current_chunk),
+                                token_count=current_words,
+                                chunk_type="text",
+                                chapter_path=current_path,
+                                chapter_number=chapter_num,
+                                document_type=document_type,
+                                filename=filename,
+                            )
+                        )
+                        current_chunk = []
+                        current_words = 0
+                    current_chunk.append(sent)
+                    current_words += sent_words
+                if current_chunk:
+                    chunks.append(
+                        StructuredChunk(
                             text=" ".join(current_chunk),
                             token_count=current_words,
                             chunk_type="text",
@@ -268,35 +288,24 @@ def sections_to_chunks(
                             chapter_number=chapter_num,
                             document_type=document_type,
                             filename=filename,
-                        ))
-                        current_chunk = []
-                        current_words = 0
-                    current_chunk.append(sent)
-                    current_words += sent_words
-                if current_chunk:
-                    chunks.append(StructuredChunk(
-                        text=" ".join(current_chunk),
-                        token_count=current_words,
-                        chunk_type="text",
-                        chapter_path=current_path,
-                        chapter_number=chapter_num,
-                        document_type=document_type,
-                        filename=filename,
-                    ))
+                        )
+                    )
 
         # Emit tables as chunks
         for table in section.tables:
             table_text = _format_table(table)
             if table_text:
-                chunks.append(StructuredChunk(
-                    text=table_text,
-                    token_count=len(table_text.split()),
-                    chunk_type="table",
-                    chapter_path=current_path,
-                    chapter_number=chapter_num,
-                    document_type=document_type,
-                    filename=filename,
-                ))
+                chunks.append(
+                    StructuredChunk(
+                        text=table_text,
+                        token_count=len(table_text.split()),
+                        chunk_type="table",
+                        chapter_path=current_path,
+                        chapter_number=chapter_num,
+                        document_type=document_type,
+                        filename=filename,
+                    )
+                )
 
         # Process children
         for child in section.children:
@@ -322,9 +331,11 @@ def _format_table(table: list[list[str]]) -> str:
 # PM4.2 — Technical specification extraction
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TechnicalSpec:
     """A technical specification extracted from a construction memory."""
+
     # Identification
     system_element: str  # e.g. "Tabiquería interior"
     location: str | None = None  # e.g. "Planta Baja", "Dormitorio 1"
@@ -497,7 +508,8 @@ def _extract_specs_from_text(
     if not material:
         material_ctx = re.search(
             r"(hormig[oó]n\s+(?:armado|cellular|aligerado)|ladrillo|pladur|yeso|madera|acero|poliestireno|lana\s+de\s+roca)",
-            text, re.IGNORECASE,
+            text,
+            re.IGNORECASE,
         )
         if material_ctx:
             material = material_ctx.group(1)

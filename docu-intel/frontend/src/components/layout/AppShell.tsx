@@ -1,16 +1,16 @@
 import { FormEvent, useState } from "react"
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import {
-  ChevronDown,
-  FileText,
-  LogOut,
-  Search,
-  Settings,
-} from "lucide-react"
+import { ChevronDown, FileText, LogOut, Search, Settings } from "lucide-react"
 
 import { api } from "@/api/client"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { CommandPalette } from "@/components/layout/CommandPalette"
 import { ThemeToggle } from "@/components/layout/ThemeToggle"
@@ -34,7 +34,12 @@ export function AppShell() {
   const location = useLocation()
   const [query, setQuery] = useState("")
 
-  const health = useQuery({ queryKey: ["system-health"], queryFn: api.systemHealth, refetchInterval: 30000, refetchIntervalInBackground: false })
+  const health = useQuery({
+    queryKey: ["system-health"],
+    queryFn: api.systemHealth,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+  })
   const inbox = useWorkInboxCount()
   const inboxCount = inbox.data?.count ?? 0
   const systemOk = health.data?.status === "ok" || health.data?.status === "ready"
@@ -46,7 +51,9 @@ export function AppShell() {
     setQuery("")
   }
 
-  const visibleNav = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(user?.role ?? ""))
+  const visibleNav = NAV_ITEMS.filter(
+    (item) => !item.roles || item.roles.includes(user?.role ?? ""),
+  )
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--bg-canvas)]">
@@ -58,13 +65,16 @@ export function AppShell() {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-sm">
               <FileText className="h-3.5 w-3.5" />
             </div>
-            <span className="text-[14px] font-bold text-[var(--text-primary)] hidden sm:block">Docu-Intel</span>
+            <span className="text-[14px] font-bold text-[var(--text-primary)] hidden sm:block">
+              Docu-Intel
+            </span>
           </Link>
 
           {/* Nav links */}
           <nav className="hidden items-center gap-0.5 lg:flex">
             {visibleNav.map((item) => {
-              const active = item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)
+              const active =
+                item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)
               return (
                 <Link
                   key={item.to}
@@ -105,7 +115,12 @@ export function AppShell() {
             </form>
 
             <div className="hidden items-center gap-1 sm:flex">
-              <span className={cn("h-1.5 w-1.5 rounded-full", systemOk ? "bg-[var(--success)]" : "bg-[var(--warning)]")} />
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  systemOk ? "bg-[var(--success)]" : "bg-[var(--warning)]",
+                )}
+              />
               <span className="text-[10px] text-[var(--text-muted)]">OK</span>
             </div>
 
@@ -113,11 +128,16 @@ export function AppShell() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-[var(--bg-surface-2)]" aria-label="Usuario">
+                <button
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-[var(--bg-surface-2)]"
+                  aria-label="Usuario"
+                >
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-[11px] font-bold text-white">
                     {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
                   </div>
-                  <span className="hidden text-[12px] text-[var(--text-secondary)] sm:inline">{user?.name?.split(" ")[0]}</span>
+                  <span className="hidden text-[12px] text-[var(--text-secondary)] sm:inline">
+                    {user?.name?.split(" ")[0]}
+                  </span>
                   <ChevronDown className="hidden h-3 w-3 text-[var(--text-muted)] sm:block" />
                 </button>
               </DropdownMenuTrigger>
@@ -127,9 +147,13 @@ export function AppShell() {
                   <p className="text-[10px] text-[var(--text-muted)]">{user?.email}</p>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate("/admin")} className="text-[12px]"><Settings className="mr-2 h-3.5 w-3.5" /> Admin</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/admin")} className="text-[12px]">
+                  <Settings className="mr-2 h-3.5 w-3.5" /> Admin
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout} className="text-[12px] text-[var(--danger)]"><LogOut className="mr-2 h-3.5 w-3.5" /> Salir</DropdownMenuItem>
+                <DropdownMenuItem onClick={logout} className="text-[12px] text-[var(--danger)]">
+                  <LogOut className="mr-2 h-3.5 w-3.5" /> Salir
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

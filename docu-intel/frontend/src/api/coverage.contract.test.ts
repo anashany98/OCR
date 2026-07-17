@@ -12,12 +12,14 @@ describe("API facade coverage contract", () => {
     )
     vi.stubGlobal("fetch", fetchMock)
 
-    const wrappers = Object.entries(api).filter(
-      ([, value]) =>
-        typeof value === "function" && value.constructor.name !== "AsyncGeneratorFunction",
-    ).filter(
-      ([name]) => !["exportSearchCSV", "exportSearchJSON"].includes(name),
-    ) as Array<[string, (...args: unknown[]) => unknown]>
+    const wrappers = Object.entries(api)
+      .filter(
+        ([, value]) =>
+          typeof value === "function" && value.constructor.name !== "AsyncGeneratorFunction",
+      )
+      .filter(([name]) => !["exportSearchCSV", "exportSearchJSON"].includes(name)) as Array<
+      [string, (...args: unknown[]) => unknown]
+    >
 
     for (const [, wrapper] of wrappers) {
       // The facade deliberately accepts heterogeneous payloads.  A generic

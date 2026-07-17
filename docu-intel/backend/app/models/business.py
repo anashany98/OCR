@@ -185,6 +185,12 @@ class Plan(Base):
     # :func:`app.services.plan_extraction.extract_plan_phase`.
     project_phase: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     revision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_format: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cad_unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cad_extents_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    cad_metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    coordinate_transform_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    conversion_provenance_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
@@ -192,6 +198,9 @@ class Plan(Base):
     rooms = relationship("PlanRoom", back_populates="plan", cascade="all, delete-orphan")
     dimensions = relationship("PlanDimension", back_populates="plan", cascade="all, delete-orphan")
     symbols = relationship("PlanSymbol", back_populates="plan", cascade="all, delete-orphan")
+    cad_entities = relationship(
+        "PlanCadEntity", back_populates="plan", cascade="all, delete-orphan"
+    )
 
 
 class PlanRoom(Base):
@@ -230,8 +239,39 @@ class PlanDimension(Base):
     bbox_x2: Mapped[float | None] = mapped_column(Float)
     bbox_y2: Mapped[float | None] = mapped_column(Float)
     confidence: Mapped[float | None] = mapped_column(Float)
+    source_method: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    source_entity_handle: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    layer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    native_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    native_unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    unit_source: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    coordinates_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    validation_status: Mapped[str] = mapped_column(String(30), nullable=False, default="auto")
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     plan = relationship("Plan", back_populates="dimensions")
+
+
+class PlanCadEntity(Base):
+    """Native CAD entity retained for grounding and visual overlays."""
+
+    __tablename__ = "plan_cad_entities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(
+        ForeignKey("plans.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    entity_handle: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    entity_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    layer: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    layout: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    geometry_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    properties_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    source_method: Mapped[str] = mapped_column(String(40), nullable=False, default="cad_dxf")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    validation_status: Mapped[str] = mapped_column(String(30), nullable=False, default="auto")
+
+    plan = relationship("Plan", back_populates="cad_entities")
 
 
 class PlanSymbol(Base):
@@ -265,11 +305,14 @@ class PlanSymbol(Base):
 
 class InvoiceLine(Base):
     """A single line item from an invoice extraction (Phase 6)."""
+
     __tablename__ = "invoice_lines"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     invoice_id: Mapped[int] = mapped_column(
-        ForeignKey("invoices.id", ondelete="CASCADE"), index=True, nullable=False,
+        ForeignKey("invoices.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     reference: Mapped[str | None] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
@@ -280,7 +323,9 @@ class InvoiceLine(Base):
     currency: Mapped[str | None] = mapped_column(String(12))
     confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
     invoice = relationship("Invoice", back_populates="lines")

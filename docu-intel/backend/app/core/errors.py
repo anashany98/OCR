@@ -1,4 +1,5 @@
 """Domain exception hierarchy + HTTP mapping."""
+
 from __future__ import annotations
 
 

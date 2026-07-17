@@ -42,6 +42,7 @@ jobs:
       ENVIRONMENT: development
       JWT_SECRET: ci_jwt_secret_change_me_for_pipeline_only
       ADMIN_PASSWORD: ci_admin_password_change_me
+      OVISOCR2_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

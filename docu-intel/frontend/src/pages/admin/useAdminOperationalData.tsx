@@ -30,7 +30,12 @@ export function useAdminOperationalData() {
   const stats = useQuery({ queryKey: ["stats"], queryFn: api.stats })
   const alerts = useQuery({ queryKey: ["alerts"], queryFn: api.alerts })
   const metrics = useQuery({ queryKey: ["processing-metrics"], queryFn: api.processingMetrics })
-  const queueStatus = useQuery({ queryKey: ["queues"], queryFn: api.queues, refetchInterval: 5000, refetchIntervalInBackground: false })
+  const queueStatus = useQuery({
+    queryKey: ["queues"],
+    queryFn: api.queues,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  })
   const operationsOverview = useQuery({
     queryKey: ["operations-overview"],
     queryFn: api.operationsOverview,

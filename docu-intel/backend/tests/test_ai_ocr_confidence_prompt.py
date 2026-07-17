@@ -168,6 +168,38 @@ def test_context_text_marks_just_below_threshold_as_dubious():
     assert "[OCR DUDOSO]" in context_text
 
 
+def test_prompt_context_keeps_exact_evidence_when_collector_order_is_noisy():
+    """Conversation memory and weak early hits must not evict exact evidence."""
+    from app.ai.prompts import _prioritize_context_items
+
+    memory = ContextItem(title="Memoria de la conversacion", summary="Documento activo")
+    weak = [
+        ContextItem(
+            title=f"resultado-{index}.pdf",
+            document_id=index,
+            document_filename=f"resultado-{index}.pdf",
+            summary="texto util suficiente para contexto",
+            relevance_score=0.1,
+            confidence=0.6,
+        )
+        for index in range(1, 14)
+    ]
+    exact = ContextItem(
+        title="Documento encontrado por numero exacto '260009': presupuesto.pdf",
+        document_id=99,
+        document_filename="presupuesto.pdf",
+        summary="Presupuesto 260009. Total 120 EUR.",
+        relevance_score=0.1,
+        confidence=0.9,
+    )
+
+    packed = _prioritize_context_items([memory, *weak, exact])
+
+    assert packed[0] is memory
+    assert exact in packed
+    assert len([item for item in packed if item.document_id is not None]) == 12
+
+
 # ---------------------------------------------------------------------------
 # ChatGPT style: the system prompt and the grounded fallback must read
 # like a helpful assistant, not like a bureaucratic form.

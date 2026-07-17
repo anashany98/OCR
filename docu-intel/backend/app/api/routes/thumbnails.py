@@ -13,6 +13,7 @@ from app.services.thumbnail import (
     generate_eml_preview,
     generate_eml_thumbnail,
     generate_excel_thumbnail,
+    generate_image_preview,
     generate_image_thumbnail,
     generate_msg_thumbnail,
     generate_office_thumbnail,
@@ -89,6 +90,8 @@ def get_document_preview(
         raise HTTPException(status_code=404, detail="File not found")
     if document.extension == ".eml":
         preview_relative = generate_eml_preview(stored_path, document.file_hash)
+    elif document.extension in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}:
+        preview_relative = generate_image_preview(stored_path, document.file_hash)
     elif document.extension in {".dxf", ".dwg"}:
         preview_relative = generate_cad_preview(stored_path, document.file_hash)
     else:

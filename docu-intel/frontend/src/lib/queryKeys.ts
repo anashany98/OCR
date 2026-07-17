@@ -63,7 +63,8 @@ export const queryKeys = {
   business: {
     budgets: {
       all: ["business", "budgets"] as const,
-      list: (filters?: Record<string, unknown>) => ["business", "budgets", "list", filters] as const,
+      list: (filters?: Record<string, unknown>) =>
+        ["business", "budgets", "list", filters] as const,
       detail: (id: string) => ["business", "budgets", "detail", id] as const,
     },
     orders: {
@@ -73,12 +74,14 @@ export const queryKeys = {
     },
     invoices: {
       all: ["business", "invoices"] as const,
-      list: (filters?: Record<string, unknown>) => ["business", "invoices", "list", filters] as const,
+      list: (filters?: Record<string, unknown>) =>
+        ["business", "invoices", "list", filters] as const,
       detail: (id: string) => ["business", "invoices", "detail", id] as const,
     },
     reconciliation: {
       all: ["business", "reconciliation"] as const,
-      list: (filters?: Record<string, unknown>) => ["business", "reconciliation", "list", filters] as const,
+      list: (filters?: Record<string, unknown>) =>
+        ["business", "reconciliation", "list", filters] as const,
     },
   },
   system: {

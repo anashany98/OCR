@@ -84,20 +84,23 @@ def evaluate_document_quality(
     # fabric_description) skipean el OCR a propósito (ocr_engine="photo_skip").
     # Sin este exento, todas las fotos válidas van a needs_review por
     # "page_without_text" + "low_ocr_confidence", cuando son correctas.
-    is_photo_doc = document.document_type in {
-        "foto_producto", "muestra_tela", "croquis_medida"
-    }
+    is_photo_doc = document.document_type in {"foto_producto", "muestra_tela", "croquis_medida"}
     if is_photo_doc:
         # Consultar si TODAS las páginas son photo_skip (foto pura, sin OCR)
-        total_pages = db.scalar(
-            select(func.count(DocumentPage.id))
-            .where(DocumentPage.document_id == document.id)
-        ) or 0
-        photo_skip_pages = db.scalar(
-            select(func.count(DocumentPage.id))
-            .where(DocumentPage.document_id == document.id)
-            .where(DocumentPage.ocr_engine == "photo_skip")
-        ) or 0
+        total_pages = (
+            db.scalar(
+                select(func.count(DocumentPage.id)).where(DocumentPage.document_id == document.id)
+            )
+            or 0
+        )
+        photo_skip_pages = (
+            db.scalar(
+                select(func.count(DocumentPage.id))
+                .where(DocumentPage.document_id == document.id)
+                .where(DocumentPage.ocr_engine == "photo_skip")
+            )
+            or 0
+        )
         if total_pages > 0 and photo_skip_pages == total_pages:
             flags.discard("page_without_text")
             flags.discard("low_ocr_confidence")
@@ -151,10 +154,7 @@ def evaluate_document_quality(
     # Quick auto-approve for emails and well-classified documents.
     # Emails (.msg) are always useful as-is; classified docs with
     # some text should not block on missing structured fields.
-    has_text = any(
-        (page.text or "").strip()
-        for page in pages
-    )
+    has_text = any((page.text or "").strip() for page in pages)
     is_email = document.document_type == "email_exportado"
     well_classified = is_classified and classification_conf >= 0.6
     # CR11: Determine status using a proper elif chain so the first
@@ -175,18 +175,13 @@ def evaluate_document_quality(
         document.status != "failed"
         and "page_without_text" not in flags
         and min_ocr >= settings.auto_approve_min_ocr
-        and (
-            is_digital
-            or classification_conf >= settings.auto_approve_min_classification
-        )
+        and (is_digital or classification_conf >= settings.auto_approve_min_classification)
         and is_classified
         and (
             settings.auto_approve_allow_missing_fields
             or not any(f.endswith("_missing") for f in flags)
         )
-    ):
-        status = "processed_ok"
-    elif (
+    ) or (
         document.status != "failed"
         and (has_text or is_photo_doc)
         and (is_email or well_classified or is_photo_doc)
@@ -200,9 +195,7 @@ def evaluate_document_quality(
         or score < settings.quality_score_threshold
     ):
         # CR11: Low quality but potentially usable with warnings.
-        has_majority_text = sum(
-            1 for p in pages if (p.text or "").strip()
-        ) > len(pages) * 0.5
+        has_majority_text = sum(1 for p in pages if (p.text or "").strip()) > len(pages) * 0.5
         if has_majority_text and not is_photo_doc:
             status = "usable_with_warnings"
         else:
@@ -220,28 +213,12 @@ def evaluate_document_quality(
     ):
         # CR11: Missing fields are non-blocking when partial extraction
         # exists. Document is still usable for search.
-        from app.models import DocumentEntity
-        existing_entities = list(
-            db.scalars(
-                select(DocumentEntity).where(DocumentEntity.document_id == document.id)
-            ).all()
-        )
-        has_any_key_field = any(
-            e.entity_type in {"budget_number", "supplier_name", "order_number", "invoice_number"}
-            for e in existing_entities
-        )
-        if has_any_key_field or has_text:
-            status = "usable_with_warnings"
-        else:
-            status = "usable_with_warnings"
+        status = "usable_with_warnings"
     elif business_needs_review or plan_needs_review:
         status = "needs_human_review"
     elif "document_type_unknown" in flags:
         # CR11: Unknown type with text is usable, not blocking.
-        if has_text:
-            status = "usable_with_warnings"
-        else:
-            status = "needs_human_review"
+        status = "usable_with_warnings" if has_text else "needs_human_review"
     else:
         status = "processed_ok"
 

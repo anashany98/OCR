@@ -30,7 +30,6 @@ export function initSentry(): void {
   initialized = true
 
   if (!SENTRY_DSN) {
-    // eslint-disable-next-line no-console
     console.debug("[sentry] disabled (no VITE_SENTRY_DSN)")
     return
   }

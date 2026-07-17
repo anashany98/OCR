@@ -19,12 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { formatBytes, formatDate, cn } from "@/lib/utils"
-import type {
-  DocumentEntity,
-  DocumentGraph,
-  DocumentPage,
-  DocumentTimelineEvent,
-} from "@/types/api"
+import type { DocumentEntity, DocumentGraph, DocumentTimelineEvent } from "@/types/api"
 
 import { entityLabel } from "./useDocumentDetail"
 
@@ -215,14 +210,23 @@ export function UnsupportedPreviewCard({
   }
 }) {
   const kind = previewKind(document.extension)
-  const Icon = kind === "excel" ? FileSpreadsheet : kind === "email" ? Mail : kind === "page" ? FileText : FileText
+  const Icon =
+    kind === "excel"
+      ? FileSpreadsheet
+      : kind === "email"
+        ? Mail
+        : kind === "page"
+          ? FileText
+          : FileText
   const ext = (document.extension ?? "").toLowerCase()
 
   const tips: Record<string, string> = {
-    ".pdf": "El PDF fue procesado por OCR. Las páginas se extraen como imágenes durante el procesamiento. Si no hay imagen, el procesamiento puede no haber terminado.",
+    ".pdf":
+      "El PDF fue procesado por OCR. Las páginas se extraen como imágenes durante el procesamiento. Si no hay imagen, el procesamiento puede no haber terminado.",
     ".docx": "El documento Word fue procesado por OCR. El texto extraído está en la pestaña OCR.",
     ".doc": "El documento Word (.doc) fue procesado. El texto extraído está en la pestaña OCR.",
-    ".msg": "El email Outlook fue procesado. El contenido (asunto, remitente, cuerpo) está en las entidades y el texto OCR.",
+    ".msg":
+      "El email Outlook fue procesado. El contenido (asunto, remitente, cuerpo) está en las entidades y el texto OCR.",
     ".eml": "El email fue procesado. El contenido está en las entidades y el texto OCR.",
     ".dwg": "El plano CAD fue procesado. Las medidas y entidades están en la pestaña Entidades.",
     ".txt": "El texto plano fue procesado. Todo el contenido está en la pestaña OCR.",
@@ -238,7 +242,8 @@ export function UnsupportedPreviewCard({
           {typeLabel(document.extension)}
         </p>
         <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-[var(--text-muted)]">
-          {tips[ext] ?? "No hay vista previa visual. El contenido fue procesado por OCR — revisa la pestaña OCR para ver el texto extraído."}
+          {tips[ext] ??
+            "No hay vista previa visual. El contenido fue procesado por OCR — revisa la pestaña OCR para ver el texto extraído."}
         </p>
       </div>
       <dl className="grid w-full max-w-sm grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border bg-[var(--bg-surface)] px-4 py-3 text-[12px]">
@@ -249,14 +254,20 @@ export function UnsupportedPreviewCard({
         {document.mime_type && (
           <>
             <dt className="text-[var(--text-muted)]">MIME</dt>
-            <dd className="truncate text-right font-mono text-[11px]" title={document.mime_type}>{document.mime_type}</dd>
+            <dd className="truncate text-right font-mono text-[11px]" title={document.mime_type}>
+              {document.mime_type}
+            </dd>
           </>
         )}
         <dt className="text-[var(--text-muted)]">SHA256</dt>
-        <dd className="truncate text-right font-mono text-[11px]" title={document.file_hash}>{document.file_hash.slice(0, 16)}…</dd>
+        <dd className="truncate text-right font-mono text-[11px]" title={document.file_hash}>
+          {document.file_hash.slice(0, 16)}…
+        </dd>
       </dl>
       <Button asChild size="sm" variant="default" className="rounded-lg">
-        <a href={downloadUrl(document.id)}><Download className="mr-1 h-3.5 w-3.5" /> Descargar</a>
+        <a href={downloadUrl(document.id)}>
+          <Download className="mr-1 h-3.5 w-3.5" /> Descargar
+        </a>
       </Button>
     </div>
   )

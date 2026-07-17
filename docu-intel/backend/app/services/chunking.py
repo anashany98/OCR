@@ -286,7 +286,9 @@ def _emit_table(
             if heading_prefix:
                 group_text = f"{heading_prefix}\n{group_text}"
                 heading_prefix = None
-            chunks.append(Chunk(text=group_text, token_count=_word_count(group_text), chunk_type="table"))
+            chunks.append(
+                Chunk(text=group_text, token_count=_word_count(group_text), chunk_type="table")
+            )
             current_group = [header, line] if header else [line]
             current_words = (_word_count(header) if header else 0) + line_words
         else:
@@ -298,7 +300,9 @@ def _emit_table(
         if heading_prefix:
             group_text = f"{heading_prefix}\n{group_text}"
             heading_prefix = None
-        chunks.append(Chunk(text=group_text, token_count=_word_count(group_text), chunk_type="table"))
+        chunks.append(
+            Chunk(text=group_text, token_count=_word_count(group_text), chunk_type="table")
+        )
 
     return heading_prefix
 
@@ -479,9 +483,7 @@ def build_chunks(
         if respect_tables:
             for run_lines, run_is_table in _split_table_block(block_lines):
                 if run_is_table:
-                    pending_heading = _emit_table(
-                        run_lines, chunks, heading_prefix=pending_heading
-                    )
+                    pending_heading = _emit_table(run_lines, chunks, heading_prefix=pending_heading)
                 else:
                     pending_heading = _emit_prose_lines(
                         run_lines,

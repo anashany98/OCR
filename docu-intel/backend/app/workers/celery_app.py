@@ -1,6 +1,5 @@
 import logging
 import os
-from pathlib import Path
 
 from celery import Celery
 from celery.schedules import schedule
@@ -87,12 +86,8 @@ celery_app.conf.task_routes = {
     # path or the chat path. ``text_fast`` remains the interactive
     # queue; ``hyperextract`` is for non-urgent enrichment that
     # can be paused or drained at the operator's discretion.
-    "app.workers.hyperextract_tasks.enqueue_hyperextract_task": {
-        "queue": "hyperextract"
-    },
-    "app.workers.hyperextract_tasks.replay_failed_extractions_task": {
-        "queue": "hyperextract"
-    },
+    "app.workers.hyperextract_tasks.enqueue_hyperextract_task": {"queue": "hyperextract"},
+    "app.workers.hyperextract_tasks.replay_failed_extractions_task": {"queue": "hyperextract"},
 }
 
 

@@ -87,6 +87,150 @@ _SPANISH_HINTS = (
 
 
 def response_looks_spanish(answer: str) -> bool:
+    """Return True when the answer text looks Spanish.
+
+    Heuristic: the langdetect library picks Spanish vs English with
+    very high precision for short paragraphs; the function only fires
+    on longer answers (>= 20 chars) to avoid the langdetect seed-0
+    "no-features" false positive on short fragments. The fallback for
+    short fragments is a Spanish-stopword scan so single-sentence
+    answers are still routed correctly.
+    """
+    text = (answer or "").strip()
+    if len(text) < 20:
+        # Short fragment: rely on Spanish stopwords / diacritics.
+        lowered = text.lower()
+        spanish_markers = (
+            "el ", "la ", "los ", "las ", "de ", "del ", "que ", "segun ",
+            " documento", " presupuesto", " pedido", " proveedor", " importe",
+            " no he ", " no hay ", " he encontrado",
+        )
+        return any(m in lowered for m in spanish_markers)
+    try:
+        from langdetect import DetectorFactory, detect
+
+        DetectorFactory.seed = 0
+        return detect(text) == "es"
+    except Exception:  # langdetect can raise on tiny inputs
+        lowered = text.lower()
+        return any(
+            m in lowered
+            for m in (
+                " el ", " la ", " los ", " las ", " de ", " del ",
+                " que ", " segun ", " no he ", " no hay ", " importe",
+            )
+        )
+
+
+def response_fabricates_content_not_in_sources(
+    answer: str, context_items: list[ContextItem]
+) -> bool:
+    """Detect statements that attribute invented content to a real document.
+
+    ``response_fabricates_documents`` catches cases where the LLM
+    mentions a filename / document number / amount that does not
+    exist in the context. It misses the subtler failure mode that
+    matters most for internal tools: the LLM names a real document
+    but invents what the document says (Q13 in the eval questionnaire:
+    "el proyecto de la piscina nueva costó 2.385,46 € según OC_0114
+    EGEA CAMBIADORES firmada.pdf" — the PDF exists, the 2.385 € is
+    not in any of its excerpts).
+
+    Strategy: split the answer into sentences; for each sentence that
+    references a known filename, check whether the *remaining* tokens
+    of the claim (filename and stopwords stripped) appear in any of
+    that document's excerpts. If none does, the response is fabricated.
+
+    The check is heuristic (token overlap, threshold 0.35) so it
+    tolerates paraphrasing but flags obvious invention. The function
+    is pure and never reads the DB.
+    """
+    if not context_items:
+        return False
+
+    import string
+
+    STOPWORDS = {
+        "el", "la", "los", "las", "de", "del", "al", "a", "en", "por",
+        "para", "con", "sin", "y", "o", "u", "que", "se", "es", "son",
+        "un", "una", "este", "esta", "ese", "esa", "su", "sus", "le",
+        "les", "lo", "mi", "mis", "tu", "tus", "ha", "han", "he",
+        "hay", "ser", "estar", "tener", "mas", "menos", "como", "si",
+        "no", "si", "the", "of", "and", "or", "is", "are", "was",
+        "were", "in", "on", "at", "to", "for", "with", "by",
+    }
+
+    # Build per-document token sets
+    doc_tokens: dict[str, set[str]] = {}
+    for item in context_items:
+        if not item.document_filename:
+            continue
+        text = " ".join(
+            filter(
+                None,
+                (
+                    getattr(item, "excerpt", ""),
+                    getattr(item, "summary", ""),
+                    getattr(item, "source_path", "") or "",
+                ),
+            )
+        )
+        tokens = {
+            t.lower().strip(string.punctuation)
+            for t in text.split()
+            if len(t) > 2 and t.lower() not in STOPWORDS
+        }
+        for key in {item.document_filename.lower(), item.document_filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()}:
+            if key:
+                doc_tokens.setdefault(key, set()).update(tokens)
+
+    if not doc_tokens:
+        return False
+
+    # Split into sentences (rough but works for Spanish)
+    sentences = re.split(r"(?<=[.!?])\s+", answer)
+    for sentence in sentences:
+        # Find filename references in this sentence
+        refs = re.findall(
+            r"[\w./-]+\.(?:pdf|msg|docx|doc|xlsx|png|jpe?g|tiff?)\b",
+            sentence, flags=re.IGNORECASE,
+        )
+        if not refs:
+            continue
+        # Build the claim's tokens (filename and stopwords removed)
+        claim = sentence
+        for ref in refs:
+            claim = claim.replace(ref, " ")
+        claim_tokens = {
+            t.lower().strip(string.punctuation)
+            for t in claim.split()
+            if len(t) > 2 and t.lower() not in STOPWORDS
+        }
+        if not claim_tokens:
+            continue
+        # Check if any referenced document supports the claim
+        supported = False
+        for ref in refs:
+            key = ref.lower()
+            base = key.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+            support = doc_tokens.get(key) or doc_tokens.get(base)
+            if not support:
+                continue
+            overlap = len(claim_tokens & support) / max(len(claim_tokens), 1)
+            if overlap >= 0.35:
+                supported = True
+                break
+        if not supported:
+            logger.warning(
+                "AI response rejected: claim not supported by cited sources. "
+                "Sentence: %r | Refs: %r | Tokens: %s",
+                sentence[:200], refs, list(claim_tokens)[:10],
+            )
+            return True
+    return False
+
+
+
     """True when ``answer`` is plausibly in Spanish.
 
     Layered detection, tuned to avoid rejecting valid natural answers

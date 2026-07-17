@@ -58,7 +58,7 @@ export function useConfirm(): ConfirmFn {
         // destructive operation by forgetting to mount the host.
         // The hook is meant to be paired with :component:`ConfirmDialogHost`
         // at the app root; if it is missing this is a wiring bug.
-        // eslint-disable-next-line no-console
+
         console.warn("useConfirm called without <ConfirmDialogHost /> mounted")
         return Promise.resolve(false)
       }

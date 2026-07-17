@@ -41,7 +41,11 @@ def repair_contextual_business_extractions(
             .where(Document.document_type == "presupuesto")
             .where(Budget.budget_number.is_(None))
             .where(DocumentOccurrence.resolved_budget_code.is_not(None))
-            .where(DocumentOccurrence.association_status.in_(("verified", "folder_only", "content_only")))
+            .where(
+                DocumentOccurrence.association_status.in_(
+                    ("verified", "folder_only", "content_only")
+                )
+            )
             .order_by(Document.id)
         )
         if limit is not None:

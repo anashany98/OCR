@@ -112,7 +112,7 @@ async def test_ai_stream_uses_same_structured_context_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
+async def test_ai_stream_confidence_gate_blocks_unreliable_amount(monkeypatch):
     from app.ai.active_context import ActiveContext
     from app.ai import agent
     from app.ai.agent import ContextItem, StreamOutcome
@@ -158,7 +158,11 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
         route,
         "evaluate_gates_for_turn",
         lambda db, question, context_items, resolved_doc_id: (
-            SimpleNamespace(is_blocked=True, requires_amount=True),
+            SimpleNamespace(
+                is_blocked=True,
+                requires_amount=True,
+                gates_open=["ocr_baja_confianza"],
+            ),
             "Confianza baja; responder con cautela.",
         ),
     )
@@ -204,8 +208,9 @@ async def test_ai_stream_confidence_gate_is_advisory(monkeypatch):
     )
     body = b"".join([chunk async for chunk in response.body_iterator]).decode()
 
-    assert called["stream"] is True
-    assert "respuesta llm" in body
+    assert called["stream"] is False
+    assert "No puedo confirmar el importe" in body
+    assert "backend_confidence_gate" in body
 
 
 @pytest.mark.asyncio

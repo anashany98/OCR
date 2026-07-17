@@ -293,6 +293,60 @@ class Settings(BaseSettings):
             raise ValueError("OVISOCR2_MAX_RESPONSE_BYTES must be at least 1024")
         return self
 
+    # =========================================================================
+    # Docling — opt-in PDF parser backed by an isolated `docling-serve` HTTP
+    # service. The backend never imports `docling` / `torch`; all interaction
+    # goes through `app/services/docling_client.py` which clones the OvisOCR2
+    # client pattern (multipart upload, circuit breaker, bounded response).
+    # Default OFF and `pdf_parser=legacy` so a typo in deployment cannot
+    # silently change PDF behaviour.
+    # =========================================================================
+    docling_enabled: bool = False
+    docling_endpoint: str = "http://docling-serve:5001"
+    docling_api_key: str = ""
+    docling_timeout_seconds: float = 300.0
+    docling_connect_timeout_seconds: float = 10.0
+    docling_max_response_bytes: int = 67_108_864  # 64 MB
+    docling_circuit_failures: int = 3
+    docling_circuit_reset_seconds: float = 120.0
+    docling_table_mode: str = "accurate"  # "fast" | "accurate"
+    docling_image_export_mode: str = "referenced"  # "placeholder"|"embedded"|"referenced"
+    docling_model_version: str = ""  # for re-OCR sweep / audit only
+    # Master switch for the parser router. "legacy" keeps `app/parsers/pdf.py`
+    # as the source of truth; "docling" routes PDFs through the Docling
+    # service and falls back to legacy on any error. The fallback is logged
+    # and counted so an operator can see the degradation in /metrics.
+    pdf_parser: str = "legacy"  # "legacy" | "docling"
+
+    @model_validator(mode="after")
+    def _validate_docling_settings(self) -> "Settings":
+        """Reject unsafe Docling settings before a worker sends a PDF.
+
+        Mirrors the OvisOCR2 pattern: validation applies even while the
+        feature is off, so a later feature-flag flip cannot convert a typo
+        into an unbounded upload or a misconfigured endpoint.
+        """
+        if not self.docling_endpoint.startswith(("http://", "https://")):
+            raise ValueError("DOCLING_ENDPOINT must be an http(s) URL")
+        if (
+            self.docling_connect_timeout_seconds <= 0
+            or self.docling_timeout_seconds <= 0
+        ):
+            raise ValueError("DOCLING timeouts must be positive")
+        if self.docling_circuit_failures < 1 or self.docling_circuit_reset_seconds <= 0:
+            raise ValueError("DOCLING circuit-breaker settings are invalid")
+        if self.docling_max_response_bytes < 1024:
+            raise ValueError("DOCLING_MAX_RESPONSE_BYTES must be at least 1024")
+        if self.docling_table_mode not in {"fast", "accurate"}:
+            raise ValueError("DOCLING_TABLE_MODE must be 'fast' or 'accurate'")
+        if self.docling_image_export_mode not in {"placeholder", "embedded", "referenced"}:
+            raise ValueError(
+                "DOCLING_IMAGE_EXPORT_MODE must be 'placeholder'|'embedded'|'referenced'"
+            )
+        if self.pdf_parser not in {"legacy", "docling"}:
+            raise ValueError("PDF_PARSER must be 'legacy' or 'docling'")
+        return self
+
     # Tesseract 5 settings (used as primary in the cascade and as the
     # only engine when ocr_engine == "tesseract").
     tesseract_lang: str = "spa+eng"
@@ -467,7 +521,7 @@ class Settings(BaseSettings):
     # applies this via ``SET LOCAL hnsw.ef_search`` inside the
     # search transaction so it never leaks to other sessions.
     # Validated range: 20..200 (see benchmark §2.6).
-    search_hnsw_ef_search: int = 40
+    search_hnsw_ef_search: int = Field(default=40, ge=20, le=200)
     # R2 — Prompt-injection defence knobs. ``sensitivity``
     # controls how aggressive the regex detector is
     # (``low`` catches only obvious patterns, ``high`` is very

@@ -122,6 +122,25 @@ def generate_image_thumbnail(image_path: Path, document_hash: str) -> Path | Non
         return None
 
 
+def generate_image_preview(image_path: Path, document_hash: str) -> Path | None:
+    """Create a viewer-sized raster preview without stretching a thumbnail."""
+
+    try:
+        ensure_preview_dir()
+        preview_path = PREVIEW_DIR / f"{document_hash}.jpg"
+        if preview_path.exists():
+            return preview_path.relative_to(settings.files_dir)
+        with Image.open(str(image_path)) as source:
+            image = source.copy()
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGB")
+        image.thumbnail(PREVIEW_SIZE, Image.Resampling.LANCZOS)
+        image.save(preview_path, "JPEG", quality=88)
+        return preview_path.relative_to(settings.files_dir)
+    except Exception:
+        return None
+
+
 def generate_office_thumbnail(document_path: Path, document_hash: str) -> Path | None:
     """Render the first page of a Word/OpenDocument file without persisting a PDF.
 
@@ -388,7 +407,11 @@ def generate_eml_thumbnail(eml_path: Path, document_hash: str) -> Path | None:
         thumb_path = THUMBNAIL_DIR / f"{document_hash}.jpg"
         if thumb_path.exists():
             return thumb_path.relative_to(settings.files_dir)
-        return thumb_path.relative_to(settings.files_dir) if _render_eml(eml_path, thumb_path, THUMBNAIL_SIZE) else None
+        return (
+            thumb_path.relative_to(settings.files_dir)
+            if _render_eml(eml_path, thumb_path, THUMBNAIL_SIZE)
+            else None
+        )
     except Exception:
         return None
 
@@ -400,7 +423,11 @@ def generate_eml_preview(eml_path: Path, document_hash: str) -> Path | None:
         preview_path = PREVIEW_DIR / f"{document_hash}.jpg"
         if preview_path.exists():
             return preview_path.relative_to(settings.files_dir)
-        return preview_path.relative_to(settings.files_dir) if _render_eml(eml_path, preview_path, PREVIEW_SIZE) else None
+        return (
+            preview_path.relative_to(settings.files_dir)
+            if _render_eml(eml_path, preview_path, PREVIEW_SIZE)
+            else None
+        )
     except Exception:
         return None
 
@@ -440,8 +467,22 @@ def _render_cad_dxf_to_image(dxf_path: Path, output_path: Path, size: tuple[int,
             elif kind in {"CIRCLE", "ARC"}:
                 center = point(entity.dxf.center)
                 radius = float(entity.dxf.radius)
-                shapes.append((kind.lower(), (center, radius, getattr(entity.dxf, "start_angle", 0.0), getattr(entity.dxf, "end_angle", 360.0)), layer))
-                add_bounds((center[0] - radius, center[1] - radius), (center[0] + radius, center[1] + radius))
+                shapes.append(
+                    (
+                        kind.lower(),
+                        (
+                            center,
+                            radius,
+                            getattr(entity.dxf, "start_angle", 0.0),
+                            getattr(entity.dxf, "end_angle", 360.0),
+                        ),
+                        layer,
+                    )
+                )
+                add_bounds(
+                    (center[0] - radius, center[1] - radius),
+                    (center[0] + radius, center[1] + radius),
+                )
             elif kind in {"TEXT", "MTEXT", "INSERT"}:
                 insert = getattr(entity.dxf, "insert", None)
                 if insert is None:
@@ -467,14 +508,20 @@ def _render_cad_dxf_to_image(dxf_path: Path, output_path: Path, size: tuple[int,
         scale = min((width - 2 * margin) / span_x, (height - 2 * margin) / span_y)
 
         def pixel(raw: tuple[float, float]) -> tuple[int, int]:
-            return (int(margin + (raw[0] - min_x) * scale), int(height - margin - (raw[1] - min_y) * scale))
+            return (
+                int(margin + (raw[0] - min_x) * scale),
+                int(height - margin - (raw[1] - min_y) * scale),
+            )
 
         canvas = Image.new("RGB", size, "#fafafa")
         draw = ImageDraw.Draw(canvas)
         draw.rectangle((0, 0, width, 36), fill="#1f3a5f")
         draw.text((16, 9), f"Plano CAD: {dxf_path.name}", fill="white", font=_font(18))
         palette = ["#1d4ed8", "#059669", "#b45309", "#7c3aed", "#be123c", "#0f766e"]
-        layers = {layer: palette[index % len(palette)] for index, layer in enumerate(sorted({layer for _, _, layer in shapes}))}
+        layers = {
+            layer: palette[index % len(palette)]
+            for index, layer in enumerate(sorted({layer for _, _, layer in shapes}))
+        }
         for kind, data, layer in shapes:
             color = layers[layer]
             if kind == "line":
@@ -492,7 +539,13 @@ def _render_cad_dxf_to_image(dxf_path: Path, output_path: Path, size: tuple[int,
                 if kind == "circle":
                     draw.ellipse((left_top, right_bottom), outline=color, width=2)
                 else:
-                    draw.arc((left_top, right_bottom), start=-float(end), end=-float(start), fill=color, width=2)
+                    draw.arc(
+                        (left_top, right_bottom),
+                        start=-float(end),
+                        end=-float(start),
+                        fill=color,
+                        width=2,
+                    )
             elif kind == "text":
                 location, text = data
                 draw.text(pixel(location), text, fill=color, font=_font(14))
@@ -525,7 +578,11 @@ def generate_cad_thumbnail(cad_path: Path, document_hash: str) -> Path | None:
         thumb_path = THUMBNAIL_DIR / f"{document_hash}.jpg"
         if thumb_path.exists():
             return thumb_path.relative_to(settings.files_dir)
-        return thumb_path.relative_to(settings.files_dir) if _generate_cad_image(cad_path, thumb_path, THUMBNAIL_SIZE) else None
+        return (
+            thumb_path.relative_to(settings.files_dir)
+            if _generate_cad_image(cad_path, thumb_path, THUMBNAIL_SIZE)
+            else None
+        )
     except Exception:
         return None
 
@@ -536,7 +593,11 @@ def generate_cad_preview(cad_path: Path, document_hash: str) -> Path | None:
         preview_path = PREVIEW_DIR / f"{document_hash}.jpg"
         if preview_path.exists():
             return preview_path.relative_to(settings.files_dir)
-        return preview_path.relative_to(settings.files_dir) if _generate_cad_image(cad_path, preview_path, PREVIEW_SIZE) else None
+        return (
+            preview_path.relative_to(settings.files_dir)
+            if _generate_cad_image(cad_path, preview_path, PREVIEW_SIZE)
+            else None
+        )
     except Exception:
         return None
 

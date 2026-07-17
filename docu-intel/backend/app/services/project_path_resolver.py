@@ -20,10 +20,22 @@ import re
 from dataclasses import dataclass
 
 # Generic folder names that must NOT be treated as budget codes
-_REJECTED_BUDGET_NAMES = frozenset({
-    "pdf", "correos", "excel", "imagenes", "planos", "word",
-    "otros", "zip", "img", "images", "docs", "documents",
-})
+_REJECTED_BUDGET_NAMES = frozenset(
+    {
+        "pdf",
+        "correos",
+        "excel",
+        "imagenes",
+        "planos",
+        "word",
+        "otros",
+        "zip",
+        "img",
+        "images",
+        "docs",
+        "documents",
+    }
+)
 
 _BUDGET_PATTERN = re.compile(r"^Presupuesto\s+(.+)$", re.IGNORECASE)
 _YEAR_PATTERN = re.compile(r"^\d{4}$")
@@ -32,6 +44,7 @@ _YEAR_PATTERN = re.compile(r"^\d{4}$")
 @dataclass(frozen=True)
 class PathResolution:
     """Result of resolving a corpus file path."""
+
     year: int | None
     brand: str | None
     hotel: str | None
@@ -68,7 +81,7 @@ def resolve_corpus_path(path: str, source_root: str = "") -> PathResolution:
     if source_root:
         root_norm = normalize_separators(source_root).rstrip("/")
         if normalized.startswith(root_norm):
-            normalized = normalized[len(root_norm):]
+            normalized = normalized[len(root_norm) :]
     # Remove leading slash
     normalized = normalized.lstrip("/")
 
@@ -90,7 +103,7 @@ def resolve_corpus_path(path: str, source_root: str = "") -> PathResolution:
                 continue
 
     # No year means the hierarchy starts directly with the brand.
-    remaining = segments if year_idx is None else segments[year_idx + 1:]
+    remaining = segments if year_idx is None else segments[year_idx + 1 :]
 
     # Uploaded folder trees are namespaced as ``upload/<user-id>/...``.
     # They are not part of the immutable corpus, but the hierarchy is still
@@ -105,8 +118,11 @@ def resolve_corpus_path(path: str, source_root: str = "") -> PathResolution:
 
     if not remaining:
         return PathResolution(
-            year=year, brand=None, hotel=None,
-            budget_code=None, category=None,
+            year=year,
+            brand=None,
+            hotel=None,
+            budget_code=None,
+            category=None,
             original_segments=segments,
         )
 

@@ -24,9 +24,11 @@ logger = logging.getLogger("app.services.validation")
 # Data types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ValidationResult:
     """Result of validating extracted data against a manifest."""
+
     document_type: str
     manifest_path: str
     total_checks: int = 0
@@ -47,6 +49,7 @@ class ValidationResult:
 @dataclass
 class CheckResult:
     """A single validation check."""
+
     category: str  # e.g. "classification", "scale", "room", "dimension", "spec"
     description: str
     passed: bool
@@ -60,6 +63,7 @@ class CheckResult:
 @dataclass
 class Contradiction:
     """A contradiction between two documents or between extracted and expected data."""
+
     type: str  # "material_mismatch", "dimension_mismatch", "scale_mismatch", etc.
     description: str
     fact_a: str  # First fact with source
@@ -71,6 +75,7 @@ class Contradiction:
 # ---------------------------------------------------------------------------
 # PM5.4 — Manifest validation
 # ---------------------------------------------------------------------------
+
 
 def validate_plan_against_manifest(
     extracted: dict,
@@ -160,6 +165,7 @@ def validate_memory_against_manifest(
 # PM5.4 — Contradiction detection
 # ---------------------------------------------------------------------------
 
+
 def detect_contradictions(
     plan_data: dict | None = None,
     memory_specs: list | None = None,
@@ -220,35 +226,41 @@ def _check_internal_contradictions(specs: list) -> list[Contradiction]:
         # Check material conflicts
         materials = [s.material for s in system_specs if s.material]
         if len(set(materials)) > 1:
-            contradictions.append(Contradiction(
-                type="material_mismatch",
-                description=f"Multiple materials for {system}: {materials}",
-                fact_a=f"Material: {materials[0]}",
-                fact_b=f"Material: {materials[1]}",
-                confidence=0.8,
-            ))
+            contradictions.append(
+                Contradiction(
+                    type="material_mismatch",
+                    description=f"Multiple materials for {system}: {materials}",
+                    fact_a=f"Material: {materials[0]}",
+                    fact_b=f"Material: {materials[1]}",
+                    confidence=0.8,
+                )
+            )
 
         # Check fire rating conflicts
         fires = [s.fire_rating for s in system_specs if s.fire_rating]
         if len(set(fires)) > 1:
-            contradictions.append(Contradiction(
-                type="fire_rating_mismatch",
-                description=f"Multiple fire ratings for {system}: {fires}",
-                fact_a=f"Fire rating: {fires[0]}",
-                fact_b=f"Fire rating: {fires[1]}",
-                confidence=0.9,
-            ))
+            contradictions.append(
+                Contradiction(
+                    type="fire_rating_mismatch",
+                    description=f"Multiple fire ratings for {system}: {fires}",
+                    fact_a=f"Fire rating: {fires[0]}",
+                    fact_b=f"Fire rating: {fires[1]}",
+                    confidence=0.9,
+                )
+            )
 
         # Check thickness conflicts
         thicknesses = [s.thickness_cm for s in system_specs if s.thickness_cm]
         if len(set(thicknesses)) > 1:
-            contradictions.append(Contradiction(
-                type="thickness_mismatch",
-                description=f"Multiple thicknesses for {system}: {thicknesses}",
-                fact_a=f"Thickness: {thicknesses[0]} cm",
-                fact_b=f"Thickness: {thicknesses[1]} cm",
-                confidence=0.85,
-            ))
+            contradictions.append(
+                Contradiction(
+                    type="thickness_mismatch",
+                    description=f"Multiple thicknesses for {system}: {thicknesses}",
+                    fact_a=f"Thickness: {thicknesses[0]} cm",
+                    fact_b=f"Thickness: {thicknesses[1]} cm",
+                    confidence=0.85,
+                )
+            )
 
     return contradictions
 
@@ -257,18 +269,21 @@ def _check_internal_contradictions(specs: list) -> list[Contradiction]:
 # Check implementations
 # ---------------------------------------------------------------------------
 
+
 def _check_classification(result: ValidationResult, extracted: dict, expected_type: str):
     """Check document classification matches expected type."""
     actual_type = extracted.get("document_type", "unknown")
     passed = actual_type == expected_type or expected_type.startswith(actual_type)
 
-    result.checks.append(CheckResult(
-        category="classification",
-        description="Document type classification",
-        passed=passed,
-        expected=expected_type,
-        actual=actual_type,
-    ))
+    result.checks.append(
+        CheckResult(
+            category="classification",
+            description="Document type classification",
+            passed=passed,
+            expected=expected_type,
+            actual=actual_type,
+        )
+    )
     result.total_checks += 1
     if passed:
         result.passed += 1
@@ -285,13 +300,15 @@ def _check_scale(result: ValidationResult, extracted: dict, expected: dict):
     actual_scale = extracted.get("scale", "")
     passed = actual_scale == expected_scale
 
-    result.checks.append(CheckResult(
-        category="scale",
-        description="Scale extraction",
-        passed=passed,
-        expected=expected_scale,
-        actual=actual_scale,
-    ))
+    result.checks.append(
+        CheckResult(
+            category="scale",
+            description="Scale extraction",
+            passed=passed,
+            expected=expected_scale,
+            actual=actual_scale,
+        )
+    )
     result.total_checks += 1
     if passed:
         result.passed += 1
@@ -306,13 +323,15 @@ def _check_phase_revision(result: ValidationResult, extracted: dict, expected: d
         actual_phase = extracted.get("phase", "")
         passed = expected_phase in actual_phase or actual_phase in expected_phase
 
-        result.checks.append(CheckResult(
-            category="phase",
-            description="Phase extraction",
-            passed=passed,
-            expected=expected_phase,
-            actual=actual_phase,
-        ))
+        result.checks.append(
+            CheckResult(
+                category="phase",
+                description="Phase extraction",
+                passed=passed,
+                expected=expected_phase,
+                actual=actual_phase,
+            )
+        )
         result.total_checks += 1
         if passed:
             result.passed += 1
@@ -324,13 +343,15 @@ def _check_phase_revision(result: ValidationResult, extracted: dict, expected: d
         actual_rev = extracted.get("revision", "")
         passed = expected_rev == actual_rev
 
-        result.checks.append(CheckResult(
-            category="revision",
-            description="Revision extraction",
-            passed=passed,
-            expected=expected_rev,
-            actual=actual_rev,
-        ))
+        result.checks.append(
+            CheckResult(
+                category="revision",
+                description="Revision extraction",
+                passed=passed,
+                expected=expected_rev,
+                actual=actual_rev,
+            )
+        )
         result.total_checks += 1
         if passed:
             result.passed += 1
@@ -347,13 +368,15 @@ def _check_sheet(result: ValidationResult, extracted: dict, expected: dict):
     actual_sheet = extracted.get("sheet", "")
     passed = expected_sheet == actual_sheet
 
-    result.checks.append(CheckResult(
-        category="sheet",
-        description="Sheet number extraction",
-        passed=passed,
-        expected=expected_sheet,
-        actual=actual_sheet,
-    ))
+    result.checks.append(
+        CheckResult(
+            category="sheet",
+            description="Sheet number extraction",
+            passed=passed,
+            expected=expected_sheet,
+            actual=actual_sheet,
+        )
+    )
     result.total_checks += 1
     if passed:
         result.passed += 1
@@ -386,49 +409,57 @@ def _check_rooms(result: ValidationResult, extracted: dict, expected: dict):
                     if act_area is not None:
                         area_diff = abs(act_area - exp_area)
                         area_ok = area_diff < 0.1 or (area_diff / max(exp_area, 0.01)) < 0.05
-                        result.checks.append(CheckResult(
-                            category="room_area",
-                            description=f"Room '{room_name}' area",
-                            passed=area_ok,
-                            expected=f"{exp_area:.1f} m²",
-                            actual=f"{act_area:.1f} m²",
-                        ))
+                        result.checks.append(
+                            CheckResult(
+                                category="room_area",
+                                description=f"Room '{room_name}' area",
+                                passed=area_ok,
+                                expected=f"{exp_area:.1f} m²",
+                                actual=f"{act_area:.1f} m²",
+                            )
+                        )
                         result.total_checks += 1
                         if area_ok:
                             result.passed += 1
                         else:
                             result.failed += 1
                     else:
-                        result.checks.append(CheckResult(
-                            category="room_area",
-                            description=f"Room '{room_name}' area",
-                            passed=False,
-                            expected=f"{exp_area:.1f} m²",
-                            actual="not extracted",
-                        ))
+                        result.checks.append(
+                            CheckResult(
+                                category="room_area",
+                                description=f"Room '{room_name}' area",
+                                passed=False,
+                                expected=f"{exp_area:.1f} m²",
+                                actual="not extracted",
+                            )
+                        )
                         result.total_checks += 1
                         result.failed += 1
                 break
 
         if not found:
-            result.checks.append(CheckResult(
-                category="room",
-                description=f"Room '{room_name}' found",
-                passed=False,
-                expected=room_name,
-                actual="not found",
-            ))
+            result.checks.append(
+                CheckResult(
+                    category="room",
+                    description=f"Room '{room_name}' found",
+                    passed=False,
+                    expected=room_name,
+                    actual="not found",
+                )
+            )
             result.total_checks += 1
             result.failed += 1
 
     # Check count
-    result.checks.append(CheckResult(
-        category="room_count",
-        description="Room count",
-        passed=len(actual_rooms) >= len(expected_rooms),
-        expected=str(len(expected_rooms)),
-        actual=str(len(actual_rooms)),
-    ))
+    result.checks.append(
+        CheckResult(
+            category="room_count",
+            description="Room count",
+            passed=len(actual_rooms) >= len(expected_rooms),
+            expected=str(len(expected_rooms)),
+            actual=str(len(actual_rooms)),
+        )
+    )
     result.total_checks += 1
     if len(actual_rooms) >= len(expected_rooms):
         result.passed += 1
@@ -445,13 +476,15 @@ def _check_dimensions(result: ValidationResult, extracted: dict, expected: dict)
     actual_dims = extracted.get("dimensions", [])
 
     # Check count
-    result.checks.append(CheckResult(
-        category="dimension_count",
-        description="Dimension count",
-        passed=len(actual_dims) >= len(expected_dims),
-        expected=str(len(expected_dims)),
-        actual=str(len(actual_dims)),
-    ))
+    result.checks.append(
+        CheckResult(
+            category="dimension_count",
+            description="Dimension count",
+            passed=len(actual_dims) >= len(expected_dims),
+            expected=str(len(expected_dims)),
+            actual=str(len(actual_dims)),
+        )
+    )
     result.total_checks += 1
     if len(actual_dims) >= len(expected_dims):
         result.passed += 1
@@ -473,13 +506,15 @@ def _check_dimensions(result: ValidationResult, extracted: dict, expected: dict)
                 found = True
                 break
 
-        result.checks.append(CheckResult(
-            category="dimension",
-            description=f"Dimension '{exp_label}'",
-            passed=found,
-            expected=f"{exp_label} = {exp_value} m",
-            actual="found" if found else "not found",
-        ))
+        result.checks.append(
+            CheckResult(
+                category="dimension",
+                description=f"Dimension '{exp_label}'",
+                passed=found,
+                expected=f"{exp_label} = {exp_value} m",
+                actual="found" if found else "not found",
+            )
+        )
         result.total_checks += 1
         if found:
             result.passed += 1
@@ -499,13 +534,15 @@ def _check_symbols(result: ValidationResult, extracted: dict, expected: dict):
         act_count = actual_symbols.get(sym_type, 0)
         passed = act_count >= exp_count
 
-        result.checks.append(CheckResult(
-            category="symbol",
-            description=f"Symbol '{sym_type}' count",
-            passed=passed,
-            expected=str(exp_count),
-            actual=str(act_count),
-        ))
+        result.checks.append(
+            CheckResult(
+                category="symbol",
+                description=f"Symbol '{sym_type}' count",
+                passed=passed,
+                expected=str(exp_count),
+                actual=str(act_count),
+            )
+        )
         result.total_checks += 1
         if passed:
             result.passed += 1
@@ -522,24 +559,28 @@ def _check_chapters(result: ValidationResult, sections: list, expected: dict):
 
     # Collect all chapter numbers from sections
     found_numbers = set()
+
     def collect_numbers(sections_list):
         for s in sections_list:
             num = s.heading.split(" ")[0] if s.heading else ""
             found_numbers.add(num)
             collect_numbers(s.children)
+
     collect_numbers(sections)
 
     for exp_ch in expected_chapters:
         ch_num = exp_ch["number"]
         passed = ch_num in found_numbers
 
-        result.checks.append(CheckResult(
-            category="chapter",
-            description=f"Chapter '{ch_num} {exp_ch['title']}'",
-            passed=passed,
-            expected=f"{ch_num} {exp_ch['title']}",
-            actual="found" if passed else "not found",
-        ))
+        result.checks.append(
+            CheckResult(
+                category="chapter",
+                description=f"Chapter '{ch_num} {exp_ch['title']}'",
+                passed=passed,
+                expected=f"{ch_num} {exp_ch['title']}",
+                actual="found" if passed else "not found",
+            )
+        )
         result.total_checks += 1
         if passed:
             result.passed += 1
@@ -565,13 +606,15 @@ def _check_specifications(result: ValidationResult, specs: list, expected: dict)
                 break
 
         if not found:
-            result.checks.append(CheckResult(
-                category="spec",
-                description=f"Specification for '{system}'",
-                passed=False,
-                expected=system,
-                actual="not found",
-            ))
+            result.checks.append(
+                CheckResult(
+                    category="spec",
+                    description=f"Specification for '{system}'",
+                    passed=False,
+                    expected=system,
+                    actual="not found",
+                )
+            )
             result.total_checks += 1
             result.failed += 1
             continue
@@ -582,13 +625,15 @@ def _check_specifications(result: ValidationResult, specs: list, expected: dict)
             act_mat = (found.material or "").lower()
             passed = exp_mat in act_mat or act_mat in exp_mat
 
-            result.checks.append(CheckResult(
-                category="spec_material",
-                description=f"Material for '{system}'",
-                passed=passed,
-                expected=exp_spec["material"],
-                actual=found.material or "none",
-            ))
+            result.checks.append(
+                CheckResult(
+                    category="spec_material",
+                    description=f"Material for '{system}'",
+                    passed=passed,
+                    expected=exp_spec["material"],
+                    actual=found.material or "none",
+                )
+            )
             result.total_checks += 1
             if passed:
                 result.passed += 1
@@ -601,13 +646,15 @@ def _check_specifications(result: ValidationResult, specs: list, expected: dict)
             act_thick = found.thickness_cm
             passed = act_thick is not None and abs(act_thick - exp_thick) < 0.1
 
-            result.checks.append(CheckResult(
-                category="spec_thickness",
-                description=f"Thickness for '{system}'",
-                passed=passed,
-                expected=f"{exp_thick} cm",
-                actual=f"{act_thick} cm" if act_thick else "none",
-            ))
+            result.checks.append(
+                CheckResult(
+                    category="spec_thickness",
+                    description=f"Thickness for '{system}'",
+                    passed=passed,
+                    expected=f"{exp_thick} cm",
+                    actual=f"{act_thick} cm" if act_thick else "none",
+                )
+            )
             result.total_checks += 1
             if passed:
                 result.passed += 1
@@ -620,13 +667,15 @@ def _check_specifications(result: ValidationResult, specs: list, expected: dict)
             act_fire = found.fire_rating or ""
             passed = exp_fire in act_fire or act_fire in exp_fire
 
-            result.checks.append(CheckResult(
-                category="spec_fire",
-                description=f"Fire rating for '{system}'",
-                passed=passed,
-                expected=exp_fire,
-                actual=act_fire or "none",
-            ))
+            result.checks.append(
+                CheckResult(
+                    category="spec_fire",
+                    description=f"Fire rating for '{system}'",
+                    passed=passed,
+                    expected=exp_fire,
+                    actual=act_fire or "none",
+                )
+            )
             result.total_checks += 1
             if passed:
                 result.passed += 1
@@ -639,13 +688,15 @@ def _check_specifications(result: ValidationResult, specs: list, expected: dict)
             act_thermal = found.thermal_insulation or ""
             passed = exp_thermal in act_thermal or act_thermal in exp_thermal
 
-            result.checks.append(CheckResult(
-                category="spec_thermal",
-                description=f"Thermal insulation for '{system}'",
-                passed=passed,
-                expected=exp_thermal,
-                actual=act_thermal or "none",
-            ))
+            result.checks.append(
+                CheckResult(
+                    category="spec_thermal",
+                    description=f"Thermal insulation for '{system}'",
+                    passed=passed,
+                    expected=exp_thermal,
+                    actual=act_thermal or "none",
+                )
+            )
             result.total_checks += 1
             if passed:
                 result.passed += 1
@@ -658,13 +709,15 @@ def _check_specifications(result: ValidationResult, specs: list, expected: dict)
             act_acoustic = found.acoustic_rating or ""
             passed = exp_acoustic in act_acoustic or act_acoustic in exp_acoustic
 
-            result.checks.append(CheckResult(
-                category="spec_acoustic",
-                description=f"Acoustic rating for '{system}'",
-                passed=passed,
-                expected=exp_acoustic,
-                actual=act_acoustic or "none",
-            ))
+            result.checks.append(
+                CheckResult(
+                    category="spec_acoustic",
+                    description=f"Acoustic rating for '{system}'",
+                    passed=passed,
+                    expected=exp_acoustic,
+                    actual=act_acoustic or "none",
+                )
+            )
             result.total_checks += 1
             if passed:
                 result.passed += 1
@@ -675,6 +728,7 @@ def _check_specifications(result: ValidationResult, specs: list, expected: dict)
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
+
 
 def _fuzzy_match(a: str, b: str, threshold: float = 0.6) -> bool:
     """Simple fuzzy string matching for Spanish construction terms."""
@@ -709,7 +763,7 @@ def _parse_number(s: str) -> float | None:
     """Try to parse a number from a string, handling Spanish format."""
     try:
         # Remove common prefixes/suffixes
-        s = s.strip().rstrip("m").rstrip("cm").rstrip("mm")
+        s = re.sub(r"\s*(?:mm|cm|m)\s*$", "", s.strip(), flags=re.IGNORECASE)
         # Handle Spanish format: "5,00" -> 5.00
         s = s.replace(",", ".")
         return float(s)

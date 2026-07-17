@@ -18,7 +18,9 @@ const AuthContext = createContext<AuthContextValue | null>(null)
  * the new provider calls ``/auth/me`` again, receives another 401 and loops
  * indefinitely.  Only navigate when the user is currently elsewhere.
  */
-export function redirectToLoginOnUnauthorized(location: Pick<Location, "pathname" | "replace"> = window.location) {
+export function redirectToLoginOnUnauthorized(
+  location: Pick<Location, "pathname" | "replace"> = window.location,
+) {
   if (location.pathname !== "/login") location.replace("/login")
 }
 

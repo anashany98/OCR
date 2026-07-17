@@ -184,7 +184,17 @@ function splitBlocks(text: string): Block[] {
 
     // Paragraph (collect consecutive non-empty lines)
     const pLines: string[] = []
-    while (i < lines.length && lines[i].trim() && !lines[i].trim().startsWith("#") && !lines[i].trim().startsWith("> ") && !lines[i].trim().startsWith("```") && !/^[-*]\s+/.test(lines[i].trim()) && !/^\d+\.\s+/.test(lines[i].trim()) && !/^(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i].trim()) && !(lines[i].trim().includes("|") && lines[i].trim().startsWith("|"))) {
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !lines[i].trim().startsWith("#") &&
+      !lines[i].trim().startsWith("> ") &&
+      !lines[i].trim().startsWith("```") &&
+      !/^[-*]\s+/.test(lines[i].trim()) &&
+      !/^\d+\.\s+/.test(lines[i].trim()) &&
+      !/^(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i].trim()) &&
+      !(lines[i].trim().includes("|") && lines[i].trim().startsWith("|"))
+    ) {
       pLines.push(lines[i].trim())
       i++
     }
@@ -248,7 +258,10 @@ export function renderAssistantContent(text: string) {
                   <thead>
                     <tr className="border-b border-[var(--border)] bg-[var(--bg-surface-2)]">
                       {b.headers.map((h, j) => (
-                        <th key={j} className="px-3 py-2 text-left font-semibold text-[var(--text-primary)]">
+                        <th
+                          key={j}
+                          className="px-3 py-2 text-left font-semibold text-[var(--text-primary)]"
+                        >
                           {renderInline(h)}
                         </th>
                       ))}

@@ -79,6 +79,10 @@ def test_citation_accuracy_handles_no_expected():
     assert citation_accuracy(expected=[], retrieved_doc_ids=[1, 2, 3]) == 1.0
 
 
+def test_citation_accuracy_deduplicates_multiple_chunks_from_one_document():
+    assert citation_accuracy(expected=[10], retrieved_doc_ids=[10, 10, 10]) == 1.0
+
+
 # ---------------------------------------------------------------------------
 # Golden-set loader
 # ---------------------------------------------------------------------------
@@ -171,6 +175,16 @@ def test_evaluate_retrieval_fails_when_recall_below_gate():
     assert report.passed == 0
     assert report.failed == 1
     assert "missed docs: [42]" in report.results[0].detail
+
+
+def test_evaluate_retrieval_rejects_uncurated_non_exploratory_case():
+    report = evaluate_retrieval(
+        questions=[GoldenQA(id="q-uncurated", category="presupuesto", question="Total?")],
+        search_fn=lambda _question: [_hit(10, 0.9, "Total 100 EUR")],
+    )
+
+    assert report.failed == 1
+    assert "uncurated golden case" in report.results[0].detail
 
 
 def test_evaluate_retrieval_records_exception_in_detail():

@@ -19,9 +19,7 @@ def build_document_graph(db: Session, document_id: int, *, limit: int = 50) -> d
     if budgets:
         budget_ids = [b.id for b in budgets]
         orders = list(
-            db.scalars(
-                select(Order).where(Order.related_budget_id.in_(budget_ids))
-            ).all()
+            db.scalars(select(Order).where(Order.related_budget_id.in_(budget_ids))).all()
         )
         orders_by_budget: dict[int, list[Order]] = {}
         for order in orders:

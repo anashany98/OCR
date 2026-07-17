@@ -127,16 +127,19 @@ def parse_image(
 
     # Skip OCR for photos/interior design images — no text expected
     import logging
+
     _log = logging.getLogger("app.parsers.image")
     _log.info("parse_image content_route=%s path=%s", content_route, path.name)
     if content_route in ("interior_design", "fabric_description"):
         _log.info("OCR SKIPPED: photo/interior_design detected for %s", path.name)
         from app.ocr.base import OCRResult
+
         result = OCRResult(text="", confidence=0.0, blocks=[], engine="photo_skip")
     else:
         # FASE 5: set content_route on cascade for tier skipping.
         with contextlib.suppress(Exception):
             ocr_engine.current_content_route = content_route
+            ocr_engine.current_page_number = 1
         result = ocr_engine.extract(path)
     actual_engine = result.engine or ocr_engine.name
     blocks = [
@@ -160,6 +163,8 @@ def parse_image(
         ocr_confidence=None if is_non_ocr_photo else result.confidence,
         ocr_content_kind="photo" if is_non_ocr_photo else (result.content_kind or "ocr"),
         ocr_engine=actual_engine,
+        ocr_engine_version=result.engine_version,
+        ocr_warnings=list(result.warnings),
         blocks=blocks,
     )
 
@@ -182,9 +187,7 @@ def parse_image(
                 VisionManager.ensure_loaded()
             client = LocalVisionClient()
             prompt = _get_vision_prompt(content_route) + _SENSITIVE_DATA_INSTRUCTIONS
-            vision_text = _run_coro_sync(
-                client.describe(path, prompt=prompt, max_tokens=2000)
-            )
+            vision_text = _run_coro_sync(client.describe(path, prompt=prompt, max_tokens=2000))
             if vision_text:
                 # Phase 5: per-fact confidence instead of hardcoded 0.85
                 vision_confidence = _estimate_vision_confidence(vision_text, content_route)

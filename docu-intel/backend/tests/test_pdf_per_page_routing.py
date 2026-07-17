@@ -87,8 +87,10 @@ def test_scanned_pages_go_through_ocr(tmp_path: Path):
         assert page.text == "OCR TEXT"
 
     # Short mocked OCR text is intentionally below the DPI usability floor,
-    # so each scanned page receives the 300 and 400 DPI attempts.
-    assert eng.extract.call_count == 6
+    # so each scanned page exhausts the configured DPI ladder.
+    from app.parsers.pdf import _get_dpi_ladder
+
+    assert eng.extract.call_count == 3 * len(_get_dpi_ladder())
 
 
 def test_mixed_pdf_routes_per_page(tmp_path: Path):
@@ -129,8 +131,12 @@ def test_mixed_pdf_routes_per_page(tmp_path: Path):
     # Page 4: scanned → tesseract
     assert doc.pages[3].ocr_engine == "tesseract"
 
-    # Each of the 2 scanned pages uses two DPI attempts; digital pages use none.
-    assert eng.extract.call_count == 4, f"expected 4 OCR calls, got {eng.extract.call_count}"
+    # Each scanned page exhausts the configured DPI ladder; digital pages use none.
+    from app.parsers.pdf import _get_dpi_ladder
+
+    assert eng.extract.call_count == 2 * len(_get_dpi_ladder()), (
+        f"expected DPI ladder calls, got {eng.extract.call_count}"
+    )
 
 
 def test_very_short_text_still_routes_to_ocr(tmp_path: Path):
@@ -146,10 +152,12 @@ def test_very_short_text_still_routes_to_ocr(tmp_path: Path):
 
     doc = parse_pdf(pdf, out_dir, eng)
     assert doc.pages[0].ocr_engine == "tesseract"
-    assert eng.extract.call_count == 2
+    from app.parsers.pdf import _get_dpi_ladder
+
+    assert eng.extract.call_count == len(_get_dpi_ladder())
 
 
-def test_scanned_pdf_pages_render_at_300_dpi_by_default(tmp_path: Path):
+def test_scanned_pdf_pages_render_at_configured_base_dpi(tmp_path: Path):
     pdf = tmp_path / "scanned.pdf"
     _make_pdf_with_pages(pdf, [""])
     out_dir = tmp_path / "out"
@@ -164,5 +172,7 @@ def test_scanned_pdf_pages_render_at_300_dpi_by_default(tmp_path: Path):
     with Image.open(rendered) as image:
         width, height = image.size
 
-    assert width == pytest.approx(595 * 300 / 72, abs=3)
-    assert height == pytest.approx(842 * 300 / 72, abs=3)
+    from app.core.config import settings
+
+    assert width == pytest.approx(595 * settings.pdf_ocr_dpi / 72, abs=3)
+    assert height == pytest.approx(842 * settings.pdf_ocr_dpi / 72, abs=3)

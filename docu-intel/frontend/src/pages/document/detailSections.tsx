@@ -40,7 +40,10 @@ import {
 import type { DocumentDetail } from "./useDocumentDetail"
 
 function pageOcrLabel(
-  page: Pick<DocumentPage, "ocr_content_kind" | "ocr_confidence" | "ocr_calibrated_confidence" | "ocr_decision">,
+  page: Pick<
+    DocumentPage,
+    "ocr_content_kind" | "ocr_confidence" | "ocr_calibrated_confidence" | "ocr_decision"
+  >,
 ) {
   if (page.ocr_content_kind === "native_text") return "Texto nativo"
   if (page.ocr_content_kind === "decorative") return "Recurso decorativo"
@@ -320,9 +323,7 @@ function OcrPageSection({
         >
           Página {page.page_number}
         </button>
-        <span>
-          {pageOcrLabel(page)}
-        </span>
+        <span>{pageOcrLabel(page)}</span>
       </div>
       <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6">
         <HighlightedText text={page.text || "Sin texto extraído."} query={query} />

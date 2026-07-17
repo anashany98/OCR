@@ -1,4 +1,5 @@
 """Materialise parsed email documents as project communication records."""
+
 from __future__ import annotations
 
 import re
@@ -38,15 +39,17 @@ def materialize_communication(db: Session, document: Document, *, text: str) -> 
     )
     if message is None and message_id:
         duplicate = db.scalar(
-            select(CommunicationMessage).where(
-                CommunicationMessage.message_id_header == message_id
-            )
+            select(CommunicationMessage).where(CommunicationMessage.message_id_header == message_id)
         )
         # The same RFC message can be attached to a duplicate source file.
         # Keep the first immutable source instead of creating a second record.
         if duplicate is not None:
             return
-    occurrence = db.scalar(select(DocumentOccurrence).where(DocumentOccurrence.document_id == document.id).order_by(DocumentOccurrence.id))
+    occurrence = db.scalar(
+        select(DocumentOccurrence)
+        .where(DocumentOccurrence.document_id == document.id)
+        .order_by(DocumentOccurrence.id)
+    )
     subject = headers.get("subject") or document.original_filename
     normalized = _normalise_subject(subject)
     project_id = occurrence.project_id if occurrence else None
@@ -54,17 +57,13 @@ def materialize_communication(db: Session, document: Document, *, text: str) -> 
     thread = None
     if reply_to:
         parent = db.scalar(
-            select(CommunicationMessage).where(
-                CommunicationMessage.message_id_header == reply_to
-            )
+            select(CommunicationMessage).where(CommunicationMessage.message_id_header == reply_to)
         )
         if parent is not None:
             thread = db.get(CommunicationThread, parent.thread_id)
         if thread is None:
             thread = db.scalar(
-                select(CommunicationThread).where(
-                    CommunicationThread.message_id_header == reply_to
-                )
+                select(CommunicationThread).where(CommunicationThread.message_id_header == reply_to)
             )
     if thread is None:
         thread = db.scalar(
@@ -108,26 +107,36 @@ def materialize_communication(db: Session, document: Document, *, text: str) -> 
     message.sent_at = _parse_sent_at(headers.get("date"))
     message.has_attachments = False
     db.flush()
-    thread.message_count = db.scalar(
-        select(func.count(CommunicationMessage.id)).where(
-            CommunicationMessage.thread_id == thread.id
+    thread.message_count = (
+        db.scalar(
+            select(func.count(CommunicationMessage.id)).where(
+                CommunicationMessage.thread_id == thread.id
+            )
         )
-    ) or 0
+        or 0
+    )
     thread.last_message_at = message.sent_at or datetime.now(UTC)
     thread.started_at = thread.started_at or message.sent_at or datetime.now(UTC)
 
     if old_thread_id is not None and old_thread_id != thread.id:
         old_thread = db.get(CommunicationThread, old_thread_id)
         if old_thread is not None:
-            old_thread.message_count = db.scalar(
-                select(func.count(CommunicationMessage.id)).where(
-                    CommunicationMessage.thread_id == old_thread.id
+            old_thread.message_count = (
+                db.scalar(
+                    select(func.count(CommunicationMessage.id)).where(
+                        CommunicationMessage.thread_id == old_thread.id
+                    )
                 )
-            ) or 0
+                or 0
+            )
             if old_thread.message_count == 0:
                 db.delete(old_thread)
 
-    participants = [("from", sender_name, sender), *[("to", name, email) for name, email in recipients], *[("cc", name, email) for name, email in copied]]
+    participants = [
+        ("from", sender_name, sender),
+        *[("to", name, email) for name, email in recipients],
+        *[("cc", name, email) for name, email in copied],
+    ]
     for role, name, email in participants:
         if not email:
             continue
@@ -139,7 +148,11 @@ def materialize_communication(db: Session, document: Document, *, text: str) -> 
                 CommunicationParticipant.role == role,
             )
         ):
-            db.add(CommunicationParticipant(thread_id=thread.id, contact_id=contact.id, email=email, role=role))
+            db.add(
+                CommunicationParticipant(
+                    thread_id=thread.id, contact_id=contact.id, email=email, role=role
+                )
+            )
         if project_id is not None and not db.scalar(
             select(ProjectParticipant.id).where(
                 ProjectParticipant.project_id == project_id,
@@ -147,16 +160,41 @@ def materialize_communication(db: Session, document: Document, *, text: str) -> 
                 ProjectParticipant.role == _project_role(role),
             )
         ):
-            db.add(ProjectParticipant(project_id=project_id, contact_id=contact.id, email=email, role=_project_role(role), role_confidence=0.9))
+            db.add(
+                ProjectParticipant(
+                    project_id=project_id,
+                    contact_id=contact.id,
+                    email=email,
+                    role=_project_role(role),
+                    role_confidence=0.9,
+                )
+            )
 
-    attachment_count = _link_named_attachments(db, AttachmentLink, document, message.id, project_id, text)
-    message.has_attachments = attachment_count > 0 or db.scalar(
-        select(AttachmentLink.id).where(AttachmentLink.message_id == message.id).limit(1)
-    ) is not None
-    if project_id is not None and _looks_like_issue(subject, text) and not db.scalar(
-        select(ProjectIssue.id).where(ProjectIssue.source_document_id == document.id)
+    attachment_count = _link_named_attachments(
+        db, AttachmentLink, document, message.id, project_id, text
+    )
+    message.has_attachments = (
+        attachment_count > 0
+        or db.scalar(
+            select(AttachmentLink.id).where(AttachmentLink.message_id == message.id).limit(1)
+        )
+        is not None
+    )
+    if (
+        project_id is not None
+        and _looks_like_issue(subject, text)
+        and not db.scalar(
+            select(ProjectIssue.id).where(ProjectIssue.source_document_id == document.id)
+        )
     ):
-        db.add(ProjectIssue(project_id=project_id, title=subject[:500], description=text[:4000], source_document_id=document.id))
+        db.add(
+            ProjectIssue(
+                project_id=project_id,
+                title=subject[:500],
+                description=text[:4000],
+                source_document_id=document.id,
+            )
+        )
     db.flush()
 
 
@@ -195,9 +233,7 @@ def _headers(text: str) -> dict[str, str]:
 def _normalise_subject(subject: str) -> str:
     value = (subject or "").strip()
     while True:
-        stripped = re.sub(
-            r"^(?:re|fw|fwd|rv|enc)\s*:\s*", "", value, flags=re.I
-        ).strip()
+        stripped = re.sub(r"^(?:re|fw|fwd|rv|enc)\s*:\s*", "", value, flags=re.I).strip()
         if stripped == value:
             return value.lower()
         value = stripped
@@ -238,7 +274,9 @@ def _project_role(role: str) -> str:
     return "cliente" if role == "from" else "otro"
 
 
-def _link_named_attachments(db: Session, link_model, document: Document, message_id: int, project_id: int | None, text: str) -> int:
+def _link_named_attachments(
+    db: Session, link_model, document: Document, message_id: int, project_id: int | None, text: str
+) -> int:
     names = _attachment_names(text)
     if not names:
         return 0
@@ -250,9 +288,19 @@ def _link_named_attachments(db: Session, link_model, document: Document, message
         stmt = stmt.join(DocumentOccurrence).where(DocumentOccurrence.project_id == project_id)
     count = 0
     for attachment in db.scalars(stmt).unique().all():
-        if db.scalar(select(link_model.id).where(link_model.message_id == message_id, link_model.document_id == attachment.id)):
+        if db.scalar(
+            select(link_model.id).where(
+                link_model.message_id == message_id, link_model.document_id == attachment.id
+            )
+        ):
             continue
-        db.add(link_model(message_id=message_id, document_id=attachment.id, original_filename=attachment.original_filename))
+        db.add(
+            link_model(
+                message_id=message_id,
+                document_id=attachment.id,
+                original_filename=attachment.original_filename,
+            )
+        )
         count += 1
     return count
 
@@ -287,4 +335,10 @@ def _attachment_names(text: str) -> set[str]:
 
 
 def _looks_like_issue(subject: str, text: str) -> bool:
-    return bool(re.search(r"\b(incidencia|problema|defecto|retraso|urgente|no funciona)\b", f"{subject}\n{text}", flags=re.I))
+    return bool(
+        re.search(
+            r"\b(incidencia|problema|defecto|retraso|urgente|no funciona)\b",
+            f"{subject}\n{text}",
+            flags=re.I,
+        )
+    )

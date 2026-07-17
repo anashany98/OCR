@@ -50,22 +50,30 @@ class WorkItem(Base):
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
-    comments = relationship("WorkItemComment", back_populates="work_item", cascade="all, delete-orphan")
+    comments = relationship(
+        "WorkItemComment", back_populates="work_item", cascade="all, delete-orphan"
+    )
 
 
 # ---------------------------------------------------------------------------
 # PM4.3 — Construction work items and measurements
 # ---------------------------------------------------------------------------
 
+
 class WorkChapter(Base):
     """PM4.3 — Capítulo de presupuesto/mediciones."""
+
     __tablename__ = "work_chapters"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -83,13 +91,21 @@ class WorkChapter(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
-    children = relationship("WorkChapter", back_populates="parent", foreign_keys="WorkChapter.parent_id")
-    parent = relationship("WorkChapter", back_populates="children", remote_side="WorkChapter.id", foreign_keys="WorkChapter.parent_id")
+    children = relationship(
+        "WorkChapter", back_populates="parent", foreign_keys="WorkChapter.parent_id"
+    )
+    parent = relationship(
+        "WorkChapter",
+        back_populates="children",
+        remote_side="WorkChapter.id",
+        foreign_keys="WorkChapter.parent_id",
+    )
     items = relationship("ConstructionWorkItem", back_populates="chapter")
 
 
 class ConstructionWorkItem(Base):
     """PM4.3 — Partida de mediciones/presupuesto."""
+
     __tablename__ = "construction_work_items"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -122,6 +138,7 @@ class ConstructionWorkItem(Base):
 
 class WorkItemBreakdown(Base):
     """PM4.3 — Desglose de medición de una partida."""
+
     __tablename__ = "work_item_breakdowns"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -144,18 +161,24 @@ class WorkItemBreakdown(Base):
 
 class WorkItemComment(Base):
     """Comentario en un WorkItem."""
+
     __tablename__ = "work_item_comments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     work_item_id: Mapped[int] = mapped_column(
-        ForeignKey("work_items.id", ondelete="CASCADE"), index=True, nullable=False,
+        ForeignKey("work_items.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), index=True,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
     work_item = relationship("WorkItem", back_populates="comments")

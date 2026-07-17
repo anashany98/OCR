@@ -1,11 +1,24 @@
 import { useState } from "react"
-import { AlertTriangle, Bot, Copy, FileSpreadsheet, RefreshCw, ThumbsDown, User as UserIcon } from "lucide-react"
+import {
+  AlertTriangle,
+  Bot,
+  Copy,
+  FileSpreadsheet,
+  RefreshCw,
+  ThumbsDown,
+  User as UserIcon,
+} from "lucide-react"
 
 import { ConfidenceBadge } from "@/components/layout/ConfidenceBadge"
 import { cn } from "@/lib/utils"
 import type { AIAnswer } from "@/types/api"
 
-import { ActionButton, FollowupChips, ResolvedDocumentCard, TypingIndicatorInline } from "./components"
+import {
+  ActionButton,
+  FollowupChips,
+  ResolvedDocumentCard,
+  TypingIndicatorInline,
+} from "./components"
 import { renderAssistantContent } from "./renderAssistantContent"
 import { SourceCard } from "./SourceCard"
 import type { ChatMessage } from "./useChat"
@@ -41,7 +54,10 @@ export function MessageBubble({
   const hasMoreSources = sources.length > VISIBLE_SOURCES
 
   if (isUser) {
-    const time = new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+    const time = new Date(message.createdAt).toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
     return (
       <div className="flex items-end justify-end gap-2">
         <div className="flex flex-col items-end gap-0.5">
@@ -57,7 +73,10 @@ export function MessageBubble({
     )
   }
 
-  const time = new Date(message.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+  const time = new Date(message.createdAt).toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 
   return (
     <div className="flex items-start gap-2">
@@ -83,7 +102,9 @@ export function MessageBubble({
             </div>
           ) : (
             <>
-              {renderAssistantContent(showFullAnswer ? message.content : truncateAnswer(message.content))}
+              {renderAssistantContent(
+                showFullAnswer ? message.content : truncateAnswer(message.content),
+              )}
               {message.content.length > 600 && (
                 <button
                   type="button"
@@ -104,7 +125,9 @@ export function MessageBubble({
                   <AlertTriangle className="h-2.5 w-2.5" /> Sin fuentes
                 </span>
               )}
-              {message.answer?.confidence != null && <ConfidenceBadge value={message.answer.confidence} />}
+              {message.answer?.confidence != null && (
+                <ConfidenceBadge value={message.answer.confidence} />
+              )}
               {message.answer?.model_name && (
                 <span className="rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[9px] text-[var(--text-muted)]">
                   {message.answer.model_name}
@@ -127,7 +150,9 @@ export function MessageBubble({
                   onClick={() => setShowAllSources((v) => !v)}
                   className="text-[10px] text-[var(--accent)] hover:underline"
                 >
-                  {showAllSources ? "Ver menos" : `Ver todas (+${sources.length - VISIBLE_SOURCES})`}
+                  {showAllSources
+                    ? "Ver menos"
+                    : `Ver todas (+${sources.length - VISIBLE_SOURCES})`}
                 </button>
               )}
             </div>
@@ -147,9 +172,12 @@ export function MessageBubble({
         )}
 
         {/* Follow-ups */}
-        {hasAnswer && !message.pending && message.answer?.followups && message.answer.followups.length > 0 && (
-          <FollowupChips followups={message.answer.followups} onPick={onPickFollowup} />
-        )}
+        {hasAnswer &&
+          !message.pending &&
+          message.answer?.followups &&
+          message.answer.followups.length > 0 && (
+            <FollowupChips followups={message.answer.followups} onPick={onPickFollowup} />
+          )}
 
         {/* Action buttons */}
         {hasAnswer && !message.pending && (

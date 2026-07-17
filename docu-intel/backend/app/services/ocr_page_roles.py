@@ -11,11 +11,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from sqlalchemy import or_
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.sql.elements import ColumnElement
-
 
 NON_OCR_CONTENT_KINDS = frozenset({"native_text", "decorative", "photo"})
 NATIVE_TEXT_ENGINES = frozenset(
@@ -112,7 +110,9 @@ def is_probably_decorative_embedded_media(*, image_path: str | None, text: str |
     path = (image_path or "").replace("\\", "/").lower()
     if "/embedded/" not in path:
         return False
-    clean = re.sub(r"^\s*\[imagen incrustada:[^\]]+\]\s*", "", text or "", flags=re.IGNORECASE).strip()
+    clean = re.sub(
+        r"^\s*\[imagen incrustada:[^\]]+\]\s*", "", text or "", flags=re.IGNORECASE
+    ).strip()
     normalized = " ".join(clean.lower().split())
     if not normalized:
         return True
@@ -152,14 +152,11 @@ def backfill_ocr_page_roles(db: Session, *, dry_run: bool = False) -> dict[str, 
             text=page.text,
             block_engines=(block.source_engine for block in page.blocks),
         )
-        needs_non_ocr_reset = (
-            not is_ocr_applicable(content_kind)
-            and (
-                page.ocr_confidence is not None
-                or page.ocr_calibrated_confidence is not None
-                or page.ocr_decision != "not_applicable"
-                or page.page_status != "processed"
-            )
+        needs_non_ocr_reset = not is_ocr_applicable(content_kind) and (
+            page.ocr_confidence is not None
+            or page.ocr_calibrated_confidence is not None
+            or page.ocr_decision != "not_applicable"
+            or page.page_status != "processed"
         )
         if content_kind == (page.ocr_content_kind or "") and not needs_non_ocr_reset:
             continue
